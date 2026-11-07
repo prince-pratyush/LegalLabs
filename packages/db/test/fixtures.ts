@@ -71,7 +71,36 @@ export async function seed(tx: Tx) {
   await join(acme, partyP, [gia]);
   await join(beta, betaTeam, [bob]);
 
+  const matter = (ws: string, number: string, mode: string) =>
+    id(
+      `insert into core.matter (workspace_id, client_id, client_name, matter_number, matter_name, wall_mode)
+       values ($1, 'C1', 'Client', $2, $2, $3) returning id`,
+      [ws, number, mode],
+    );
+  const wall = (ws: string, matterId: string, type: string, principal: string, effect: string) =>
+    tx.rows(
+      `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+       values ($1, $2, $3, $4, $5)`,
+      [ws, matterId, type, principal, effect],
+    );
+
+  // The worked example from the walls spec, plus M3: an allow-list nobody is on yet.
+  const m1 = await matter(acme, "M1", "allow_list");
+  const m2 = await matter(acme, "M2", "open");
+  const m3 = await matter(acme, "M3", "allow_list");
+  const mb = await matter(beta, "MB", "open");
+  await wall(acme, m1, "group", corpTeam, "allow");
+  await wall(acme, m1, "user", ben, "deny");
+  await wall(acme, m2, "user", cal, "deny");
+  await wall(beta, mb, "group", betaTeam, "allow");
+  await tx.rows(
+    `insert into core.matter_acknowledgement (workspace_id, user_id, matter_id, notice_version)
+     values ($1, $2, $3, 1), ($4, $5, $6, 1)`,
+    [acme, ana, m2, beta, bob, mb],
+  );
+
   return {
+    matters: { m1, m2, m3, mb },
     acme,
     beta,
     roles: { acmeAdmin, acmeUser, betaAdmin },
