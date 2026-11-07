@@ -50,6 +50,13 @@
       "when": 1794009606000,
       "tag": "0007_core_final_revocation",
       "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794009607000,
+      "tag": "0008_core_permission_guards",
+      "breakpoints": false
     }
   ]
 }

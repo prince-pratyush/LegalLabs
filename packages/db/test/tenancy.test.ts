@@ -16,6 +16,7 @@ describe("tenancy", () => {
         "ana@acme.test",
         "ben@acme.test",
         "cal@acme.test",
+        "dee@acme.test",
         "gia@guest.test",
         "sue@acme.test",
       ]);
@@ -63,14 +64,75 @@ describe("tenancy", () => {
     });
   });
 
-  it("never grants admin permissions to a guest, even when listed", async () => {
+  it("gives guests and service accounts no role or extra permissions", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
-      await tx.as(s.gia, s.acme);
-      const { allowed } = await tx.one<{ allowed: boolean }>(
-        "select core.has_permission('admin.users') as allowed",
-      );
-      expect(allowed).toBe(false);
+      expect(
+        await tx.error(`update core."user" set extra_permissions = '{admin.users}' where id = $1`, [
+          s.gia,
+        ]),
+      ).toMatch(/check constraint/);
+      expect(
+        await tx.error(`update core."user" set role_id = $1 where id = $2`, [
+          s.roles.acmeUser,
+          s.gia,
+        ]),
+      ).toMatch(/check constraint/);
+    });
+  });
+
+  it("does not let anyone change their own access", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.dee, s.acme);
+      expect(
+        await tx.error(`update core."user" set role_id = $1 where id = $2`, [
+          s.roles.acmeAdmin,
+          s.dee,
+        ]),
+      ).toMatch(/own access/);
+      expect(
+        await tx.error(`update core."user" set extra_permissions = '{}' where id = $1`, [s.dee]),
+      ).toMatch(/own access/);
+    });
+  });
+
+  it("does not let admin.users grant permissions it does not hold", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.dee, s.acme);
+      expect(
+        await tx.error(`update core."user" set role_id = $1 where id = $2`, [
+          s.roles.acmeAdmin,
+          s.ben,
+        ]),
+      ).toMatch(/do not hold/);
+      expect(
+        await tx.error(
+          `update core."user" set extra_permissions = '{admin.matters}' where id = $1`,
+          [s.ben],
+        ),
+      ).toMatch(/do not hold/);
+      expect(
+        await tx.error(`update core.role set permissions = '{*}' where id = $1`, [
+          s.roles.acmeUser,
+        ]),
+      ).toMatch(/do not hold/);
+      expect(
+        await tx.error(`update core."user" set extra_permissions = '{admin.users}' where id = $1`, [
+          s.ben,
+        ]),
+      ).toBeUndefined();
+    });
+  });
+
+  it("does not let a guest be turned into a member", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(
+        await tx.error(`update core."user" set kind = 'member' where id = $1`, [s.gia]),
+      ).toMatch(/kind cannot change/);
     });
   });
 

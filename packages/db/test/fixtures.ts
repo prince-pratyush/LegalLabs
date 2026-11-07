@@ -40,10 +40,12 @@ export async function seed(tx: Tx) {
   const ben = await user(acme, "ben@acme.test", acmeUser);
   const cal = await user(acme, "cal@acme.test", acmeUser);
   const sue = await user(acme, "sue@acme.test", acmeAdmin, { status: "suspended" });
-  const gia = await user(acme, "gia@guest.test", acmeUser, {
-    kind: "guest",
-    extra: ["admin.users"],
-  });
+  const gia = await id(
+    `insert into core."user" (workspace_id, email, status, kind) values ($1, 'gia@guest.test', 'active', 'guest') returning id`,
+    [acme],
+  );
+  // Holds admin.users but not admin.matters, to test that it cannot grant more.
+  const dee = await user(acme, "dee@acme.test", acmeUser, { extra: ["admin.users"] });
   const bob = await user(beta, "bob@beta.test", betaAdmin);
 
   const group = (ws: string, name: string, visibility: string, kind = "standard") =>
@@ -164,6 +166,7 @@ export async function seed(tx: Tx) {
     cal,
     sue,
     gia,
+    dee,
     bob,
   };
 }
