@@ -119,6 +119,20 @@ describe("can_access_matter fails closed", () => {
 });
 
 describe("matters and walls under row-level security", () => {
+  it("accepts an acknowledgement only for the notice version now in force", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ben, s.acme);
+      expect(
+        await tx.error(
+          `insert into core.matter_acknowledgement (workspace_id, user_id, matter_id, notice_version)
+           values ($1, $2, $3, 2)`,
+          [s.acme, s.ben, s.matters.m2],
+        ),
+      ).toMatch(/row-level security/);
+    });
+  });
+
   it("hides walled matters from the people they wall", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);

@@ -64,6 +64,13 @@
       "when": 1794009608000,
       "tag": "0009_core_open_matters_members_only",
       "breakpoints": false
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794009609000,
+      "tag": "0010_core_current_notice_only",
+      "breakpoints": false
     }
   ]
 }
