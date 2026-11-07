@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794009600000,
+      "tag": "0001_core_foundations",
+      "breakpoints": false
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794009601000,
+      "tag": "0002_core_tenancy",
+      "breakpoints": false
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794009602000,
+      "tag": "0003_core_groups",
+      "breakpoints": false
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794009603000,
+      "tag": "0004_core_matters_walls",
+      "breakpoints": false
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794009604000,
+      "tag": "0005_core_sharing",
+      "breakpoints": false
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794009605000,
+      "tag": "0006_core_sessions_tokens",
+      "breakpoints": false
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794009606000,
+      "tag": "0007_core_final_revocation",
+      "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794009607000,
+      "tag": "0008_core_permission_guards",
+      "breakpoints": false
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794009608000,
+      "tag": "0009_core_open_matters_members_only",
+      "breakpoints": false
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794009609000,
+      "tag": "0010_core_current_notice_only",
+      "breakpoints": false
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794009610000,
+      "tag": "0011_core_principal_check_in_tenant",
+      "breakpoints": false
+    }
+  ]
+}
