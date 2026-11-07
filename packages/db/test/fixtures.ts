@@ -46,7 +46,43 @@ export async function seed(tx: Tx) {
   });
   const bob = await user(beta, "bob@beta.test", betaAdmin);
 
-  return { acme, beta, roles: { acmeAdmin, acmeUser, betaAdmin }, ana, ben, cal, sue, gia, bob };
+  const group = (ws: string, name: string, visibility: string, kind = "standard") =>
+    id(
+      `insert into core."group" (workspace_id, name, visibility, kind) values ($1, $2, $3, $4) returning id`,
+      [ws, name, visibility, kind],
+    );
+  const join = (ws: string, groupId: string, userIds: string[]) =>
+    Promise.all(
+      userIds.map((u) =>
+        tx.rows(
+          "insert into core.group_member (workspace_id, group_id, user_id) values ($1, $2, $3)",
+          [ws, groupId, u],
+        ),
+      ),
+    );
+
+  const corpTeam = await group(acme, "corp-team", "private");
+  const litTeam = await group(acme, "lit-team", "private");
+  const everyone = await group(acme, "everyone", "public");
+  const partyP = await group(acme, "party-p", "private", "party");
+  const betaTeam = await group(beta, "beta-team", "private");
+  await join(acme, corpTeam, [ana, ben]);
+  await join(acme, litTeam, [cal]);
+  await join(acme, partyP, [gia]);
+  await join(beta, betaTeam, [bob]);
+
+  return {
+    acme,
+    beta,
+    roles: { acmeAdmin, acmeUser, betaAdmin },
+    groups: { corpTeam, litTeam, everyone, partyP, betaTeam },
+    ana,
+    ben,
+    cal,
+    sue,
+    gia,
+    bob,
+  };
 }
 
 export type Seed = Awaited<ReturnType<typeof seed>>;

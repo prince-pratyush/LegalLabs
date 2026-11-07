@@ -15,6 +15,13 @@
       "when": 1794009601000,
       "tag": "0002_core_tenancy",
       "breakpoints": false
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794009602000,
+      "tag": "0003_core_groups",
+      "breakpoints": false
     }
   ]
 }
