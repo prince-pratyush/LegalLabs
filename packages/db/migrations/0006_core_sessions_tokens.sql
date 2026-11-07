@@ -37,7 +37,6 @@ create policy definer_read on core.session for select to legallabs_definer using
 create policy definer_read on core.api_token for select to legallabs_definer using (true);
 
 -- Login runs before app.user_id exists, so these narrow lookups are the only way in.
--- Each returns at most one row and only what the next step needs.
 create function core.find_login_user(workspace_slug text, email text)
 returns table (user_id uuid, workspace_id uuid, status text)
 language sql stable security definer set search_path = '' as $$

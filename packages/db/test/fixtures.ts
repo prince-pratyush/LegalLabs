@@ -86,7 +86,7 @@ export async function seed(tx: Tx) {
       [ws, matterId, type, principal, effect],
     );
 
-  // The worked example from the walls spec, plus M3: an allow-list nobody is on yet.
+  // M3 is an allow-list nobody is on yet.
   const m1 = await matter(acme, "M1", "allow_list");
   const m2 = await matter(acme, "M2", "open");
   const m3 = await matter(acme, "M3", "allow_list");

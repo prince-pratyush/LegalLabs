@@ -43,7 +43,7 @@ export class Tx {
   }
 }
 
-// Every test runs in a transaction that is always rolled back.
+// Rolling back keeps tests independent and leaves no data behind.
 export async function withTx(fn: (tx: Tx) => Promise<void>): Promise<void> {
   const client = new pg.Client({ connectionString: inject("databaseUrl") });
   await client.connect();

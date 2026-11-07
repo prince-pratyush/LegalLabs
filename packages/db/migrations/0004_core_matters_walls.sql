@@ -74,8 +74,7 @@ alter function core.check_principal() owner to legallabs_definer;
 create trigger wall_principal before insert or update of workspace_id, principal_type, principal_id
   on core.wall for each row execute function core.check_principal();
 
--- The only definition of the wall rule. SECURITY DEFINER because wall rows are hidden from
--- the people they wall; read as the caller, every matter would look open.
+-- SECURITY DEFINER: walls are hidden from those they wall, so as the caller all would look open.
 create function core.can_access_matter(matter_id uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
   with me as (

@@ -1,5 +1,4 @@
--- Refuse rows aimed at another workspace before looking anything up there,
--- so the error never reveals whether someone exists in it.
+-- Check the workspace first, so the error never reveals who exists in another one.
 create or replace function core.check_principal() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
