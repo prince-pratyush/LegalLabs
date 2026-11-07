@@ -120,7 +120,39 @@ export async function seed(tx: Tx) {
   await share(acme, t1, "user", cal, "edit", ana);
   await share(beta, tb, "workspace", beta, "view", bob);
 
+  // Only hashes are stored; tests hold the raw secrets to look them up again.
+  const session = (ws: string, userId: string, secret: string, expires = "1 day") =>
+    tx.rows(
+      `insert into core.session (workspace_id, user_id, token_hash, expires_at)
+       values ($1, $2, sha256(convert_to($3, 'utf8')), now() + $4::interval)`,
+      [ws, userId, secret, expires],
+    );
+  const token = (ws: string, userId: string, secret: string, scopes: string[]) =>
+    tx.rows(
+      `insert into core.api_token (workspace_id, principal_id, name, token_hash, scopes, expires_at)
+       values ($1, $2, 'test', sha256(convert_to($3, 'utf8')), $4, now() + interval '90 days')`,
+      [ws, userId, secret, scopes],
+    );
+  const secrets = {
+    ana: `sid-ana-${tag}`,
+    ben: `sid-ben-${tag}`,
+    sue: `sid-sue-${tag}`,
+    expired: `sid-old-${tag}`,
+    bob: `sid-bob-${tag}`,
+    anaToken: `cns_ana_${tag}`,
+    bobToken: `cns_bob_${tag}`,
+  };
+  await session(acme, ana, secrets.ana);
+  await session(acme, ben, secrets.ben);
+  await session(acme, sue, secrets.sue);
+  await session(acme, ana, secrets.expired, "-1 hour");
+  await session(beta, bob, secrets.bob);
+  await token(acme, ana, secrets.anaToken, ["audit:read"]);
+  await token(beta, bob, secrets.bobToken, ["whoami"]);
+
   return {
+    slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
+    secrets,
     objects: { t1, tb },
     matters: { m1, m2, m3, mb },
     acme,
