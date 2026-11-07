@@ -98,6 +98,39 @@ describe("login lookups, which run before anyone is known", () => {
   });
 });
 
+describe("revocation", () => {
+  it("cannot be undone, for a session or a token", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      await tx.rows(`update core.session set revoked_at = now() where token_hash = ${hash}`, [
+        s.secrets.ana,
+      ]);
+      await tx.rows(`update core.api_token set revoked_at = now() where token_hash = ${hash}`, [
+        s.secrets.anaToken,
+      ]);
+      expect(
+        await tx.error(`update core.session set revoked_at = null where token_hash = ${hash}`, [
+          s.secrets.ana,
+        ]),
+      ).toMatch(/revocation is final/);
+      expect(
+        await tx.error(`update core.api_token set revoked_at = null where token_hash = ${hash}`, [
+          s.secrets.anaToken,
+        ]),
+      ).toMatch(/revocation is final/);
+    });
+  });
+
+  it("does not let the app rewrite when MFA happened", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ben, s.acme);
+      expect(await tx.error("update core.session set mfa_at = now()")).toMatch(/permission denied/);
+    });
+  });
+});
+
 describe("sessions and tokens under row-level security", () => {
   it("shows people their own sessions, and admins everyone's in the workspace", async () => {
     await withTx(async (tx) => {
