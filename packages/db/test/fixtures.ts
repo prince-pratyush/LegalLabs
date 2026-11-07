@@ -99,7 +99,29 @@ export async function seed(tx: Tx) {
     [acme, ana, m2, beta, bob, mb],
   );
 
+  // Objects arrive in later modules; a share only needs a type and an id.
+  const t1 = await id("select core.uuid7() as id", []);
+  const tb = await id("select core.uuid7() as id", []);
+  const share = (
+    ws: string,
+    objectId: string,
+    type: string,
+    principal: string,
+    level: string,
+    by: string,
+  ) =>
+    tx.rows(
+      `insert into core.share_grant
+         (workspace_id, object_type, object_id, principal_type, principal_id, level, granted_by)
+       values ($1, 'thread', $2, $3, $4, $5, $6)`,
+      [ws, objectId, type, principal, level, by],
+    );
+  await share(acme, t1, "group", corpTeam, "view", ana);
+  await share(acme, t1, "user", cal, "edit", ana);
+  await share(beta, tb, "workspace", beta, "view", bob);
+
   return {
+    objects: { t1, tb },
     matters: { m1, m2, m3, mb },
     acme,
     beta,
