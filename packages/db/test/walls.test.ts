@@ -119,6 +119,18 @@ describe("can_access_matter fails closed", () => {
 });
 
 describe("matters and walls under row-level security", () => {
+  it("gives the same answer whether or not another workspace's person exists", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const insert = `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+                      values ($1, $2, 'user', $3, 'deny')`;
+      await tx.as(s.bob, s.beta);
+      const real = await tx.error(insert, [s.acme, s.matters.m2, s.ana]);
+      const fake = await tx.error(insert, [s.acme, s.matters.m2, s.objects.t1]);
+      expect(real?.replace(s.ana, "X")).toBe(fake?.replace(s.objects.t1, "X"));
+    });
+  });
+
   it("accepts an acknowledgement only for the notice version now in force", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
