@@ -43,7 +43,7 @@ export type ColorRole = keyof (typeof colors)["light"];
 export const space = [4, 8, 12, 16, 24, 32, 48] as const;
 
 // [font size, line height] in px.
-export const type = {
+export const typography = {
   caption: [12, 16],
   dense: [13, 18],
   body: [14, 20],
