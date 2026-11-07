@@ -57,6 +57,13 @@
       "when": 1794009607000,
       "tag": "0008_core_permission_guards",
       "breakpoints": false
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794009608000,
+      "tag": "0009_core_open_matters_members_only",
+      "breakpoints": false
     }
   ]
 }

@@ -57,6 +57,27 @@ describe("can_access_matter, the worked examples", () => {
 });
 
 describe("can_access_matter fails closed", () => {
+  it("keeps guests and service accounts out of open matters without an allow row", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const svc = (
+        await tx.one<{ id: string }>(
+          `insert into core."user" (workspace_id, email, status, kind)
+           values ($1, 'svc_sync@acme.test', 'active', 'service') returning id`,
+          [s.acme],
+        )
+      ).id;
+      expect(await canAccess(tx, s.gia, s.acme, s.matters.m2)).toBe(false);
+      expect(await canAccess(tx, svc, s.acme, s.matters.m2)).toBe(false);
+      await tx.rows(
+        `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+         values ($1, $2, 'user', $3, 'allow')`,
+        [s.acme, s.matters.m2, svc],
+      );
+      expect(await canAccess(tx, svc, s.acme, s.matters.m2)).toBe(true);
+    });
+  });
+
   it("admits nobody to an allow-list matter with no allow rows, not even an admin", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
