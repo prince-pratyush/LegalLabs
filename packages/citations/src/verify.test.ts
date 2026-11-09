@@ -99,6 +99,42 @@ describe("document citations", () => {
     });
   });
 
+  const quote250 =
+    "The Supplier shall be liable to the Customer for loss arising from a breach of clause 14, " +
+    "and each party shall give written notice of the claim within 30 days after it becomes " +
+    "aware of the breach, setting out in reasonable detail the grounds for that claim.";
+
+  it.each([
+    ["a dropped negation", quote250.replace("shall be", "shall not be")],
+    ["a changed number", quote250.replace("30 days", "60 days")],
+    ["a swapped word", quote250.replace("notice", "advice")],
+    ["a dropped word", quote250.replace("that claim", "claim")],
+  ])("refuses a near match with %s, and shows what it found", async (_, page) => {
+    const result = await onPage(page, quote250);
+    expect(result).toMatchObject({
+      status: "mismatch",
+      reason: "meaning_changed",
+      closest: { exact: false },
+    });
+  });
+
+  it.each([
+    ["licensor", "licensee"],
+    ["employer", "employee"],
+  ])("refuses %s read as %s", async (quoted, printed) => {
+    const clause = `${quote250} The ${quoted} accepts this.`;
+    const page = clause.replace(quoted, printed);
+    expect(await onPage(page, clause)).toMatchObject({ reason: "meaning_changed" });
+  });
+
+  it("accepts a common scan confusion inside one word", async () => {
+    const page = quote250.replace("arising", "anising").replace("clause", "dause");
+    expect(await onPage(page, quote250)).toMatchObject({
+      status: "ok",
+      located: { exact: false },
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
