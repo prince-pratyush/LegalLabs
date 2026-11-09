@@ -41,6 +41,9 @@ begin
     raise exception 'audit anchors are only for finished days' using errcode = '22023';
   end if;
 
+  -- Waits out writers, so an event stamped before midnight can't commit after this anchor.
+  perform 1 from admin.audit_head h where h.workspace_id = ws for update;
+
   insert into admin.audit_anchor (workspace_id, day, last_seq, last_hash, storage_key)
   select ws, p_day, e.seq, e.hash, format('audit-anchors/%s/%s.json', ws, p_day)
     from admin.audit_event e

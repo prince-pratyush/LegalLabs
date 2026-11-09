@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import pg from "pg";
+import { describe, expect, inject, it } from "vitest";
 import { withTx } from "./db.js";
 import { seed } from "./fixtures.js";
 
@@ -38,6 +39,44 @@ describe("monthly audit partitions", () => {
       const { name } = await tx.one<{ name: string }>(`select ${nextMonthPartition} as name`);
       expect(await tx.error(`truncate ${name}`)).toMatch(/audit records cannot be changed/);
     });
+  });
+});
+
+describe("anchoring a day", () => {
+  it("waits for events still being written", async () => {
+    const url = inject("databaseUrl");
+    const owner = new pg.Client({ connectionString: url });
+    const writer = new pg.Client({ connectionString: url });
+    const anchorer = new pg.Client({ connectionString: url });
+    await Promise.all([owner.connect(), writer.connect(), anchorer.connect()]);
+    try {
+      const { rows } = await owner.query<{ id: string }>(
+        `insert into core.workspace (slug, name, region)
+         values ('anchor-' || core.uuid7(), 'anchor', 'au') returning id`,
+      );
+      const workspace = rows[0]?.id ?? "";
+      const enter = async (client: pg.Client) => {
+        await client.query("begin");
+        await client.query("set local role legallabs_app");
+        await client.query("select set_config('app.workspace_id', $1, true)", [workspace]);
+      };
+      const appendEvent = () =>
+        writer.query("select admin.append_audit_event('retention.sweep', 'system', null)");
+      await enter(writer);
+      await appendEvent();
+      await writer.query("commit");
+      await enter(writer);
+      await appendEvent();
+      await enter(anchorer);
+      await anchorer.query("set local lock_timeout = '200ms'");
+      await expect(
+        anchorer.query("select * from admin.record_audit_anchor('2020-01-01')"),
+      ).rejects.toThrow(/lock timeout/);
+    } finally {
+      await writer.query("rollback");
+      await anchorer.query("rollback");
+      await Promise.all([owner.end(), writer.end(), anchorer.end()]);
+    }
   });
 });
 
