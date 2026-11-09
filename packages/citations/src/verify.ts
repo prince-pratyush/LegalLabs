@@ -1,19 +1,27 @@
+import {
+  type AuthorityCitation,
+  type AuthoritySources,
+  type AuthorityVerification,
+  verifyAuthority,
+} from "./authority.js";
 import { locateQuote, type QuoteResult } from "./quote.js";
 
 export type CitationStatus = "ok" | "mismatch" | "unresolved";
 
 export type Citation =
+  | AuthorityCitation
   | { kind: "document"; documentVersionId: string; page: number; quote: string }
   | { kind: "web"; url: string; quote: string }
   | { kind: "cell"; cellId: string };
 
-export interface Sources {
+export interface Sources extends AuthoritySources {
   documentPage(documentVersionId: string, page: number): Promise<string | null>;
   webPage(url: string): Promise<string | null>;
   cellCitationStatuses(cellId: string): Promise<readonly CitationStatus[] | null>;
 }
 
 export type Verification =
+  | AuthorityVerification
   | QuoteResult
   | { status: "ok" }
   | { status: "mismatch"; reason: "cell_citation_flagged" | "cell_has_no_citations" }
@@ -22,6 +30,8 @@ export type Verification =
 /** Lookup failures reject, so an outage is never reported as a bad citation. */
 export async function verifyCitation(citation: Citation, sources: Sources): Promise<Verification> {
   switch (citation.kind) {
+    case "authority":
+      return verifyAuthority(citation, sources);
     case "document": {
       const page = await sources.documentPage(citation.documentVersionId, citation.page);
       if (page === null) return { status: "unresolved", reason: "page_not_found" };

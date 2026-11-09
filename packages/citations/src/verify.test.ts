@@ -1,18 +1,70 @@
 import { describe, expect, it } from "vitest";
-import { type CitationStatus, type Sources, verifyCitation } from "./index.js";
+import { type Authority, type CitationStatus, type Sources, verifyCitation } from "./index.js";
 
 const sources = (pages: Record<string, string>, more: Partial<Sources> = {}): Sources => ({
   documentPage: async (id, page) => pages[`${id}:${page}`] ?? null,
   webPage: async () => null,
   cellCitationStatuses: async () => null,
+  authorityById: async () => null,
+  authoritiesByCitation: async () => [],
+  authorityPassages: async () => [],
   ...more,
 });
+
+const roe: Authority = { id: "courtlistener:opinion:108713" };
+
+const inIndex = (authorities: Record<string, readonly Authority[]>, passages: string[] = []) =>
+  sources(
+    {},
+    {
+      authoritiesByCitation: async (normalized) => authorities[normalized] ?? [],
+      authorityById: async (id) => (id === roe.id ? roe : null),
+      authorityPassages: async () => passages,
+    },
+  );
 
 const onPage = (text: string, quote: string) =>
   verifyCitation(
     { kind: "document", documentVersionId: "dv_1", page: 1, quote },
     sources({ "dv_1:1": text }),
   );
+
+describe("authority citations", () => {
+  const cite = (reference: string, more: { pin?: string; quote?: string } = {}) =>
+    ({ kind: "authority", reference, ...more }) as const;
+
+  it("resolves a citation string through the index", async () => {
+    const result = await verifyCitation(cite("410 us 113"), inIndex({ "410 us 113": [roe] }));
+    expect(result).toEqual({ status: "ok", authorityId: roe.id });
+  });
+
+  it("resolves an index id directly", async () => {
+    expect(await verifyCitation(cite(roe.id), inIndex({}))).toEqual({
+      status: "ok",
+      authorityId: roe.id,
+    });
+  });
+
+  it("cannot resolve an unknown citation", async () => {
+    expect(await verifyCitation(cite("999 us 999"), inIndex({}))).toEqual({
+      status: "unresolved",
+      reason: "authority_not_found",
+    });
+  });
+
+  it("lists the candidates when a citation is ambiguous", async () => {
+    const other = { id: "courtlistener:opinion:2" };
+    const result = await verifyCitation(
+      cite("410 us 113"),
+      inIndex({ "410 us 113": [roe, other] }),
+    );
+    expect(result).toEqual({
+      status: "unresolved",
+      reason: "ambiguous_authority",
+      candidates: [roe.id, other.id],
+    });
+  });
+});
 
 describe("cell citations", () => {
   const withCell = (statuses: readonly CitationStatus[] | null) =>
