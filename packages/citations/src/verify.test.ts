@@ -45,6 +45,22 @@ describe("authority citations", () => {
     });
   });
 
+  it.each([
+    ["410 U.S. 113 (1973)", "410 us 113"],
+    ["410 U. S. 113", "410 us 113"],
+    ["  410   U.S.\n113 ", "410 us 113"],
+    ["123 F. 3d 456", "123 f3d 456"],
+    ["123 F.3d 456 (9th Cir. 1999)", "123 f3d 456"],
+    ["500 F. Supp. 2d 12", "500 fsupp2d 12"],
+    ["17 C.F.R. Sec. 240.10b-5", "17 cfr § 240.10b-5"],
+    ["17 CFR section 240.10b-5", "17 cfr § 240.10b-5"],
+    ["42 U.S.C. §1983 (2018)", "42 usc § 1983 (2018)"],
+  ])("normalises %s before lookup", async (written, normalized) => {
+    expect(await verifyCitation(cite(written), inIndex({ [normalized]: [roe] }))).toMatchObject({
+      status: "ok",
+    });
+  });
+
   it("cannot resolve an unknown citation", async () => {
     expect(await verifyCitation(cite("999 us 999"), inIndex({}))).toEqual({
       status: "unresolved",

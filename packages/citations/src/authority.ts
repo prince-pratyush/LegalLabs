@@ -22,11 +22,39 @@ export type AuthorityVerification =
 
 const INDEX_ID = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*:[^\s:]+$/;
 
+const REPORTERS: readonly [RegExp, string][] = [
+  [/\bf supp (2d|3d)\b/g, "fsupp$1"],
+  [/\bf supp\b/g, "fsupp"],
+  [/\bf (2d|3d|4th)\b/g, "f$1"],
+  [/\bl ed 2d\b/g, "led2d"],
+  [/\bl ed\b/g, "led"],
+  [/\bs ct\b/g, "sct"],
+  [/\bu s\b/g, "us"],
+];
+
+function normalizeCitation(reference: string): string {
+  let text = reference
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\b(?:sections?|secs?)\b\.?/g, "§")
+    .replace(/§\s*/g, "§ ")
+    // Periods go, except inside numbers like 240.10b-5.
+    .replace(/(?<!\d)\.|\.(?!\d)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  for (const [form, canonical] of REPORTERS) text = text.replace(form, canonical);
+  // Parentheticals carry court and year only on reporter cites; on statutes the year matters.
+  if (/^\d+ [a-z0-9]+ \d+/.test(text)) {
+    text = text.replace(/\s*\([^)]*\)/g, "").replace(/,?\s*(?:19|20)\d{2}$/, "");
+  }
+  return text;
+}
+
 async function findAuthorities(
   reference: string,
   sources: AuthoritySources,
 ): Promise<readonly Authority[]> {
-  if (!INDEX_ID.test(reference)) return sources.authoritiesByCitation(reference);
+  if (!INDEX_ID.test(reference)) return sources.authoritiesByCitation(normalizeCitation(reference));
   const authority = await sources.authorityById(reference);
   return authority === null ? [] : [authority];
 }
