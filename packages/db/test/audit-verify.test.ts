@@ -84,14 +84,31 @@ describe("audit verifier", () => {
   it("needs an anchor to catch a chain rewritten from scratch", () => {
     const real = buildChain(["a.b", "c.d"]);
     const forged = buildChain(["a.b", "x.y"]);
-    const anchor = { day: "2026-11-02", last_seq: 2, last_hash: (real[1] as AuditRow).hash };
+    const anchor = {
+      workspace_id: "w1",
+      day: "2026-11-02",
+      last_seq: 2,
+      last_hash: (real[1] as AuditRow).hash,
+    };
     expect(verifyAuditChain(forged).ok).toBe(true);
     expect(verifyAuditChain(forged, [anchor])).toEqual(failure(2, /anchor/));
   });
 
+  it("refuses an anchor from another workspace", () => {
+    const rows = buildChain(["a.b"]);
+    const hash = (rows[0] as AuditRow).hash;
+    const anchor = { workspace_id: "w2", day: "2026-11-01", last_seq: 1, last_hash: hash };
+    expect(verifyAuditChain(rows, [anchor])).toEqual(failure(1, /anchor/));
+  });
+
   it("uses anchors to catch events removed from the end", () => {
     const rows = buildChain(["a.b", "c.d"]);
-    const anchor = { day: "2026-11-02", last_seq: 2, last_hash: (rows[1] as AuditRow).hash };
+    const anchor = {
+      workspace_id: "w1",
+      day: "2026-11-02",
+      last_seq: 2,
+      last_hash: (rows[1] as AuditRow).hash,
+    };
     expect(verifyAuditChain(rows.slice(0, 1), [anchor])).toEqual(failure(2, /anchor/));
   });
 });
@@ -130,7 +147,7 @@ describe("daily anchors", () => {
       const anchor = await publishAuditAnchor(reader(tx), store, day);
 
       const [row] = await readAuditChain(reader(tx), s.acme);
-      expect(anchor).toEqual({ day, last_seq: 1, last_hash: row?.hash });
+      expect(anchor).toEqual({ workspace_id: s.acme, day, last_seq: 1, last_hash: row?.hash });
       expect(store.puts).toEqual([
         { key: `audit-anchors/${s.acme}/${day}.json`, body: JSON.stringify(anchor) },
       ]);

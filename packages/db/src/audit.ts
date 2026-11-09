@@ -9,6 +9,7 @@ export interface AuditRow extends Record<string, unknown> {
 }
 
 export interface AuditAnchor {
+  workspace_id: string;
   day: string;
   last_seq: number;
   last_hash: string;
@@ -60,6 +61,9 @@ export function verifyAuditChain(rows: AuditRow[], anchors: AuditAnchor[] = []):
     expected += 1;
   }
   for (const anchor of anchors) {
+    if (anchor.workspace_id !== rows[0]?.workspace_id) {
+      return fail(anchor.last_seq, `the anchor for ${anchor.day} is for another workspace`);
+    }
     if (rows[anchor.last_seq - 1]?.hash !== anchor.last_hash) {
       return fail(anchor.last_seq, `does not match the anchor for ${anchor.day}`);
     }
@@ -67,7 +71,7 @@ export function verifyAuditChain(rows: AuditRow[], anchors: AuditAnchor[] = []):
   return { ok: true, events: rows.length };
 }
 
-// The real implementation writes to a bucket with Object Lock, so it can never be replaced.
+// Must be write-once storage: an anchor that can be replaced proves nothing.
 export interface AnchorStore {
   put(key: string, body: string): Promise<void>;
 }
@@ -79,7 +83,8 @@ export async function publishAuditAnchor(
   day: string,
 ): Promise<AuditAnchor | null> {
   const { rows } = await db.query(
-    `select day::text as day, last_seq::float8 as last_seq,
+    `select core.current_workspace_id()::text as workspace_id,
+            day::text as day, last_seq::float8 as last_seq,
             encode(last_hash, 'hex') as last_hash, storage_key
        from admin.record_audit_anchor($1::date)`,
     [day],
