@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { type Sources, verifyCitation } from "./index.js";
 
-const sources = (pages: Record<string, string>): Sources => ({
+const sources = (pages: Record<string, string>, more: Partial<Sources> = {}): Sources => ({
   documentPage: async (id, page) => pages[`${id}:${page}`] ?? null,
+  webPage: async () => null,
+  ...more,
 });
 
 const onPage = (text: string, quote: string) =>
@@ -10,6 +12,27 @@ const onPage = (text: string, quote: string) =>
     { kind: "document", documentVersionId: "dv_1", page: 1, quote },
     sources({ "dv_1:1": text }),
   );
+
+describe("web citations", () => {
+  const url = "https://example.test/terms";
+
+  it("locates the quote in the fetched text", async () => {
+    const webPage = async (asked: string) => (asked === url ? "Fees are payable monthly." : null);
+    const result = await verifyCitation(
+      { kind: "web", url, quote: "Fees are payable" },
+      sources({}, { webPage }),
+    );
+    expect(result).toMatchObject({ status: "ok", located: { from: 0, to: 16 } });
+  });
+
+  it("cannot resolve a page that could not be fetched", async () => {
+    const result = await verifyCitation(
+      { kind: "web", url, quote: "Fees are payable" },
+      sources({}),
+    );
+    expect(result).toEqual({ status: "unresolved", reason: "url_not_fetched" });
+  });
+});
 
 describe("document citations", () => {
   it("verifies an exact quote at its position on the page", async () => {
