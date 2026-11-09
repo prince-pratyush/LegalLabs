@@ -327,6 +327,14 @@ describe("document citations", () => {
     });
   });
 
+  it("refuses a swap between short words", async () => {
+    expect(
+      await onPage(quote250.replace("after it becomes", "after if becomes"), quote250),
+    ).toMatchObject({
+      reason: "meaning_changed",
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },

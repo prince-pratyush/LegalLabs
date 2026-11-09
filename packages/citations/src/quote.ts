@@ -12,6 +12,8 @@ export type QuoteResult =
 
 const MIN_QUOTE_LENGTH = 12;
 const MAX_EDIT_RATE = 0.02;
+// In a short word one letter is a different word: it and if, in and is.
+const MIN_EDITABLE_WORD = 4;
 const PROTECTED_WORDS = new Set([
   "and",
   "cannot",
@@ -217,6 +219,7 @@ function isSameWord(quoted: string, printed: string): boolean {
   const a = bareWord(quoted);
   const b = bareWord(printed);
   if (a === b) return true;
+  if (Math.min(a.length, b.length) < MIN_EDITABLE_WORD) return false;
   if (PROTECTED_WORDS.has(a) || PROTECTED_WORDS.has(b)) return false;
   if (changesPartyRole(a, b)) return false;
   return isWithinOneEdit(a, b) || isWithinOneEdit(undoScanConfusions(a), undoScanConfusions(b));
