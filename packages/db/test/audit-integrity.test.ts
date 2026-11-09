@@ -41,6 +41,48 @@ describe("monthly audit partitions", () => {
   });
 });
 
+describe("who an event can name", () => {
+  const append = "select admin.append_audit_event($1, $2, $3, null, $4, $5::jsonb)";
+
+  it("refuses naming someone other than the current user", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error(append, ["logout", "user", s.ben, null, "{}"])).toMatch(/actor/);
+    });
+  });
+
+  it("refuses a workspace the current user is not in", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.beta);
+      expect(await tx.error(append, ["logout", "user", s.ana, null, "{}"])).toMatch(/outside/);
+    });
+  });
+
+  it("makes an agent record whose behalf it acts on", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      const onBehalf = JSON.stringify({ on_behalf_of: s.ana });
+      expect(await tx.error(append, ["tool.call", "agent", s.ana, null, "{}"])).toMatch(
+        /on_behalf_of/,
+      );
+      expect(await tx.error(append, ["tool.call", "agent", s.ana, null, onBehalf])).toBeUndefined();
+    });
+  });
+
+  it("refuses an object id long enough to be carrying content", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error(append, ["logout", "user", s.ana, "x".repeat(300), "{}"])).toMatch(
+        /object/,
+      );
+    });
+  });
+});
+
 describe("deleting a workspace", () => {
   it("works when it has no audit history, and is refused when it has", async () => {
     await withTx(async (tx) => {

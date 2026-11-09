@@ -94,9 +94,23 @@ begin
   if ws is null then
     raise exception 'audit event needs a workspace' using errcode = '42501';
   end if;
+  if core.current_user_id() is not null and not core.in_tenant(ws) then
+    raise exception 'audit actor is outside this workspace' using errcode = '42501';
+  end if;
+  -- Events before login have no user yet, and are recorded as system events.
+  if p_actor_type in ('user', 'service') and p_actor_id is distinct from core.current_user_id() then
+    raise exception 'audit actor must be the current user' using errcode = '42501';
+  end if;
+  if p_actor_type = 'agent'
+     and p_details ->> 'on_behalf_of' is distinct from core.current_user_id()::text then
+    raise exception 'agent events need on_behalf_of the current user' using errcode = '42501';
+  end if;
   -- Details hold ids and counts; anything this big is carrying content.
   if pg_column_size(p_details) > 8192 then
     raise exception 'audit details too large' using errcode = '22023';
+  end if;
+  if length(p_object_id) > 256 then
+    raise exception 'audit object id too long' using errcode = '22023';
   end if;
 
   insert into admin.audit_head (workspace_id) values (ws) on conflict do nothing;
