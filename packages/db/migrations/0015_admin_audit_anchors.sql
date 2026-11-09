@@ -24,7 +24,7 @@ create trigger audit_anchor_immutable before update or delete on admin.audit_anc
   for each row execute function admin.reject_audit_change();
 create trigger audit_anchor_no_truncate before truncate on admin.audit_anchor
   for each statement execute function admin.reject_audit_change();
-revoke update, delete, truncate on admin.audit_anchor from legallabs_definer;
+revoke delete, truncate on admin.audit_anchor from legallabs_definer;
 
 create function admin.record_audit_anchor(p_day date)
 returns table (day date, last_seq bigint, last_hash bytea, storage_key text)

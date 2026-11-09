@@ -41,6 +41,23 @@ describe("monthly audit partitions", () => {
   });
 });
 
+describe("deleting a workspace", () => {
+  it("works when it has no audit history, and is refused when it has", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.asOwner();
+      const { id } = await tx.one<{ id: string }>(
+        `insert into core.workspace (slug, name, region)
+         values ('empty-' || core.uuid7(), 'empty', 'au') returning id`,
+      );
+      expect(await tx.error("delete from core.workspace where id = $1", [id])).toBeUndefined();
+      expect(await tx.error("delete from core.workspace where id = $1", [s.beta])).toMatch(
+        /foreign key/,
+      );
+    });
+  });
+});
+
 describe("database functions", () => {
   it("are never open to every role", async () => {
     await withTx(async (tx) => {
@@ -96,7 +113,7 @@ describe("audit log is append-only", () => {
   it("removes change rights from the role that owns the table", async () => {
     await withTx(async (tx) => {
       const { allowed } = await tx.one<{ allowed: boolean }>(
-        `select has_table_privilege('legallabs_definer', 'admin.audit_event', 'update, delete, truncate') as allowed`,
+        `select has_table_privilege('legallabs_definer', 'admin.audit_event', 'delete, truncate') as allowed`,
       );
       expect(allowed).toBe(false);
     });

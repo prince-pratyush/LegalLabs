@@ -12,7 +12,8 @@ create trigger audit_event_immutable before update or delete on admin.audit_even
 create trigger audit_event_no_truncate before truncate on admin.audit_event
   for each statement execute function admin.reject_audit_change();
 
-revoke update, delete, truncate on admin.audit_event from legallabs_definer;
+-- Update stays: foreign key checks take a row lock that needs it. The trigger refuses real updates.
+revoke delete, truncate on admin.audit_event from legallabs_definer;
 
 create or replace function admin.protect_audit_partition(partition_name text) returns void
 language plpgsql security definer set search_path = '' as $$
