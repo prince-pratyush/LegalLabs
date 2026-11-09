@@ -55,6 +55,8 @@ describe("authority citations", () => {
     ["17 C.F.R. Sec. 240.10b-5", "17 cfr § 240.10b-5"],
     ["17 CFR section 240.10b-5", "17 cfr § 240.10b-5"],
     ["42 U.S.C. §1983 (2018)", "42 usc § 1983 (2018)"],
+    ["29 CFR 1910.1200(d)(1)", "29 cfr 1910.1200(d)(1)"],
+    ["123 F.3d 2000", "123 f3d 2000"],
   ])("normalises %s before lookup", async (written, normalized) => {
     expect(await verifyCitation(cite(written), inIndex({ [normalized]: [roe] }))).toMatchObject({
       status: "ok",

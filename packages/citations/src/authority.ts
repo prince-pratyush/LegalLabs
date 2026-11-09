@@ -44,6 +44,8 @@ const REPORTERS: readonly [RegExp, string][] = [
   [/\bu s\b/g, "us"],
 ];
 
+const REPORTER_CITE = /^\d+ (?:us|f|f2d|f3d|f4th|fsupp|fsupp2d|fsupp3d|sct|led|led2d) \d+/;
+
 function normalizeCitation(reference: string): string {
   let text = reference
     .normalize("NFKC")
@@ -56,8 +58,8 @@ function normalizeCitation(reference: string): string {
     .trim();
   for (const [form, canonical] of REPORTERS) text = text.replace(form, canonical);
   // Parentheticals carry court and year only on reporter cites; on statutes the year matters.
-  if (/^\d+ [a-z0-9]+ \d+/.test(text)) {
-    text = text.replace(/\s*\([^)]*\)/g, "").replace(/,?\s*(?:19|20)\d{2}$/, "");
+  if (REPORTER_CITE.test(text)) {
+    text = text.replace(/\s*\([^)]*\)/g, "").replace(/^(\d+ \w+ \d+),? (?:19|20)\d{2}$/, "$1");
   }
   return text;
 }
