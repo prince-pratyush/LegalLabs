@@ -106,6 +106,13 @@
       "when": 1794009614000,
       "tag": "0015_admin_audit_anchors",
       "breakpoints": false
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794009615000,
+      "tag": "0016_function_privileges",
+      "breakpoints": false
     }
   ]
 }

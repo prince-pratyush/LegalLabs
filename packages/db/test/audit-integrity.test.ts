@@ -41,6 +41,33 @@ describe("monthly audit partitions", () => {
   });
 });
 
+describe("database functions", () => {
+  it("are never open to every role", async () => {
+    await withTx(async (tx) => {
+      const open = await tx.rows<{ name: string }>(
+        `select n.nspname || '.' || p.proname as name
+           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname in ('core', 'admin')
+            and (p.proacl is null or exists (
+              select 1 from aclexplode(p.proacl) a
+               where a.grantee = 0 and a.privilege_type = 'EXECUTE'))
+          order by 1`,
+      );
+      expect(open).toEqual([]);
+    });
+  });
+
+  it("keep the partition helper from the app", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error("select admin.protect_audit_partition('audit_head')")).toMatch(
+        /permission denied/,
+      );
+    });
+  });
+});
+
 describe("audit log is append-only", () => {
   it("denies the app any change", async () => {
     await withTx(async (tx) => {
