@@ -13,7 +13,7 @@ async function tables(tx: Tx): Promise<{ schema: string; table: string; tenant: 
   return tx.rows(
     `select n.nspname as schema, c.relname as table,
             case when (n.nspname, c.relname) = ('core', 'workspace') then 'id' else 'workspace_id' end as tenant
-     ${appTables} order by 1, 2`,
+     ${appTables} and not c.relispartition order by 1, 2`,
   );
 }
 

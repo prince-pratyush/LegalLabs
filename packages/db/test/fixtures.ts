@@ -152,6 +152,22 @@ export async function seed(tx: Tx) {
   await token(acme, ana, secrets.anaToken, ["audit:read"]);
   await token(beta, bob, secrets.bobToken, ["whoami"]);
 
+  const audit = async (ws: string, userId: string) => {
+    await tx.as(userId, ws);
+    await tx.rows("select admin.append_audit_event('login.success', 'user', $1)", [userId]);
+  };
+  await audit(acme, ana);
+  await audit(beta, bob);
+  await tx.as(null, null);
+  await tx.asOwner();
+  for (const ws of [acme, beta]) {
+    await tx.rows(
+      `insert into admin.audit_anchor (workspace_id, day, last_seq, last_hash, storage_key)
+       values ($1, '2000-01-01', 1, '\\x00', 'fixture')`,
+      [ws],
+    );
+  }
+
   return {
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,
