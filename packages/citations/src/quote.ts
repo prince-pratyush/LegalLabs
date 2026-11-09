@@ -200,13 +200,17 @@ export function locateQuote(page: string, quote: string): QuoteResult {
 
 // Scan noise changes letters. It does not change numbers, word counts or these words.
 function keepsMeaning(quote: string, found: string): boolean {
-  if (quote.replace(/\D/g, "") !== found.replace(/\D/g, "")) return false;
+  if (numbersIn(quote) !== numbersIn(found)) return false;
   const quoted = quote.split(" ");
   const printed = found.split(" ");
   return (
     quoted.length === printed.length &&
     quoted.every((word, i) => isSameWord(word, printed[i] as string))
   );
+}
+
+function numbersIn(text: string): string {
+  return text.match(/\d(?:[.,]?\d)*/g)?.join(" ") ?? "";
 }
 
 function isSameWord(quoted: string, printed: string): boolean {

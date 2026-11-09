@@ -320,6 +320,13 @@ describe("document citations", () => {
     expect(await onPage(page, quote250)).toMatchObject({ status: "ok" });
   });
 
+  it("refuses a number whose decimal point moved", async () => {
+    const quote = quote250.replace("30 days", "2.5 days");
+    expect(await onPage(quote.replace("2.5 days", "25 days"), quote)).toMatchObject({
+      reason: "meaning_changed",
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
