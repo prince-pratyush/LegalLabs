@@ -1,5 +1,7 @@
 export interface Authority {
   id: string;
+  pages?: { first: number; last: number };
+  sections?: readonly string[];
 }
 
 export interface AuthorityCitation {
@@ -17,6 +19,7 @@ export interface AuthoritySources {
 
 export type AuthorityVerification =
   | { status: "ok"; authorityId: string }
+  | { status: "mismatch"; reason: "pin_not_found"; authorityId: string }
   | { status: "unresolved"; reason: "authority_not_found" }
   | { status: "unresolved"; reason: "ambiguous_authority"; candidates: readonly string[] };
 
@@ -73,5 +76,24 @@ export async function verifyAuthority(
       candidates: candidates.map((candidate) => candidate.id),
     };
   }
+  if (citation.pin !== undefined && !pinExists(citation.pin, authority)) {
+    return { status: "mismatch", reason: "pin_not_found", authorityId: authority.id };
+  }
   return { status: "ok", authorityId: authority.id };
+}
+
+// A pin we cannot confirm is flagged, including forms the grammar does not read yet.
+function pinExists(pin: string, authority: Authority): boolean {
+  const normalized = normalizeCitation(pin);
+  if (normalized.startsWith("§")) {
+    return authority.sections?.some((s) => normalizeCitation(s) === normalized) ?? false;
+  }
+  const page = /^(?:at |pp? ?)?(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(normalized);
+  if (page === null || authority.pages === undefined) return false;
+  const start = page[1] as string;
+  const end = page[2] ?? start;
+  // Short ranges drop leading digits: 120-25 means 120 to 125.
+  const last = Number(start.slice(0, Math.max(0, start.length - end.length)) + end);
+  const first = Number(start);
+  return first <= last && first >= authority.pages.first && last <= authority.pages.last;
 }

@@ -61,6 +61,46 @@ describe("authority citations", () => {
     });
   });
 
+  const pinned: Authority = {
+    id: "courtlistener:opinion:3",
+    pages: { first: 113, last: 178 },
+    sections: ["§ 2.1", "§ 14"],
+  };
+
+  it.each(["at 120", "120", "p. 120", "at 120-25", "§ 14", "sec. 2.1"])(
+    "accepts the pin %s when it exists",
+    async (pin) => {
+      const result = await verifyCitation(
+        cite("410 us 113", { pin }),
+        inIndex({ "410 us 113": [pinned] }),
+      );
+      expect(result).toEqual({ status: "ok", authorityId: pinned.id });
+    },
+  );
+
+  it.each(["at 200", "at 170-90", "§ 99", "at *3"])(
+    "flags the pin %s as not confirmed",
+    async (pin) => {
+      const result = await verifyCitation(
+        cite("410 us 113", { pin }),
+        inIndex({ "410 us 113": [pinned] }),
+      );
+      expect(result).toEqual({
+        status: "mismatch",
+        reason: "pin_not_found",
+        authorityId: pinned.id,
+      });
+    },
+  );
+
+  it("flags a pin when the authority has no page data", async () => {
+    const result = await verifyCitation(
+      cite("410 us 113", { pin: "at 120" }),
+      inIndex({ "410 us 113": [roe] }),
+    );
+    expect(result).toMatchObject({ status: "mismatch", reason: "pin_not_found" });
+  });
+
   it("cannot resolve an unknown citation", async () => {
     expect(await verifyCitation(cite("999 us 999"), inIndex({}))).toEqual({
       status: "unresolved",
