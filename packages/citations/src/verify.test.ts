@@ -101,6 +101,27 @@ describe("authority citations", () => {
     expect(result).toMatchObject({ status: "mismatch", reason: "pin_not_found" });
   });
 
+  const opinionQuote = "the right of privacy is broad enough";
+  const passages = ["Unrelated opening passage of the opinion.", `Held: ${opinionQuote} here.`];
+  const quoting = (quote: string) =>
+    verifyCitation(cite("410 us 113", { quote }), inIndex({ "410 us 113": [roe] }, passages));
+
+  it("locates a quote in the authority's passages", async () => {
+    expect(await quoting(opinionQuote)).toEqual({
+      status: "ok",
+      authorityId: roe.id,
+      located: { passage: 1, from: 6, to: 42, text: opinionQuote, exact: true },
+    });
+  });
+
+  it("flags a quote the authority does not contain", async () => {
+    expect(await quoting("the right of property is narrow")).toEqual({
+      status: "mismatch",
+      reason: "quote_not_found",
+      authorityId: roe.id,
+    });
+  });
+
   it("cannot resolve an unknown citation", async () => {
     expect(await verifyCitation(cite("999 us 999"), inIndex({}))).toEqual({
       status: "unresolved",

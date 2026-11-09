@@ -1,3 +1,7 @@
+import { type Located, locateQuote } from "./quote.js";
+
+export type PassageLocated = Located & { passage: number };
+
 export interface Authority {
   id: string;
   pages?: { first: number; last: number };
@@ -18,8 +22,13 @@ export interface AuthoritySources {
 }
 
 export type AuthorityVerification =
-  | { status: "ok"; authorityId: string }
-  | { status: "mismatch"; reason: "pin_not_found"; authorityId: string }
+  | { status: "ok"; authorityId: string; located?: PassageLocated }
+  | {
+      status: "mismatch";
+      reason: "pin_not_found" | "quote_not_found" | "quote_too_short";
+      authorityId: string;
+    }
+  | { status: "mismatch"; reason: "meaning_changed"; authorityId: string; closest: PassageLocated }
   | { status: "unresolved"; reason: "authority_not_found" }
   | { status: "unresolved"; reason: "ambiguous_authority"; candidates: readonly string[] };
 
@@ -79,7 +88,31 @@ export async function verifyAuthority(
   if (citation.pin !== undefined && !pinExists(citation.pin, authority)) {
     return { status: "mismatch", reason: "pin_not_found", authorityId: authority.id };
   }
-  return { status: "ok", authorityId: authority.id };
+  if (citation.quote === undefined) return { status: "ok", authorityId: authority.id };
+  return quoteInPassages(
+    citation.quote,
+    authority.id,
+    await sources.authorityPassages(authority.id),
+  );
+}
+
+function quoteInPassages(
+  quote: string,
+  authorityId: string,
+  passages: readonly string[],
+): AuthorityVerification {
+  let refused: PassageLocated | null = null;
+  for (const [passage, text] of passages.entries()) {
+    const result = locateQuote(text, quote);
+    if (result.status === "ok") {
+      return { status: "ok", authorityId, located: { ...result.located, passage } };
+    }
+    if (result.reason === "quote_too_short") return { ...result, authorityId };
+    if (result.reason === "meaning_changed") refused ??= { ...result.closest, passage };
+  }
+  return refused === null
+    ? { status: "mismatch", reason: "quote_not_found", authorityId }
+    : { status: "mismatch", reason: "meaning_changed", authorityId, closest: refused };
 }
 
 // A pin we cannot confirm is flagged, including forms the grammar does not read yet.
