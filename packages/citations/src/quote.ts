@@ -12,6 +12,7 @@ export type QuoteResult =
   | { found: false; reason: QuoteFailure };
 
 const MIN_QUOTE_LENGTH = 12;
+const MAX_EDIT_RATE = 0.02;
 
 interface Normalized {
   text: string;
@@ -89,15 +90,82 @@ function pageReadings(page: string): Normalized[] {
   return [normalize(page, joined), normalize(page, hyphenated)];
 }
 
+interface Near {
+  start: number;
+  end: number;
+  distance: number;
+}
+
+// Sellers' search with Ukkonen's cut-off, so a 5 MB page stays linear in the edit limit.
+function closestMatch(text: string, pattern: string, limit: number): Near | null {
+  const size = pattern.length;
+  const cost = Int32Array.from({ length: size + 1 }, (_, i) => i);
+  const begin = new Int32Array(size + 1);
+  let active = limit;
+  let best: Near | null = null;
+  for (let j = 0; j < text.length; j++) {
+    let diagCost = 0;
+    let diagStart = j;
+    let upCost = 0;
+    let upStart = j + 1;
+    for (let i = 1; i <= active; i++) {
+      const leftCost = cost[i] as number;
+      const leftStart = begin[i] as number;
+      let value = diagCost + (pattern.charCodeAt(i - 1) === text.charCodeAt(j) ? 0 : 1);
+      let start = diagStart;
+      if (leftCost + 1 < value) {
+        value = leftCost + 1;
+        start = leftStart;
+      }
+      if (upCost + 1 < value) {
+        value = upCost + 1;
+        start = upStart;
+      }
+      cost[i] = value;
+      begin[i] = start;
+      diagCost = leftCost;
+      diagStart = leftStart;
+      upCost = value;
+      upStart = start;
+    }
+    while ((cost[active] as number) > limit) active--;
+    if (active < size) {
+      active++;
+      continue;
+    }
+    const near = { start: begin[size] as number, end: j + 1, distance: cost[size] as number };
+    if (best === null || isCloser(near, best, size)) best = near;
+  }
+  return best;
+}
+
+function isCloser(a: Near, b: Near, size: number): boolean {
+  if (a.distance !== b.distance) return a.distance < b.distance;
+  return Math.abs(a.end - a.start - size) < Math.abs(b.end - b.start - size);
+}
+
+function located(page: string, reading: Normalized, near: Near): Located {
+  const from = reading.starts[near.start] as number;
+  const to = reading.ends[near.end - 1] as number;
+  return { from, to, text: page.slice(from, to), exact: near.distance === 0 };
+}
+
 export function locateQuote(page: string, quote: string): QuoteResult {
   const needle = normalize(quote).text;
   if (needle.length < MIN_QUOTE_LENGTH) return { found: false, reason: "quote_too_short" };
-  for (const reading of pageReadings(page)) {
-    const at = reading.text.indexOf(needle);
-    if (at < 0) continue;
-    const from = reading.starts[at] as number;
-    const to = reading.ends[at + needle.length - 1] as number;
-    return { found: true, located: { from, to, text: page.slice(from, to), exact: true } };
+  const readings = pageReadings(page);
+  for (const reading of readings) {
+    const start = reading.text.indexOf(needle);
+    if (start < 0) continue;
+    const near = { start, end: start + needle.length, distance: 0 };
+    return { found: true, located: located(page, reading, near) };
+  }
+  const limit = Math.floor(needle.length * MAX_EDIT_RATE);
+  if (limit > 0) {
+    for (const reading of readings) {
+      const near = closestMatch(reading.text, needle, limit);
+      if (near !== null) return { found: true, located: located(page, reading, near) };
+    }
   }
   return { found: false, reason: "quote_not_found" };
 }

@@ -74,6 +74,31 @@ describe("document citations", () => {
     });
   });
 
+  const quote60 = "The Supplier shall indemnify the Customer against all claims";
+
+  it("tolerates a scan error within 2% of the quote", async () => {
+    const page = "The Supplier shall indemnify the Customer agalnst all claims.";
+    expect(await onPage(page, quote60)).toEqual({
+      status: "ok",
+      located: { from: 0, to: 60, text: page.slice(0, 60), exact: false },
+    });
+  });
+
+  it("flags a quote with more errors than the tolerance allows", async () => {
+    const page = "The Supplier shall indemnify the Custcmer agalnst all claims.";
+    expect(await onPage(page, quote60)).toEqual({
+      status: "mismatch",
+      reason: "quote_not_found",
+    });
+  });
+
+  it("allows no errors in a quote under 50 characters", async () => {
+    expect(await onPage("Payment is due in fuIl today.", "Payment is due in full today")).toEqual({
+      status: "mismatch",
+      reason: "quote_not_found",
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
