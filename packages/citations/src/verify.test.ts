@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type Sources, verifyCitation } from "./index.js";
+import { type CitationStatus, type Sources, verifyCitation } from "./index.js";
 
 const sources = (pages: Record<string, string>, more: Partial<Sources> = {}): Sources => ({
   documentPage: async (id, page) => pages[`${id}:${page}`] ?? null,
   webPage: async () => null,
+  cellCitationStatuses: async () => null,
   ...more,
 });
 
@@ -12,6 +13,33 @@ const onPage = (text: string, quote: string) =>
     { kind: "document", documentVersionId: "dv_1", page: 1, quote },
     sources({ "dv_1:1": text }),
   );
+
+describe("cell citations", () => {
+  const withCell = (statuses: readonly CitationStatus[] | null) =>
+    verifyCitation(
+      { kind: "cell", cellId: "rtc_1" },
+      sources({}, { cellCitationStatuses: async () => statuses }),
+    );
+
+  it("is ok when every citation in the cell is ok", async () => {
+    expect(await withCell(["ok", "ok"])).toEqual({ status: "ok" });
+  });
+
+  it("is flagged when any citation in the cell is not ok", async () => {
+    expect(await withCell(["ok", "unresolved"])).toEqual({
+      status: "mismatch",
+      reason: "cell_citation_flagged",
+    });
+  });
+
+  it("is flagged when the cell has no citations", async () => {
+    expect(await withCell([])).toEqual({ status: "mismatch", reason: "cell_has_no_citations" });
+  });
+
+  it("cannot resolve a missing cell", async () => {
+    expect(await withCell(null)).toEqual({ status: "unresolved", reason: "cell_not_found" });
+  });
+});
 
 describe("web citations", () => {
   const url = "https://example.test/terms";
