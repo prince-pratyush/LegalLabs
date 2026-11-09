@@ -14,24 +14,50 @@ interface Normalized {
   ends: number[];
 }
 
+const LIGATURES: Record<string, string> = {
+  ﬀ: "ff",
+  ﬁ: "fi",
+  ﬂ: "fl",
+  ﬃ: "ffi",
+  ﬄ: "ffl",
+  ﬅ: "st",
+  ﬆ: "st",
+};
+
+function fold(cluster: string): string {
+  const composed = cluster.normalize("NFC");
+  return (
+    LIGATURES[composed] ??
+    composed
+      .replace(/[­​-‍⁠﻿]/g, "")
+      .replace(/[‘’‚‛′]/g, "'")
+      .replace(/[“”„‟″]/g, '"')
+  );
+}
+
 function normalize(raw: string): Normalized {
   let text = "";
   const starts: number[] = [];
   const ends: number[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    const char = raw.charAt(i);
-    if (/\s/.test(char)) {
-      if (text.length === 0) continue;
-      if (text.endsWith(" ")) {
-        ends[ends.length - 1] = i + 1;
-        continue;
+  for (const match of raw.matchAll(/\P{M}\p{M}*/gu)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    for (const char of fold(match[0])) {
+      if (/\s/.test(char)) {
+        if (text.length === 0) continue;
+        if (text.endsWith(" ")) {
+          ends[ends.length - 1] = end;
+          continue;
+        }
+        text += " ";
+      } else {
+        text += char;
       }
-      text += " ";
-    } else {
-      text += char;
+      for (let unit = 0; unit < char.length; unit++) {
+        starts.push(start);
+        ends.push(end);
+      }
     }
-    starts.push(i);
-    ends.push(i + 1);
   }
   if (text.endsWith(" ")) {
     text = text.slice(0, -1);

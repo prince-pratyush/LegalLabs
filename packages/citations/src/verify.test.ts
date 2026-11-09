@@ -36,6 +36,22 @@ describe("document citations", () => {
     });
   });
 
+  it("treats typographic variants as the same text", async () => {
+    const page = "The Supplier’s ofﬁce lia­bility";
+    expect(await onPage(page, "The Supplier's office liability")).toEqual({
+      status: "ok",
+      located: { from: 0, to: 31, text: page, exact: true },
+    });
+  });
+
+  it("matches composed and decomposed accents", async () => {
+    const page = "café terms of sale";
+    expect(await onPage(page, "café terms of sale")).toMatchObject({
+      status: "ok",
+      located: { from: 0, to: 19 },
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
