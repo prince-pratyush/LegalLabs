@@ -1,4 +1,4 @@
-import { type Located, locateQuote } from "./quote.js";
+import { type Located, locateQuote, type QuoteFailure } from "./quote.js";
 
 export type Citation = {
   kind: "document";
@@ -13,7 +13,7 @@ export interface Sources {
 
 export type Verification =
   | { status: "ok"; located: Located }
-  | { status: "mismatch"; reason: "quote_not_found" }
+  | { status: "mismatch"; reason: QuoteFailure }
   | { status: "unresolved"; reason: "page_not_found" };
 
 /** Lookup failures reject, so an outage is never reported as a bad citation. */
@@ -21,6 +21,6 @@ export async function verifyCitation(citation: Citation, sources: Sources): Prom
   const page = await sources.documentPage(citation.documentVersionId, citation.page);
   if (page === null) return { status: "unresolved", reason: "page_not_found" };
   const result = locateQuote(page, citation.quote);
-  if (!result.found) return { status: "mismatch", reason: "quote_not_found" };
+  if (!result.found) return { status: "mismatch", reason: result.reason };
   return { status: "ok", located: result.located };
 }

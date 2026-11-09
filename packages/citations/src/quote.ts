@@ -5,7 +5,13 @@ export interface Located {
   exact: boolean;
 }
 
-export type QuoteResult = { found: true; located: Located } | { found: false };
+export type QuoteFailure = "quote_not_found" | "quote_too_short";
+
+export type QuoteResult =
+  | { found: true; located: Located }
+  | { found: false; reason: QuoteFailure };
+
+const MIN_QUOTE_LENGTH = 12;
 
 interface Normalized {
   text: string;
@@ -85,6 +91,7 @@ function pageReadings(page: string): Normalized[] {
 
 export function locateQuote(page: string, quote: string): QuoteResult {
   const needle = normalize(quote).text;
+  if (needle.length < MIN_QUOTE_LENGTH) return { found: false, reason: "quote_too_short" };
   for (const reading of pageReadings(page)) {
     const at = reading.text.indexOf(needle);
     if (at < 0) continue;
@@ -92,5 +99,5 @@ export function locateQuote(page: string, quote: string): QuoteResult {
     const to = reading.ends[at + needle.length - 1] as number;
     return { found: true, located: { from, to, text: page.slice(from, to), exact: true } };
   }
-  return { found: false };
+  return { found: false, reason: "quote_not_found" };
 }

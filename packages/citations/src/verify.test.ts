@@ -67,6 +67,13 @@ describe("document citations", () => {
     });
   });
 
+  it("flags a quote under twelve characters without searching", async () => {
+    expect(await onPage("Payment is due.", "Payment is")).toEqual({
+      status: "mismatch",
+      reason: "quote_too_short",
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
