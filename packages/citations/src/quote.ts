@@ -35,12 +35,13 @@ function fold(cluster: string): string {
   );
 }
 
-function normalize(raw: string): Normalized {
+function normalize(raw: string, skipped: ReadonlySet<number> = new Set()): Normalized {
   let text = "";
   const starts: number[] = [];
   const ends: number[] = [];
   for (const match of raw.matchAll(/\P{M}\p{M}*/gu)) {
     const start = match.index;
+    if (skipped.has(start)) continue;
     const end = start + match[0].length;
     for (const char of fold(match[0])) {
       if (/\s/.test(char)) {
@@ -67,12 +68,29 @@ function normalize(raw: string): Normalized {
   return { text, starts, ends };
 }
 
+// A hyphen before a line break is ambiguous: "lia-\nbility" is one word, "cost-\nbenefit" keeps it.
+function pageReadings(page: string): Normalized[] {
+  const breaks = [...page.matchAll(/(?<=\p{L})[-­‐][^\S\n]*\n\s*(?=\p{Ll})/gu)];
+  if (breaks.length === 0) return [normalize(page)];
+  const joined = new Set<number>();
+  const hyphenated = new Set<number>();
+  for (const found of breaks) {
+    for (let i = found.index; i < found.index + found[0].length; i++) {
+      joined.add(i);
+      if (i > found.index) hyphenated.add(i);
+    }
+  }
+  return [normalize(page, joined), normalize(page, hyphenated)];
+}
+
 export function locateQuote(page: string, quote: string): QuoteResult {
-  const haystack = normalize(page);
   const needle = normalize(quote).text;
-  const at = haystack.text.indexOf(needle);
-  if (at < 0) return { found: false };
-  const from = haystack.starts[at] as number;
-  const to = haystack.ends[at + needle.length - 1] as number;
-  return { found: true, located: { from, to, text: page.slice(from, to), exact: true } };
+  for (const reading of pageReadings(page)) {
+    const at = reading.text.indexOf(needle);
+    if (at < 0) continue;
+    const from = reading.starts[at] as number;
+    const to = reading.ends[at + needle.length - 1] as number;
+    return { found: true, located: { from, to, text: page.slice(from, to), exact: true } };
+  }
+  return { found: false };
 }

@@ -52,6 +52,21 @@ describe("document citations", () => {
     });
   });
 
+  it("rejoins a word split across a line break", async () => {
+    const page = "aggregate lia-\nbility is capped";
+    expect(await onPage(page, "aggregate liability is capped")).toMatchObject({
+      status: "ok",
+      located: { from: 0, to: 31, exact: true },
+    });
+  });
+
+  it("keeps a real hyphen that falls at a line break", async () => {
+    expect(await onPage("a cost-\nbenefit analysis", "cost-benefit analysis")).toMatchObject({
+      status: "ok",
+      located: { from: 2, to: 24 },
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
