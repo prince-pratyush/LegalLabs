@@ -1,6 +1,8 @@
 export {
+  type AnchorStore,
   type AuditAnchor,
   type AuditRow,
+  publishAuditAnchor,
   readAuditChain,
   type VerifyResult,
   verifyAuditChain,
