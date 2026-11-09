@@ -28,6 +28,14 @@ describe("document citations", () => {
     expect(result).toEqual({ status: "mismatch", reason: "quote_not_found" });
   });
 
+  it("ignores whitespace differences and reports original offsets", async () => {
+    const result = await onPage("Clause 9.  The\n  Supplier shall pay.", "The Supplier shall pay");
+    expect(result).toEqual({
+      status: "ok",
+      located: { from: 11, to: 35, text: "The\n  Supplier shall pay", exact: true },
+    });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
