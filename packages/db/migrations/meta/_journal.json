@@ -92,6 +92,13 @@
       "when": 1794009612000,
       "tag": "0013_admin_audit_append_only",
       "breakpoints": false
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794009613000,
+      "tag": "0014_admin_audit_partitions",
+      "breakpoints": false
     }
   ]
 }
