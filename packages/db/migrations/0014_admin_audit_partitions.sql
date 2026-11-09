@@ -1,4 +1,4 @@
--- Creates this month and the next three. Safe to run as often as a job likes.
+-- Safe to run as often as a job likes.
 create function admin.ensure_audit_partitions() returns void
 language plpgsql security definer set search_path = '' as $$
 declare

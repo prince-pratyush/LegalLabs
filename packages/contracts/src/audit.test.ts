@@ -21,7 +21,7 @@ describe("AuditAction", () => {
   });
 
   it.each(["wall.access_blocked", "wall.share_denied", "wall.sync.finished", "wall.rule.created"])(
-    "rejects the retired wall name %s",
+    "rejects %s, which is not the official name",
     (action) => {
       expect(AuditAction.safeParse(action).success).toBe(false);
     },
