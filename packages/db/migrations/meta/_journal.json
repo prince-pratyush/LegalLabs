@@ -99,6 +99,13 @@
       "when": 1794009613000,
       "tag": "0014_admin_audit_partitions",
       "breakpoints": false
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794009614000,
+      "tag": "0015_admin_audit_anchors",
+      "breakpoints": false
     }
   ]
 }

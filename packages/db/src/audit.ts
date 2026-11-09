@@ -67,6 +67,30 @@ export function verifyAuditChain(rows: AuditRow[], anchors: AuditAnchor[] = []):
   return { ok: true, events: rows.length };
 }
 
+// The real implementation writes to a bucket with Object Lock, so it can never be replaced.
+export interface AnchorStore {
+  put(key: string, body: string): Promise<void>;
+}
+
+// Needs app.workspace_id set. Safe to retry: a day's anchor never changes once recorded.
+export async function publishAuditAnchor(
+  db: Queryable,
+  store: AnchorStore,
+  day: string,
+): Promise<AuditAnchor | null> {
+  const { rows } = await db.query(
+    `select day::text as day, last_seq::float8 as last_seq,
+            encode(last_hash, 'hex') as last_hash, storage_key
+       from admin.record_audit_anchor($1::date)`,
+    [day],
+  );
+  const row = rows[0] as (AuditAnchor & { storage_key: string }) | undefined;
+  if (!row) return null;
+  const { storage_key: key, ...anchor } = row;
+  await store.put(key, JSON.stringify(anchor));
+  return anchor;
+}
+
 export async function readAuditChain(db: Queryable, workspaceId: string): Promise<AuditRow[]> {
   const { rows } = await db.query(
     `select workspace_id, seq::float8 as seq,

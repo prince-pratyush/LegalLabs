@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { type AuditRow, readAuditChain, verifyAuditChain } from "../src/audit.js";
+import {
+  type AuditRow,
+  publishAuditAnchor,
+  readAuditChain,
+  verifyAuditChain,
+} from "../src/audit.js";
 import { type Tx, withTx } from "./db.js";
 import { seed } from "./fixtures.js";
 
@@ -88,6 +93,97 @@ describe("audit verifier", () => {
     const rows = buildChain(["a.b", "c.d"]);
     const anchor = { day: "2026-11-02", last_seq: 2, last_hash: (rows[1] as AuditRow).hash };
     expect(verifyAuditChain(rows.slice(0, 1), [anchor])).toEqual(failure(2, /anchor/));
+  });
+});
+
+describe("daily anchors", () => {
+  const threeDaysAgo = `((now() at time zone 'UTC') - interval '3 days')::date::text`;
+
+  // Events can only be stamped now, so a past day is made by moving them.
+  async function eventsThreeDaysAgo(tx: Tx) {
+    const s = await seed(tx);
+    await tx.rows("set local session_replication_role = replica");
+    await tx.rows(
+      "update admin.audit_event set at = at - interval '3 days' where workspace_id = $1",
+      [s.acme],
+    );
+    await tx.rows("set local session_replication_role = origin");
+    const { day } = await tx.one<{ day: string }>(`select ${threeDaysAgo} as day`);
+    return { s, day };
+  }
+
+  const fakeStore = () => {
+    const puts: { key: string; body: string }[] = [];
+    return {
+      puts,
+      put: async (key: string, body: string) => {
+        puts.push({ key, body });
+      },
+    };
+  };
+
+  it("saves a finished day's last hash to locked storage", async () => {
+    await withTx(async (tx) => {
+      const { s, day } = await eventsThreeDaysAgo(tx);
+      await tx.as(s.ana, s.acme);
+      const store = fakeStore();
+      const anchor = await publishAuditAnchor(reader(tx), store, day);
+
+      const [row] = await readAuditChain(reader(tx), s.acme);
+      expect(anchor).toEqual({ day, last_seq: 1, last_hash: row?.hash });
+      expect(store.puts).toEqual([
+        { key: `audit-anchors/${s.acme}/${day}.json`, body: JSON.stringify(anchor) },
+      ]);
+    });
+  });
+
+  it("gives the same anchor when the job runs twice", async () => {
+    await withTx(async (tx) => {
+      const { s, day } = await eventsThreeDaysAgo(tx);
+      await tx.as(s.ana, s.acme);
+      const store = fakeStore();
+      await publishAuditAnchor(reader(tx), store, day);
+      await tx.rows("select admin.append_audit_event('logout', 'user', $1)", [s.ana]);
+      await publishAuditAnchor(reader(tx), store, day);
+      expect(store.puts[0]).toEqual(store.puts[1]);
+    });
+  });
+
+  it("refuses a day that is not over", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error("select * from admin.record_audit_anchor(current_date + 1)")).toMatch(
+        /finished/,
+      );
+    });
+  });
+
+  it("publishes nothing before a workspace's first event", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      const store = fakeStore();
+      expect(await publishAuditAnchor(reader(tx), store, "2020-01-01")).toBeNull();
+      expect(store.puts).toEqual([]);
+    });
+  });
+
+  it("cannot be altered or written directly", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.asOwner();
+      expect(await tx.error("delete from admin.audit_anchor")).toMatch(/cannot be changed/);
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error("delete from admin.audit_anchor")).toMatch(/permission denied/);
+      expect(
+        await tx.error(
+          `insert into admin.audit_anchor (workspace_id, day, last_seq, last_hash, storage_key)
+           values ($1, '2020-01-01', 1, '\\x00', 'k')`,
+          [s.acme],
+        ),
+      ).toMatch(/permission denied/);
+    });
   });
 });
 

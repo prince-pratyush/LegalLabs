@@ -160,6 +160,13 @@ export async function seed(tx: Tx) {
   await audit(beta, bob);
   await tx.as(null, null);
   await tx.asOwner();
+  for (const ws of [acme, beta]) {
+    await tx.rows(
+      `insert into admin.audit_anchor (workspace_id, day, last_seq, last_hash, storage_key)
+       values ($1, '2000-01-01', 1, '\\x00', 'fixture')`,
+      [ws],
+    );
+  }
 
   return {
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
