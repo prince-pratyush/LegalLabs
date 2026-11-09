@@ -46,7 +46,7 @@ async function cli(args: string[], files: Record<string, string> = {}, databaseU
 describe("legallabs audit verify", () => {
   it("passes an untouched file", async () => {
     const result = await cli(["audit", "verify", "e.jsonl"], { "e.jsonl": chainFile(3).text });
-    expect(result).toEqual({ code: 0, out: "ok: 3 events verified" });
+    expect(result).toEqual({ code: 0, out: "ok: 3 events verified, 0 anchors checked" });
   });
 
   it("fails and names the event for an edited line", async () => {
@@ -58,13 +58,25 @@ describe("legallabs audit verify", () => {
 
   it("checks anchors when given them", async () => {
     const { text } = chainFile(2);
-    const anchors = JSON.stringify({ day: "2026-11-01", last_seq: 2, last_hash: "ff".repeat(32) });
+    const anchors = JSON.stringify({
+      workspace_id: "w1",
+      day: "2026-11-01",
+      last_seq: 2,
+      last_hash: "ff".repeat(32),
+    });
     const { code, out } = await cli(["audit", "verify", "e.jsonl", "a.jsonl"], {
       "e.jsonl": text,
       "a.jsonl": anchors,
     });
     expect(code).toBe(1);
     expect(out).toMatch(/anchor/);
+  });
+
+  it("fails an export that finds nothing", async () => {
+    const missing = "00000000-0000-7000-8000-000000000000";
+    const { code, out } = await cli(["audit", "export", missing], {}, inject("databaseUrl"));
+    expect(code).toBe(1);
+    expect(out).toMatch(/no events/);
   });
 
   it("does not call an empty file verified", async () => {
@@ -97,6 +109,6 @@ describe("legallabs audit export", () => {
     const exported = await cli(["audit", "export", workspace], {}, url);
     expect(exported.code).toBe(0);
     const verified = await cli(["audit", "verify", "e.jsonl"], { "e.jsonl": exported.out });
-    expect(verified).toEqual({ code: 0, out: "ok: 1 events verified" });
+    expect(verified).toEqual({ code: 0, out: "ok: 1 events verified, 0 anchors checked" });
   });
 });

@@ -29,7 +29,7 @@ function verify(io: Io, eventsPath: string, anchorsPath: string | undefined): nu
   const anchors = anchorsPath ? parseLines<AuditAnchor>(io.readFile(anchorsPath)) : [];
   const result = verifyAuditChain(rows, anchors);
   if (result.ok) {
-    io.print(`ok: ${result.events} events verified`);
+    io.print(`ok: ${result.events} events verified, ${anchors.length} anchors checked`);
     return 0;
   }
   io.print(`failed at event ${result.seq}: ${result.reason}`);
@@ -44,7 +44,12 @@ async function exportChain(io: Io, workspaceId: string): Promise<number> {
   const client = new pg.Client({ connectionString: io.databaseUrl });
   await client.connect();
   try {
-    for (const row of await readAuditChain(client, workspaceId)) io.print(JSON.stringify(row));
+    const rows = await readAuditChain(client, workspaceId);
+    if (rows.length === 0) {
+      io.print("failed: no events found, or this database role cannot read them");
+      return 1;
+    }
+    for (const row of rows) io.print(JSON.stringify(row));
   } finally {
     await client.end();
   }
