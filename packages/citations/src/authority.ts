@@ -77,7 +77,8 @@ export async function verifyAuthority(
   citation: AuthorityCitation,
   sources: AuthoritySources,
 ): Promise<AuthorityVerification> {
-  const candidates = await findAuthorities(citation.reference, sources);
+  const found = await findAuthorities(citation.reference, sources);
+  const candidates = [...new Map(found.map((entry) => [entry.id, entry])).values()];
   const [authority, ...others] = candidates;
   if (authority === undefined) return { status: "unresolved", reason: "authority_not_found" };
   if (others.length > 0) {

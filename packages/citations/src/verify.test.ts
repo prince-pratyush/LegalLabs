@@ -124,6 +124,15 @@ describe("authority citations", () => {
     });
   });
 
+  it("treats duplicate index rows as one authority", async () => {
+    expect(await verifyCitation(cite("410 us 113"), inIndex({ "410 us 113": [roe, roe] }))).toEqual(
+      {
+        status: "ok",
+        authorityId: roe.id,
+      },
+    );
+  });
+
   it("cannot resolve an unknown citation", async () => {
     expect(await verifyCitation(cite("999 us 999"), inIndex({}))).toEqual({
       status: "unresolved",
