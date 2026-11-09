@@ -215,7 +215,7 @@ function isSameWord(quoted: string, printed: string): boolean {
   if (a === b) return true;
   if (PROTECTED_WORDS.has(a) || PROTECTED_WORDS.has(b)) return false;
   if (changesPartyRole(a, b)) return false;
-  return isWithinOneEdit(undoScanConfusions(a), undoScanConfusions(b));
+  return isWithinOneEdit(a, b) || isWithinOneEdit(undoScanConfusions(a), undoScanConfusions(b));
 }
 
 function bareWord(word: string): string {

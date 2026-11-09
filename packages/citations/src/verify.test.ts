@@ -315,6 +315,11 @@ describe("document citations", () => {
     });
   });
 
+  it("accepts a one-letter misread in a word that looks like a confusion", async () => {
+    const page = quote250.replace("clause", "ciause");
+    expect(await onPage(page, quote250)).toMatchObject({ status: "ok" });
+  });
+
   it("cannot resolve a page that does not exist", async () => {
     const result = await verifyCitation(
       { kind: "document", documentVersionId: "dv_9", page: 3, quote: "aggregate liability" },
