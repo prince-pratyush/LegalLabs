@@ -236,6 +236,14 @@ describe("search", () => {
     expect(await search(asPrincipal(m), question, { match: "any" })).toHaveLength(1);
   });
 
+  it("leaves out negated words when matching any, instead of matching everything", async () => {
+    const m = await seedMember(pool);
+    const wanted = await add(m, "The parties terminated the agreement.");
+    await add(m, "Weather is nice today.");
+    const found = await search(asPrincipal(m), "termination -payment", { match: "any" });
+    expect(found.map((p) => p.documentId)).toEqual([wanted.id]);
+  });
+
   it("puts the closest match first", async () => {
     const m = await seedMember(pool);
     const weak = await add(m, "Indemnity is mentioned once here among unrelated words.");

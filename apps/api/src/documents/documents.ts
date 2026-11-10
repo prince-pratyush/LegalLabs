@@ -80,6 +80,12 @@ export const MAX_PASSAGES = 50;
 const MAX_INT = 2 ** 31 - 1;
 const RLS_REFUSED = "42501";
 
+// With "any", a negated word would turn into "or not that word" and match almost everything.
+const searchText = (query: string, match: "all" | "any") => {
+  const text = query.replaceAll("\0", "");
+  return match === "any" ? text.replace(/(^|\s)-\S*/g, "$1") : text;
+};
+
 const clampPassages = (limit: number) =>
   Math.min(Math.max(Math.trunc(limit) || DEFAULT_PASSAGES, 1), MAX_PASSAGES);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -269,7 +275,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
             order by ts_rank_cd(c.tsv, q) desc, c.id
             limit $2`,
           [
-            query.replaceAll("\0", ""),
+            searchText(query, match),
             clampPassages(limit),
             documentIds?.filter((id) => UUID.test(id)) ?? null,
             match === "any",
