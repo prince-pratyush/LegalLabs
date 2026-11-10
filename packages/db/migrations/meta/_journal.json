@@ -120,6 +120,13 @@
       "when": 1794009616000,
       "tag": "0017_core_password_credential",
       "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794009617000,
+      "tag": "0018_core_session_cap",
+      "breakpoints": false
     }
   ]
 }
