@@ -113,6 +113,27 @@
       "when": 1794009615000,
       "tag": "0016_function_privileges",
       "breakpoints": false
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794009616000,
+      "tag": "0017_core_password_credential",
+      "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794009617000,
+      "tag": "0018_core_session_cap",
+      "breakpoints": false
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794009618000,
+      "tag": "0019_api_login_role",
+      "breakpoints": false
     }
   ]
 }

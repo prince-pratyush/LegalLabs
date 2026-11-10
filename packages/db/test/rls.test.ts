@@ -9,13 +9,19 @@ const appTables = `
    and n.nspname not like 'pg_%'`;
 
 // Every table in an application schema, so a new table is covered the moment it exists.
-async function tables(tx: Tx): Promise<{ schema: string; table: string; tenant: string }[]> {
+async function tables(
+  tx: Tx,
+): Promise<{ schema: string; table: string; tenant: string; readable: boolean }[]> {
   return tx.rows(
     `select n.nspname as schema, c.relname as table,
-            case when (n.nspname, c.relname) = ('core', 'workspace') then 'id' else 'workspace_id' end as tenant
+            case when (n.nspname, c.relname) = ('core', 'workspace') then 'id' else 'workspace_id' end as tenant,
+            has_table_privilege('legallabs_app', c.oid, 'select') as readable
      ${appTables} and not c.relispartition order by 1, 2`,
   );
 }
+
+// A table the app has no grant on cannot leak through it, so there is nothing to scan.
+const appReadable = async (tx: Tx) => (await tables(tx)).filter((t) => t.readable);
 
 const qualified = (t: { schema: string; table: string }) => `"${t.schema}"."${t.table}"`;
 
@@ -70,7 +76,7 @@ describe("row-level security coverage", () => {
   it("returns no rows from any table when the request sets no user", async () => {
     await withTx(async (tx) => {
       await seed(tx);
-      const list = await tables(tx);
+      const list = await appReadable(tx);
       await tx.as(null, null);
       for (const t of list) {
         const { count } = await tx.one<{ count: string }>(`select count(*) from ${qualified(t)}`);
@@ -82,7 +88,7 @@ describe("row-level security coverage", () => {
   it("never shows one workspace's rows to another, on any table", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
-      const list = await tables(tx);
+      const list = await appReadable(tx);
       const betaRows = (t: (typeof list)[number]) =>
         tx.one<{ count: string }>(`select count(*) from ${qualified(t)} where ${t.tenant} = $1`, [
           s.beta,
