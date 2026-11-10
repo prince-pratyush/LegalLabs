@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { type Failure, type Ingested, type IngestResult, ingestFile } from "@legallabs/ingest";
+import {
+  type Block,
+  type Failure,
+  type Ingested,
+  type IngestResult,
+  ingestFile,
+} from "@legallabs/ingest";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp } from "../db.js";
@@ -49,6 +55,16 @@ export interface Documents {
   list(principal: Principal): Promise<Summary[]>;
   /** Best match first, limited to what the caller may read. */
   search(principal: Principal, query: string, options?: SearchOptions): Promise<Passage[]>;
+  /** Null for anything the caller can't read. Safe to call with ids taken from model output. */
+  page(principal: Principal, versionId: string, pageNo: number): Promise<PageContent | null>;
+}
+
+export interface PageContent {
+  text: string;
+  width: number;
+  height: number;
+  /** Maps verified offsets in `text` to boxes on the page. */
+  blocks: Block[];
 }
 
 export interface DocumentsOptions {
@@ -59,6 +75,8 @@ const LIST_LIMIT = 100;
 const BATCH_SIZE = 200;
 const DEFAULT_PASSAGES = 10;
 const MAX_PASSAGES = 50;
+const MAX_INT = 2 ** 31 - 1;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface SummaryRow {
   id: string;
@@ -246,6 +264,29 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
           to: row.char_to,
           text: row.text,
         }));
+      });
+    },
+
+    async page(principal, versionId, pageNo) {
+      if (!UUID.test(versionId) || !Number.isInteger(pageNo) || pageNo < 1 || pageNo > MAX_INT) {
+        return null;
+      }
+      return asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{
+          text: string;
+          width: number;
+          height: number;
+          layout: { blocks: Block[] };
+        }>(
+          `select p.text, p.width, p.height, p.layout
+             from content.page p
+            where p.version_id = $1 and p.page_no = $2 and core.has_permission('threads.use')`,
+          [versionId, pageNo],
+        );
+        const row = rows[0];
+        return row
+          ? { text: row.text, width: row.width, height: row.height, blocks: row.layout.blocks }
+          : null;
       });
     },
 

@@ -1,4 +1,6 @@
-import type { Ingested, IngestResult } from "@legallabs/ingest";
+import { type Sources, verifyCitation } from "@legallabs/citations";
+import { boxesFor, type Ingested, type IngestResult } from "@legallabs/ingest";
+import { makePdf } from "@legallabs/ingest/testing";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Principal } from "../auth/auth.js";
 import { auditTrail, type Seeded, seedMember, testPool } from "../test-db.js";
@@ -269,6 +271,83 @@ describe("search", () => {
       [m.workspaceId],
     );
     expect(await search(asPrincipal(m), "liability")).toEqual([]);
+  });
+});
+
+describe("page", () => {
+  it("gives the verifier the text a search passage came from", async () => {
+    const m = await seedMember(pool);
+    const documents = createDocuments(pool);
+    const principal = asPrincipal(m);
+    const bytes = makePdf([
+      ["Cover page of the agreement."],
+      ["Recitals come first.", "", "The supplier accepts liability", "for direct loss in full."],
+    ]);
+    stored(await documents.upload(principal, { name: "msa.pdf", bytes, matterId: null }, client));
+
+    const [passage] = await documents.search(principal, "liability");
+    if (!passage) throw new Error("no passage");
+    expect(passage.page).toBe(2);
+
+    const sources = {
+      documentPage: async (versionId: string, page: number) =>
+        (await documents.page(principal, versionId, page))?.text ?? null,
+    } as Sources;
+    const verified = await verifyCitation(
+      {
+        kind: "document",
+        documentVersionId: passage.documentVersionId,
+        page: passage.page,
+        quote: "accepts liability for direct loss",
+      },
+      sources,
+    );
+    if (verified.status !== "ok" || !("located" in verified)) throw new Error("not verified");
+
+    const page = await documents.page(principal, passage.documentVersionId, passage.page);
+    expect(page?.text.slice(passage.from, passage.to)).toBe(passage.text);
+    expect(page?.width).toBe(612);
+    const boxes = boxesFor(page?.blocks ?? [], verified.located.from, verified.located.to);
+    expect(boxes.map((b) => page?.text.slice(b.from, b.to))).toEqual([
+      "The supplier accepts liability",
+      "for direct loss in full.",
+    ]);
+  });
+
+  it("gives nothing for another person's page", async () => {
+    const m = await seedMember(pool);
+    const other = await seedMember(pool);
+    const documents = createDocuments(pool);
+    const document = stored(
+      await documents.upload(
+        asPrincipal(other),
+        { name: "a.txt", bytes: encode(CLAUSE), matterId: null },
+        client,
+      ),
+    );
+    expect(await documents.page(asPrincipal(other), document.versionId, 1)).not.toBeNull();
+    expect(await documents.page(asPrincipal(m), document.versionId, 1)).toBeNull();
+  });
+
+  // Citations come from a model, so these values are not to be trusted.
+  it.each([
+    ["a malformed id", "not-a-uuid", 1],
+    ["an id that doesn't exist", "00000000-0000-7000-8000-000000000001", 1],
+    ["page zero", null, 0],
+    ["a fractional page", null, 1.5],
+    ["a page too big for the column", null, 2 ** 40],
+    ["a page past the end", null, 2],
+  ])("gives nothing for %s", async (_, id, pageNo) => {
+    const m = await seedMember(pool);
+    const documents = createDocuments(pool);
+    const document = stored(
+      await documents.upload(
+        asPrincipal(m),
+        { name: "a.txt", bytes: encode(CLAUSE), matterId: null },
+        client,
+      ),
+    );
+    expect(await documents.page(asPrincipal(m), id ?? document.versionId, pageNo)).toBeNull();
   });
 });
 
