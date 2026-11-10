@@ -27,6 +27,9 @@ export interface Auth {
     attempt: LoginAttempt,
     client: Client,
   ): Promise<{ token: string; principal: Principal } | null>;
+  /** Checks the database every time, so revocation and suspension apply at once. */
+  resolve(token: string): Promise<Principal | null>;
+  logout(token: string, client: Client): Promise<void>;
 }
 
 interface Identity {
@@ -67,7 +70,39 @@ export function createAuth(pool: pg.Pool): Auth {
   const uaHash = (client: Client) =>
     client.userAgent === null ? null : sha256(client.userAgent).toString("hex");
 
+  const resolve: Auth["resolve"] = async (token) => {
+    const row = await asApp(pool, NOBODY, async (db) => {
+      const { rows } = await db.query<{
+        session_id: string;
+        user_id: string;
+        workspace_id: string;
+      }>("select session_id, user_id, workspace_id from core.resolve_session($1)", [sha256(token)]);
+      return rows[0];
+    });
+    return row
+      ? { sessionId: row.session_id, userId: row.user_id, workspaceId: row.workspace_id }
+      : null;
+  };
+
   return {
+    resolve,
+
+    async logout(token, client) {
+      const principal = await resolve(token);
+      if (!principal) return;
+      await asApp(pool, principal, async (db) => {
+        const { rowCount } = await db.query(
+          "update core.session set revoked_at = now() where id = $1 and revoked_at is null",
+          [principal.sessionId],
+        );
+        if (rowCount === 0) return;
+        await db.query(
+          "select admin.append_audit_event('logout', 'user', $1, 'session', $2, '{}', $3, $4)",
+          [principal.userId, principal.sessionId, client.ip, uaHash(client)],
+        );
+      });
+    },
+
     async login(attempt, client) {
       // Closed before hashing, so slow password checks never hold a connection.
       const row = await asApp(pool, NOBODY, async (db) => {

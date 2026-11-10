@@ -9,6 +9,59 @@ const client = { ip: "203.0.113.9", userAgent: "vitest" };
 
 afterAll(() => pool.end());
 
+describe("a session", () => {
+  const signIn = async () => {
+    const m = await seedMember(pool);
+    const result = await auth.login(
+      { workspace: m.slug, email: m.email, password: PASSWORD },
+      client,
+    );
+    if (!result) throw new Error("sign-in failed");
+    return { m, ...result };
+  };
+
+  it("resolves to the person it belongs to", async () => {
+    const { token, principal } = await signIn();
+    expect(await auth.resolve(token)).toEqual(principal);
+  });
+
+  it("does not resolve from a made-up token", async () => {
+    expect(await auth.resolve("made-up")).toBeNull();
+  });
+
+  it("stops working the moment the person is suspended", async () => {
+    const { m, token } = await signIn();
+    await pool.query(`update core."user" set status = 'suspended' where id = $1`, [m.userId]);
+    expect(await auth.resolve(token)).toBeNull();
+  });
+
+  it("stops working once expired", async () => {
+    const { m, token } = await signIn();
+    await pool.query("update core.session set expires_at = now() where user_id = $1", [m.userId]);
+    expect(await auth.resolve(token)).toBeNull();
+  });
+
+  it("ends on sign-out, once, and records it", async () => {
+    const { m, token, principal } = await signIn();
+    await auth.logout(token, client);
+    await auth.logout(token, client);
+    expect(await auth.resolve(token)).toBeNull();
+    expect((await auditTrail(pool, m.workspaceId)).slice(1)).toMatchObject([
+      {
+        action: "logout",
+        actor_type: "user",
+        actor_id: m.userId,
+        object_type: "session",
+        object_id: principal.sessionId,
+      },
+    ]);
+  });
+
+  it("ignores sign-out with a made-up token", async () => {
+    await expect(auth.logout("made-up", client)).resolves.toBeUndefined();
+  });
+});
+
 describe("a failed sign-in", () => {
   const attempt = async (workspace: string, email: string, password: string) =>
     auth.login({ workspace, email, password }, client);
