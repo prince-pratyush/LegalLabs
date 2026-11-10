@@ -69,7 +69,6 @@ create table content.chunk (
   foreign key (workspace_id, version_id, page_no)
     references content.page (workspace_id, version_id, page_no) on delete cascade
 );
-create index chunk_tsv_idx on content.chunk using gin (tsv);
 
 alter table content.document enable row level security;
 alter table content.document force row level security;
