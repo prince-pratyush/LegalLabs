@@ -70,12 +70,14 @@ export function createGateway(options: GatewayOptions): Gateway {
       const startedAt = now();
       const attempted: string[] = [];
       const inputTokens = inputUpperBound(request.messages);
+      let remainingUsd = request.budget.max_cost_usd;
       let overBudget = false;
       for (const route of ROUTES[request.task_class]) {
         const provider = options.providers[route.provider];
         if (!provider || (!route.client_data_safe && !options.allowDemoModels)) continue;
         const worstCase = costUsd(route.price, inputTokens, request.budget.max_output);
-        if (worstCase > request.budget.max_cost_usd) {
+        // Written this way round so a NaN cap refuses instead of passing.
+        if (!(worstCase <= remainingUsd)) {
           overBudget = true;
           continue;
         }
@@ -90,6 +92,8 @@ export function createGateway(options: GatewayOptions): Gateway {
         } catch {
           // The provider's error is dropped because it can quote the prompt.
           attempted.push(model);
+          // A failed attempt may still be billed, so assume it was.
+          remainingUsd -= worstCase;
           continue;
         }
         const usage: Usage = completion.usage

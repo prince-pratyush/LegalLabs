@@ -195,6 +195,36 @@ describe("gateway.call", () => {
     ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
   });
 
+  it("refuses a cap that is not a number", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: answering("from haiku") },
+      recordUsage: async () => {},
+    });
+
+    await expect(
+      gateway.call({ ...request, budget: { max_output: 100, max_cost_usd: Number.NaN } }),
+    ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
+  });
+
+  it("counts a failed attempt's worst case against the cap", async () => {
+    const gateway = createGateway({
+      providers: {
+        deepseek: failing("timed out after billing"),
+        anthropic: answering("from haiku"),
+        ollama: answering("from llama"),
+      },
+      allowDemoModels: true,
+      recordUsage: async () => {},
+    });
+
+    const result = await gateway.call({
+      ...request,
+      budget: { max_output: 100, max_cost_usd: 0.00015 },
+    });
+
+    expect(result.output).toBe("from llama");
+  });
+
   it("records usage and timing without content", async () => {
     const records: UsageRecord[] = [];
     const times = [1_000, 1_250];
