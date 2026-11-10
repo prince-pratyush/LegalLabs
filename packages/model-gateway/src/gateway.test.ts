@@ -25,4 +25,31 @@ describe("gateway.call", () => {
     expect(result.output).toBe("30 days");
     expect(result.model).toBe("anthropic/claude-haiku-5-5");
   });
+
+  it("skips models unsafe for client data by default", async () => {
+    const gateway = createGateway({
+      providers: {
+        google: answering("from gemini"),
+        deepseek: answering("from deepseek"),
+        anthropic: answering("from haiku"),
+      },
+      recordUsage: async () => {},
+    });
+
+    expect((await gateway.call(request)).output).toBe("from haiku");
+  });
+
+  it("tries the free model first when demo models are switched on", async () => {
+    const gateway = createGateway({
+      providers: {
+        anthropic: answering("from haiku"),
+        deepseek: answering("from deepseek"),
+        google: answering("from gemini"),
+      },
+      allowDemoModels: true,
+      recordUsage: async () => {},
+    });
+
+    expect((await gateway.call(request)).output).toBe("from gemini");
+  });
 });

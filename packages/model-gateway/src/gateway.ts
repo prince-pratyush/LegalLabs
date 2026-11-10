@@ -24,6 +24,7 @@ export type Gateway = { call(request: GatewayCall): Promise<GatewayResult> };
 
 export type GatewayOptions = {
   providers: Partial<Record<ProviderId, ModelProvider>>;
+  allowDemoModels?: boolean;
   recordUsage: (record: unknown) => Promise<void>;
 };
 
@@ -32,7 +33,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     async call(request) {
       for (const route of ROUTES[request.task_class]) {
         const provider = options.providers[route.provider];
-        if (!provider) continue;
+        if (!provider || (!route.client_data && !options.allowDemoModels)) continue;
         const { text } = await provider.complete({
           model: route.model,
           messages: request.messages,
