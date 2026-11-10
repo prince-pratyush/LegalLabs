@@ -45,7 +45,7 @@ async function startCluster(): Promise<{ url: string; stop: () => void }> {
   };
 }
 
-// Uses TEST_DATABASE_URL when set, otherwise a throwaway cluster, migrated either way.
+// Migrated either way, so a test can't run against an out-of-date schema.
 export async function startTestDatabase(): Promise<{ url: string; stop: () => void }> {
   const external = process.env.TEST_DATABASE_URL;
   const cluster = external ? undefined : await startCluster();

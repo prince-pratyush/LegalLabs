@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type pg from "pg";
 import { verifyPassword } from "./password.js";
 
-// Under the 7-day cap, and short enough that the spec's 12 h idle limit holds without tracking use.
+// Short enough that a 12 h idle limit holds without tracking activity.
 export const SESSION_SECONDS = 12 * 60 * 60;
 
 export interface LoginAttempt {

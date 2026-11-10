@@ -7,7 +7,7 @@ import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 
 const COOKIE = "sid";
-const PREFIX: "host" = "host";
+const COOKIE_PREFIX: "host" = "host";
 
 // Capped so nobody can make the server hash a huge password.
 const lookupText = (min: number, max: number) =>
@@ -62,11 +62,11 @@ export function createApp({ auth, clientIp, now = Date.now }: AppOptions) {
     const result = await auth.login(attempt, clientOf(c));
     if (!result) return c.json({ error: "invalid_credentials" }, 401);
 
-    const previous = getCookie(c, COOKIE, PREFIX);
+    const previous = getCookie(c, COOKIE, COOKIE_PREFIX);
     if (previous) await auth.logout(previous, clientOf(c));
 
     setCookie(c, COOKIE, result.token, {
-      prefix: PREFIX,
+      prefix: COOKIE_PREFIX,
       httpOnly: true,
       secure: true,
       sameSite: "Lax",
@@ -77,14 +77,14 @@ export function createApp({ auth, clientIp, now = Date.now }: AppOptions) {
   });
 
   app.post("/auth/logout", async (c) => {
-    const token = getCookie(c, COOKIE, PREFIX);
+    const token = getCookie(c, COOKIE, COOKIE_PREFIX);
     if (token) await auth.logout(token, clientOf(c));
-    deleteCookie(c, COOKIE, { prefix: PREFIX, secure: true, path: "/" });
+    deleteCookie(c, COOKIE, { prefix: COOKIE_PREFIX, secure: true, path: "/" });
     return c.body(null, 204);
   });
 
   app.get("/auth/session", async (c) => {
-    const token = getCookie(c, COOKIE, PREFIX);
+    const token = getCookie(c, COOKIE, COOKIE_PREFIX);
     const principal = token ? await auth.resolve(token) : null;
     if (!principal) return c.json({ error: "unauthenticated" }, 401);
     return c.json({ user_id: principal.userId, workspace_id: principal.workspaceId });
