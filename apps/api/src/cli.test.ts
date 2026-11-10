@@ -50,6 +50,22 @@ describe("legallabs-admin create-admin", () => {
     ).not.toBeNull();
   });
 
+  it("on an existing person changes only the password, and ends their sessions", async () => {
+    const { slug, email } = fresh();
+    await run(["create-admin", slug, email], io(GOOD).io);
+    const signedIn = await auth.login({ workspace: slug, email, password: GOOD }, client);
+    await pool.query(`update core."user" set status = 'suspended' where lower(email) = $1`, [
+      email,
+    ]);
+    expect(await run(["create-admin", slug, email], io("another long password").io)).toBe(0);
+    const { rows } = await pool.query(`select status from core."user" where lower(email) = $1`, [
+      email,
+    ]);
+    expect(rows).toEqual([{ status: "suspended" }]);
+    await pool.query(`update core."user" set status = 'active' where lower(email) = $1`, [email]);
+    expect(await auth.resolve(signedIn?.token ?? "")).toBeNull();
+  });
+
   it("refuses a short password and creates nothing", async () => {
     const { slug, email } = fresh();
     const h = io("too short");

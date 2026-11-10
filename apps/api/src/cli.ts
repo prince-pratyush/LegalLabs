@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import { text } from "node:stream/consumers";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { hashPassword } from "./auth/password.js";
+import { hashPassword, MAX_PASSWORD_LENGTH } from "./auth/password.js";
 
 export interface Io {
   databaseUrl: string | undefined;
@@ -21,7 +21,7 @@ async function createAdmin(io: Io, slug: string, email: string): Promise<number>
     return 2;
   }
   const password = await io.readPassword();
-  if (password.length < 12 || password.length > 256) {
+  if (password.length < 12 || password.length > MAX_PASSWORD_LENGTH) {
     io.print("failed: the password needs at least 12 characters and at most 256");
     return 1;
   }
@@ -29,27 +29,27 @@ async function createAdmin(io: Io, slug: string, email: string): Promise<number>
 
   const client = new pg.Client({ connectionString: io.databaseUrl });
   await client.connect();
-  const id = async (sql: string, params: unknown[]) => {
+  const returningId = async (sql: string, params: unknown[]) => {
     const row = (await client.query<{ id: string }>(sql, params)).rows[0];
     if (!row) throw new Error("that email belongs to a guest or service account");
     return row.id;
   };
   try {
     await client.query("begin");
-    const workspaceId = await id(
+    const workspaceId = await returningId(
       `insert into core.workspace (slug, name, region) values ($1, $1, 'au')
        on conflict (slug) do update set slug = excluded.slug returning id`,
       [slug],
     );
-    const roleId = await id(
+    const roleId = await returningId(
       `insert into core.role (workspace_id, name, builtin, permissions) values ($1, 'Admin', true, '{*}')
        on conflict (workspace_id, name) do update set name = excluded.name returning id`,
       [workspaceId],
     );
-    const userId = await id(
+    const userId = await returningId(
       `insert into core."user" (workspace_id, email, role_id, status) values ($1, $2, $3, 'active')
        on conflict (workspace_id, lower(email)) do update
-         set role_id = excluded.role_id, status = 'active' where core."user".kind = 'member'
+         set email = core."user".email where core."user".kind = 'member'
        returning id`,
       [workspaceId, email, roleId],
     );
@@ -59,10 +59,16 @@ async function createAdmin(io: Io, slug: string, email: string): Promise<number>
          set password_hash = excluded.password_hash, updated_at = now()`,
       [workspaceId, userId, passwordHash],
     );
+    // A new password must lock out whoever had the old one.
+    const revoked = await client.query(
+      `update core.session set revoked_at = now()
+        where workspace_id = $1 and user_id = $2 and revoked_at is null`,
+      [workspaceId, userId],
+    );
     await client.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
     await client.query(
-      "select admin.append_audit_event('user.password_set', 'system', null, 'user', $1)",
-      [userId],
+      "select admin.append_audit_event('user.password_set', 'system', null, 'user', $1, $2)",
+      [userId, JSON.stringify({ sessions_revoked: revoked.rowCount })],
     );
     await client.query("commit");
     io.print(`ok: ${email} can now sign in to ${slug}`);
