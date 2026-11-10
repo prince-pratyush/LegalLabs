@@ -35,7 +35,7 @@ export type GatewayOptions = {
   recordUsage: (record: unknown) => Promise<void>;
 };
 
-export type GatewayErrorCode = "NO_MODEL_AVAILABLE" | "ALL_MODELS_FAILED";
+export type GatewayErrorCode = "NO_MODEL_AVAILABLE" | "BUDGET_EXCEEDED" | "ALL_MODELS_FAILED";
 
 export class GatewayError extends Error {
   constructor(
@@ -56,9 +56,16 @@ export function createGateway(options: GatewayOptions): Gateway {
   return {
     async call(request) {
       const attempted: string[] = [];
+      const inputTokens = inputUpperBound(request.messages);
+      let overBudget = false;
       for (const route of ROUTES[request.task_class]) {
         const provider = options.providers[route.provider];
         if (!provider || (!route.client_data && !options.allowDemoModels)) continue;
+        const worstCase = costUsd(route.price, inputTokens, request.budget.max_output);
+        if (worstCase > request.budget.max_cost_usd) {
+          overBudget = true;
+          continue;
+        }
         const model = `${route.provider}/${route.model}`;
         let completion: Completion;
         try {
@@ -75,7 +82,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         const usage: Usage = completion.usage
           ? { ...completion.usage, estimated: false }
           : {
-              input_tokens: inputUpperBound(request.messages),
+              input_tokens: inputTokens,
               output_tokens: request.budget.max_output,
               estimated: true,
             };
@@ -86,7 +93,8 @@ export function createGateway(options: GatewayOptions): Gateway {
           cost_usd: costUsd(route.price, usage.input_tokens, usage.output_tokens),
         };
       }
-      throw new GatewayError(attempted.length ? "ALL_MODELS_FAILED" : "NO_MODEL_AVAILABLE", attempted);
+      if (attempted.length) throw new GatewayError("ALL_MODELS_FAILED", attempted);
+      throw new GatewayError(overBudget ? "BUDGET_EXCEEDED" : "NO_MODEL_AVAILABLE", attempted);
     },
   };
 }

@@ -144,4 +144,39 @@ describe("gateway.call", () => {
     expect(result.usage).toEqual({ input_tokens: 26, output_tokens: 100, estimated: true });
     expect(result.cost_usd).toBeCloseTo(0.0000526, 10);
   });
+
+  it("skips a model whose worst case is over the cap", async () => {
+    let haikuCalled = false;
+    const gateway = createGateway({
+      providers: {
+        anthropic: {
+          complete: async () => {
+            haikuCalled = true;
+            return { text: "from haiku" };
+          },
+        },
+        ollama: answering("from llama"),
+      },
+      recordUsage: async () => {},
+    });
+
+    const result = await gateway.call({
+      ...request,
+      budget: { max_output: 100, max_cost_usd: 0.00001 },
+    });
+
+    expect(result.output).toBe("from llama");
+    expect(haikuCalled).toBe(false);
+  });
+
+  it("stops when every usable model is over the cap", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: answering("from haiku") },
+      recordUsage: async () => {},
+    });
+
+    await expect(
+      gateway.call({ ...request, budget: { max_output: 100, max_cost_usd: 0.00001 } }),
+    ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
+  });
 });
