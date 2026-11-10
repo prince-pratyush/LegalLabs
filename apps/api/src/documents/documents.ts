@@ -47,6 +47,8 @@ export interface Passage {
 export interface SearchOptions {
   limit?: number;
   documentIds?: readonly string[];
+  /** Pins a search to exact versions, as a thread that cites them needs. */
+  versionIds?: readonly string[];
   /** "any" finds passages with some of the words, as a typed question needs. */
   match?: "all" | "any";
 }
@@ -250,7 +252,11 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
       }
     },
 
-    async search(principal, query, { limit = DEFAULT_PASSAGES, documentIds, match = "all" } = {}) {
+    async search(
+      principal,
+      query,
+      { limit = DEFAULT_PASSAGES, documentIds, versionIds, match = "all" } = {},
+    ) {
       return asApp(pool, principal, async (db) => {
         // Row security rules out the text index, so these joins are what limit the scan.
         const { rows } = await db.query<{
@@ -272,6 +278,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
             where c.tsv @@ q
               and core.has_permission('threads.use')
               and ($3::uuid[] is null or d.id = any($3::uuid[]))
+              and ($5::uuid[] is null or v.id = any($5::uuid[]))
             order by ts_rank_cd(c.tsv, q) desc, c.id
             limit $2`,
           [
@@ -279,6 +286,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
             clampPassages(limit),
             documentIds?.filter((id) => UUID.test(id)) ?? null,
             match === "any",
+            versionIds?.filter((id) => UUID.test(id)) ?? null,
           ],
         );
         return rows.map((row) => ({

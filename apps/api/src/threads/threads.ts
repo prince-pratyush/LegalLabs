@@ -329,6 +329,8 @@ export function createThreads(pool: pg.Pool, { gateway, documents }: ThreadsOpti
     const held = new Set(context.documents.map((document) => document.versionId));
     const found = await documents.search(principal, question, {
       documentIds: context.documents.map((document) => document.id),
+      // Pinned to the thread's versions, so other versions can't crowd out its passages.
+      versionIds: [...held],
       match: "any",
       limit: PASSAGES,
     });

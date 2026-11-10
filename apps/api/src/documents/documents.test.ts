@@ -244,6 +244,15 @@ describe("search", () => {
     expect(found.map((p) => p.documentId)).toEqual([wanted.id]);
   });
 
+  it("can be limited to chosen versions", async () => {
+    const m = await seedMember(pool);
+    const first = await add(m, CLAUSE);
+    const second = await add(m, CLAUSE);
+    const found = await search(asPrincipal(m), "liability", { versionIds: [second.versionId] });
+    expect(found.map((p) => p.documentVersionId)).toEqual([second.versionId]);
+    expect(first.versionId).not.toBe(second.versionId);
+  });
+
   it("puts the closest match first", async () => {
     const m = await seedMember(pool);
     const weak = await add(m, "Indemnity is mentioned once here among unrelated words.");
