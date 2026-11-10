@@ -275,3 +275,11 @@ ol {
     border: none;
   }
 }
+
+.unsupported {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 4px solid var(--warning);
+  color: var(--warning);
+  font-weight: 600;
+}

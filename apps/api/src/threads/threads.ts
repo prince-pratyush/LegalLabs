@@ -107,6 +107,12 @@ End every claim with a citation tag for a passage that supports it:
 <c doc="D1" page="3" quote="exact words copied from that passage"/>
 Use that passage's doc and page. Quote at least a few words, exactly as written. Write &quot; for a double quote inside a quote.
 
+For example, given this passage:
+<passage-X1 doc="D1" page="2">The Tenant must pay rent monthly in advance. Late rent bears interest at 4%.</passage-X1>
+a good answer to "When is rent due?" is:
+Rent is due monthly in advance.<c doc="D1" page="2" quote="The Tenant must pay rent monthly in advance"/> Late rent bears interest at 4%.<c doc="D1" page="2" quote="Late rent bears interest at 4%"/>
+An answer without a tag after each claim is wrong.
+
 If the passages don't answer the question, say it wasn't found in the selected documents. Don't use outside knowledge. Write plain text, without markdown or HTML.`;
 
 type Db = pg.PoolClient;
@@ -272,6 +278,7 @@ export function createThreads(pool: pg.Pool, { gateway, documents }: ThreadsOpti
     principal: Principal,
     context: Context,
     citations: readonly ParsedCitation[],
+    passages: readonly Passage[],
   ): Promise<Checked[]> {
     const versions = new Map(
       context.documents.map((document, i) => [label(i), document.versionId]),
@@ -299,24 +306,47 @@ export function createThreads(pool: pg.Pool, { gateway, documents }: ThreadsOpti
     for (const [ordinal, citation] of citations.entries()) {
       // Only documents this thread holds count, whatever the model wrote.
       const versionId = citation.doc === null ? null : (versions.get(citation.doc) ?? null);
-      const { page, quote } = citation;
-      const base = { n: ordinal + 1, at: citation.at, versionId, page, from: null, to: null };
-      if (versionId === null || page === null || quote === null || quote.length > MAX_QUOTE) {
-        checked.push({ ...base, quote: quote?.slice(0, MAX_QUOTE) ?? null, status: "unresolved" });
+      const { quote } = citation;
+      const base = { n: ordinal + 1, at: citation.at, versionId, from: null, to: null };
+      // Small models often get the page wrong, so the pages this turn showed are tried after it.
+      const shown = passages.filter((p) => p.documentVersionId === versionId).map((p) => p.page);
+      const candidates = [...new Set(citation.page === null ? shown : [citation.page, ...shown])];
+      if (
+        versionId === null ||
+        candidates.length === 0 ||
+        quote === null ||
+        quote.length > MAX_QUOTE
+      ) {
+        checked.push({
+          ...base,
+          page: citation.page,
+          quote: quote?.slice(0, MAX_QUOTE) ?? null,
+          status: "unresolved",
+        });
         continue;
       }
-      const result = await verifyCitation(
-        { kind: "document", documentVersionId: versionId, page, quote },
-        sources,
-      );
-      if (result.status === "ok" && "located" in result) {
-        // The page's wording, not the model's, so a near miss never shows words the page lacks.
-        const { from, to, text } = result.located;
-        checked.push({ ...base, quote: text, from, to, status: "ok" });
-      } else {
-        const status = result.status === "mismatch" ? "mismatch" : "unresolved";
-        checked.push({ ...base, quote, status });
+      let first: Checked | null = null;
+      let found: Checked | null = null;
+      for (const page of candidates) {
+        const result = await verifyCitation(
+          { kind: "document", documentVersionId: versionId, page, quote },
+          sources,
+        );
+        if (result.status === "ok" && "located" in result) {
+          // The page's wording, not the model's, so a near miss never shows words the page lacks.
+          const { from, to, text } = result.located;
+          found = { ...base, page, quote: text, from, to, status: "ok" };
+          break;
+        }
+        first ??= {
+          ...base,
+          page,
+          quote,
+          status: result.status === "mismatch" ? "mismatch" : "unresolved",
+        };
       }
+      const outcome = found ?? first;
+      if (outcome) checked.push(outcome);
     }
     return checked;
   }
@@ -356,7 +386,7 @@ export function createThreads(pool: pg.Pool, { gateway, documents }: ThreadsOpti
     return {
       text: parsed.text,
       model: result,
-      citations: await verify(principal, context, parsed.citations),
+      citations: await verify(principal, context, parsed.citations, passages),
     };
   }
 

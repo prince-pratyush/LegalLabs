@@ -337,8 +337,16 @@ const verified = (citation: Citation) => citation.status === "ok";
 
 // Model text is only ever rendered as text nodes, never as markup.
 function Answer({ message, onCite }: { message: Message; onCite: (citation: Citation) => void }) {
+  // A reply with no model is the fixed "not found" answer, which claims nothing.
+  const unsupported = message.model !== null && !message.citations.some(verified);
   return (
     <div className="answer" data-testid={`answer-${message.id}`}>
+      {unsupported && (
+        <p className="unsupported" role="note">
+          Nothing in this answer was checked against your documents. Don't rely on it without
+          reading the source.
+        </p>
+      )}
       {segments(message.content, message.citations).map((part, i) =>
         "text" in part ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: segments never reorder
