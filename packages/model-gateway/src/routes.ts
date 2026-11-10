@@ -6,7 +6,12 @@ type Rate = { input: number; output: number };
 type Price = Rate & { long?: Rate & { above_input_tokens: number } };
 
 // client_data_safe is false where the provider may keep, review or train on content.
-export type Route = { provider: ProviderId; model: string; client_data_safe: boolean; price: Price };
+export type Route = {
+  provider: ProviderId;
+  model: string;
+  client_data_safe: boolean;
+  price: Price;
+};
 
 const FREE: Price = { input: 0, output: 0 };
 
