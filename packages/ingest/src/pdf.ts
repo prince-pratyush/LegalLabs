@@ -22,6 +22,9 @@ export const cleanText = (text: string) =>
 
 const round = (value: number) => Math.round(value * 100) / 100;
 
+// A file can claim any size, and Postgres refuses a float it can't hold.
+const isUsableSize = (points: number) => points >= 1 && points <= 1_000_000;
+
 function linesOf(items: readonly Item[], pageTransform: number[]): Line[] {
   const lines: Line[] = [];
   for (const item of items) {
@@ -81,14 +84,17 @@ export async function readPdf(bytes: Uint8Array, limits: Limits): Promise<Page[]
     if (pdf.numPages > limits.maxPages) return "PAGE_LIMIT_EXCEEDED";
     const pages: Page[] = [];
     let chars = 0;
+    let lines = 0;
     for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
       const page = await pdf.getPage(pageNo);
       const viewport = page.getViewport({ scale: 1 });
+      if (!isUsableSize(viewport.width) || !isUsableSize(viewport.height)) return "CORRUPT_FILE";
       const content = await page.getTextContent();
       const items = content.items.flatMap((item) => ("str" in item ? [item] : []));
       const { text, blocks } = assemble(linesOf(items, viewport.transform));
       chars += text.length;
-      if (chars > limits.maxChars) return "PAGE_LIMIT_EXCEEDED";
+      lines += blocks.length;
+      if (chars > limits.maxChars || lines > limits.maxBlocks) return "PAGE_LIMIT_EXCEEDED";
       pages.push({ pageNo, width: viewport.width, height: viewport.height, text, blocks });
       page.cleanup();
     }

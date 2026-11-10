@@ -43,13 +43,15 @@ export type IngestResult = Ingested | { ok: false; reason: Failure };
 export interface Limits {
   maxPages: number;
   maxChars: number;
+  maxBlocks: number;
   maxTextBytes: number;
 }
 
-// Lower than the product limits, to fit a small machine.
+// Sized so that one file can't take down a small machine.
 const DEFAULT_LIMITS: Limits = {
   maxPages: 1000,
   maxChars: 5_000_000,
+  maxBlocks: 200_000,
   maxTextBytes: 5_000_000,
 };
 

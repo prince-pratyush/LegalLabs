@@ -3,6 +3,8 @@ const escapeText = (text: string) => text.replace(/[\\()]/g, (char) => `\\${char
 export interface TestPdfOptions {
   /** Adds a password dictionary no empty password can open. */
   encrypted?: boolean;
+  /** Width and height, written into the file as given. */
+  pageSize?: string;
 }
 
 /** One array of lines per page. An empty string leaves a blank line, starting a new paragraph. */
@@ -25,7 +27,7 @@ export function makePdf(pages: readonly (readonly string[])[], options: TestPdfO
     });
     const stream = shown.join("\n");
     add(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${pageId(index) + 1} 0 R ` +
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${options.pageSize ?? "612 792"}] /Contents ${pageId(index) + 1} 0 R ` +
         "/Resources << /Font << /F1 3 0 R >> >> >>",
     );
     add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);

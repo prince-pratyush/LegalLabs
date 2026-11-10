@@ -105,6 +105,14 @@ describe("pdf files", () => {
     ["too much text", makePdf([["abcdefgh"]]), { maxChars: 5 }, "PAGE_LIMIT_EXCEEDED"],
     ["a password", makePdf([["secret"]], { encrypted: true }), {}, "ENCRYPTED_NO_PASSWORD"],
     ["a damaged file", text("%PDF-1.7 this is not really a pdf"), {}, "CORRUPT_FILE"],
+    ["too many lines", makePdf([["a", "b", "c"]]), { maxBlocks: 2 }, "PAGE_LIMIT_EXCEEDED"],
+    [
+      "an absurdly wide page",
+      makePdf([["text"]], { pageSize: `1${"0".repeat(41)} 792` }),
+      {},
+      "CORRUPT_FILE",
+    ],
+    ["a vanishingly small page", makePdf([["text"]], { pageSize: "0.0001 792" }), {}, "CORRUPT_FILE"],
   ])("refuses %s", async (_, bytes, limits, reason) => {
     expect(await processFile(bytes, "a.pdf", limits)).toEqual({ ok: false, reason });
   });
