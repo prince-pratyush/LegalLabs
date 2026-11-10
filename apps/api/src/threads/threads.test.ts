@@ -1,3 +1,4 @@
+import { makePdf } from "@legallabs/ingest/testing";
 import { createGateway, type Message, type ModelProvider } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Principal } from "../auth/auth.js";
@@ -156,7 +157,7 @@ describe("asking a question", () => {
         [
           `A${cited("accepts no liability for any loss whatsoever")}`,
           `B${cited("accepts liability", "D9")}`,
-          `C${cited("accepts liability", "D1", 7)}`,
+          `C${cited("words that are on no page at all", "D1", 7)}`,
           `D<c doc="D1" page="1"/>`,
           `E<c doc="D1" page="1" quote="cut off`,
         ].join(" "),
@@ -179,6 +180,39 @@ describe("asking a question", () => {
       [5, "unresolved"],
     ]);
     expect(answer?.citations[1]).toMatchObject({ versionId: null, documentName: null });
+  });
+
+  it("finds an exact quote on the page it was shown, when the model names the wrong page", async () => {
+    const m = await seedMember(pool);
+    const pdf = makePdf([
+      ["Recitals and definitions."],
+      ["The supplier accepts liability for loss."],
+    ]);
+    const result = await createDocuments(pool).upload(
+      asPrincipal(m),
+      { name: "msa.pdf", bytes: pdf, matterId: null },
+      client,
+    );
+    if (!result.ok) throw new Error(result.reason);
+    const threads = harness(
+      fakeModel(
+        [
+          `Liable${cited("supplier accepts liability for loss", "D1", 9)}`,
+          `Again<c doc="D1" quote="supplier accepts liability for loss"/>`,
+        ].join(" "),
+      ).provider,
+    );
+    const view = answered(
+      await threads.start(
+        asPrincipal(m),
+        { question: "Is the supplier liable for loss?", documentIds: [result.document.id] },
+        client,
+      ),
+    );
+    expect(lastAnswer(view)?.citations.map((c) => [c.status, c.page])).toEqual([
+      ["ok", 2],
+      ["ok", 2],
+    ]);
   });
 
   it("shows the page's own wording when a quote is only nearly right", async () => {
