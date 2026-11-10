@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
@@ -32,11 +34,15 @@ const gateway = createGateway({
   recordUsage: async () => {},
 });
 
+// The web app's build, when present, so the demo runs from one server on one origin.
+const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
+
 const app = createApp({
   auth: createAuth(pool),
   documents,
   threads: createThreads(pool, { gateway, documents }),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
+  ...(existsSync(webRoot) ? { webRoot } : {}),
 });
 
 serve({
