@@ -67,7 +67,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       let overBudget = false;
       for (const route of ROUTES[request.task_class]) {
         const provider = options.providers[route.provider];
-        if (!provider || (!route.client_data && !options.allowDemoModels)) continue;
+        if (!provider || (!route.client_data_safe && !options.allowDemoModels)) continue;
         const worstCase = costUsd(route.price, inputTokens, request.budget.max_output);
         if (worstCase > request.budget.max_cost_usd) {
           overBudget = true;
