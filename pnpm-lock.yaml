@@ -187,6 +187,9 @@ importers:
       '@legallabs/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@legallabs/ingest':
+        specifier: workspace:*
+        version: link:../../packages/ingest
       '@node-rs/argon2':
         specifier: 2.2.2
         version: 2.2.2
@@ -200,6 +203,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@legallabs/citations':
+        specifier: workspace:*
+        version: link:../../packages/citations
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
