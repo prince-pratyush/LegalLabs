@@ -42,12 +42,11 @@ const searchQuery = z.object({
 });
 
 // Control characters have no place in a name that gets shown in lists and logs.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting them is the point
 const fileName = z
   .string()
   .min(1)
   .max(255)
-  .regex(/^[^\x00-\x1f\x7f]+$/);
+  .regex(/^\P{Cc}+$/u);
 
 const summaryJson = (document: Summary) => ({
   id: document.id,
