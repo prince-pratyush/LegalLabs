@@ -74,8 +74,12 @@ export interface DocumentsOptions {
 const LIST_LIMIT = 100;
 const BATCH_SIZE = 200;
 const DEFAULT_PASSAGES = 10;
-const MAX_PASSAGES = 50;
+export const MAX_PASSAGES = 50;
 const MAX_INT = 2 ** 31 - 1;
+const RLS_REFUSED = "42501";
+
+const clampPassages = (limit: number) =>
+  Math.min(Math.max(Math.trunc(limit) || DEFAULT_PASSAGES, 1), MAX_PASSAGES);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface SummaryRow {
@@ -227,13 +231,20 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
         );
         return { ok: false, reason: parsed.reason };
       }
-      return { ok: true, document: await save(principal, input, parsed, client) };
+      try {
+        return { ok: true, document: await save(principal, input, parsed, client) };
+      } catch (err) {
+        // A wall or permission can change during the parse, after the check above.
+        if ((err as { code?: string }).code === RLS_REFUSED) {
+          return { ok: false, reason: "FORBIDDEN" };
+        }
+        throw err;
+      }
     },
 
     async search(principal, query, { limit = DEFAULT_PASSAGES, documentIds } = {}) {
       return asApp(pool, principal, async (db) => {
-        // The joins matter: text matching can't use an index under row security, so
-        // starting from the caller's versions keeps the scan to their own chunks.
+        // Row security rules out the text index, so these joins are what limit the scan.
         const { rows } = await db.query<{
           id: string;
           version_id: string;
@@ -254,7 +265,11 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
               and ($3::uuid[] is null or d.id = any($3::uuid[]))
             order by ts_rank_cd(c.tsv, q) desc, c.id
             limit $2`,
-          [query, Math.min(limit, MAX_PASSAGES), documentIds ?? null],
+          [
+            query.replaceAll("\0", ""),
+            clampPassages(limit),
+            documentIds?.filter((id) => UUID.test(id)) ?? null,
+          ],
         );
         return rows.map((row) => ({
           chunkId: row.id,

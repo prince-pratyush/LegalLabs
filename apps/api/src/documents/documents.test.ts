@@ -157,6 +157,22 @@ describe("upload", () => {
     expect(ingest).not.toHaveBeenCalled();
   });
 
+  it("refuses cleanly if the permission goes while the file is parsing", async () => {
+    const m = await seedMember(pool);
+    const ingest = async (): Promise<IngestResult> => {
+      await pool.query("update core.role set permissions = '{}' where workspace_id = $1", [
+        m.workspaceId,
+      ]);
+      return { ok: true, mime: "text/plain", pages: [], chunks: [], emptyPageCount: 0 };
+    };
+    const result = await createDocuments(pool, { ingest }).upload(
+      asPrincipal(m),
+      { name: "a.txt", bytes: encode(CLAUSE), matterId: null },
+      client,
+    );
+    expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
+  });
+
   it("files a document on a matter the owner can reach", async () => {
     const m = await seedMember(pool);
     const matterId = await addMatter(m);
@@ -261,6 +277,17 @@ describe("search", () => {
     await add(m, CLAUSE);
     expect(await search(asPrincipal(m), "the and of")).toEqual([]);
     expect(await search(asPrincipal(m), `"liab -( OR &&& :*`)).toEqual([]);
+  });
+
+  // A later caller will pass terms and ids chosen by a model.
+  it("doesn't fail on bad input from a caller inside the server", async () => {
+    const m = await seedMember(pool);
+    const principal = asPrincipal(m);
+    await add(m, CLAUSE);
+    expect(await search(principal, "liab\0ility")).toHaveLength(1);
+    expect(await search(principal, "liability", { documentIds: ["not-a-uuid"] })).toEqual([]);
+    expect(await search(principal, "liability", { limit: -5 })).toHaveLength(1);
+    expect(await search(principal, "liability", { limit: 1.5 })).toHaveLength(1);
   });
 
   it("finds nothing for someone who has lost the permission", async () => {
