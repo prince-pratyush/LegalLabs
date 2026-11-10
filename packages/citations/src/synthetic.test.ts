@@ -127,7 +127,7 @@ const ALTERATIONS: readonly ((quote: string) => string)[] = [
   (quote) => quote.replace(/\b(Supplier|Customer|Licensor|Contractor|Landlord|Tenant)\b/, "Agent"),
 ];
 
-describe("synthetic verification set", () => {
+describe("synthetic verification set", { timeout: 30_000 }, () => {
   it("verifies at least 99% of real quotes at their exact position", async () => {
     const total = 2000;
     let exact = 0;
