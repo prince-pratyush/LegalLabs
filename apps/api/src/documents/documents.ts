@@ -26,10 +26,29 @@ export type UploadResult =
   | { ok: true; document: Summary }
   | { ok: false; reason: Failure | "FORBIDDEN" | "MATTER_NOT_FOUND" };
 
+export interface Passage {
+  chunkId: string;
+  documentId: string;
+  documentVersionId: string;
+  documentName: string;
+  page: number;
+  /** Where `text` sits in the page text, exactly. */
+  from: number;
+  to: number;
+  text: string;
+}
+
+export interface SearchOptions {
+  limit?: number;
+  documentIds?: readonly string[];
+}
+
 export interface Documents {
   upload(principal: Principal, input: UploadInput, client: Client): Promise<UploadResult>;
   /** The caller's newest documents, up to a fixed page. */
   list(principal: Principal): Promise<Summary[]>;
+  /** Best match first, limited to what the caller may read. */
+  search(principal: Principal, query: string, options?: SearchOptions): Promise<Passage[]>;
 }
 
 export interface DocumentsOptions {
@@ -38,6 +57,8 @@ export interface DocumentsOptions {
 
 const LIST_LIMIT = 100;
 const BATCH_SIZE = 200;
+const DEFAULT_PASSAGES = 10;
+const MAX_PASSAGES = 50;
 
 interface SummaryRow {
   id: string;
@@ -187,6 +208,45 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
         return { ok: false, reason: parsed.reason };
       }
       return { ok: true, document: await save(principal, input, parsed, client) };
+    },
+
+    async search(principal, query, { limit = DEFAULT_PASSAGES, documentIds } = {}) {
+      return asApp(pool, principal, async (db) => {
+        // The joins matter: text matching can't use an index under row security, so
+        // starting from the caller's versions keeps the scan to their own chunks.
+        const { rows } = await db.query<{
+          id: string;
+          version_id: string;
+          document_id: string;
+          name: string;
+          page_no: number;
+          char_from: number;
+          char_to: number;
+          text: string;
+        }>(
+          `select c.id, c.version_id, v.document_id, d.name, c.page_no, c.char_from, c.char_to, c.text
+             from websearch_to_tsquery('english', $1) q,
+                  content.document d
+             join content.document_version v on v.document_id = d.id
+             join content.chunk c on c.version_id = v.id
+            where c.tsv @@ q
+              and core.has_permission('threads.use')
+              and ($3::uuid[] is null or d.id = any($3::uuid[]))
+            order by ts_rank_cd(c.tsv, q) desc, c.id
+            limit $2`,
+          [query, Math.min(limit, MAX_PASSAGES), documentIds ?? null],
+        );
+        return rows.map((row) => ({
+          chunkId: row.id,
+          documentId: row.document_id,
+          documentVersionId: row.version_id,
+          documentName: row.name,
+          page: row.page_no,
+          from: row.char_from,
+          to: row.char_to,
+          text: row.text,
+        }));
+      });
     },
 
     async list(principal) {

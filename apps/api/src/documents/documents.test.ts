@@ -180,6 +180,98 @@ describe("upload", () => {
   });
 });
 
+describe("search", () => {
+  const add = async (m: Seeded, text: string, matterId: string | null = null) =>
+    stored(
+      await createDocuments(pool).upload(
+        asPrincipal(m),
+        { name: "a.txt", bytes: encode(text), matterId },
+        client,
+      ),
+    );
+  const search = createDocuments(pool).search;
+
+  it("returns the passage, where it is, and which document it came from", async () => {
+    const m = await seedMember(pool);
+    const document = await add(m, `Intro paragraph.\n\n${"filler ".repeat(300)}\n\n${CLAUSE}`);
+    const [passage] = await search(asPrincipal(m), "liability");
+    expect(passage).toMatchObject({
+      documentId: document.id,
+      documentVersionId: document.versionId,
+      documentName: "a.txt",
+      page: 1,
+    });
+    expect(passage?.text).toContain(CLAUSE);
+  });
+
+  it("matches other forms of a word", async () => {
+    const m = await seedMember(pool);
+    await add(m, "The parties terminated the agreement.");
+    expect(await search(asPrincipal(m), "termination")).toHaveLength(1);
+  });
+
+  it("puts the closest match first", async () => {
+    const m = await seedMember(pool);
+    const weak = await add(m, "Indemnity is mentioned once here among unrelated words.");
+    const strong = await add(m, "Indemnity. Indemnity limits. The indemnity cap on indemnity.");
+    const passages = await search(asPrincipal(m), "indemnity");
+    expect(passages.map((p) => p.documentId)).toEqual([strong.id, weak.id]);
+  });
+
+  it("finds nothing in another person's documents", async () => {
+    const m = await seedMember(pool);
+    const other = await seedMember(pool);
+    await add(other, CLAUSE);
+    expect(await search(asPrincipal(m), "liability")).toEqual([]);
+  });
+
+  it("stops finding a document once a wall shuts its owner out", async () => {
+    const m = await seedMember(pool);
+    const matterId = await addMatter(m);
+    await add(m, CLAUSE, matterId);
+    expect(await search(asPrincipal(m), "liability")).toHaveLength(1);
+    await pool.query(
+      `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+       values ($1, $2, 'user', $3, 'deny')`,
+      [m.workspaceId, matterId, m.userId],
+    );
+    expect(await search(asPrincipal(m), "liability")).toEqual([]);
+  });
+
+  it("can be limited to chosen documents", async () => {
+    const m = await seedMember(pool);
+    const wanted = await add(m, CLAUSE);
+    await add(m, CLAUSE);
+    const passages = await search(asPrincipal(m), "liability", { documentIds: [wanted.id] });
+    expect(passages.map((p) => p.documentId)).toEqual([wanted.id]);
+  });
+
+  it("returns at most the number asked for", async () => {
+    const m = await seedMember(pool);
+    await add(m, CLAUSE);
+    await add(m, CLAUSE);
+    await add(m, CLAUSE);
+    expect(await search(asPrincipal(m), "liability", { limit: 2 })).toHaveLength(2);
+  });
+
+  it("copes with a query of only common words or stray punctuation", async () => {
+    const m = await seedMember(pool);
+    await add(m, CLAUSE);
+    expect(await search(asPrincipal(m), "the and of")).toEqual([]);
+    expect(await search(asPrincipal(m), `"liab -( OR &&& :*`)).toEqual([]);
+  });
+
+  it("finds nothing for someone who has lost the permission", async () => {
+    const m = await seedMember(pool);
+    await add(m, CLAUSE);
+    await pool.query(
+      "update core.role set permissions = '{}' where workspace_id = $1",
+      [m.workspaceId],
+    );
+    expect(await search(asPrincipal(m), "liability")).toEqual([]);
+  });
+});
+
 describe("list", () => {
   it("shows the newest first, and only your own", async () => {
     const m = await seedMember(pool);
