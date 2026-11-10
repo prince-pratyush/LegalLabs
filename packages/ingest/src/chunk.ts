@@ -34,7 +34,7 @@ function paragraphs(text: string): Span[] {
   return spans;
 }
 
-// Prefers a sentence end, then a space, and only then cuts mid-word.
+// Cutting between sentences keeps a clause whole, so it stays quotable from one chunk.
 function cutPoint(text: string, from: number): number {
   const limit = from + MAX_CHUNK;
   const window = text.slice(from, limit);

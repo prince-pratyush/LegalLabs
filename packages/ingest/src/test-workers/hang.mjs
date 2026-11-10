@@ -1,3 +1,1 @@
-for (;;) {
-  // never answers
-}
+for (;;) {}

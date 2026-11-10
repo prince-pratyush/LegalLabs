@@ -112,7 +112,12 @@ describe("pdf files", () => {
       {},
       "CORRUPT_FILE",
     ],
-    ["a vanishingly small page", makePdf([["text"]], { pageSize: "0.0001 792" }), {}, "CORRUPT_FILE"],
+    [
+      "a vanishingly small page",
+      makePdf([["text"]], { pageSize: "0.0001 792" }),
+      {},
+      "CORRUPT_FILE",
+    ],
   ])("refuses %s", async (_, bytes, limits, reason) => {
     expect(await processFile(bytes, "a.pdf", limits)).toEqual({ ok: false, reason });
   });

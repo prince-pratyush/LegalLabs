@@ -71,7 +71,7 @@ function readText(bytes: Uint8Array, limits: Limits): Page[] | Failure {
   return [{ pageNo: 1, width: 0, height: 0, text, blocks: [] }];
 }
 
-function typeOf(bytes: Uint8Array, name: string): string | null {
+function mimeOf(bytes: Uint8Array, name: string): string | null {
   if (isPdf(bytes)) return "application/pdf";
   if (/\.txt$/i.test(name)) return "text/plain";
   if (/\.(md|markdown)$/i.test(name)) return "text/markdown";
@@ -85,7 +85,7 @@ export async function processFile(
   limits: Partial<Limits> = {},
 ): Promise<IngestResult> {
   const applied = { ...DEFAULT_LIMITS, ...limits };
-  const mime = typeOf(bytes, name);
+  const mime = mimeOf(bytes, name);
   if (mime === null) return { ok: false, reason: "UNSUPPORTED_TYPE" };
   const pages =
     mime === "application/pdf" ? await readPdf(bytes, applied) : readText(bytes, applied);

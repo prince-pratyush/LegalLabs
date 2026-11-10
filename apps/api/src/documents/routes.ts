@@ -2,7 +2,13 @@ import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
-import type { Documents, Passage, Summary, UploadResult } from "./documents.js";
+import {
+  type Documents,
+  MAX_PASSAGES,
+  type Passage,
+  type Summary,
+  type UploadResult,
+} from "./documents.js";
 
 // A multipart body is a little larger than the file inside it.
 const MAX_BODY_BYTES = 25 * 1024 * 1024 + 64 * 1024;
@@ -38,7 +44,7 @@ const searchQuery = z.object({
     .min(1)
     .max(500)
     .refine((text) => !text.includes("\0")),
-  limit: z.coerce.number().int().min(1).max(50).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_PASSAGES).optional(),
   document_ids: z.array(uuid).max(100).optional(),
 });
 
@@ -77,7 +83,7 @@ export function documentRoutes(documents: Documents, clientOf: (c: Context) => C
   let uploading = 0;
 
   // Runs before the body is read, so waiting uploads can't pile up in memory.
-  const oneAtATime: MiddlewareHandler = async (c, next) => {
+  const limitUploads: MiddlewareHandler = async (c, next) => {
     if (uploading >= MAX_CONCURRENT_UPLOADS) {
       c.header("Retry-After", "5");
       return failure(c, 503, "BUSY", "Too many uploads are in progress. Try again shortly.");
@@ -95,7 +101,7 @@ export function documentRoutes(documents: Documents, clientOf: (c: Context) => C
     onError: (c) => failure(c, 413, "FILE_TOO_LARGE", "The file is too large."),
   });
 
-  app.post("/", oneAtATime, limitBody, async (c) => {
+  app.post("/", limitUploads, limitBody, async (c) => {
     const invalid = () => failure(c, 400, "INVALID_REQUEST", "Send one file in a form field.");
     const form = await c.req.parseBody().catch(() => null);
     const file = form?.file;

@@ -42,7 +42,6 @@ async function visibleTo(tx: Tx, s: Seed, user: string, ws = s.acme) {
 }
 
 const none = { documents: 0, versions: 0, pages: 0, chunks: 0 };
-// The fixture gives each workspace one document of its owner's.
 const fixture = { documents: 1, versions: 1, pages: 1, chunks: 1 };
 const plusOne = { documents: 2, versions: 2, pages: 2, chunks: 2 };
 
