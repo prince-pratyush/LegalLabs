@@ -181,6 +181,26 @@ describe("asking a question", () => {
     expect(answer?.citations[1]).toMatchObject({ versionId: null, documentName: null });
   });
 
+  it("shows the page's own wording when a quote is only nearly right", async () => {
+    const m = await seedMember(pool);
+    const document = await upload(m);
+    const threads = harness(
+      fakeModel(`Liable${cited("supplier acepts liability for direct loss up to the fees")}`)
+        .provider,
+    );
+    const view = answered(
+      await threads.start(
+        asPrincipal(m),
+        { question: "Liability?", documentIds: [document.id] },
+        client,
+      ),
+    );
+    expect(lastAnswer(view)?.citations[0]).toMatchObject({
+      status: "ok",
+      quote: "supplier accepts liability for direct loss up to the fees",
+    });
+  });
+
   it("drops NUL bytes the model sends instead of failing to save", async () => {
     const m = await seedMember(pool);
     const document = await upload(m);

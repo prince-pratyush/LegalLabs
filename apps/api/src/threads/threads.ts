@@ -310,8 +310,9 @@ export function createThreads(pool: pg.Pool, { gateway, documents }: ThreadsOpti
         sources,
       );
       if (result.status === "ok" && "located" in result) {
-        const { from, to } = result.located;
-        checked.push({ ...base, quote, from, to, status: "ok" });
+        // The page's wording, not the model's, so a near miss never shows words the page lacks.
+        const { from, to, text } = result.located;
+        checked.push({ ...base, quote: text, from, to, status: "ok" });
       } else {
         const status = result.status === "mismatch" ? "mismatch" : "unresolved";
         checked.push({ ...base, quote, status });
