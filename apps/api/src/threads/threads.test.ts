@@ -181,6 +181,21 @@ describe("asking a question", () => {
     expect(answer?.citations[1]).toMatchObject({ versionId: null, documentName: null });
   });
 
+  it("drops NUL bytes the model sends instead of failing to save", async () => {
+    const m = await seedMember(pool);
+    const document = await upload(m);
+    const threads = harness(fakeModel(`Lia\0ble${cited("accepts liability\0")}`).provider);
+    const view = answered(
+      await threads.start(
+        asPrincipal(m),
+        { question: "Liability?", documentIds: [document.id] },
+        client,
+      ),
+    );
+    expect(lastAnswer(view)?.content).toBe("Liable");
+    expect(lastAnswer(view)?.citations[0]?.status).toBe("ok");
+  });
+
   it("says it wasn't found, without calling a model, when nothing matches", async () => {
     const m = await seedMember(pool);
     const document = await upload(m);

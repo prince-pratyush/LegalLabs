@@ -348,7 +348,8 @@ export function createThreads(pool: pg.Pool, { gateway, documents }: ThreadsOpti
       if (err instanceof GatewayError) return "MODEL_UNAVAILABLE";
       throw err;
     }
-    const parsed = parseCitedAnswer(result.output);
+    // Postgres text can't hold a NUL byte, and an answer that can't be saved is money wasted.
+    const parsed = parseCitedAnswer(result.output.replaceAll("\0", ""));
     return {
       text: parsed.text,
       model: result,
