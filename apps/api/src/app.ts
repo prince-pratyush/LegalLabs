@@ -7,6 +7,8 @@ import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
+import { threadRoutes } from "./threads/routes.js";
+import type { Threads } from "./threads/threads.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -28,12 +30,13 @@ const loginBody = z.object({
 export interface AppOptions {
   auth: Auth;
   documents: Documents;
+  threads: Threads;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
 }
 
-export function createApp({ auth, documents, clientIp, now = Date.now }: AppOptions) {
+export function createApp({ auth, documents, threads, clientIp, now = Date.now }: AppOptions) {
   const perIp = createLimiter({ limit: 10, windowMs: 60_000, now });
   const perAccount = createLimiter({ limit: 5, windowMs: 60_000, now });
   const app = new Hono<{ Variables: { principal: Principal } }>();
@@ -103,6 +106,7 @@ export function createApp({ auth, documents, clientIp, now = Date.now }: AppOpti
   });
 
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
+  app.route("/api/v1/threads", threadRoutes(threads, clientOf, now));
 
   return app;
 }
