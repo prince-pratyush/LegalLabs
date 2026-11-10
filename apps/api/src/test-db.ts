@@ -17,7 +17,7 @@ export interface Seeded {
 // Commits for real, so each call gets its own workspace.
 export async function seedMember(
   pool: pg.Pool,
-  opts: { status?: string; password?: boolean } = {},
+  opts: { status?: string; password?: boolean; permissions?: string[] } = {},
 ): Promise<Seeded> {
   const slug = `ws-${randomUUID().slice(0, 8)}`;
   const email = `ana@${slug}.test`;
@@ -28,8 +28,8 @@ export async function seedMember(
     [slug],
   );
   const roleId = await one(
-    "insert into core.role (workspace_id, name, permissions) values ($1, 'Admin', '{*}') returning id",
-    [workspaceId],
+    "insert into core.role (workspace_id, name, permissions) values ($1, 'Admin', $2) returning id",
+    [workspaceId, opts.permissions ?? ["*"]],
   );
   const userId = await one(
     `insert into core."user" (workspace_id, email, role_id, status) values ($1, $2, $3, $4) returning id`,

@@ -59,6 +59,7 @@ export const auditActions: string[] = [
   ...objects.flatMap((object) => family(object, objectVerbs)),
   ...family("document", [
     "uploaded",
+    "ingest_failed",
     "scanned_clean",
     "quarantined",
     "released",

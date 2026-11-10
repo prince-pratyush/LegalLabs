@@ -168,7 +168,38 @@ export async function seed(tx: Tx) {
     );
   }
 
+  const document = async (ws: string, owner: string) => {
+    const documentId = await id(
+      `insert into content.document (workspace_id, owner_id, name, mime, size)
+       values ($1, $2, 'msa.txt', 'text/plain', 10) returning id`,
+      [ws, owner],
+    );
+    const versionId = await id(
+      `insert into content.document_version (workspace_id, document_id, sha256, page_count, created_by)
+       values ($1, $2, sha256('msa'), 1, $3) returning id`,
+      [ws, documentId, owner],
+    );
+    const text = "The supplier accepts liability for loss.";
+    await tx.rows(
+      `insert into content.page (workspace_id, version_id, page_no, width, height, text, layout)
+       values ($1, $2, 1, 612, 792, $3, '{"blocks":[]}')`,
+      [ws, versionId, text],
+    );
+    await tx.rows(
+      `insert into content.chunk (workspace_id, version_id, page_no, ordinal, char_from, char_to, text)
+       values ($1, $2, 1, 0, 0, $3, $4)`,
+      [ws, versionId, text.length, text],
+    );
+    await tx.rows(
+      "insert into content.document_blob (workspace_id, version_id, bytes) values ($1, $2, '\\x00')",
+      [ws, versionId],
+    );
+    return { documentId, versionId };
+  };
+  const documents = { acme: await document(acme, ana), beta: await document(beta, bob) };
+
   return {
+    documents,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,
     objects: { t1, tb },

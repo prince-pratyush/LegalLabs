@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
+import { createDocuments } from "./documents/documents.js";
 import { PASSWORD, seedMember, testPool } from "./test-db.js";
 
 const pool = testPool();
@@ -8,7 +9,12 @@ afterAll(() => pool.end());
 
 function harness(ip = "203.0.113.9") {
   let time = 1_000_000;
-  const app = createApp({ auth: createAuth(pool), clientIp: () => ip, now: () => time });
+  const app = createApp({
+    auth: createAuth(pool),
+    documents: createDocuments(pool),
+    clientIp: () => ip,
+    now: () => time,
+  });
   const login = (body: unknown) =>
     app.request("/auth/login", {
       method: "POST",

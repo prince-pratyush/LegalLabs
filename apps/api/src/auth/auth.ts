@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type pg from "pg";
+import { asApp, type Identity } from "../db.js";
 import { verifyPassword } from "./password.js";
 
 // Short enough that a 12 h idle limit holds without tracking activity.
@@ -32,44 +33,14 @@ export interface Auth {
   logout(token: string, client: Client): Promise<void>;
 }
 
-interface Identity {
-  userId: string | null;
-  workspaceId: string | null;
-}
-
 const NOBODY: Identity = { userId: null, workspaceId: null };
 
 const sha256 = (text: string) => createHash("sha256").update(text).digest();
 
-// Every query runs as the app role, so row-level security applies from the first statement.
-async function asApp<T>(
-  pool: pg.Pool,
-  identity: Identity,
-  work: (client: pg.PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
-    await client.query("set local role legallabs_app");
-    await client.query(
-      "select set_config('app.user_id', $1, true), set_config('app.workspace_id', $2, true)",
-      [identity.userId ?? "", identity.workspaceId ?? ""],
-    );
-    const result = await work(client);
-    await client.query("commit");
-    client.release();
-    return result;
-  } catch (err) {
-    // Destroyed rather than reused, because its transaction state is unknown.
-    client.release(err instanceof Error ? err : true);
-    throw err;
-  }
-}
+export const uaHash = (client: Client) =>
+  client.userAgent === null ? null : sha256(client.userAgent).toString("hex");
 
 export function createAuth(pool: pg.Pool): Auth {
-  const uaHash = (client: Client) =>
-    client.userAgent === null ? null : sha256(client.userAgent).toString("hex");
-
   const resolve: Auth["resolve"] = async (token) => {
     const row = await asApp(pool, NOBODY, async (db) => {
       const { rows } = await db.query<{
