@@ -27,6 +27,7 @@ export type Failure =
   | "PAGE_LIMIT_EXCEEDED"
   | "NO_TEXT"
   | "PARSE_TIMEOUT"
+  | "TOO_COMPLEX"
   | "INTERNAL";
 
 export interface Ingested {

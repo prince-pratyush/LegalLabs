@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runIsolated } from "./isolate.js";
 
 const fixture = (name: string) => new URL(`./test-workers/${name}.mjs`, import.meta.url);
-const options = { timeoutMs: 3000, maxMemoryMb: 64 };
+const options = { timeoutMs: 3000, maxMemoryMb: 64, maxGrowthMb: 1024 };
 
 describe("runIsolated", () => {
   it("returns what the worker sends", async () => {
@@ -37,11 +37,20 @@ describe("runIsolated", () => {
     });
   });
 
-  it("stops a worker that uses too much memory", async () => {
+  it("stops a worker that fills its heap", async () => {
     expect(await runIsolated(fixture("hungry"), null, { ...options, timeoutMs: 15_000 })).toEqual({
       ok: false,
-      reason: "crashed",
+      reason: "memory",
     });
+  });
+
+  it("stops a worker that hoards memory outside its heap", async () => {
+    const result = await runIsolated(fixture("hoard"), null, {
+      ...options,
+      timeoutMs: 15_000,
+      maxGrowthMb: 64,
+    });
+    expect(result).toEqual({ ok: false, reason: "memory" });
   });
 
   it("gives the worker none of the server's secrets", async () => {

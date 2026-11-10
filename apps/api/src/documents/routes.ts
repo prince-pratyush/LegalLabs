@@ -26,6 +26,7 @@ const REASONS: Record<Reason, { status: 403 | 404 | 413 | 415 | 422 | 500; messa
   PAGE_LIMIT_EXCEEDED: { status: 422, message: "The document is too long." },
   NO_TEXT: { status: 422, message: "No text was found. Scanned documents can't be read yet." },
   PARSE_TIMEOUT: { status: 422, message: "The file took too long to read." },
+  TOO_COMPLEX: { status: 422, message: "The file needs too much memory to read." },
   INTERNAL: { status: 500, message: "The file couldn't be processed." },
 };
 
