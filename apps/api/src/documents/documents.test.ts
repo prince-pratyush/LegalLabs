@@ -266,10 +266,9 @@ describe("search", () => {
   it("finds nothing for someone who has lost the permission", async () => {
     const m = await seedMember(pool);
     await add(m, CLAUSE);
-    await pool.query(
-      "update core.role set permissions = '{}' where workspace_id = $1",
-      [m.workspaceId],
-    );
+    await pool.query("update core.role set permissions = '{}' where workspace_id = $1", [
+      m.workspaceId,
+    ]);
     expect(await search(asPrincipal(m), "liability")).toEqual([]);
   });
 });

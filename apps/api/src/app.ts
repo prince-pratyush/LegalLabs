@@ -5,6 +5,8 @@ import { z } from "zod";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
+import type { Documents } from "./documents/documents.js";
+import { documentRoutes } from "./documents/routes.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -25,12 +27,13 @@ const loginBody = z.object({
 
 export interface AppOptions {
   auth: Auth;
+  documents: Documents;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
 }
 
-export function createApp({ auth, clientIp, now = Date.now }: AppOptions) {
+export function createApp({ auth, documents, clientIp, now = Date.now }: AppOptions) {
   const perIp = createLimiter({ limit: 10, windowMs: 60_000, now });
   const perAccount = createLimiter({ limit: 5, windowMs: 60_000, now });
   const app = new Hono<{ Variables: { principal: Principal } }>();
@@ -89,6 +92,17 @@ export function createApp({ auth, clientIp, now = Date.now }: AppOptions) {
     if (!principal) return c.json({ error: "unauthenticated" }, 401);
     return c.json({ user_id: principal.userId, workspace_id: principal.workspaceId });
   });
+
+  app.use("/api/v1/*", async (c, next) => {
+    const token = getCookie(c, COOKIE, COOKIE_PREFIX);
+    const principal = token ? await auth.resolve(token) : null;
+    if (!principal) return c.json({ code: "UNAUTHENTICATED", message: "Sign in first." }, 401);
+    c.set("principal", principal);
+    await next();
+    c.header("Cache-Control", "no-store");
+  });
+
+  app.route("/api/v1/documents", documentRoutes(documents, clientOf));
 
   return app;
 }

@@ -4,6 +4,7 @@ import pg from "pg";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
+import { createDocuments } from "./documents/documents.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -24,6 +25,7 @@ try {
 
 const app = createApp({
   auth: createAuth(pool),
+  documents: createDocuments(pool),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
 });
 

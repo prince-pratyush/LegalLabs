@@ -120,7 +120,9 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
     const { userId, workspaceId } = principal;
     return asApp(pool, principal, async (db) => {
       const sha256 = createHash("sha256").update(input.bytes).digest();
-      const document = await db.query<Omit<SummaryRow, "version_id" | "page_count" | "empty_page_count">>(
+      const document = await db.query<
+        Omit<SummaryRow, "version_id" | "page_count" | "empty_page_count">
+      >(
         `insert into content.document (workspace_id, owner_id, matter_id, name, mime, size)
          values ($1, $2, $3, $4, $5, $6)
          returning id, name, mime, size, matter_id, created_at`,
