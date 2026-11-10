@@ -52,9 +52,15 @@ export class GatewayError extends Error {
   }
 }
 
-// A token is at least about one character, so this cannot under-count.
+const MESSAGE_OVERHEAD_TOKENS = 16;
+const encoder = new TextEncoder();
+
+// A token covers at least a byte, so counting bytes cannot under-count.
 function inputUpperBound(messages: readonly Message[]): number {
-  return messages.reduce((total, message) => total + message.content.length, 0);
+  return messages.reduce(
+    (total, message) => total + MESSAGE_OVERHEAD_TOKENS + encoder.encode(message.content).length,
+    0,
+  );
 }
 
 export function createGateway(options: GatewayOptions): Gateway {

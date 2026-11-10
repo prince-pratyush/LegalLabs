@@ -141,8 +141,23 @@ describe("gateway.call", () => {
 
     const result = await gateway.call(request);
 
-    expect(result.usage).toEqual({ input_tokens: 26, output_tokens: 100, estimated: true });
-    expect(result.cost_usd).toBeCloseTo(0.0000526, 10);
+    expect(result.usage).toEqual({ input_tokens: 42, output_tokens: 100, estimated: true });
+    expect(result.cost_usd).toBeCloseTo(0.0000542, 10);
+  });
+
+  it("does not under-count text with many bytes per character", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: answering("from haiku") },
+      recordUsage: async () => {},
+    });
+
+    await expect(
+      gateway.call({
+        ...request,
+        messages: [{ role: "user", content: "条".repeat(90_000) }],
+        budget: { max_output: 100, max_cost_usd: 0.05 },
+      }),
+    ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
   });
 
   it("skips a model whose worst case is over the cap", async () => {
