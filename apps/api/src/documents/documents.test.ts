@@ -228,6 +228,14 @@ describe("search", () => {
     expect(await search(asPrincipal(m), "termination")).toHaveLength(1);
   });
 
+  it("can match any word, so a whole question still finds a passage", async () => {
+    const m = await seedMember(pool);
+    await add(m, "The parties terminated the agreement.");
+    const question = "what happens on termination of the deal";
+    expect(await search(asPrincipal(m), question)).toEqual([]);
+    expect(await search(asPrincipal(m), question, { match: "any" })).toHaveLength(1);
+  });
+
   it("puts the closest match first", async () => {
     const m = await seedMember(pool);
     const weak = await add(m, "Indemnity is mentioned once here among unrelated words.");

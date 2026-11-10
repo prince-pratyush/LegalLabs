@@ -47,6 +47,8 @@ export interface Passage {
 export interface SearchOptions {
   limit?: number;
   documentIds?: readonly string[];
+  /** "any" finds passages with some of the words, as a typed question needs. */
+  match?: "all" | "any";
 }
 
 export interface Documents {
@@ -242,7 +244,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
       }
     },
 
-    async search(principal, query, { limit = DEFAULT_PASSAGES, documentIds } = {}) {
+    async search(principal, query, { limit = DEFAULT_PASSAGES, documentIds, match = "all" } = {}) {
       return asApp(pool, principal, async (db) => {
         // Row security rules out the text index, so these joins are what limit the scan.
         const { rows } = await db.query<{
@@ -256,7 +258,8 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
           text: string;
         }>(
           `select c.id, c.version_id, v.document_id, d.name, c.page_no, c.char_from, c.char_to, c.text
-             from websearch_to_tsquery('english', $1) q,
+             from (select case when $4 then replace(w::text, ' & ', ' | ')::tsquery else w end q
+                     from websearch_to_tsquery('english', $1) w) words,
                   content.document d
              join content.document_version v on v.document_id = d.id
              join content.chunk c on c.version_id = v.id
@@ -269,6 +272,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
             query.replaceAll("\0", ""),
             clampPassages(limit),
             documentIds?.filter((id) => UUID.test(id)) ?? null,
+            match === "any",
           ],
         );
         return rows.map((row) => ({
