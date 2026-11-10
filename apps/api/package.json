@@ -1,0 +1,28 @@
+{
+  "name": "@legallabs/api",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "legallabs-admin": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.6",
+    "@legallabs/db": "workspace:*",
+    "@node-rs/argon2": "2.2.2",
+    "hono": "4.13.17",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "vitest": "5.1.0"
+  }
+}
