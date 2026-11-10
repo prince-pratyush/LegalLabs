@@ -89,9 +89,7 @@ describe("a failed sign-in", () => {
     const m = await seedMember(pool);
     expect(await attempt(m.slug, "nobody@example.test", PASSWORD)).toBeNull();
     const trail = await auditTrail(pool, m.workspaceId);
-    expect(trail).toMatchObject([
-      { action: "login.failure", object_type: null, object_id: null },
-    ]);
+    expect(trail).toMatchObject([{ action: "login.failure", object_type: null, object_id: null }]);
     expect(trail[0].details).toEqual({ reason: "unknown_user" });
     expect(JSON.stringify(trail)).not.toContain("nobody@example.test");
   });
