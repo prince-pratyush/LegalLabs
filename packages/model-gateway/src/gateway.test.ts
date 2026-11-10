@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGateway, type ModelProvider } from "./index.js";
+import { createGateway, GatewayError, type ModelProvider } from "./index.js";
 
 const answering = (text: string): ModelProvider => ({
   complete: async () => ({ text, usage: { input_tokens: 10, output_tokens: 5 } }),
@@ -69,5 +69,29 @@ describe("gateway.call", () => {
 
     expect(result.output).toBe("from llama");
     expect(result.model).toBe("ollama/llama3.2:3b");
+  });
+
+  it("names the failed models without repeating provider errors", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: failing("rejected: What is the notice period?") },
+      recordUsage: async () => {},
+    });
+
+    const error = await gateway.call(request).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(GatewayError);
+    expect((error as GatewayError).code).toBe("ALL_MODELS_FAILED");
+    expect((error as GatewayError).attempted).toEqual(["anthropic/claude-haiku-5-5"]);
+    expect(JSON.stringify(error)).not.toContain("notice period");
+    expect((error as GatewayError).message).not.toContain("notice period");
+  });
+
+  it("reports when no usable model is configured", async () => {
+    const gateway = createGateway({
+      providers: { google: answering("from gemini") },
+      recordUsage: async () => {},
+    });
+
+    await expect(gateway.call(request)).rejects.toMatchObject({ code: "NO_MODEL_AVAILABLE" });
   });
 });
