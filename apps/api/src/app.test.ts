@@ -161,3 +161,34 @@ describe("a signed-in request", () => {
     expect((await h.app.request("/auth/session", h.withCookie(cookie))).status).toBe(401);
   });
 });
+
+describe("a request from another site", () => {
+  const post = (h: ReturnType<typeof harness>, origin?: string) =>
+    h.app.request("http://localhost:8787/auth/logout", {
+      method: "POST",
+      headers: origin === undefined ? {} : { origin },
+    });
+
+  it("is refused when it would change something", async () => {
+    const h = harness();
+    for (const origin of ["https://evil.test", "http://localhost:9999", "null"]) {
+      const res = await post(h, origin);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: "FORBIDDEN_ORIGIN" });
+    }
+  });
+
+  it("is allowed from the same origin or with no origin at all", async () => {
+    const h = harness();
+    expect((await post(h, "http://localhost:8787")).status).toBe(204);
+    expect((await post(h)).status).toBe(204);
+  });
+
+  it("can still read", async () => {
+    const h = harness();
+    const res = await h.app.request("http://localhost:8787/auth/session", {
+      headers: { origin: "https://evil.test" },
+    });
+    expect(res.status).toBe(401);
+  });
+});

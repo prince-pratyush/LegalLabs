@@ -12,6 +12,7 @@ import type { Threads } from "./threads/threads.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 // Capped so nobody can make the server hash a huge password.
 const lookupText = (min: number, max: number) =>
@@ -44,6 +45,22 @@ export function createApp({ auth, documents, threads, clientIp, now = Date.now }
   const clientOf = (c: Context): Client => ({
     ip: clientIp(c),
     userAgent: c.req.header("user-agent") ?? null,
+  });
+
+  // The browser sends the cookie with a cross-site form post, so a write must come from this
+  // host. A missing Origin is a non-browser client, which has no cookie of ours to borrow.
+  app.use(async (c, next) => {
+    const origin = c.req.header("origin");
+    if (origin !== undefined && !SAFE_METHODS.has(c.req.method)) {
+      const host = new URL(c.req.url).host;
+      if (!URL.canParse(origin) || new URL(origin).host !== host) {
+        return c.json(
+          { code: "FORBIDDEN_ORIGIN", message: "This request came from another site." },
+          403,
+        );
+      }
+    }
+    await next();
   });
 
   app.use("/auth/*", async (c, next) => {
