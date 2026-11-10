@@ -1,4 +1,6 @@
+export { aiSdkProvider } from "./ai-sdk.js";
 export type {
+  Completion,
   Gateway,
   GatewayCall,
   GatewayErrorCode,
