@@ -198,8 +198,36 @@ export async function seed(tx: Tx) {
   };
   const documents = { acme: await document(acme, ana), beta: await document(beta, bob) };
 
+  const thread = async (ws: string, owner: string, versionId: string) => {
+    const threadId = await id(
+      `insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Liability') returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      "insert into work.thread_document (workspace_id, thread_id, version_id) values ($1, $2, $3)",
+      [ws, threadId, versionId],
+    );
+    const messageId = await id(
+      `insert into work.message (workspace_id, thread_id, role, content)
+       values ($1, $2, 'assistant', 'The supplier is liable.') returning id`,
+      [ws, threadId],
+    );
+    await tx.rows(
+      `insert into work.citation
+         (workspace_id, message_id, ordinal, anchor, version_id, page_no, quote, char_from, char_to, status)
+       values ($1, $2, 0, 22, $3, 1, 'accepts liability', 13, 30, 'ok')`,
+      [ws, messageId, versionId],
+    );
+    return { threadId, messageId };
+  };
+  const threads = {
+    acme: await thread(acme, ana, documents.acme.versionId),
+    beta: await thread(beta, bob, documents.beta.versionId),
+  };
+
   return {
     documents,
+    threads,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,
     objects: { t1, tb },
