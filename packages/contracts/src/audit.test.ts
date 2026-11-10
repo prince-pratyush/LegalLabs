@@ -9,6 +9,7 @@ describe("AuditAction", () => {
     "settings.changed",
     "memory.restored",
     "document.previewed",
+    "document.ingest_failed",
     "share.link_disabled",
     "wall.denied",
     "wall.share_blocked",
