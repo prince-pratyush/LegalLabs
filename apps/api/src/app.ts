@@ -4,15 +4,16 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
+import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 
 const COOKIE = "sid";
-const PREFIX = "host";
+const PREFIX: "host" = "host";
 
 // Capped so nobody can make the server hash a huge password.
 const loginBody = z.object({
   workspace: z.string().min(1).max(63),
   email: z.string().min(3).max(320),
-  password: z.string().min(1).max(256),
+  password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
 });
 
 export interface AppOptions {
@@ -53,6 +54,9 @@ export function createApp({ auth, clientIp, now = Date.now }: AppOptions) {
 
     const result = await auth.login(attempt, clientOf(c));
     if (!result) return c.json({ error: "invalid_credentials" }, 401);
+
+    const previous = getCookie(c, COOKIE, PREFIX);
+    if (previous) await auth.logout(previous, clientOf(c));
 
     setCookie(c, COOKIE, result.token, {
       prefix: PREFIX,

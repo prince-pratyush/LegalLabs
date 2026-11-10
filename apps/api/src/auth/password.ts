@@ -3,6 +3,8 @@ import { hash, verify } from "@node-rs/argon2";
 
 const cost = { memoryCost: 19456, timeCost: 2, parallelism: 1 };
 
+export const MAX_PASSWORD_LENGTH = 256;
+
 export function hashPassword(password: string): Promise<string> {
   return hash(password, cost);
 }

@@ -46,6 +46,20 @@ describe("POST /auth/login", () => {
     expect(wrong.headers.get("set-cookie")).toBeNull();
   });
 
+  it("retires the session it replaces", async () => {
+    const m = await seedMember(pool);
+    const h = harness();
+    const body = JSON.stringify({ workspace: m.slug, email: m.email, password: PASSWORD });
+    const first = await h.login({ workspace: m.slug, email: m.email, password: PASSWORD });
+    const second = await h.app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookieOf(first) },
+      body,
+    });
+    expect((await h.app.request("/auth/session", h.withCookie(cookieOf(first)))).status).toBe(401);
+    expect((await h.app.request("/auth/session", h.withCookie(cookieOf(second)))).status).toBe(200);
+  });
+
   it("rejects a malformed or oversized request without trying it", async () => {
     const h = harness();
     expect((await h.login("{not json")).status).toBe(400);
