@@ -15,15 +15,16 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.6",
+    "@legallabs/citations": "workspace:*",
     "@legallabs/db": "workspace:*",
     "@legallabs/ingest": "workspace:*",
+    "@legallabs/model-gateway": "workspace:*",
     "@node-rs/argon2": "2.2.2",
     "hono": "4.13.17",
     "pg": "8.23.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@legallabs/citations": "workspace:*",
     "@types/pg": "8.23.1",
     "vitest": "5.1.0"
   }
