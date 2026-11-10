@@ -194,6 +194,42 @@ describe("the page", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("No model could answer just now.");
   });
 
+  describe("an answer with no checked source", () => {
+    const UNSUPPORTED = /Nothing in this answer was checked against your documents/;
+
+    async function show(answer: Partial<Thread["messages"][number]>) {
+      const [question, reply] = THREAD.messages;
+      if (!question || !reply) throw new Error("fixture changed");
+      const thread = { ...THREAD, messages: [question, { ...reply, ...answer }] };
+      serve({ ...signedIn, "POST /api/v1/threads": () => [201, { thread }] });
+      render(<App />);
+      fireEvent.click(await screen.findByLabelText(/msa\.pdf/));
+      fireEvent.change(screen.getByLabelText("Question"), { target: { value: "Cap?" } });
+      fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+      return screen.findByTestId("answer-m2");
+    }
+
+    it("warns when the model cited nothing", async () => {
+      await show({ content: "The cap is twelve months of fees.", citations: [] });
+      expect(screen.getByText(UNSUPPORTED)).toBeTruthy();
+    });
+
+    it("warns when no citation could be verified", async () => {
+      await show({ citations: [source(1, 0, "mismatch"), source(2, 0, "unresolved")] });
+      expect(screen.getByText(UNSUPPORTED)).toBeTruthy();
+    });
+
+    it("doesn't warn once one source is verified", async () => {
+      await show({});
+      expect(screen.queryByText(UNSUPPORTED)).toBeNull();
+    });
+
+    it("doesn't warn on the fixed not-found reply, which makes no claim", async () => {
+      await show({ model: null, content: "That wasn't found.", citations: [] });
+      expect(screen.queryByText(UNSUPPORTED)).toBeNull();
+    });
+  });
+
   it("won't ask without a chosen document", async () => {
     serve(signedIn);
     render(<App />);
