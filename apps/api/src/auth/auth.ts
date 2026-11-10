@@ -80,7 +80,32 @@ export function createAuth(pool: pg.Pool): Auth {
         return rows[0];
       });
       const matches = await verifyPassword(row?.password_hash ?? null, attempt.password);
-      if (!row?.user_id || !matches || row.status !== "active") return null;
+      if (!row) return null; // No workspace means no audit log to write to.
+
+      const reason = !row.user_id
+        ? "unknown_user"
+        : !row.password_hash
+          ? "no_password"
+          : !matches
+            ? "bad_password"
+            : row.status !== "active"
+              ? "not_active"
+              : null;
+      if (reason !== null || !row.user_id) {
+        await asApp(pool, { userId: null, workspaceId: row.workspace_id }, (db) =>
+          db.query(
+            "select admin.append_audit_event('login.failure', 'system', null, $1, $2, $3, $4, $5)",
+            [
+              row.user_id ? "user" : null,
+              row.user_id,
+              JSON.stringify({ reason }),
+              client.ip,
+              uaHash(client),
+            ],
+          ),
+        );
+        return null;
+      }
 
       const userId = row.user_id;
       const workspaceId = row.workspace_id;
