@@ -34,12 +34,14 @@ export function createGateway(options: GatewayOptions): Gateway {
       for (const route of ROUTES[request.task_class]) {
         const provider = options.providers[route.provider];
         if (!provider || (!route.client_data && !options.allowDemoModels)) continue;
-        const { text } = await provider.complete({
-          model: route.model,
-          messages: request.messages,
-          max_output: request.budget.max_output,
-        });
-        return { output: text, model: `${route.provider}/${route.model}` };
+        try {
+          const { text } = await provider.complete({
+            model: route.model,
+            messages: request.messages,
+            max_output: request.budget.max_output,
+          });
+          return { output: text, model: `${route.provider}/${route.model}` };
+        } catch {}
       }
       throw new Error("no model");
     },

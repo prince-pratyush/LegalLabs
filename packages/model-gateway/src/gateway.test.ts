@@ -5,6 +5,12 @@ const answering = (text: string): ModelProvider => ({
   complete: async () => ({ text, usage: { input_tokens: 10, output_tokens: 5 } }),
 });
 
+const failing = (message: string): ModelProvider => ({
+  complete: async () => {
+    throw new Error(message);
+  },
+});
+
 const request = {
   task_class: "synthesize",
   messages: [{ role: "user", content: "What is the notice period?" }],
@@ -51,5 +57,17 @@ describe("gateway.call", () => {
     });
 
     expect((await gateway.call(request)).output).toBe("from gemini");
+  });
+
+  it("falls back to the next model when one fails", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: failing("overloaded"), ollama: answering("from llama") },
+      recordUsage: async () => {},
+    });
+
+    const result = await gateway.call(request);
+
+    expect(result.output).toBe("from llama");
+    expect(result.model).toBe("ollama/llama3.2:3b");
   });
 });
