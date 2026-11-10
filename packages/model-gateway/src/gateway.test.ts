@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGateway, GatewayError, type ModelProvider } from "./index.js";
+import { createGateway, GatewayError, type ModelProvider, type UsageRecord } from "./index.js";
 
 const answering = (text: string): ModelProvider => ({
   complete: async () => ({ text, usage: { input_tokens: 10, output_tokens: 5 } }),
@@ -178,5 +178,51 @@ describe("gateway.call", () => {
     await expect(
       gateway.call({ ...request, budget: { max_output: 100, max_cost_usd: 0.00001 } }),
     ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
+  });
+
+  it("records usage and timing without content", async () => {
+    const records: UsageRecord[] = [];
+    const times = [1_000, 1_250];
+    const gateway = createGateway({
+      providers: { anthropic: using(100_000, 200_000) },
+      recordUsage: async (record) => {
+        records.push(record);
+      },
+      now: () => times.shift() ?? 0,
+    });
+
+    const result = await gateway.call(request);
+
+    expect(result.latency_ms).toBe(250);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      workspace: "ws_1",
+      trace: "trace_1",
+      task_class: "synthesize",
+      model: "anthropic/claude-haiku-5-5",
+      usage: { input_tokens: 100_000, output_tokens: 200_000, estimated: false },
+      latency_ms: 250,
+    });
+    expect(records[0]?.cost_usd).toBeCloseTo(0.11, 8);
+    expect(JSON.stringify(records)).not.toContain("notice period");
+  });
+
+  it("does not pay twice when recording usage fails", async () => {
+    let calls = 0;
+    const counting: ModelProvider = {
+      complete: async () => {
+        calls += 1;
+        return { text: "ok" };
+      },
+    };
+    const gateway = createGateway({
+      providers: { anthropic: counting, ollama: counting },
+      recordUsage: async () => {
+        throw new Error("ledger down");
+      },
+    });
+
+    await expect(gateway.call(request)).rejects.toThrow("ledger down");
+    expect(calls).toBe(1);
   });
 });

@@ -25,14 +25,19 @@ export type GatewayCall = {
   trace: string;
 };
 
-export type GatewayResult = { output: string; model: string; usage: Usage; cost_usd: number };
+type Measured = { model: string; usage: Usage; cost_usd: number; latency_ms: number };
+
+export type GatewayResult = Measured & { output: string };
+
+export type UsageRecord = Measured & { workspace: string; trace: string; task_class: TaskClass };
 
 export type Gateway = { call(request: GatewayCall): Promise<GatewayResult> };
 
 export type GatewayOptions = {
   providers: Partial<Record<ProviderId, ModelProvider>>;
   allowDemoModels?: boolean;
-  recordUsage: (record: unknown) => Promise<void>;
+  recordUsage: (record: UsageRecord) => Promise<void>;
+  now?: () => number;
 };
 
 export type GatewayErrorCode = "NO_MODEL_AVAILABLE" | "BUDGET_EXCEEDED" | "ALL_MODELS_FAILED";
@@ -53,8 +58,10 @@ function inputUpperBound(messages: readonly Message[]): number {
 }
 
 export function createGateway(options: GatewayOptions): Gateway {
+  const now = options.now ?? Date.now;
   return {
     async call(request) {
+      const startedAt = now();
       const attempted: string[] = [];
       const inputTokens = inputUpperBound(request.messages);
       let overBudget = false;
@@ -86,12 +93,19 @@ export function createGateway(options: GatewayOptions): Gateway {
               output_tokens: request.budget.max_output,
               estimated: true,
             };
-        return {
-          output: completion.text,
+        const measured = {
           model,
           usage,
           cost_usd: costUsd(route.price, usage.input_tokens, usage.output_tokens),
+          latency_ms: now() - startedAt,
         };
+        await options.recordUsage({
+          ...measured,
+          workspace: request.routing.workspace,
+          trace: request.trace,
+          task_class: request.task_class,
+        });
+        return { output: completion.text, ...measured };
       }
       if (attempted.length) throw new GatewayError("ALL_MODELS_FAILED", attempted);
       throw new GatewayError(overBudget ? "BUDGET_EXCEEDED" : "NO_MODEL_AVAILABLE", attempted);
