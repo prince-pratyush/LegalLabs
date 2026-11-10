@@ -48,6 +48,8 @@ export function aiSdkProvider(modelFor: (id: string) => LanguageModel): ModelPro
         // The gateway falls back to another model, so retries here would only add delay.
         maxRetries: 0,
         timeout: TIMEOUT_MS,
+        // Off explicitly: a registered integration would otherwise export prompts.
+        telemetry: { isEnabled: false },
       });
       const { inputTokens, outputTokens } = usage;
       if (inputTokens === undefined || outputTokens === undefined) return { text };

@@ -1,4 +1,4 @@
-import { APICallError } from "ai";
+import { APICallError, registerTelemetry } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { aiSdkProvider, gatewayOptionsFromEnv, type Message } from "./index.js";
@@ -86,6 +86,20 @@ describe("aiSdkProvider", () => {
     });
 
     expect(completion.usage).toBeUndefined();
+  });
+
+  it("sends nothing to a registered telemetry integration", async () => {
+    let telemetryCalls = 0;
+    registerTelemetry({
+      onStart: () => {
+        telemetryCalls += 1;
+      },
+    });
+    const mock = new MockLanguageModelV4({ doGenerate: async () => generated(12, 3) });
+
+    await aiSdkProvider(() => mock).complete({ model: "any", messages, max_output: 50 });
+
+    expect(telemetryCalls).toBe(0);
   });
 
   it("leaves retrying to the gateway's fallback", async () => {
