@@ -47,6 +47,11 @@ export class GatewayError extends Error {
   }
 }
 
+// A token is at least about one character, so this cannot under-count.
+function inputUpperBound(messages: readonly Message[]): number {
+  return messages.reduce((total, message) => total + message.content.length, 0);
+}
+
 export function createGateway(options: GatewayOptions): Gateway {
   return {
     async call(request) {
@@ -67,11 +72,13 @@ export function createGateway(options: GatewayOptions): Gateway {
           attempted.push(model);
           continue;
         }
-        const usage = {
-          input_tokens: completion.usage?.input_tokens ?? 0,
-          output_tokens: completion.usage?.output_tokens ?? 0,
-          estimated: false,
-        };
+        const usage: Usage = completion.usage
+          ? { ...completion.usage, estimated: false }
+          : {
+              input_tokens: inputUpperBound(request.messages),
+              output_tokens: request.budget.max_output,
+              estimated: true,
+            };
         return {
           output: completion.text,
           model,

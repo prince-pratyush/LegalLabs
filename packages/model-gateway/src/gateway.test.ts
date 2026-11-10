@@ -132,4 +132,16 @@ describe("gateway.call", () => {
 
     expect((await gateway.call(request)).cost_usd).toBe(0);
   });
+
+  it("assumes the worst when a model reports no usage", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: { complete: async () => ({ text: "ok" }) } },
+      recordUsage: async () => {},
+    });
+
+    const result = await gateway.call(request);
+
+    expect(result.usage).toEqual({ input_tokens: 26, output_tokens: 100, estimated: true });
+    expect(result.cost_usd).toBeCloseTo(0.0000526, 10);
+  });
 });
