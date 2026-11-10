@@ -117,6 +117,8 @@ describe("documents API", () => {
     ],
     ["a malformed matter id", () => formWith("a.txt", CLAUSE, "not-a-uuid")],
     ["a control character in the name", () => formWith("a\u0007b.txt")],
+    ["a direction override hiding the real extension", () => formWith("a‮txt.exe.txt")],
+    ["a line separator in the name", () => formWith("a b.txt")],
     ["a name that is too long", () => formWith(`${"x".repeat(256)}.txt`)],
   ])("rejects %s", async (_, form) => {
     const m = await seedMember(pool);

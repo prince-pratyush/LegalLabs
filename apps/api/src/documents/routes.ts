@@ -47,7 +47,7 @@ const fileName = z
   .string()
   .min(1)
   .max(255)
-  .regex(/^\P{Cc}+$/u);
+  .regex(/^[^\p{C}\p{Zl}\p{Zp}]+$/u);
 
 const summaryJson = (document: Summary) => ({
   id: document.id,
