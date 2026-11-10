@@ -228,6 +228,31 @@ describe("search", () => {
     expect(await search(asPrincipal(m), "termination")).toHaveLength(1);
   });
 
+  it("can match any word, so a whole question still finds a passage", async () => {
+    const m = await seedMember(pool);
+    await add(m, "The parties terminated the agreement.");
+    const question = "what happens on termination of the deal";
+    expect(await search(asPrincipal(m), question)).toEqual([]);
+    expect(await search(asPrincipal(m), question, { match: "any" })).toHaveLength(1);
+  });
+
+  it("leaves out negated words when matching any, instead of matching everything", async () => {
+    const m = await seedMember(pool);
+    const wanted = await add(m, "The parties terminated the agreement.");
+    await add(m, "Weather is nice today.");
+    const found = await search(asPrincipal(m), "termination -payment", { match: "any" });
+    expect(found.map((p) => p.documentId)).toEqual([wanted.id]);
+  });
+
+  it("can be limited to chosen versions", async () => {
+    const m = await seedMember(pool);
+    const first = await add(m, CLAUSE);
+    const second = await add(m, CLAUSE);
+    const found = await search(asPrincipal(m), "liability", { versionIds: [second.versionId] });
+    expect(found.map((p) => p.documentVersionId)).toEqual([second.versionId]);
+    expect(first.versionId).not.toBe(second.versionId);
+  });
+
   it("puts the closest match first", async () => {
     const m = await seedMember(pool);
     const weak = await add(m, "Indemnity is mentioned once here among unrelated words.");

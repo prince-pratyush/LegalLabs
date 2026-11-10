@@ -47,6 +47,10 @@ export interface Passage {
 export interface SearchOptions {
   limit?: number;
   documentIds?: readonly string[];
+  /** Pins a search to exact versions, as a thread that cites them needs. */
+  versionIds?: readonly string[];
+  /** "any" finds passages with some of the words, as a typed question needs. */
+  match?: "all" | "any";
 }
 
 export interface Documents {
@@ -77,6 +81,12 @@ const DEFAULT_PASSAGES = 10;
 export const MAX_PASSAGES = 50;
 const MAX_INT = 2 ** 31 - 1;
 const RLS_REFUSED = "42501";
+
+// With "any", a negated word would turn into "or not that word" and match almost everything.
+const searchText = (query: string, match: "all" | "any") => {
+  const text = query.replaceAll("\0", "");
+  return match === "any" ? text.replace(/(^|\s)-\S*/g, "$1") : text;
+};
 
 const clampPassages = (limit: number) =>
   Math.min(Math.max(Math.trunc(limit) || DEFAULT_PASSAGES, 1), MAX_PASSAGES);
@@ -242,7 +252,11 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
       }
     },
 
-    async search(principal, query, { limit = DEFAULT_PASSAGES, documentIds } = {}) {
+    async search(
+      principal,
+      query,
+      { limit = DEFAULT_PASSAGES, documentIds, versionIds, match = "all" } = {},
+    ) {
       return asApp(pool, principal, async (db) => {
         // Row security rules out the text index, so these joins are what limit the scan.
         const { rows } = await db.query<{
@@ -256,19 +270,23 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
           text: string;
         }>(
           `select c.id, c.version_id, v.document_id, d.name, c.page_no, c.char_from, c.char_to, c.text
-             from websearch_to_tsquery('english', $1) q,
+             from (select case when $4 then replace(w::text, ' & ', ' | ')::tsquery else w end q
+                     from websearch_to_tsquery('english', $1) w) words,
                   content.document d
              join content.document_version v on v.document_id = d.id
              join content.chunk c on c.version_id = v.id
             where c.tsv @@ q
               and core.has_permission('threads.use')
               and ($3::uuid[] is null or d.id = any($3::uuid[]))
+              and ($5::uuid[] is null or v.id = any($5::uuid[]))
             order by ts_rank_cd(c.tsv, q) desc, c.id
             limit $2`,
           [
-            query.replaceAll("\0", ""),
+            searchText(query, match),
             clampPassages(limit),
             documentIds?.filter((id) => UUID.test(id)) ?? null,
+            match === "any",
+            versionIds?.filter((id) => UUID.test(id)) ?? null,
           ],
         );
         return rows.map((row) => ({

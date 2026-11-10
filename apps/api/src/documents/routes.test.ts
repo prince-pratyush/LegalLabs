@@ -1,8 +1,10 @@
 import type { IngestResult } from "@legallabs/ingest";
+import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
 import { PASSWORD, type Seeded, seedMember, testPool } from "../test-db.js";
+import { createThreads } from "../threads/threads.js";
 import { createDocuments, type DocumentsOptions } from "./documents.js";
 
 const pool = testPool();
@@ -14,6 +16,10 @@ function harness(options: DocumentsOptions = {}) {
   const app = createApp({
     auth: createAuth(pool),
     documents: createDocuments(pool, options),
+    threads: createThreads(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+      documents: createDocuments(pool),
+    }),
     clientIp: () => "203.0.113.9",
   });
   const signIn = async (m: Seeded) => {

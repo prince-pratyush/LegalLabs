@@ -1,19 +1,29 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { createDocuments } from "./documents/documents.js";
 import { PASSWORD, seedMember, testPool } from "./test-db.js";
+import { createThreads } from "./threads/threads.js";
 
 const pool = testPool();
 afterAll(() => pool.end());
 
-function harness(ip = "203.0.113.9") {
+function harness(ip = "203.0.113.9", webRoot?: string) {
   let time = 1_000_000;
   const app = createApp({
     auth: createAuth(pool),
     documents: createDocuments(pool),
+    threads: createThreads(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+      documents: createDocuments(pool),
+    }),
     clientIp: () => ip,
     now: () => time,
+    ...(webRoot ? { webRoot } : {}),
   });
   const login = (body: unknown) =>
     app.request("/auth/login", {
@@ -153,5 +163,63 @@ describe("a signed-in request", () => {
     expect(out.status).toBe(204);
     expect(out.headers.get("set-cookie")).toMatch(/^__Host-sid=;.*Max-Age=0/);
     expect((await h.app.request("/auth/session", h.withCookie(cookie))).status).toBe(401);
+  });
+});
+
+describe("a request from another site", () => {
+  const post = (h: ReturnType<typeof harness>, origin?: string) =>
+    h.app.request("http://localhost:8787/auth/logout", {
+      method: "POST",
+      headers: origin === undefined ? {} : { origin },
+    });
+
+  it("is refused when it would change something", async () => {
+    const h = harness();
+    for (const origin of ["https://evil.test", "http://localhost:9999", "null"]) {
+      const res = await post(h, origin);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: "FORBIDDEN_ORIGIN" });
+    }
+  });
+
+  it("is allowed from the same origin or with no origin at all", async () => {
+    const h = harness();
+    expect((await post(h, "http://localhost:8787")).status).toBe(204);
+    expect((await post(h)).status).toBe(204);
+  });
+
+  it("can still read", async () => {
+    const h = harness();
+    const res = await h.app.request("http://localhost:8787/auth/session", {
+      headers: { origin: "https://evil.test" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("the web page", () => {
+  const root = mkdtempSync(join(tmpdir(), "legallabs-web-"));
+  writeFileSync(join(root, "index.html"), "<!doctype html><title>LegalLabs</title>");
+
+  it("is served from the same origin with a strict content policy", async () => {
+    const h = harness("203.0.113.9", root);
+    const res = await h.app.request("/");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("<title>LegalLabs</title>");
+    expect(res.headers.get("content-security-policy")).toMatch(/^default-src 'self'/);
+    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("puts the same policy on API answers", async () => {
+    const h = harness();
+    const res = await h.app.request("/auth/session");
+    expect(res.headers.get("content-security-policy")).toMatch(/^default-src 'self'/);
+  });
+
+  it("doesn't hand out files outside its folder", async () => {
+    const h = harness("203.0.113.9", root);
+    expect((await h.app.request("/../package.json")).status).toBe(404);
+    expect((await h.app.request("/%2e%2e/package.json")).status).toBe(404);
   });
 });

@@ -1,10 +1,14 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
+import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import pg from "pg";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { createDocuments } from "./documents/documents.js";
+import { createThreads } from "./threads/threads.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -23,10 +27,22 @@ try {
   process.exit(1);
 }
 
+const documents = createDocuments(pool);
+const gateway = createGateway({
+  ...gatewayOptionsFromEnv(process.env),
+  // A no-op: usage goes on the answer's message row, so it is saved or rolled back with it.
+  recordUsage: async () => {},
+});
+
+// The web app's build, when present, so the demo runs from one server on one origin.
+const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
+
 const app = createApp({
   auth: createAuth(pool),
-  documents: createDocuments(pool),
+  documents,
+  threads: createThreads(pool, { gateway, documents }),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
+  ...(existsSync(webRoot) ? { webRoot } : {}),
 });
 
 serve({
