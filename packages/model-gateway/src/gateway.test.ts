@@ -11,6 +11,10 @@ const failing = (message: string): ModelProvider => ({
   },
 });
 
+const using = (input_tokens: number, output_tokens: number): ModelProvider => ({
+  complete: async () => ({ text: "ok", usage: { input_tokens, output_tokens } }),
+});
+
 const request = {
   task_class: "synthesize",
   messages: [{ role: "user", content: "What is the notice period?" }],
@@ -93,5 +97,39 @@ describe("gateway.call", () => {
     });
 
     await expect(gateway.call(request)).rejects.toMatchObject({ code: "NO_MODEL_AVAILABLE" });
+  });
+
+  it("works out cost from the model's prices", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: using(100_000, 200_000) },
+      recordUsage: async () => {},
+    });
+
+    const result = await gateway.call(request);
+
+    expect(result.usage).toEqual({
+      input_tokens: 100_000,
+      output_tokens: 200_000,
+      estimated: false,
+    });
+    expect(result.cost_usd).toBeCloseTo(0.11, 8);
+  });
+
+  it("charges the long-prompt rate above its threshold", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: using(200_000, 100_000) },
+      recordUsage: async () => {},
+    });
+
+    expect((await gateway.call(request)).cost_usd).toBeCloseTo(0.35, 8);
+  });
+
+  it("charges nothing for a local model", async () => {
+    const gateway = createGateway({
+      providers: { ollama: using(200_000, 100_000) },
+      recordUsage: async () => {},
+    });
+
+    expect((await gateway.call(request)).cost_usd).toBe(0);
   });
 });

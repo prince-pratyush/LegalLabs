@@ -1,14 +1,21 @@
-import { type ProviderId, ROUTES, type TaskClass } from "./routes.js";
+import { costUsd, type ProviderId, ROUTES, type TaskClass } from "./routes.js";
 
 export type Message = { role: "system" | "user" | "assistant"; content: string };
+
+export type Completion = {
+  text: string;
+  usage?: { input_tokens: number; output_tokens: number };
+};
 
 export type ModelProvider = {
   complete(request: {
     model: string;
     messages: readonly Message[];
     max_output: number;
-  }): Promise<{ text: string; usage?: { input_tokens: number; output_tokens: number } }>;
+  }): Promise<Completion>;
 };
+
+export type Usage = { input_tokens: number; output_tokens: number; estimated: boolean };
 
 export type GatewayCall = {
   task_class: TaskClass;
@@ -18,7 +25,7 @@ export type GatewayCall = {
   trace: string;
 };
 
-export type GatewayResult = { output: string; model: string };
+export type GatewayResult = { output: string; model: string; usage: Usage; cost_usd: number };
 
 export type Gateway = { call(request: GatewayCall): Promise<GatewayResult> };
 
@@ -47,17 +54,30 @@ export function createGateway(options: GatewayOptions): Gateway {
       for (const route of ROUTES[request.task_class]) {
         const provider = options.providers[route.provider];
         if (!provider || (!route.client_data && !options.allowDemoModels)) continue;
+        const model = `${route.provider}/${route.model}`;
+        let completion: Completion;
         try {
-          const { text } = await provider.complete({
+          completion = await provider.complete({
             model: route.model,
             messages: request.messages,
             max_output: request.budget.max_output,
           });
-          return { output: text, model: `${route.provider}/${route.model}` };
         } catch {
           // The provider's error is dropped because it can quote the prompt.
-          attempted.push(`${route.provider}/${route.model}`);
+          attempted.push(model);
+          continue;
         }
+        const usage = {
+          input_tokens: completion.usage?.input_tokens ?? 0,
+          output_tokens: completion.usage?.output_tokens ?? 0,
+          estimated: false,
+        };
+        return {
+          output: completion.text,
+          model,
+          usage,
+          cost_usd: costUsd(route.price, usage.input_tokens, usage.output_tokens),
+        };
       }
       throw new GatewayError(attempted.length ? "ALL_MODELS_FAILED" : "NO_MODEL_AVAILABLE", attempted);
     },
