@@ -25,13 +25,13 @@ describe("a limiter", () => {
     expect(limiter.take("a")).toBe(0);
   });
 
-  it("forgets expired keys, so memory stays bounded", () => {
+  it("refuses new keys while full, so memory stays bounded", () => {
     let time = 0;
     const limiter = createLimiter({ limit: 1, windowMs: 1_000, now: () => time, maxKeys: 2 });
     limiter.take("a");
     limiter.take("b");
+    expect(limiter.take("c")).toBe(1);
     time = 2_000;
-    limiter.take("c");
-    expect(limiter.size()).toBe(1);
+    expect(limiter.take("c")).toBe(0);
   });
 });

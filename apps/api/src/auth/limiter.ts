@@ -1,7 +1,6 @@
 export interface Limiter {
   /** Returns 0 if allowed, otherwise the seconds to wait. */
   take(key: string): number;
-  size(): number;
 }
 
 export function createLimiter(options: {
@@ -14,11 +13,12 @@ export function createLimiter(options: {
   const windows = new Map<string, { count: number; resetAt: number }>();
 
   return {
-    size: () => windows.size,
     take(key) {
       const at = now();
-      if (windows.size >= maxKeys) {
+      if (!windows.has(key) && windows.size >= maxKeys) {
         for (const [k, w] of windows) if (w.resetAt <= at) windows.delete(k);
+        // Refusing is the safe side: a flood must not grow memory or get a free pass.
+        if (windows.size >= maxKeys) return Math.ceil(windowMs / 1000);
       }
       const current = windows.get(key);
       if (!current || current.resetAt <= at) {
