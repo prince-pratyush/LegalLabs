@@ -1,4 +1,4 @@
-export { aiSdkProvider } from "./ai-sdk.js";
+export { aiSdkProvider, gatewayOptionsFromEnv } from "./ai-sdk.js";
 export type {
   Completion,
   Gateway,

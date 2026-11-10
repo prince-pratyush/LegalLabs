@@ -1,7 +1,7 @@
 import { APICallError } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
-import { aiSdkProvider, type Message } from "./index.js";
+import { aiSdkProvider, gatewayOptionsFromEnv, type Message } from "./index.js";
 
 const messages: Message[] = [
   { role: "system", content: "Answer briefly." },
@@ -21,6 +21,40 @@ const generated = (inputTokens: number | undefined, outputTokens: number | undef
     outputTokens: { total: outputTokens, text: undefined, reasoning: undefined },
   },
   warnings: [],
+});
+
+describe("gatewayOptionsFromEnv", () => {
+  it("configures nothing without keys, so nothing can be spent", () => {
+    expect(gatewayOptionsFromEnv({})).toEqual({ providers: {}, allowDemoModels: false });
+  });
+
+  it("configures only the providers that have settings", () => {
+    const { providers } = gatewayOptionsFromEnv({
+      ANTHROPIC_API_KEY: "test-key",
+      OLLAMA_BASE_URL: "http://localhost:11434",
+      DEEPSEEK_API_KEY: "",
+    });
+
+    expect(Object.keys(providers).sort()).toEqual(["anthropic", "ollama"]);
+  });
+
+  it("configures DeepSeek and Gemini from their keys", () => {
+    const { providers } = gatewayOptionsFromEnv({
+      DEEPSEEK_API_KEY: "test-key",
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+    });
+
+    expect(Object.keys(providers).sort()).toEqual(["deepseek", "google"]);
+  });
+
+  it("allows demo models only for the exact word true", () => {
+    const allowed = (value: string) =>
+      gatewayOptionsFromEnv({ LEGALLABS_ALLOW_DEMO_MODELS: value }).allowDemoModels;
+
+    expect(allowed("true")).toBe(true);
+    expect(allowed("1")).toBe(false);
+    expect(allowed("TRUE")).toBe(false);
+  });
 });
 
 describe("aiSdkProvider", () => {
