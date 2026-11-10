@@ -57,7 +57,8 @@ create table work.citation (
   primary key (message_id, ordinal),
   check (char_to > char_from),
   check (status <> 'ok' or (version_id is not null and page_no is not null
-                            and quote is not null and char_from is not null)),
+                            and quote is not null and char_from is not null
+                            and char_to is not null)),
   foreign key (workspace_id, message_id) references work.message (workspace_id, id) on delete cascade,
   foreign key (workspace_id, version_id) references content.document_version (workspace_id, id)
     on delete cascade

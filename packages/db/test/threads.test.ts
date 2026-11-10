@@ -231,6 +231,14 @@ describe("what a thread can hold", () => {
           [s.acme, message_id],
         ),
       ).toMatch(/check constraint/);
+      expect(
+        await tx.error(
+          `insert into work.citation
+             (workspace_id, message_id, ordinal, anchor, version_id, page_no, quote, char_from, status)
+           values ($1, $2, 2, 0, $3, 1, 'q', 0, 'ok')`,
+          [s.acme, message_id, s.documents.acme.versionId],
+        ),
+      ).toMatch(/check constraint/);
     });
   });
 
