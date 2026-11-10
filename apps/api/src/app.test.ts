@@ -60,6 +60,11 @@ describe("POST /auth/login", () => {
     expect((await h.app.request("/auth/session", h.withCookie(cookieOf(second)))).status).toBe(200);
   });
 
+  it("rejects a NUL byte instead of passing it to the database", async () => {
+    const res = await harness().login({ workspace: "a", email: "b\0@c.d", password: "x" });
+    expect(res.status).toBe(400);
+  });
+
   it("rejects a malformed or oversized request without trying it", async () => {
     const h = harness();
     expect((await h.login("{not json")).status).toBe(400);

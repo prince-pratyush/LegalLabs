@@ -10,9 +10,16 @@ const COOKIE = "sid";
 const PREFIX: "host" = "host";
 
 // Capped so nobody can make the server hash a huge password.
+const lookupText = (min: number, max: number) =>
+  z
+    .string()
+    .min(min)
+    .max(max)
+    .refine((text) => !text.includes("\0"), "Postgres text cannot hold a NUL byte");
+
 const loginBody = z.object({
-  workspace: z.string().min(1).max(63),
-  email: z.string().min(3).max(320),
+  workspace: lookupText(1, 63),
+  email: lookupText(3, 320),
   password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
 });
 
