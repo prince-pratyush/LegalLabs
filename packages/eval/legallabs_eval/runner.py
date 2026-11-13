@@ -154,6 +154,7 @@ class Runner:
                 attempt_dir=attempt_dir,
                 run_dir=self.run_dir,
                 top_k=self.suite.top_k,
+                output_schema=self.suite.output_schema,
             )
             result = self.harness.run(request)
             record_cost(attempt_dir / "agent", result.cost or Cost.free())

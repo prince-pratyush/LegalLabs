@@ -38,6 +38,9 @@ def make_manifest(
         "suite": suite.name,
         "suite_instructions_sha256": sha256(suite.instructions),
         "dataset_fingerprint": suite.dataset_fingerprint,
+        "output_schema": suite.output_schema,
+        # The judges grade the answers, so a new judge model means a new run.
+        "judges": getattr(suite, "judges", None),
         "run_suffix": suffix,
     }
     manifest["config_hash"] = sha256(json.dumps(manifest, sort_keys=True))[:12]

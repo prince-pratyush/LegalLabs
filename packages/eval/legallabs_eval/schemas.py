@@ -41,6 +41,8 @@ class HarnessRequest:
     run_dir: Path
     # Set for retrieval suites: how many hits to return.
     top_k: int | None = None
+    # Set for answer suites: the JSON shape the answer must take.
+    output_schema: dict[str, Any] | None = None
 
 
 @dataclass

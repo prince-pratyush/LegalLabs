@@ -15,6 +15,7 @@ class Suite:
     primary_metric: str
     dataset_fingerprint: str
     top_k: int | None = None
+    output_schema: dict | None = None
 
     def load_tasks(self, limit: int | None = None) -> list[TaskDatum]:
         raise NotImplementedError
