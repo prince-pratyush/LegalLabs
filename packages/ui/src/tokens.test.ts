@@ -45,6 +45,21 @@ describe.each(["light", "dark"] as Theme[])("%s theme", (theme) => {
     }
   }
 
+  // Focus ring, control edges and status dots must be seen, if not read.
+  for (const ui of ["accent", "control", ...text] as const) {
+    for (const bg of surfaces) {
+      it(`${ui} as a control on ${bg} is at least 3:1`, () => {
+        expect(contrast(c[ui], c[bg])).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+
+  for (const fill of ["accent", "destructive"] as const) {
+    it(`button text on ${fill} is at least 4.5:1`, () => {
+      expect(contrast(c.bg, c[fill])).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
   it("external text on its banner is at least 4.5:1", () => {
     expect(contrast(c.externalFg, c.externalBg)).toBeGreaterThanOrEqual(4.5);
   });
