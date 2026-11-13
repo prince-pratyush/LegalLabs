@@ -36,10 +36,11 @@ class Bm25Harness(Harness):
         params = system.get("params", {})
         self.k1 = float(params.get("k1", 1.2))
         self.b = float(params.get("b", 0.75))
+        self.chunk_size = int(params.get("chunk_size", MAX_CHUNK))
         self.chunks: list[Hit] = []
 
     def prepare(self, corpus: list[Document]) -> None:
-        self.chunks = [c for doc in corpus for c in chunk(doc)]
+        self.chunks = [c for doc in corpus for c in chunk(doc, self.chunk_size)]
         self.tf = [Counter(tokens(c.text)) for c in self.chunks]
         self.lengths = [sum(t.values()) for t in self.tf]
         self.avg = sum(self.lengths) / len(self.lengths) if self.lengths else 0.0

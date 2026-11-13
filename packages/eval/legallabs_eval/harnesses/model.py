@@ -43,10 +43,12 @@ class NaiveRagHarness(PlainModelHarness):
 
     def __init__(self, system_name: str, system: dict, send: Send | None = None) -> None:
         super().__init__(system_name, system, send)
-        self.top_k = int(system.get("params", {}).get("top_k", 8))
+        params = system.get("params", {})
+        self.top_k = int(params.get("top_k", 8))
+        self.chunk_size = int(params.get("chunk_size", 1000))
 
     def context(self, request: HarnessRequest) -> str:
-        index = Bm25Harness("bm25", {"harness": "bm25"})
+        index = Bm25Harness("bm25", {"harness": "bm25", "params": {"chunk_size": self.chunk_size}})
         index.prepare([Document(request.task.id, request.task.context or "")])
         found = index.run(
             HarnessRequest(
