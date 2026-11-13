@@ -10,6 +10,7 @@ dependencies = [
     "extract-msg>=0.58.2",
     "fastapi>=0.162.5",
     "libpff-python>=20261030",
+    "olefile>=0.47",
     "openpyxl>=3.1.5",
     "python-multipart>=0.0.33",
     "torch>=2.15.0",
