@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\ud800-\udfff]")
 _SPACES = re.compile(r"\s+")
 
+# Stops runaway pages early; the total across pages is checked at the end.
+MAX_PAGE_CHARS = 5_000_000
+
 
 class ParseFailure(Exception):
     def __init__(self, reason: str):
@@ -68,6 +71,8 @@ class Page:
     def _append(self, text: str) -> None:
         self._parts.append(text)
         self._pos += u16len(text)
+        if self._pos > MAX_PAGE_CHARS:
+            raise ParseFailure("TOO_COMPLEX")
 
     def to_json(self) -> dict:
         return {
