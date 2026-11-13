@@ -76,3 +76,13 @@ def span_iou(a: set[int], b: set[int]) -> float:
     if not a and not b:
         return 1.0
     return len(a & b) / len(a | b)
+
+
+def locate(quote: str, text: str) -> set[int] | None:
+    """The character positions of a quote in the text, ignoring runs of whitespace."""
+    words = quote.split()
+    if not words:
+        return None
+    pattern = r"\s+".join(re.escape(w) for w in words)
+    match = re.search(pattern, text)
+    return set(range(match.start(), match.end())) if match else None
