@@ -111,6 +111,8 @@ export const RunEvent = z.discriminatedUnion("type", [
     usage: Usage,
     cost_usd: z.number(),
     citations: CitationCounts,
+    // The sentences with no verified source, so the live view flags them too.
+    ungrounded: z.array(z.tuple([z.number().int(), z.number().int()])).optional(),
     coverage: Coverage.optional(),
     duration_ms: z.number().int(),
   }),
@@ -119,8 +121,10 @@ export const RunEvent = z.discriminatedUnion("type", [
 export type RunEvent = z.infer<typeof RunEvent>;
 export type RunEventType = RunEvent["type"];
 
+export const FINISHED: readonly RunStatus[] = ["done", "failed", "cancelled"];
+
 /** Events that end a run's stream. */
 export const isTerminal = (event: RunEvent) =>
   event.type === "done" ||
   (event.type === "error" && !event.retryable) ||
-  (event.type === "status" && ["done", "failed", "cancelled"].includes(event.status));
+  (event.type === "status" && FINISHED.includes(event.status));
