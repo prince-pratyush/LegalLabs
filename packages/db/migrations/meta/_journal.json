@@ -183,6 +183,20 @@
       "when": 1794009625000,
       "tag": "0026_content_vaults",
       "breakpoints": false
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794009626000,
+      "tag": "0027_content_vault_functions",
+      "breakpoints": false
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794009627000,
+      "tag": "0028_content_vault_retention",
+      "breakpoints": false
     }
   ]
 }
