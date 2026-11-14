@@ -15,7 +15,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
@@ -42,3 +42,20 @@ jobs:
       - run: timeout 60 sh -c 'until curl -s -o /dev/null http://127.0.0.1:8333; do sleep 1; done'
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm --filter @legallabs/ui build-storybook
+
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/eval
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+      # The offline baseline needs no keys, so every PR proves a run still ends in summary.json.
+      - run: uv run legallabs-eval run --system bm25-local --suite retrieval-golden
