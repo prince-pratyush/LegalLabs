@@ -53,9 +53,12 @@ describe("parseDocumentHref", () => {
   });
 
   it("drops parameters it can't trust", () => {
-    expect(
-      parseDocumentHref(`/documents/${anchor.document_id}?v=x&page=-1&span=9-3`),
-    ).toEqual({ document_id: anchor.document_id, version_id: null, page: null, span: null });
+    expect(parseDocumentHref(`/documents/${anchor.document_id}?v=x&page=-1&span=9-3`)).toEqual({
+      document_id: anchor.document_id,
+      version_id: null,
+      page: null,
+      span: null,
+    });
   });
 });
 

@@ -1,13 +1,12 @@
 export { AuditAction, AuditActorType, auditActions } from "./audit.js";
 export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
-export { Wall, WallMode } from "./wall.js";
 export {
   Anchor,
   CitationStatus,
   citationHref,
-  type DocumentLocation,
   DocumentHit,
+  type DocumentLocation,
   DocumentStatus,
   MAX_LAYOUT_PAGES,
   type OpenCitation,
@@ -20,3 +19,4 @@ export {
   RenderManifest,
   viewerPaths,
 } from "./viewer.js";
+export { Wall, WallMode } from "./wall.js";
