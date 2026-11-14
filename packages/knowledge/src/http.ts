@@ -6,7 +6,7 @@ export class SourceUnavailable extends Error {}
 export class NotFound extends Error {}
 
 export interface HttpOptions {
-  userAgent?: string;
+  userAgent?: string | undefined;
   /** Requests per second this client keeps under. */
   perSecond: number;
   fetch?: typeof fetch;
@@ -22,6 +22,25 @@ export interface Http {
   json(url: string, headers?: Record<string, string>): Promise<unknown>;
 }
 
+// Counted in bytes as they arrive, so a body with no length header can't fill memory.
+async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new SourceUnavailable("response too large");
+    }
+    parts.push(value);
+  }
+  return Buffer.concat(parts).toString("utf8");
+}
+
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** One client per source: spaced requests, backoff on 429 and 5xx, https only, size-capped. */
@@ -33,8 +52,12 @@ export function createHttp(options: HttpOptions): Http {
   const retries = options.retries ?? 3;
   let next = 0;
 
-  async function get(url: string, headers: Record<string, string> = {}): Promise<string> {
-    if (!url.startsWith("https://")) throw new SourceUnavailable("only https sources are fetched");
+  async function get(first: string, headers: Record<string, string> = {}): Promise<string> {
+    if (!first.startsWith("https://"))
+      throw new SourceUnavailable("only https sources are fetched");
+    const host = new URL(first).host;
+    let url = first;
+    let hops = 0;
     for (let attempt = 0; ; attempt++) {
       const now = Date.now();
       const start = Math.max(now, next);
@@ -48,7 +71,8 @@ export function createHttp(options: HttpOptions): Http {
             ...options.headers,
             ...headers,
           },
-          redirect: "follow",
+          // Followed by hand, so a redirect can't leave https or the source's own host.
+          redirect: "manual",
           signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
         });
       } catch (err) {
@@ -57,6 +81,17 @@ export function createHttp(options: HttpOptions): Http {
           continue;
         }
         throw new SourceUnavailable(err instanceof Error ? err.name : "fetch failed");
+      }
+      if (res.status >= 300 && res.status < 400) {
+        await res.body?.cancel();
+        const location = res.headers.get("location");
+        const target = location ? new URL(location, url) : null;
+        if (target?.protocol !== "https:" || target.host !== host || ++hops > 5) {
+          throw new SourceUnavailable(`${host} redirected somewhere this source can't go`);
+        }
+        url = target.href;
+        attempt--;
+        continue;
       }
       if (res.status === 404) {
         await res.body?.cancel();
@@ -76,9 +111,7 @@ export function createHttp(options: HttpOptions): Http {
         await res.body?.cancel();
         throw new SourceUnavailable("response too large");
       }
-      const body = await res.text();
-      if (body.length > maxBytes) throw new SourceUnavailable("response too large");
-      return body;
+      return readCapped(res, maxBytes);
     }
   }
 

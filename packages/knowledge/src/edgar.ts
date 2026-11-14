@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createHttp, type Http } from "./http.js";
+import { createHttp, type Http, SourceUnavailable } from "./http.js";
 import type { AuthorityRecord } from "./record.js";
 import { failure, type Loader } from "./sources.js";
 import { type Chunk, chunkText, htmlToText, splitSections } from "./text.js";
@@ -113,6 +113,10 @@ export interface EdgarOptions {
   http?: Http;
 }
 
+// The SEC answers 403 to clients it is blocking; carrying on would only dig deeper.
+const refused = (err: unknown) =>
+  err instanceof SourceUnavailable && / answered 403$/.test(err.message);
+
 export function createEdgarLoader(options: EdgarOptions): Loader {
   if (!/\S+@\S+\.\S+/.test(options.userAgent)) {
     throw new Error("SEC_USER_AGENT must name the operator and a contact email, as the SEC asks");
@@ -136,6 +140,7 @@ export function createEdgarLoader(options: EdgarOptions): Loader {
           filings = pickFilings(raw, company.forms, company.limit);
         } catch (err) {
           yield failure(company.cik, err);
+          if (refused(err)) return;
           continue;
         }
         for (const filing of filings) {
@@ -143,6 +148,7 @@ export function createEdgarLoader(options: EdgarOptions): Loader {
             yield edgarRecord(filing, await http.text(filingUrl(filing)));
           } catch (err) {
             yield failure(filing.accession, err);
+            if (refused(err)) return;
           }
         }
       }

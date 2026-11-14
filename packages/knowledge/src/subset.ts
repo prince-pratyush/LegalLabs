@@ -3,6 +3,7 @@ import { createCapLoader } from "./cap.js";
 import { createCourtListenerLoader } from "./courtlistener.js";
 import { createEdgarLoader } from "./edgar.js";
 import { createEurLexLoader } from "./eurlex.js";
+import { createHttp } from "./http.js";
 import type { Loader, SourceId } from "./sources.js";
 
 /** Identifiers only: the repository never carries the documents themselves. */
@@ -90,19 +91,25 @@ export const DEFAULT_SUBSET: Subset = {
 export interface LoaderEnv {
   COURTLISTENER_TOKEN?: string | undefined;
   SEC_USER_AGENT?: string | undefined;
+  /** Replaces the generic User-Agent for CAP, CourtListener and EUR-Lex. */
+  KNOWLEDGE_USER_AGENT?: string | undefined;
 }
 
 /** CourtListener when the deployment has a token, else the CAP snapshot, which needs none. */
 export function loaderFor(source: SourceId, subset: Subset, env: LoaderEnv): Loader | null {
+  const userAgent = env.KNOWLEDGE_USER_AGENT || undefined;
   switch (source) {
     case "us_caselaw": {
       const cites = subset.us_caselaw?.cites ?? [];
       return env.COURTLISTENER_TOKEN
-        ? createCourtListenerLoader({ cites, token: env.COURTLISTENER_TOKEN })
-        : createCapLoader({ cites });
+        ? createCourtListenerLoader({ cites, token: env.COURTLISTENER_TOKEN, userAgent })
+        : createCapLoader({ cites, http: createHttp({ perSecond: 2, userAgent }) });
     }
     case "eurlex":
-      return createEurLexLoader({ celex: subset.eurlex?.celex ?? [] });
+      return createEurLexLoader({
+        celex: subset.eurlex?.celex ?? [],
+        http: createHttp({ perSecond: 1, userAgent }),
+      });
     case "edgar":
       if (!env.SEC_USER_AGENT) return null;
       return createEdgarLoader({
