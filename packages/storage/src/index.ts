@@ -82,16 +82,14 @@ export function createS3Store(config: S3Config): ObjectStore {
   };
 }
 
-export function objectStoreFromEnv(env: Record<string, string | undefined>): ObjectStore | null {
-  const endpoint = env.S3_ENDPOINT;
-  if (!endpoint) return null;
+export function objectStoreFromEnv(env: Record<string, string | undefined>): ObjectStore {
   const need = (name: string) => {
     const value = env[name];
     if (!value) throw new Error(`${name} is not set`);
     return value;
   };
   return createS3Store({
-    endpoint,
+    endpoint: need("S3_ENDPOINT"),
     bucket: need("S3_BUCKET"),
     region: env.S3_REGION ?? "us-east-1",
     accessKeyId: need("S3_ACCESS_KEY_ID"),
