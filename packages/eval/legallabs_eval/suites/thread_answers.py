@@ -197,15 +197,17 @@ class ThreadAnswerGrader(Grader):
 
 
 def _load_facts() -> dict[str, list[dict[str, Any]]]:
-    return json.loads((DATA / "facts.json").read_text())
+    return json.loads((DATA / "facts.json").read_text(encoding="utf-8"))
 
 
 def _corpus() -> list[Document]:
-    return [Document(p.name, p.read_text()) for p in sorted(DATA.glob("*.md"))]
+    return [Document(p.name, p.read_text(encoding="utf-8")) for p in sorted(DATA.glob("*.md"))]
 
 
 def _fingerprint() -> str:
-    parts = [(DATA / "facts.json").read_text()] + [f"{d.name}\n{d.text}" for d in _corpus()]
+    parts = [(DATA / "facts.json").read_text(encoding="utf-8")] + [
+        f"{d.name}\n{d.text}" for d in _corpus()
+    ]
     return "synthetic-" + sha256("\0".join(parts))[:16]
 
 

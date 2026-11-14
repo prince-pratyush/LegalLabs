@@ -176,6 +176,13 @@ def test_room_is_deterministic_and_plants_each_issue() -> None:
         assert any(holds(text, k) for k in criterion["keywords"]), criterion["id"]
 
 
+def test_room_size_is_bounded() -> None:
+    with pytest.raises(ValueError, match="1 to"):
+        generate_room(0, 1)
+    with pytest.raises(ValueError, match="1 to"):
+        generate_room(10_001, 1)
+
+
 def test_room_scales_issues_with_size() -> None:
     _, criteria = generate_room(500, 7)
     assert len(criteria) == 12

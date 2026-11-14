@@ -13,6 +13,7 @@ from .thread_answers import ThreadAnswer, errors, has_any, holds, sentences
 GENERATOR_VERSION = 1
 DEFAULT_DOCS = 500
 DEFAULT_SEED = 7
+MAX_DOCS = 10_000
 
 CUSTOMERS = ["Alder", "Birchmoor", "Calloway", "Dunmere", "Eastvale", "Fennick", "Galloway"]
 SUPPLIERS = ["Harrowgate", "Ivybridge", "Juniper", "Kestrel", "Larkspur", "Merrow", "Northcote"]
@@ -111,6 +112,9 @@ def _contract(number: int, rng: random.Random, planted: list[Issue]) -> str:
 
 def generate_room(docs: int, seed: int) -> tuple[list[Document], list[dict[str, Any]]]:
     """The same docs and seed always give the same room and the same planted issues."""
+    # Bounded so a typo can't fill the disk; the largest spec room is 5,000.
+    if not 1 <= docs <= MAX_DOCS:
+        raise ValueError(f"a room needs 1 to {MAX_DOCS} contracts, not {docs}")
     rng = random.Random(seed)
     # Roughly 0.6% of contracts per issue, at least one: needles a skim would miss.
     per_issue = max(1, round(docs * 0.006))
@@ -237,5 +241,5 @@ def write_room(out: Path, docs: int, seed: int) -> int:
     documents, _ = generate_room(docs, seed)
     out.mkdir(parents=True, exist_ok=True)
     for doc in documents:
-        (out / doc.name).write_text(doc.text)
+        (out / doc.name).write_text(doc.text, encoding="utf-8")
     return len(documents)

@@ -30,7 +30,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "make-room":
-        count = write_room(args.out, args.docs, args.seed)
+        try:
+            count = write_room(args.out, args.docs, args.seed)
+        except ValueError as err:
+            print(f"failed: {err}", file=sys.stderr)
+            return 2
         print(f"wrote {count} contracts to {args.out}")
         return 0
 
