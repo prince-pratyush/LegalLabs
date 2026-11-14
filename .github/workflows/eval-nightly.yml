@@ -1,7 +1,7 @@
 name: eval-nightly
 
 # Paid model calls. Off until the repository variable EVAL_NIGHTLY_ENABLED is "true"
-# and the ANTHROPIC_API_KEY and OPENAI_API_KEY secrets exist.
+# and the ANTHROPIC_API_KEY, OPENAI_API_KEY and GEMINI_API_KEY secrets exist.
 on:
   schedule:
     - cron: "0 15 * * *"
@@ -32,10 +32,12 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - run: uv run legallabs-eval run --system claude-plain --suite nli-contractnli --limit 50
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - uses: actions/upload-artifact@v5
         if: always()
         with:

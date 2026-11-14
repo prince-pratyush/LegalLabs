@@ -6,6 +6,8 @@
 [systems.legallabs-keyword]
 harness = "legallabs-search"
 vendor = "legallabs"
+# List every model vendor the stack calls underneath, so none of them judges it.
+vendors = ["legallabs"]
 params = { search_params = {} }
 
 # Offline lexical baseline: no server, no keys. CI runs it.
@@ -31,7 +33,8 @@ harness = "naive-rag"
 vendor = "anthropic"
 params = { model = "claude-sonnet-5-5", max_tokens = 2048, top_k = 8 }
 
-# Judges grade answer suites. A judge never shares a vendor with the system it grades.
+# Judges grade answer suites: two per criterion, from distinct vendors the system
+# doesn't use. Keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY.
 [judges.gpt]
 vendor = "openai"
 model = "gpt-5.5"
@@ -39,6 +42,10 @@ model = "gpt-5.5"
 [judges.claude]
 vendor = "anthropic"
 model = "claude-sonnet-5-5"
+
+[judges.gemini]
+vendor = "google"
+model = "gemini-2.5-pro"
 
 [grading]
 judges_per_criterion = 2

@@ -13,6 +13,8 @@ class Harness:
         self.system_name = system_name
         self.system = system
         self.vendor: str = system.get("vendor", "")
+        # Every vendor whose models this system calls; none of them may judge it.
+        self.vendors = frozenset(system.get("vendors", [self.vendor]))
 
     def prepare(self, corpus: list[Document]) -> None:
         """Called once per run with the suite's corpus, if it has one."""

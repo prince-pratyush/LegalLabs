@@ -10,6 +10,7 @@ PRICES: dict[str, tuple[float, float]] = {
     "claude-haiku-5-5": (1.0, 5.0),
     "gpt-5.5": (1.25, 10.0),
     "gpt-5.5-mini": (0.25, 2.0),
+    "gemini-2.5-pro": (1.25, 10.0),
 }
 
 

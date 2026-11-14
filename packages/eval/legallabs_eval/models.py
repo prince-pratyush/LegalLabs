@@ -1,6 +1,7 @@
 import json
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -8,14 +9,28 @@ import httpx
 
 from .costs import price
 from .io import append_jsonl
-from .schemas import Cost, HarnessError, NonRetryableError
+from .schemas import Cost, HarnessError, NonRetryableError, raise_for_status
 
-ENDPOINTS = {
-    "openai": ("https://api.openai.com", "OPENAI_API_KEY"),
-    "anthropic": ("https://api.anthropic.com", "ANTHROPIC_API_KEY"),
+
+@dataclass(frozen=True)
+class Vendor:
+    url: str
+    key_env: str
+    style: str  # "anthropic" or "openai": the shape of the request and reply
+
+
+VENDORS = {
+    "anthropic": Vendor("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "anthropic"),
+    "openai": Vendor("https://api.openai.com/v1/chat/completions", "OPENAI_API_KEY", "openai"),
+    # Gemini's OpenAI-compatible endpoint, so a third vendor can judge.
+    "google": Vendor(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "GEMINI_API_KEY",
+        "openai",
+    ),
 }
 
-# Takes the request body, returns (text, input_tokens, output_tokens). Swapped out in tests.
+# Takes the vendor and request body, returns (text, input_tokens, output_tokens).
 Send = Callable[[str, dict[str, Any]], tuple[str, int, int]]
 
 
@@ -25,16 +40,17 @@ class ModelClient:
     def __init__(
         self, vendor: str, model: str, max_tokens: int = 2048, send: Send | None = None
     ) -> None:
-        if vendor not in ENDPOINTS:
+        if vendor not in VENDORS:
             raise NonRetryableError(f"unknown vendor {vendor}")
         self.vendor = vendor
+        self.spec = VENDORS[vendor]
         self.model = model
         self.max_tokens = max_tokens
-        self._send = send or self._http
+        self._send = send or _http
 
     def preflight(self) -> None:
-        if self._send == self._http and not os.environ.get(ENDPOINTS[self.vendor][1]):
-            raise NonRetryableError(f"{ENDPOINTS[self.vendor][1]} is not set")
+        if self._send is _http and not os.environ.get(self.spec.key_env):
+            raise NonRetryableError(f"{self.spec.key_env} is not set")
 
     def complete(
         self, system: str, prompt: str, trace_dir: Path, schema: dict[str, Any] | None = None
@@ -52,7 +68,7 @@ class ModelClient:
         if schema:
             # In the prompt for every vendor; the reply is still parsed strictly.
             system += "\nReply with only a JSON object matching this schema:\n" + json.dumps(schema)
-        if self.vendor == "anthropic":
+        if self.spec.style == "anthropic":
             return {
                 "model": self.model,
                 "max_tokens": self.max_tokens,
@@ -60,7 +76,7 @@ class ModelClient:
                 "system": system,
                 "messages": [{"role": "user", "content": prompt}],
             }
-        body = {
+        body: dict[str, Any] = {
             "model": self.model,
             "max_completion_tokens": self.max_tokens,
             "temperature": 0,
@@ -76,32 +92,29 @@ class ModelClient:
             }
         return body
 
-    @staticmethod
-    def _http(vendor: str, body: dict[str, Any]) -> tuple[str, int, int]:
-        base, key_env = ENDPOINTS[vendor]
-        key = os.environ.get(key_env, "")
-        if vendor == "anthropic":
-            path = "/v1/messages"
-            headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-        else:
-            path = "/v1/chat/completions"
-            headers = {"authorization": f"Bearer {key}"}
-        try:
-            response = httpx.post(base + path, json=body, headers=headers, timeout=300)
-        except httpx.TransportError as err:
-            raise HarnessError(str(err)) from err
-        if response.status_code == 429 or response.status_code >= 500:
-            raise HarnessError(f"{vendor} returned {response.status_code}")
-        if response.status_code >= 400:
-            raise NonRetryableError(f"{vendor} returned {response.status_code}")
+
+def _http(vendor: str, body: dict[str, Any]) -> tuple[str, int, int]:
+    spec = VENDORS[vendor]
+    key = os.environ.get(spec.key_env, "")
+    if spec.style == "anthropic":
+        headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+    else:
+        headers = {"authorization": f"Bearer {key}"}
+    try:
+        response = httpx.post(spec.url, json=body, headers=headers, timeout=300)
+    except httpx.TransportError as err:
+        raise HarnessError(str(err)) from err
+    raise_for_status(response.status_code, vendor)
+    try:
         data = response.json()
-        if vendor == "anthropic":
+        if spec.style == "anthropic":
             text = "".join(b.get("text", "") for b in data["content"])
-            usage = data["usage"]
-            return text, usage["input_tokens"], usage["output_tokens"]
+            return text, data["usage"]["input_tokens"], data["usage"]["output_tokens"]
         usage = data["usage"]
         text = data["choices"][0]["message"]["content"] or ""
         return text, usage["prompt_tokens"], usage["completion_tokens"]
+    except (KeyError, IndexError, TypeError, ValueError) as err:
+        raise HarnessError(f"{vendor} sent a reply we could not read") from err
 
 
 def parse_json(text: str) -> dict[str, Any] | None:
