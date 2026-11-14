@@ -181,7 +181,6 @@ export const vaultApi = {
     }),
 };
 
-/** Plain words for why a file was refused before upload. */
 export const REJECTIONS: Record<Rejection, string> = {
   FILE_TOO_LARGE: "Over the size limit for this type of file.",
   UNSUPPORTED_TYPE: "This type can't be read. Use PDF, Word, Excel, email, TXT or Markdown.",
@@ -189,7 +188,7 @@ export const REJECTIONS: Record<Rejection, string> = {
   VAULT_SIZE_LIMIT: "The vault is full.",
 };
 
-/** Plain words for why reading a file failed. */
+// Reason codes mean nothing to a lawyer; these say what to do next.
 export function failureText(reason: string | null): string {
   switch (reason) {
     case "MALWARE_DETECTED":

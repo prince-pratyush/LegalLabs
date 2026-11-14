@@ -2,9 +2,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Vault, VaultStats } from "./api.js";
+import { RecycleBin } from "./RecycleBin.js";
 import { parseRoute, routeHash } from "./route.js";
+import { SharePanel } from "./SharePanel.js";
 import { uploadAll } from "./uploads.js";
-import { RecycleBin, SharePanel, statsLine, VaultList, VaultView } from "./VaultsApp.js";
+import { VaultList } from "./VaultList.js";
+import { statsLine, VaultView } from "./VaultView.js";
 
 // The real table is virtualised, and jsdom lays nothing out, so it would draw no rows.
 vi.mock("@legallabs/ui", async (original) => ({

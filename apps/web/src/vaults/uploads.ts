@@ -24,10 +24,7 @@ export const pick = (files: Iterable<File>): Picked[] =>
     return relativePath ? { file, relativePath } : { file };
   });
 
-/**
- * Checks every file against the limits first, so nothing refused is ever sent, then uploads
- * the rest a few at a time. `update` is called with each change to a file's state.
- */
+/** Checks every file against the limits first, so no refused file sends a byte. */
 export async function uploadAll(
   vaultId: string,
   folderId: string | null,
