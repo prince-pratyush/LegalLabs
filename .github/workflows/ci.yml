@@ -38,3 +38,23 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  docproc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/docproc
+    env:
+      DOCPROC_MODELS_DIR: ${{ github.workspace }}/.docproc-models
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ocrmypdf tesseract-ocr
+      - run: uv sync --frozen
+      - uses: actions/cache@v5
+        with:
+          path: .docproc-models
+          key: docproc-models-${{ hashFiles('services/docproc/uv.lock') }}
+      - run: uv run python -m docproc.prefetch
+      - run: uv run pytest
