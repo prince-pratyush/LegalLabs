@@ -16,7 +16,8 @@ from .schemas import Cost, HarnessError, NonRetryableError, raise_for_status
 class Vendor:
     url: str
     key_env: str
-    style: str  # "anthropic" or "openai": the shape of the request and reply
+    style: str  # "anthropic", "openai" or "ollama": the shape of the request and reply
+    url_env: str = ""  # overrides url when set, for servers that move (a local Ollama)
 
 
 VENDORS = {
@@ -28,6 +29,8 @@ VENDORS = {
         "GEMINI_API_KEY",
         "openai",
     ),
+    # Local and free. The native API, since only it takes num_ctx and a JSON schema format.
+    "ollama": Vendor("http://localhost:11434/api/chat", "", "ollama", "OLLAMA_BASE_URL"),
 }
 
 # Takes the vendor and request body, returns (text, input_tokens, output_tokens).
@@ -38,7 +41,12 @@ class ModelClient:
     """One vendor and model, always at temperature 0, with every call traced."""
 
     def __init__(
-        self, vendor: str, model: str, max_tokens: int = 2048, send: Send | None = None
+        self,
+        vendor: str,
+        model: str,
+        max_tokens: int = 2048,
+        send: Send | None = None,
+        context_tokens: int | None = None,
     ) -> None:
         if vendor not in VENDORS:
             raise NonRetryableError(f"unknown vendor {vendor}")
@@ -46,10 +54,12 @@ class ModelClient:
         self.spec = VENDORS[vendor]
         self.model = model
         self.max_tokens = max_tokens
+        # Ollama serves 4k unless told otherwise; other vendors ignore it.
+        self.context_tokens = context_tokens
         self._send = send or _http
 
     def preflight(self) -> None:
-        if self._send is _http and not os.environ.get(self.spec.key_env):
+        if self._send is _http and self.spec.key_env and not os.environ.get(self.spec.key_env):
             raise NonRetryableError(f"{self.spec.key_env} is not set")
 
     def complete(
@@ -68,6 +78,22 @@ class ModelClient:
         if schema:
             # In the prompt for every vendor; the reply is still parsed strictly.
             system += "\nReply with only a JSON object matching this schema:\n" + json.dumps(schema)
+        if self.spec.style == "ollama":
+            options: dict[str, Any] = {"temperature": 0, "num_predict": self.max_tokens}
+            if self.context_tokens:
+                options["num_ctx"] = self.context_tokens
+            ollama: dict[str, Any] = {
+                "model": self.model,
+                "stream": False,
+                "options": options,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+            }
+            if schema:
+                ollama["format"] = schema
+            return ollama
         if self.spec.style == "anthropic":
             return {
                 "model": self.model,
@@ -95,13 +121,19 @@ class ModelClient:
 
 def _http(vendor: str, body: dict[str, Any]) -> tuple[str, int, int]:
     spec = VENDORS[vendor]
-    key = os.environ.get(spec.key_env, "")
+    key = os.environ.get(spec.key_env, "") if spec.key_env else ""
+    url = spec.url
+    if spec.url_env and os.environ.get(spec.url_env):
+        url = os.environ[spec.url_env].rstrip("/") + "/api/chat"
     if spec.style == "anthropic":
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-    else:
+    elif key:
         headers = {"authorization": f"Bearer {key}"}
+    else:
+        headers = {}
     try:
-        response = httpx.post(spec.url, json=body, headers=headers, timeout=300)
+        # A small local model on a busy laptop can take minutes on one long prompt.
+        response = httpx.post(url, json=body, headers=headers, timeout=900)
     except httpx.TransportError as err:
         raise HarnessError(str(err)) from err
     raise_for_status(response.status_code, vendor)
@@ -110,6 +142,9 @@ def _http(vendor: str, body: dict[str, Any]) -> tuple[str, int, int]:
         if spec.style == "anthropic":
             text = "".join(b.get("text", "") for b in data["content"])
             return text, data["usage"]["input_tokens"], data["usage"]["output_tokens"]
+        if spec.style == "ollama":
+            text = data["message"]["content"] or ""
+            return text, int(data.get("prompt_eval_count", 0)), int(data.get("eval_count", 0))
         usage = data["usage"]
         text = data["choices"][0]["message"]["content"] or ""
         return text, usage["prompt_tokens"], usage["completion_tokens"]

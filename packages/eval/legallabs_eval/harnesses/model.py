@@ -19,8 +19,13 @@ class PlainModelHarness(Harness):
         if not self.vendor or "model" not in params:
             raise NonRetryableError(f"{system_name} needs a vendor and params.model")
         self.max_context_chars = int(params.get("max_context_chars", 400_000))
+        context = params.get("context_tokens")
         self.client = ModelClient(
-            self.vendor, params["model"], int(params.get("max_tokens", 2048)), send
+            self.vendor,
+            params["model"],
+            int(params.get("max_tokens", 2048)),
+            send,
+            int(context) if context else None,
         )
 
     def prepare(self, corpus: list[Document]) -> None:
