@@ -335,6 +335,30 @@ describe("gateway.stream", () => {
   });
 });
 
+describe("cancelling a stream", () => {
+  it("hands the signal on and doesn't fall back once it fires", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const cancellable: ModelProvider = {
+      complete: async () => ({ text: "x" }),
+      stream: async (providerRequest) => {
+        seen = providerRequest.signal;
+        controller.abort();
+        throw new Error("aborted");
+      },
+    };
+    const gateway = createGateway({
+      providers: { anthropic: cancellable, ollama: streaming(["other"]) },
+      recordUsage: async () => {},
+    });
+
+    await expect(gateway.stream(request, () => {}, controller.signal)).rejects.toMatchObject({
+      code: "STREAM_INTERRUPTED",
+    });
+    expect(seen).toBe(controller.signal);
+  });
+});
+
 describe("model choice", () => {
   const providers = { anthropic: answering("from haiku"), ollama: answering("from qwen") };
 
