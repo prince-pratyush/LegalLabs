@@ -29,7 +29,7 @@ import {
 } from "./api.js";
 import { documentStatus, segments } from "./text.js";
 import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
-import { anchorOf, openCitation, useLocation } from "./viewer/open-citation.js";
+import { anchorOf, openCitation, useLocation, useReturnFocus } from "./viewer/open-citation.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 
@@ -44,9 +44,10 @@ export function App() {
     );
   }, []);
   const location = useLocation();
+  const viewing = isDocumentHref(location.href);
+  useReturnFocus(viewing);
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
-  const viewing = isDocumentHref(location.href);
   return (
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
@@ -497,6 +498,7 @@ const STATUS: Record<Citation["status"], { label: string; detail: string }> = {
 
 function Sources({ message, onHide }: { message: Message | null; onHide: () => void }) {
   const citations = message?.citations ?? [];
+  const anchors = citations.map(anchorOf).filter((a) => a !== null);
   const [width, setWidth] = useState(360);
   return (
     <section
@@ -523,6 +525,7 @@ function Sources({ message, onHide }: { message: Message | null; onHide: () => v
             {citations.map((citation) => {
               const status = STATUS[citation.status];
               const ok = verified(citation);
+              const anchor = anchorOf(citation);
               return (
                 <li
                   key={citation.n}
@@ -543,18 +546,17 @@ function Sources({ message, onHide }: { message: Message | null; onHide: () => v
                     </span>
                   </p>
                   <q className="italic">{citation.quote ?? "No quote given"}</q>
-                  {anchorOf(citation) ? (
+                  {anchor ? (
                     <Button
                       variant="secondary"
                       size="sm"
                       className="justify-self-start"
-                      onClick={(event) => {
-                        const anchor = anchorOf(citation);
-                        const context = citations.map(anchorOf).filter((a) => a !== null);
-                        if (anchor) {
-                          openCitation(anchor, { context, newTab: event.metaKey || event.ctrlKey });
-                        }
-                      }}
+                      onClick={(event) =>
+                        openCitation(anchor, {
+                          context: anchors,
+                          newTab: event.metaKey || event.ctrlKey,
+                        })
+                      }
                     >
                       Open in document
                     </Button>

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
+import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { anchorOf, openCitation } from "./open-citation.js";
+import { anchorOf, openCitation, useReturnFocus } from "./open-citation.js";
 
 const citation = {
   document_id: "01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f",
@@ -33,5 +34,23 @@ describe("openCitation", () => {
     expect(window.location.search).toBe(`?v=${citation.version_id}&page=5&span=10-40`);
     expect(window.location.href).not.toContain("liability");
     expect(window.history.state).toMatchObject({ index: 1, anchor: { quote: citation.quote } });
+  });
+});
+
+describe("useReturnFocus", () => {
+  it("hands focus back to what opened the viewer when it closes", () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const anchor = anchorOf(citation);
+    if (!anchor) throw new Error("expected an anchor");
+    const { rerender } = renderHook(({ open }) => useReturnFocus(open), {
+      initialProps: { open: true },
+    });
+    openCitation(anchor);
+    opener.blur();
+    rerender({ open: false });
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
   });
 });

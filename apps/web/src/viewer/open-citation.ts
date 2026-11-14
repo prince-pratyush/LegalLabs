@@ -1,5 +1,5 @@
 import { Anchor, citationHref, type OpenCitation } from "@legallabs/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 /** Kept in history, so back and forward restore the citation list without a refetch. */
 export interface ViewerState {
@@ -41,6 +41,18 @@ export function anchorOf(citation: CitationFields): Anchor | null {
   return parsed.success ? parsed.data : null;
 }
 
+// What had focus when the viewer opened, so closing can hand focus back to it.
+let opener: HTMLElement | null = null;
+
+/** Puts focus back on whatever opened the viewer once it closes. */
+export function useReturnFocus(open: boolean) {
+  useLayoutEffect(() => {
+    if (open || !opener) return;
+    if (opener.isConnected) opener.focus();
+    opener = null;
+  }, [open]);
+}
+
 /** What a citation popover calls. The URL holds the location; the quote stays in memory. */
 export const openCitation: OpenCitation = (anchor, options = {}) => {
   const href = citationHref(anchor);
@@ -48,6 +60,7 @@ export const openCitation: OpenCitation = (anchor, options = {}) => {
     window.open(href, "_blank", "noopener");
     return;
   }
+  if (document.activeElement instanceof HTMLElement) opener = document.activeElement;
   const context = options.context ?? [anchor];
   const index = context.findIndex((a) => citationHref(a) === href && a.quote === anchor.quote);
   navigate(href, { anchor, context, index: Math.max(0, index) });
