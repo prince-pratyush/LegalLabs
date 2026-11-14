@@ -165,6 +165,31 @@ export interface AskInput {
   matter_id?: string | null;
   model?: string;
   response_mode?: ResponseMode;
+  /** Plans first and waits for approval before reading anything. */
+  deep_analysis?: boolean;
+}
+
+export interface DraftVersionInfo {
+  no: number;
+  author: "assistant" | "user";
+  created_at: string;
+  chars: number;
+  changes: unknown;
+}
+
+export interface Draft {
+  id: string;
+  thread_id: string;
+  kind: "notepad" | "editor";
+  title: string;
+  read_only: boolean;
+  versions: DraftVersionInfo[];
+  latest: { no: number; body: string };
+}
+
+export interface DraftDiff {
+  ops: { op: "equal" | "insert" | "delete"; text: string }[];
+  summary: unknown;
 }
 
 export class ApiError extends Error {
@@ -206,6 +231,7 @@ const enc = encodeURIComponent;
 const V1 = "/api/v1";
 const threadPath = (id: string) => `${V1}/threads/${enc(id)}`;
 const runPath = (id: string) => `${V1}/runs/${enc(id)}`;
+const draftPath = (id: string) => `${V1}/drafts/${enc(id)}`;
 
 /** Only the filters that are set, so the URL stays short and cacheable. */
 export function historyParams(query: HistoryQuery): string {
@@ -244,6 +270,9 @@ export const api = {
   thread: async (id: string) => (await call<{ thread: Thread }>(threadPath(id))).thread,
   run: async (id: string) => (await call<{ run: Run }>(runPath(id))).run,
   cancel: (runId: string) => send<void>("POST", `${runPath(runId)}/cancel`),
+  approve: (runId: string) => send<void>("POST", `${runPath(runId)}/approve`),
+  editPlan: (runId: string, instruction: string) =>
+    send<void>("POST", `${runPath(runId)}/plan/edit`, { instruction }),
 
   history: (query: HistoryQuery = {}) =>
     call<{ items: HistoryItem[]; next_cursor: string | null }>(
@@ -264,6 +293,39 @@ export const api = {
   members: async (q = "") =>
     (await call<{ items: Member[] }>(`${V1}/members${q ? `?q=${enc(q)}` : ""}`)).items,
   scopeOptions: () => call<ScopeOptions>(`${V1}/scope-options`),
+
+  drafts: async (threadId: string) =>
+    (await call<{ items: Draft[] }>(`${threadPath(threadId)}/drafts`)).items,
+  createDraft: async (threadId: string, fromMessageId: string) =>
+    (
+      await send<{ draft: Draft }>("POST", `${threadPath(threadId)}/drafts`, {
+        kind: "editor",
+        from_message_id: fromMessageId,
+      })
+    ).draft,
+  draftVersion: async (draftId: string, no: number) =>
+    (await call<{ no: number; body: string }>(`${draftPath(draftId)}/versions/${no}`)).body,
+  draftDiff: (draftId: string, from: number, to: number) =>
+    call<DraftDiff>(`${draftPath(draftId)}/diff?from=${from}&to=${to}`),
+  saveDraft: async (draftId: string, body: string) =>
+    (await send<{ draft: Draft }>("POST", `${draftPath(draftId)}/versions`, { body })).draft,
+  restoreDraft: async (draftId: string, no: number) =>
+    (await send<{ draft: Draft }>("POST", `${draftPath(draftId)}/versions/${no}/restore`)).draft,
+  editDraft: async (draftId: string, instruction: string) =>
+    (await send<{ draft: Draft }>("POST", `${draftPath(draftId)}/edit`, { instruction })).draft,
+  /** The .docx; with a version, edits since it come out as Word tracked changes. */
+  exportDraft: async (draftId: string, trackedFrom?: number) => {
+    const query = trackedFrom ? `?tracked_from=${trackedFrom}` : "";
+    const res = await fetch(`${draftPath(draftId)}/export${query}`, {
+      credentials: "same-origin",
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      const message = typeof body?.message === "string" ? body.message : FALLBACK;
+      throw new ApiError(res.status, String(body?.code ?? "UNKNOWN"), message);
+    }
+    return res.blob();
+  },
 };
 
 const EVENT_TYPES: readonly RunEvent["type"][] = [
