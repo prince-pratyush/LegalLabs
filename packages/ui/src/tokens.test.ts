@@ -14,6 +14,15 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// color-mix in srgb blends the encoded channels, the same as this.
+function mix(top: string, base: string, amount: number): string {
+  const channel = (hex: string, i: number) => Number.parseInt(hex.slice(i, i + 2), 16);
+  return `#${[1, 3, 5]
+    .map((i) => Math.round(channel(top, i) * amount + channel(base, i) * (1 - amount)))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 describe("contrast", () => {
   it("matches published WCAG values", () => {
     expect(contrast("#000000", "#FFFFFF")).toBeCloseTo(21, 1);
@@ -41,6 +50,31 @@ describe.each(["light", "dark"] as Theme[])("%s theme", (theme) => {
     for (const bg of surfaces) {
       it(`${fg} on ${bg} is at least 4.5:1`, () => {
         expect(contrast(c[fg], c[bg])).toBeGreaterThanOrEqual(4.5);
+      });
+    }
+  }
+
+  // Focus ring, control edges and status dots must be seen, if not read.
+  for (const ui of ["accent", "control", ...text] as const) {
+    for (const bg of surfaces) {
+      it(`${ui} as a control on ${bg} is at least 3:1`, () => {
+        expect(contrast(c[ui], c[bg])).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+
+  for (const fill of ["accent", "destructive"] as const) {
+    it(`button text on ${fill} is at least 4.5:1`, () => {
+      expect(contrast(c.bg, c[fill])).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  // Hovered and selected rows are tinted; text on them must still read.
+  const tints = { hover: mix(c.fg, c.bg, 0.03), selected: mix(c.accent, c.bg, 0.05) };
+  for (const [tint, bg] of Object.entries(tints)) {
+    for (const fg of text) {
+      it(`${fg} on a ${tint} row is at least 4.5:1`, () => {
+        expect(contrast(c[fg], bg)).toBeGreaterThanOrEqual(4.5);
       });
     }
   }
