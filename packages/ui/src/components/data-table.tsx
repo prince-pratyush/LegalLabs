@@ -6,9 +6,17 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "../cn.js";
 import { Skeleton } from "./status.js";
 
@@ -93,18 +101,27 @@ export function DataTable<T extends object>({
   const byId = useMemo(() => new Map(columns.map((column) => [column.id, column])), [columns]);
 
   const scroller = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const virtualizer = useVirtualizer({
     count: model.length,
     getScrollElement: () => scroller.current,
     estimateSize: () => rowHeight(scroller.current),
     getItemKey: (index) => model[index]?.id ?? index,
     overscan: 8,
+    // The header is one row tall; without this, rows scroll in under it.
+    scrollPaddingStart: rowHeight(scroller.current),
+    // Keep the active row mounted so the table never loses its Tab stop.
+    rangeExtractor: (range) =>
+      [...new Set([...defaultRangeExtractor(range), activeRef.current])]
+        .filter((index) => index < model.length)
+        .sort((a, b) => a - b),
   });
   const items = virtualizer.getVirtualItems();
   const top = items[0]?.start ?? 0;
   const bottom = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0);
 
-  const [active, setActive] = useState(0);
   const [focusing, setFocusing] = useState(false);
   useEffect(() => {
     if (!focusing) return;
@@ -210,28 +227,31 @@ export function DataTable<T extends object>({
           ) : (
             <>
               {top > 0 && <tr aria-hidden style={{ height: top }} />}
-              {items.map((item) => {
+              {items.map((item, i) => {
                 const row = model[item.index];
                 if (!row) return null;
+                const gap = item.start - (items[i - 1]?.end ?? item.start);
                 return (
-                  <tr
-                    key={row.id}
-                    aria-rowindex={item.index + 2}
-                    aria-selected={item.index === active}
-                    tabIndex={item.index === active ? 0 : -1}
-                    onClick={(event) => {
-                      setActive(item.index);
-                      event.currentTarget.focus();
-                    }}
-                    onDoubleClick={() => onActivate?.(row.original)}
-                    className="h-row border-b border-border hover:tint-hover aria-selected:tint-selected"
-                  >
-                    {columns.map((column) => (
-                      <td key={column.id} className={cellClass(column)}>
-                        {column.cell(row.original)}
-                      </td>
-                    ))}
-                  </tr>
+                  <Fragment key={row.id}>
+                    {gap > 0 && <tr aria-hidden style={{ height: gap }} />}
+                    <tr
+                      aria-rowindex={item.index + 2}
+                      data-active={item.index === active || undefined}
+                      tabIndex={item.index === active ? 0 : -1}
+                      onClick={(event) => {
+                        setActive(item.index);
+                        event.currentTarget.focus();
+                      }}
+                      onDoubleClick={() => onActivate?.(row.original)}
+                      className="h-row border-b border-border hover:tint-hover data-active:tint-selected"
+                    >
+                      {columns.map((column) => (
+                        <td key={column.id} className={cellClass(column)}>
+                          {column.cell(row.original)}
+                        </td>
+                      ))}
+                    </tr>
+                  </Fragment>
                 );
               })}
               {bottom > 0 && <tr aria-hidden style={{ height: bottom }} />}
