@@ -25,6 +25,15 @@ function contract(name: string, make: () => ObjectStore) {
     it("returns null for a missing key", async () => {
       expect(await make().get(contentKey(randomUUID(), SHA))).toBeNull();
     });
+
+    it("deletes a key, and deleting it again is fine", async () => {
+      const store = make();
+      const key = contentKey(randomUUID(), SHA);
+      await store.putIfAbsent(key, bytes("gone"));
+      await store.delete(key);
+      await store.delete(key);
+      expect(await store.get(key)).toBeNull();
+    });
   });
 }
 

@@ -15,8 +15,11 @@ import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
 import { createRunLog } from "./runs/log.js";
-import { noKnowledge, noVaults } from "./threads/ports.js";
+import { noKnowledge } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
+import { createVaultPort } from "./vaults/port.js";
+import { createRetentionJob } from "./vaults/retention.js";
+import { createVaults } from "./vaults/vaults.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -66,9 +69,14 @@ const worker = createIngestWorker(pool, {
   log: (line) => console.log(line),
 });
 worker.start();
+const retention = createRetentionJob(pool, { store, log: (line) => console.log(line) });
+retention.start();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   // A job cut off mid-read is picked up again once its lease runs out.
-  process.once(signal, () => void worker.stop().finally(() => process.exit(0)));
+  process.once(
+    signal,
+    () => void Promise.all([worker.stop(), retention.stop()]).finally(() => process.exit(0)),
+  );
 }
 const gateway = createGateway({
   ...gatewayOptionsFromEnv(process.env),
@@ -88,13 +96,14 @@ const orphaned = await asWorker(pool, async (db) => {
 });
 if (orphaned > 0) console.log(`marked ${orphaned} unfinished runs as failed`);
 // Stubs until the vault and knowledge work lands; both plug in through the same ports.
-const vaults = noVaults;
+const vaults = createVaultPort(pool);
 const knowledge = noKnowledge;
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
 const app = createApp({
   auth: createAuth(pool),
   documents,
+  vaults: createVaults(pool, { documents, store }),
   threads: {
     threads: createThreads(pool, { gateway, documents, log, vaults, knowledge }),
     log,

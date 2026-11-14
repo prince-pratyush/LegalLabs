@@ -1,3 +1,4 @@
+import { RetrievalScope } from "@legallabs/contracts";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
@@ -23,10 +24,12 @@ const failure = (c: Context, status: 400 | 413 | 503, code: string, message: str
 
 type Reason = Extract<UploadResult, { ok: false }>["reason"];
 
-const REASONS: Record<Reason, { status: 403 | 404 | 413 | 415; message: string }> = {
+const REASONS: Record<Reason, { status: 403 | 404 | 409 | 413 | 415; message: string }> = {
   FORBIDDEN: { status: 403, message: "You don't have permission to upload documents." },
   MATTER_NOT_FOUND: { status: 404, message: "That matter wasn't found." },
   FILE_TOO_LARGE: { status: 413, message: "The file is too large." },
+  VAULT_FILE_LIMIT: { status: 409, message: "The vault already holds as many files as it can." },
+  VAULT_SIZE_LIMIT: { status: 409, message: "The vault is full." },
   UNSUPPORTED_TYPE: {
     status: 415,
     message: "Only PDF, Word, Excel, email, TXT and Markdown files can be read.",
@@ -136,11 +139,20 @@ export function documentRoutes(documents: Documents, clientOf: (c: Context) => C
       limit: c.req.query("limit"),
       ...(ids ? { document_ids: ids } : {}),
     });
-    if (!parsed.success) return failure(c, 400, "INVALID_REQUEST", "Check the search terms.");
+    const vaults = c.req.queries("vault_id");
+    const folders = c.req.queries("folder_id");
+    const scope = RetrievalScope.safeParse({
+      ...(vaults ? { vault_ids: vaults } : {}),
+      ...(folders ? { folder_ids: folders } : {}),
+    });
+    if (!parsed.success || !scope.success) {
+      return failure(c, 400, "INVALID_REQUEST", "Check the search terms.");
+    }
     const { q, limit, document_ids } = parsed.data;
     const passages = await documents.search(c.get("principal"), q, {
       ...(limit === undefined ? {} : { limit }),
       ...(document_ids ? { documentIds: document_ids } : {}),
+      scope: scope.data,
     });
     return c.json({ passages: passages.map(passageJson) });
   });

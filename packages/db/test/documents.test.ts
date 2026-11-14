@@ -34,7 +34,8 @@ async function visibleTo(tx: Tx, s: Seed, user: string, ws = s.acme) {
   const count = async (table: string) =>
     Number((await tx.one<{ n: string }>(`select count(*) n from content.${table}`)).n);
   return {
-    documents: await count("document"),
+    // Vault documents have their own rules, tested in vaults.test.ts.
+    documents: await count("document where vault_id is null"),
     versions: await count("document_version"),
     pages: await count("page"),
     chunks: await count("chunk"),
