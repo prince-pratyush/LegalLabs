@@ -8,8 +8,12 @@ import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
+import type { Viewer } from "./documents/viewer.js";
+import { viewerRoutes } from "./documents/viewer-routes.js";
 import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
+import type { Knowledge } from "./knowledge/knowledge.js";
+import { knowledgeRoutes } from "./knowledge/routes.js";
 import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
@@ -39,9 +43,13 @@ export interface AppOptions {
   auth: Auth;
   documents: Documents;
   threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
+  /** Pages and files for the document viewer. */
+  viewer?: Viewer;
   drafts: Drafts;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
+  /** Public-law sources; left out, the knowledge endpoints are not mounted. */
+  knowledge?: Knowledge;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -53,8 +61,10 @@ export function createApp({
   auth,
   documents,
   threads,
+  viewer,
   drafts,
   vaults,
+  knowledge,
   clientIp,
   now = Date.now,
   webRoot,
@@ -150,6 +160,7 @@ export function createApp({
     c.header("Cache-Control", "no-store");
   });
 
+  if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
   app.route("/api/v1", draftHttp(drafts, clientOf));
@@ -157,7 +168,18 @@ export function createApp({
     app.route("/api/v1/vaults", vaultRoutes(vaults, clientOf));
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
   }
-  if (webRoot) app.get("*", serveStatic({ root: webRoot }));
+  if (knowledge) app.route("/api/v1/knowledge", knowledgeRoutes(knowledge));
+  if (webRoot) {
+    // A deep link to a document loads the app, which then opens the viewer.
+    app.get("/documents/*", serveStatic({ root: webRoot, path: "index.html" }));
+    app.get("/d/*", serveStatic({ root: webRoot, path: "index.html" }));
+    // Build files carry a hash of their content in the name, so a copy never goes stale.
+    app.use("/assets/*", async (c, next) => {
+      await next();
+      if (c.res.status === 200) c.header("Cache-Control", "public, max-age=31536000, immutable");
+    });
+    app.get("*", serveStatic({ root: webRoot }));
+  }
 
   return app;
 }

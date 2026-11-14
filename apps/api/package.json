@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "bin": {
-    "legallabs-admin": "./dist/cli.js"
+    "legallabs-admin": "./dist/cli.js",
+    "legallabs-knowledge": "./dist/knowledge/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -22,6 +23,7 @@
     "@legallabs/docx": "workspace:*",
     "@legallabs/embed": "workspace:*",
     "@legallabs/ingest": "workspace:*",
+    "@legallabs/knowledge": "workspace:*",
     "@legallabs/model-gateway": "workspace:*",
     "@legallabs/storage": "workspace:*",
     "@node-rs/argon2": "2.2.2",

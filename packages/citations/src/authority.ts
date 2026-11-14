@@ -46,9 +46,36 @@ const REPORTERS: readonly [RegExp, string][] = [
 
 const REPORTER_CITE = /^\d+ (?:us|f|f2d|f3d|f4th|fsupp|fsupp2d|fsupp3d|sct|led|led2d) \d+/;
 
-function normalizeCitation(reference: string): string {
-  let text = reference
-    .normalize("NFKC")
+// Identifiers with a fixed shape are matched whole, before the general rules below.
+const IDENTIFIERS: readonly [RegExp, (m: RegExpExecArray) => string][] = [
+  [/^(?:celex:?\s*)?([0-9ce][0-9]{4}[a-z]{1,2}[0-9]{4}(?:\([0-9]+\))?)$/i, (m) => `celex ${m[1]}`],
+  [
+    /^ecli:([a-z]{2}):([a-z0-9]{1,7}):([0-9]{4}):([a-z0-9.]{1,25})$/i,
+    (m) => `ecli:${m[1]}:${m[2]}:${m[3]}:${m[4]}`,
+  ],
+  [
+    /^(?:accession(?: no\.?| number)?:?\s*)?([0-9]{10})-?([0-9]{2})-?([0-9]{6})$/i,
+    (m) => `accession ${m[1]}-${m[2]}-${m[3]}`,
+  ],
+  // Regulation (EU) 2016/679, Regulation (EU) No 2016/679, Directive 95/46/EC.
+  [
+    /^(regulation|directive|decision)\s*\((eu|ec|eec|euratom)\)\s*(?:no\.?\s*)?([0-9]{2,4}\/[0-9]{1,4})$/i,
+    (m) => `${m[1]} (${m[2]}) ${m[3]}`,
+  ],
+  [
+    /^(regulation|directive|decision)\s*(?:no\.?\s*)?([0-9]{2,4}\/[0-9]{1,4})\/(eu|ec|eec|euratom)$/i,
+    (m) => `${m[1]} (${m[3]}) ${m[2]}`,
+  ],
+];
+
+/** The one normalisation used to write and to read the citation index. */
+export function normalizeCitation(reference: string): string {
+  const compact = reference.normalize("NFKC").replace(/\s+/g, " ").trim();
+  for (const [form, canonical] of IDENTIFIERS) {
+    const match = form.exec(compact);
+    if (match) return canonical(match).toLowerCase();
+  }
+  let text = compact
     .toLowerCase()
     .replace(/\b(?:sections?|secs?)\b\.?/g, "§")
     .replace(/§\s*/g, "§ ")
@@ -118,9 +145,20 @@ function quoteInPassages(
     : { status: "mismatch", reason: "meaning_changed", authorityId, closest: refused };
 }
 
+/**
+ * Only a citation that reached a stored authority gets a link: ok, or a flagged mismatch the
+ * reader can check against the source. Unresolved and ambiguous ones stay plain text.
+ */
+export function authorityHref(result: AuthorityVerification): string | null {
+  if (result.status === "unresolved") return null;
+  return `/knowledge/authorities/${encodeURIComponent(result.authorityId)}`;
+}
+
 // A pin we cannot confirm is flagged, including forms the grammar does not read yet.
 function pinExists(pin: string, authority: Authority): boolean {
-  const normalized = normalizeCitation(pin);
+  const normalized = normalizeCitation(pin).replace(/^art /, "article ");
+  // Named parts such as "Article 6" or "Item 1A" match the authority's own section names.
+  if (authority.sections?.some((s) => normalizeCitation(s) === normalized)) return true;
   if (normalized.startsWith("§")) {
     return authority.sections?.some((s) => normalizeCitation(s) === normalized) ?? false;
   }
