@@ -30,6 +30,8 @@ import {
 import { documentStatus, segments } from "./text.js";
 import { go, parseRoute, useHash } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
+import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
+import { anchorOf, openCitation, useLocation, useReturnFocus } from "./viewer/open-citation.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 
@@ -43,17 +45,33 @@ export function App() {
       () => setSignedIn(false),
     );
   }, []);
+  const location = useLocation();
+  const viewing = isDocumentHref(location.href);
+  useReturnFocus(viewing);
   const hash = useHash();
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
-  return parseRoute(hash) ? (
-    <VaultsApp
-      onLeave={() => {
-        window.location.hash = "";
-      }}
-    />
-  ) : (
-    <Workspace onSignedOut={() => setSignedIn(false)} />
+  return (
+    <>
+      {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
+      <div className="contents" inert={viewing}>
+        {parseRoute(hash) ? (
+          <VaultsApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : (
+          <Workspace onSignedOut={() => setSignedIn(false)} />
+        )}
+      </div>
+      {/* Over the page, not instead of it, so closing returns to the same place. */}
+      {viewing ? (
+        <div className="fixed inset-0 z-40 bg-bg">
+          <DocumentPage href={location.href} state={location.state} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -498,6 +516,7 @@ const STATUS: Record<Citation["status"], { label: string; detail: string }> = {
 
 function Sources({ message, onHide }: { message: Message | null; onHide: () => void }) {
   const citations = message?.citations ?? [];
+  const anchors = citations.map(anchorOf).filter((a) => a !== null);
   const [width, setWidth] = useState(360);
   return (
     <section
@@ -524,6 +543,7 @@ function Sources({ message, onHide }: { message: Message | null; onHide: () => v
             {citations.map((citation) => {
               const status = STATUS[citation.status];
               const ok = verified(citation);
+              const anchor = anchorOf(citation);
               return (
                 <li
                   key={citation.n}
@@ -544,6 +564,21 @@ function Sources({ message, onHide }: { message: Message | null; onHide: () => v
                     </span>
                   </p>
                   <q className="italic">{citation.quote ?? "No quote given"}</q>
+                  {anchor ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="justify-self-start"
+                      onClick={(event) =>
+                        openCitation(anchor, {
+                          context: anchors,
+                          newTab: event.metaKey || event.ctrlKey,
+                        })
+                      }
+                    >
+                      Open in document
+                    </Button>
+                  ) : null}
                   <p>
                     <StatusText tone={ok ? "verified" : "flagged"}>{status.label}</StatusText>
                     <span className="text-fg-muted">{` ${status.detail}`}</span>
