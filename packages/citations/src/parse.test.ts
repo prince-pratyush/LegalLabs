@@ -12,7 +12,7 @@ describe("parseCitedAnswer", () => {
     );
     expect(parsed).toEqual({
       text: "The supplier is liable. Done.",
-      citations: [{ at: 22, doc: "D1", page: 3, quote: "accepts liability" }],
+      citations: [{ at: 22, auth: null, doc: "D1", page: 3, quote: "accepts liability" }],
     });
   });
 
@@ -24,11 +24,18 @@ describe("parseCitedAnswer", () => {
     expect(parsed.citations.map((c) => c.at)).toEqual([1, 7]);
   });
 
+  it("reads an authority id", () => {
+    const parsed = parseCitedAnswer('Held.<c auth="cl:123" quote="the motion is denied"/>');
+    expect(parsed.citations).toEqual([
+      { at: 5, doc: null, auth: "cl:123", page: null, quote: "the motion is denied" },
+    ]);
+  });
+
   it("accepts single quotes, any attribute order and an open tag", () => {
     const parsed = parseCitedAnswer("X<c quote='q' page='4' doc='D1'>Y</c>");
     expect(parsed).toEqual({
       text: "XY",
-      citations: [{ at: 1, doc: "D1", page: 4, quote: "q" }],
+      citations: [{ at: 1, auth: null, doc: "D1", page: 4, quote: "q" }],
     });
   });
 
@@ -36,7 +43,7 @@ describe("parseCitedAnswer", () => {
     const parsed = parseCitedAnswer('A<c doc="D1" page="1" quote="if x > y then"/>B');
     expect(parsed).toEqual({
       text: "AB",
-      citations: [{ at: 1, doc: "D1", page: 1, quote: "if x > y then" }],
+      citations: [{ at: 1, auth: null, doc: "D1", page: 1, quote: "if x > y then" }],
     });
   });
 
@@ -52,8 +59,8 @@ describe("parseCitedAnswer", () => {
     expect(parsed).toEqual({
       text: "A B",
       citations: [
-        { at: 1, doc: "D1", page: null, quote: null },
-        { at: 3, doc: null, page: null, quote: "z" },
+        { at: 1, auth: null, doc: "D1", page: null, quote: null },
+        { at: 3, auth: null, doc: null, page: null, quote: "z" },
       ],
     });
   });
@@ -70,7 +77,7 @@ describe("parseCitedAnswer", () => {
     const parsed = parseCitedAnswer('The cap is $1m<c doc="D1" page="2" quote="the cap');
     expect(parsed).toEqual({
       text: "The cap is $1m",
-      citations: [{ at: 14, doc: "D1", page: 2, quote: null }],
+      citations: [{ at: 14, auth: null, doc: "D1", page: 2, quote: null }],
     });
   });
 
@@ -83,7 +90,7 @@ describe("parseCitedAnswer", () => {
   it("strips a malformed tag up to its end", () => {
     const parsed = parseCitedAnswer('A<c doc="D1" page=3 quote="q"/>B');
     expect(parsed.text).toBe("AB");
-    expect(parsed.citations).toEqual([{ at: 1, doc: "D1", page: null, quote: null }]);
+    expect(parsed.citations).toEqual([{ at: 1, auth: null, doc: "D1", page: null, quote: null }]);
   });
 
   it("does not mistake other markup for a citation", () => {
@@ -93,7 +100,7 @@ describe("parseCitedAnswer", () => {
 
   it("keeps the first of a repeated attribute and ignores unknown ones", () => {
     const parsed = parseCitedAnswer('<c doc="D1" doc="D2" page="1" quote="q" extra="e"/>');
-    expect(parsed.citations).toEqual([{ at: 0, doc: "D1", page: 1, quote: "q" }]);
+    expect(parsed.citations).toEqual([{ at: 0, auth: null, doc: "D1", page: 1, quote: "q" }]);
   });
 
   it("stays linear on hostile input", () => {
@@ -113,6 +120,7 @@ describe("parseCitedAnswer authority tags", () => {
       {
         at: 24,
         doc: null,
+        auth: null,
         page: null,
         quote: "facial plausibility",
         authority: "556 U.S. 662",

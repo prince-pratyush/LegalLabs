@@ -10,8 +10,7 @@ import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
 import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
-import { threadRoutes } from "./threads/routes.js";
-import type { Threads } from "./threads/threads.js";
+import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -37,7 +36,7 @@ const loginBody = z.object({
 export interface AppOptions {
   auth: Auth;
   documents: Documents;
-  threads: Threads;
+  threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** The socket address only: forwarded headers can be forged by the caller. */
@@ -148,7 +147,7 @@ export function createApp({
   });
 
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
-  app.route("/api/v1/threads", threadRoutes(threads, clientOf, now));
+  app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
   if (knowledge) app.route("/api/v1/knowledge", knowledgeRoutes(knowledge));
   if (webRoot) app.get("*", serveStatic({ root: webRoot }));
 

@@ -72,7 +72,7 @@ describe("gateway.call", () => {
     const result = await gateway.call(request);
 
     expect(result.output).toBe("from llama");
-    expect(result.model).toBe("ollama/llama3.2:3b");
+    expect(result.model).toBe("ollama/qwen3:4b-instruct");
   });
 
   it("names the failed models without repeating provider errors", async () => {
@@ -269,5 +269,148 @@ describe("gateway.call", () => {
 
     await expect(gateway.call(request)).rejects.toThrow("ledger down");
     expect(calls).toBe(1);
+  });
+});
+
+const streaming = (chunks: string[], failAfter = Number.POSITIVE_INFINITY): ModelProvider => ({
+  complete: async () => ({ text: chunks.join("") }),
+  stream: async (_request, onText) => {
+    for (const [i, chunk] of chunks.entries()) {
+      if (i >= failAfter) throw new Error("connection reset");
+      onText(chunk);
+    }
+    return { text: chunks.join(""), usage: { input_tokens: 3, output_tokens: chunks.length } };
+  },
+});
+
+describe("gateway.stream", () => {
+  it("passes text on as it arrives", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: streaming(["Thirty ", "days."]) },
+      recordUsage: async () => {},
+    });
+    const seen: string[] = [];
+
+    const result = await gateway.stream(request, (delta) => seen.push(delta));
+
+    expect(seen).toEqual(["Thirty ", "days."]);
+    expect(result.output).toBe("Thirty days.");
+    expect(result.usage).toEqual({ input_tokens: 3, output_tokens: 2, estimated: false });
+  });
+
+  it("streams a provider without streaming as one chunk", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: answering("30 days") },
+      recordUsage: async () => {},
+    });
+    const seen: string[] = [];
+
+    await gateway.stream(request, (delta) => seen.push(delta));
+
+    expect(seen).toEqual(["30 days"]);
+  });
+
+  it("falls back when a model fails before saying anything", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: streaming(["x"], 0), ollama: streaming(["from qwen"]) },
+      recordUsage: async () => {},
+    });
+    const seen: string[] = [];
+
+    const result = await gateway.stream(request, (delta) => seen.push(delta));
+
+    expect(seen).toEqual(["from qwen"]);
+    expect(result.model).toBe("ollama/qwen3:4b-instruct");
+  });
+
+  it("stops rather than mixing two models' words", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: streaming(["half ", "an answer"], 1), ollama: streaming(["other"]) },
+      recordUsage: async () => {},
+    });
+
+    await expect(gateway.stream(request, () => {})).rejects.toMatchObject({
+      code: "STREAM_INTERRUPTED",
+    });
+  });
+});
+
+describe("cancelling a stream", () => {
+  it("hands the signal on and doesn't fall back once it fires", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const cancellable: ModelProvider = {
+      complete: async () => ({ text: "x" }),
+      stream: async (providerRequest) => {
+        seen = providerRequest.signal;
+        controller.abort();
+        throw new Error("aborted");
+      },
+    };
+    const gateway = createGateway({
+      providers: { anthropic: cancellable, ollama: streaming(["other"]) },
+      recordUsage: async () => {},
+    });
+
+    await expect(gateway.stream(request, () => {}, controller.signal)).rejects.toMatchObject({
+      code: "STREAM_INTERRUPTED",
+    });
+    expect(seen).toBe(controller.signal);
+  });
+});
+
+describe("model choice", () => {
+  const providers = { anthropic: answering("from haiku"), ollama: answering("from qwen") };
+
+  it("tries the chosen model first", async () => {
+    const gateway = createGateway({ providers, recordUsage: async () => {} });
+
+    const result = await gateway.call({ ...request, model: "ollama/qwen3:4b-instruct" });
+
+    expect(result.output).toBe("from qwen");
+    expect(result.fallback).toBe(false);
+    expect(result.requested_model).toBe("ollama/qwen3:4b-instruct");
+  });
+
+  it("says when it had to fall back from the chosen model", async () => {
+    const gateway = createGateway({
+      providers: { anthropic: answering("from haiku"), ollama: failing("down") },
+      recordUsage: async () => {},
+    });
+
+    const result = await gateway.call({ ...request, model: "ollama/qwen3:4b-instruct" });
+
+    expect(result.model).toBe("anthropic/claude-haiku-5-5");
+    expect(result.fallback).toBe(true);
+  });
+
+  it("refuses a model the install can't use", async () => {
+    const gateway = createGateway({ providers, recordUsage: async () => {} });
+
+    await expect(
+      gateway.call({ ...request, model: "google/gemini-3.6-flash" }),
+    ).rejects.toMatchObject({ code: "MODEL_NOT_ALLOWED" });
+  });
+
+  it("lists only usable models, in routing order", () => {
+    const gateway = createGateway({ providers, recordUsage: async () => {} });
+
+    expect(gateway.models("synthesize").map((model) => model.id)).toEqual([
+      "anthropic/claude-haiku-5-5",
+      "ollama/qwen3:4b-instruct",
+      "ollama/llama3.2:3b",
+    ]);
+  });
+
+  it("sizes prompts for the smallest usable window", () => {
+    const gateway = createGateway({ providers, recordUsage: async () => {} });
+    const raised = createGateway({
+      providers,
+      contextWindows: { ollama: 32_768 },
+      recordUsage: async () => {},
+    });
+
+    expect(gateway.contextTokens("synthesize")).toBe(4_096);
+    expect(raised.contextTokens("synthesize")).toBe(32_768);
   });
 });

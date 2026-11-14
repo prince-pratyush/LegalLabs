@@ -20,7 +20,11 @@ import {
 } from "@legallabs/knowledge";
 import type pg from "pg";
 import { z } from "zod";
-import type { Principal } from "../auth/auth.js";
+import type { Principal as Session } from "../auth/auth.js";
+
+/** Who is asking: a signed-in session, or a thread run acting for its owner. */
+type Principal = Pick<Session, "userId" | "workspaceId">;
+
 import { asApp, asKnowledgeLoader } from "../db.js";
 
 export const MAX_PASSAGES = 50;

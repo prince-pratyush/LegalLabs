@@ -10,9 +10,13 @@ import pg from "pg";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
+import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
+import { knowledgePort } from "./knowledge/port.js";
+import { createRunLog } from "./runs/log.js";
+import { noVaults } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -76,11 +80,32 @@ const gateway = createGateway({
 // The web app's build, when present, so the demo runs from one server on one origin.
 const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
+const log = createRunLog(pool);
+// Runs live in this process, so any left unfinished by the last one can never finish.
+// One API process per database for now; several would need a lease per run.
+const orphaned = await asWorker(pool, async (db) => {
+  const { rows } = await db.query<{ n: number }>("select work.fail_orphaned_runs(now()) n");
+  return rows[0]?.n ?? 0;
+});
+if (orphaned > 0) console.log(`marked ${orphaned} unfinished runs as failed`);
+// A stub until the vault work lands; it plugs in through the same port.
+const vaults = noVaults;
+const knowledgeStore = createKnowledge(pool, { embedder });
+const knowledge = knowledgePort(knowledgeStore);
+const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
+
 const app = createApp({
   auth: createAuth(pool),
   documents,
-  threads: createThreads(pool, { gateway, documents }),
-  knowledge: createKnowledge(pool, { embedder }),
+  threads: {
+    threads: createThreads(pool, { gateway, documents, log, vaults, knowledge }),
+    log,
+    gateway,
+    vaults,
+    knowledge,
+    ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
+  },
+  knowledge: knowledgeStore,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });

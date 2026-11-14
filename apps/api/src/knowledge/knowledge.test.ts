@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DIMENSIONS, type Embedder, EmbedUnavailable } from "@legallabs/embed";
 import { type AuthorityRecord, createFileLoader, type SourceId, sync } from "@legallabs/knowledge";
-import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth, type Principal } from "../auth/auth.js";
@@ -15,9 +14,11 @@ import {
   seedMember,
   testDocuments,
   testPool,
+  testThreads,
 } from "../test-db.js";
-import { createThreads } from "../threads/threads.js";
+import { noVaults } from "../threads/ports.js";
 import { createKnowledge } from "./knowledge.js";
+import { knowledgePort } from "./port.js";
 
 const pool = testPool();
 afterAll(() => pool.end());
@@ -374,14 +375,38 @@ describe("search", () => {
   });
 });
 
+describe("knowledge port for threads", () => {
+  const caller = () => ({ userId: member.userId, workspaceId: member.workspaceId });
+
+  it("lists the sources and returns passages with the string to cite", async () => {
+    const port = knowledgePort(knowledge);
+    expect((await port.list(caller())).map((s) => s.id)).toEqual(["us_caselaw", "edgar", "eurlex"]);
+    const found = await port.search(
+      caller(),
+      [{ source_id: "eurlex", filter: { doc_types: ["regulation"] } }, { source_id: "kb:x" }],
+      `consent ${tag}`,
+      5,
+    );
+    expect(found[0]).toMatchObject({
+      authority_id: regulation.ref,
+      source_id: "eurlex",
+      citation_string: `CELEX:3${VOL}R0001`,
+      pin: "Article 6",
+    });
+  });
+
+  it("returns nothing for sources it does not serve or filters that don't fit", async () => {
+    const port = knowledgePort(knowledge);
+    const odd = [{ source_id: "web" }, { source_id: "edgar", filter: { courts: ["x"] } }];
+    expect(await port.search(caller(), odd, "risk", 5)).toEqual([]);
+  });
+});
+
 describe("knowledge API", () => {
   const app = createApp({
     auth: createAuth(pool),
     documents: testDocuments(pool),
-    threads: createThreads(pool, {
-      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
-      documents: testDocuments(pool),
-    }),
+    threads: testThreads(pool, testDocuments(pool), {}, noVaults, knowledgePort(knowledge)),
     knowledge,
     clientIp: () => "203.0.113.9",
   });

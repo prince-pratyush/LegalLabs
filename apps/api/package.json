@@ -17,6 +17,7 @@
   "dependencies": {
     "@hono/node-server": "2.1.6",
     "@legallabs/citations": "workspace:*",
+    "@legallabs/contracts": "workspace:*",
     "@legallabs/db": "workspace:*",
     "@legallabs/embed": "workspace:*",
     "@legallabs/ingest": "workspace:*",
