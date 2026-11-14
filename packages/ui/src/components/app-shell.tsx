@@ -8,10 +8,7 @@ import { Tooltip } from "./tooltip.js";
 
 const wide = () => typeof matchMedia !== "function" || matchMedia("(min-width: 1024px)").matches;
 
-/**
- * Sidebar, main column and an optional context panel, plus the global keys:
- * ⌘K palette, ? shortcuts, ⌘B sidebar, ⌘/ context panel.
- */
+/** Owns the global keys, so every screen gets the same palette and panels. */
 export function AppShell({
   brand,
   sidebar,

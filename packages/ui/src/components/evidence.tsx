@@ -20,10 +20,7 @@ export const clip = (quote: string, limit = QUOTE_LIMIT) =>
 
 const verified = (status: EvidenceStatus) => status === "ok";
 
-/**
- * The one way a source is shown: a numbered marker that previews the quote on hover
- * or focus, and opens the source on click or Enter. Used in threads, cells and tasks.
- */
+/** The one way a source is shown, so threads, cells and tasks all verify alike. */
 export function CitationMarker({
   evidence,
   onOpen,

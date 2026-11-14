@@ -5,10 +5,7 @@ import { Button } from "./button.js";
 
 type Action = { label: string; onClick: () => void };
 
-/**
- * Every empty or error state offers one way forward, so nobody hits a dead end.
- * The primary action is required on purpose.
- */
+/** The action is required, so no empty or error state is a dead end. */
 export function EmptyState({
   icon: Icon,
   title,

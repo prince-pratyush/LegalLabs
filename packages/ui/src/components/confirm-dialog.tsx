@@ -2,10 +2,7 @@ import { AlertDialog as Primitive } from "radix-ui";
 import type { ReactNode } from "react";
 import { Button } from "./button.js";
 
-/**
- * The kit's only modal. Anything that isn't a confirmation belongs in a side panel,
- * so dialogs never stack.
- */
+/** The kit's only modal, so dialogs never stack; everything else is a side panel. */
 export function ConfirmDialog({
   open,
   defaultOpen,

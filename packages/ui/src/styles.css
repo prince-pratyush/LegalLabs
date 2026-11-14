@@ -115,13 +115,12 @@
       --shimmer: none;
     }
 
-    /* Must beat every component's own transition. */
     *,
     *::before,
     *::after {
-      /* biome-ignore lint/complexity/noImportantStyles: see above */
+      /* biome-ignore lint/complexity/noImportantStyles: must beat component transitions */
       transition-property: opacity !important;
-      /* biome-ignore lint/complexity/noImportantStyles: see above */
+      /* biome-ignore lint/complexity/noImportantStyles: must beat component transitions */
       scroll-behavior: auto !important;
     }
   }

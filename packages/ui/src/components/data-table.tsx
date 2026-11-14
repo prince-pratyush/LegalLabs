@@ -52,10 +52,7 @@ const rowHeight = (element: HTMLElement | null) =>
   Number.parseFloat(element ? getComputedStyle(element).getPropertyValue("--row-height") : "") ||
   40;
 
-/**
- * A grid for long, uniform lists: sticky header, sortable columns, and only the
- * visible rows in the page, so 10,000 rows scroll as smoothly as 10.
- */
+/** Renders only the visible rows, so 10,000 scroll as smoothly as 10. */
 export function DataTable<T extends object>({
   label,
   columns,

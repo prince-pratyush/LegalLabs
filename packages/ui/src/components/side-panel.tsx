@@ -84,10 +84,7 @@ export function ResizeHandle({
   );
 }
 
-/**
- * Everything that isn't a confirmation opens here instead of in a modal. It is a
- * non-modal dialog: Esc closes it and focus goes back to what opened it.
- */
+/** Non-modal, so the page stays usable; focus returns to the opener on close. */
 export function SidePanel({
   title,
   onClose,

@@ -26,10 +26,7 @@ const termOf = (search: string) => search.replace(/^[>?]\s*/, "").toLowerCase();
 const found = (command: PaletteCommand, term: string) =>
   [command.label, ...(command.keywords ?? [])].some((text) => text.toLowerCase().includes(term));
 
-/**
- * ⌘K reaches everything by name; ">" switches to actions and "?" lists shortcuts.
- * Focus is trapped here because the palette sits above everything else.
- */
+/** Traps focus, unlike panels, because it sits above everything else. */
 export function CommandPalette({
   open,
   onOpenChange,

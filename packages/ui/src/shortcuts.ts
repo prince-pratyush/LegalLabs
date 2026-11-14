@@ -68,10 +68,7 @@ export function formatKeys(keys: string, mac = isMac()): string {
     .join(" then ");
 }
 
-/**
- * Binds keys like "mod+k", "?" or the sequence "g t". Keys without a modifier are
- * ignored while typing, so they never steal a letter from a text field.
- */
+/** Plain keys are ignored while typing, so they never steal a letter from a field. */
 export function useHotkeys(bindings: Record<string, () => void>, enabled = true) {
   const latest = useRef(bindings);
   latest.current = bindings;
