@@ -6,10 +6,7 @@ import {
   ComposerSkeleton,
   EmptyState,
   ModelBadge,
-  PANEL_MIN,
   RunProgress,
-  SidePanel,
-  SourcesList,
 } from "@legallabs/ui";
 import { Share2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,6 +26,7 @@ import { Shell } from "../shell.js";
 import { openCitation } from "../viewer/open-citation.js";
 import { toAnswerCitation } from "./compose.js";
 import { type LiveCitation, type LiveRun, reduceRun, startRun } from "./run-state.js";
+import { SourcesPanel } from "./SourcesPanel.js";
 import { ThreadComposer } from "./ThreadComposer.js";
 
 /** Verified citations open the viewer (or the authority); flagged ones never link. */
@@ -65,7 +63,6 @@ export function ThreadScreen({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
-  const [width, setWidth] = useState(PANEL_MIN);
   const [attempt, setAttempt] = useState(0);
   const following = useRef<string | null>(null);
 
@@ -190,18 +187,13 @@ export function ThreadScreen({
     panel?.kind === "share" && thread ? (
       <SharePanel threadId={thread.id} onClose={() => setPanel(null)} />
     ) : panel?.kind === "sources" ? (
-      <SidePanel
-        title="Sources"
+      <SourcesPanel
+        citations={answerCitations(panel.answerId)}
+        {...(panel.n !== undefined ? { activeN: panel.n } : {})}
+        onOpen={(n) => cite(panel.answerId, answerCitations(panel.answerId), n)}
+        onFlagged={(n) => setPanel({ kind: "sources", answerId: panel.answerId, n })}
         onClose={() => setPanel(null)}
-        width={width}
-        onWidthChange={setWidth}
-      >
-        <SourcesList
-          citations={answerCitations(panel.answerId)}
-          {...(panel.n !== undefined ? { activeN: panel.n } : {})}
-          onOpen={(n) => cite(panel.answerId, answerCitations(panel.answerId), n)}
-        />
-      </SidePanel>
+      />
     ) : null;
 
   const lastAnswer = thread?.messages.findLast((m) => m.role === "assistant");

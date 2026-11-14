@@ -293,7 +293,16 @@ describe("a thread", () => {
     const answer = await screen.findByTestId("answer-m2");
     fireEvent.click(within(answer).getByRole("button", { name: "Source 2, not verified" }));
     expect(window.location.hash).toBe(`#/t/${THREAD_ID}`);
-    expect(await screen.findByRole("dialog", { name: "Sources" })).toBeTruthy();
+    const panel = await screen.findByRole("dialog", { name: "Sources" });
+    const flagged = within(panel).getByRole("region", { name: "Source 2" });
+    expect(flagged.textContent).toContain("Couldn't verify on the page");
+    expect(flagged.textContent).toContain("quote 2");
+    // Choosing another flagged source in the list selects it instead of opening anything.
+    fireEvent.click(within(panel).getByRole("button", { name: /\[3\]/ }));
+    expect(within(panel).getByRole("region", { name: "Source 3" }).textContent).toContain(
+      "quote 3",
+    );
+    expect(window.location.hash).toBe(`#/t/${THREAD_ID}`);
 
     fireEvent.click(within(answer).getByRole("button", { name: "Source 1, verified" }));
     await waitFor(() => expect(window.location.hash).toBe(`#/d/${DOC}/v/1?p=3&cf=0&ct=7`));
