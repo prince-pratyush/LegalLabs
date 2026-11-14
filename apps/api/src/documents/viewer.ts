@@ -102,8 +102,10 @@ const VERSION_NO = /^[1-9][0-9]{0,8}$/;
 const valid = (documentId: string, version: string) =>
   UUID.test(documentId) && (UUID.test(version) || VERSION_NO.test(version));
 // Ids are compared as text, so case must not decide whether a link opens.
-const ids = (documentId: string, version: string) =>
-  [documentId.toLowerCase(), version.toLowerCase()];
+const ids = (documentId: string, version: string) => [
+  documentId.toLowerCase(),
+  version.toLowerCase(),
+];
 
 // Narrows a chunk to the first query word in it, so the hit marks a word, not a paragraph.
 function narrow(text: string, query: string): { from: number; to: number } {
