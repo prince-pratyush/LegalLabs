@@ -29,7 +29,6 @@ export interface UploadInput {
   name: string;
   bytes: Uint8Array;
   matterId: string | null;
-  /** Files the upload into a vault, at the top or in a folder. */
   vaultId?: string;
   folderId?: string | null;
 }
@@ -72,7 +71,7 @@ export interface SearchOptions {
 export interface Documents {
   /** Stores the file and queues it; reading it happens in the ingest worker. */
   upload(principal: Principal, input: UploadInput, client: Client): Promise<UploadResult>;
-  /** The caller's newest documents outside vaults, up to a fixed page. */
+  /** Outside vaults only: vault files are listed per folder, which scales. */
   list(principal: Principal): Promise<Summary[]>;
   /** Null for anything the caller can't read. */
   get(principal: Principal, documentId: string): Promise<Summary | null>;

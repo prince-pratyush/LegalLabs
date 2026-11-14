@@ -33,7 +33,7 @@ const STATES: Record<UploadState, { tone: Tone; label: string }> = {
   rejected: { tone: "warning", label: "Not uploaded" },
 };
 
-/** A file's progress as icon plus words. */
+// Words with the icon: colour alone says nothing to many people.
 export function FileStateText({ state, progress }: { state: UploadState; progress?: number }) {
   const { tone, label } = STATES[state];
   const percent =

@@ -51,7 +51,7 @@ language sql stable security definer set search_path = '' as $$
       from core.matter mt where mt.id = p_matter), false)
 $$;
 
--- Moves folders and documents to the recycle bin, with everything inside them.
+-- One timestamp for the whole call, so a restore brings back exactly what went together.
 create function content.trash_items(p_vault uuid, p_document_ids uuid[], p_folder_ids uuid[])
 returns integer
 language plpgsql security definer set search_path = '' as $$
@@ -319,7 +319,6 @@ begin
 end
 $$;
 
--- Grants on a vault, for those who may change them.
 create function content.vault_shares(p_vault uuid)
 returns table (principal_type text, principal_id uuid, level text, name text)
 language plpgsql stable security definer set search_path = '' as $$

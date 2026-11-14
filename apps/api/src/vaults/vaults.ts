@@ -2,6 +2,7 @@ import {
   type ContentControls,
   type FileState,
   fileTypeLimit,
+  hasAccess,
   type UploadRejection,
   type VaultAccess,
   type VaultGrant,
@@ -177,7 +178,7 @@ export interface Vaults {
     client: Client,
   ): Promise<{ deniedByWall: string[] } | null>;
   preflight(p: Principal, vaultId: string, files: ManifestFile[]): Promise<Preflight | null>;
-  /** Creates any folders in `relativePath` that don't exist yet, then files the upload. */
+  /** `relativePath` keeps a dropped folder's structure; missing folders are made. */
   upload(
     p: Principal,
     vaultId: string,
@@ -189,7 +190,6 @@ export interface Vaults {
     vaultId: string,
     hours: number,
   ): Promise<{ documents: number; earliestDeletionAt: string | null } | null>;
-  /** People and groups to share with, matched on email or group name. */
   findPrincipals(
     p: Principal,
     query: string,
@@ -338,9 +338,8 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
     (await db.query<{ l: VaultAccess | null }>("select content.vault_level($1) l", [vaultId]))
       .rows[0]?.l ?? null;
 
-  const canEdit = (access: VaultAccess | null) =>
-    access === "owner" || access === "full" || access === "edit";
-  const canManage = (access: VaultAccess | null) => access === "owner" || access === "full";
+  const canEdit = (access: VaultAccess | null) => hasAccess(access, "edit");
+  const canManage = (access: VaultAccess | null) => hasAccess(access, "full");
 
   async function getVault(db: pg.PoolClient, id: string) {
     const { rows } = await db.query<VaultRow>(`${VAULT_SQL} where v.id = $1`, [id]);
