@@ -62,10 +62,11 @@ begin
       from core.workspace w
   loop
     continue when cardinality(ws.vaults) + cardinality(ws.folders) + cardinality(ws.documents) = 0;
-    return query
-      select ws.id, p.sha256 from content.purge(ws.id, ws.vaults, ws.folders, ws.documents) p;
+    -- Set first: grant deletes are allowed only inside the current workspace.
     perform set_config('app.user_id', '', true);
     perform set_config('app.workspace_id', ws.id::text, true);
+    return query
+      select ws.id, p.sha256 from content.purge(ws.id, ws.vaults, ws.folders, ws.documents) p;
     perform admin.append_audit_event('deletion.completed', 'system', null, null, null,
       jsonb_build_object('vaults', cardinality(ws.vaults), 'folders', cardinality(ws.folders),
                          'documents', cardinality(ws.documents)));

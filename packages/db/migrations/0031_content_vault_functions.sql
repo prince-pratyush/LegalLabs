@@ -15,10 +15,16 @@ create policy definer_write on content.document for update to legallabs_definer
   using (true) with check (true);
 create policy definer_delete on content.document for delete to legallabs_definer using (true);
 
-grant insert, delete on core.share_grant to legallabs_definer;
-create policy definer_insert on core.share_grant for insert to legallabs_definer
-  with check (true);
-create policy definer_delete on core.share_grant for delete to legallabs_definer using (true);
+-- Vaults are shared only through content.set_vault_shares, which checks levels and walls.
+-- The definer's own grant policies come from 0027 and keep it inside the current workspace.
+drop policy share_grant_insert on core.share_grant;
+create policy share_grant_insert on core.share_grant for insert to legallabs_app
+  with check (core.in_tenant(workspace_id) and granted_by = core.current_user_id()
+              and object_type not in ('thread', 'vault'));
+drop policy share_grant_delete on core.share_grant;
+create policy share_grant_delete on core.share_grant for delete to legallabs_app
+  using (core.in_tenant(workspace_id) and object_type not in ('thread', 'vault')
+         and (granted_by = core.current_user_id() or core.has_permission('admin.config')));
 
 create function content.require_level(p_vault uuid, p_levels text[]) returns void
 language plpgsql stable set search_path = '' as $$
