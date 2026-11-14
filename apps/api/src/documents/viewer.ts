@@ -53,13 +53,16 @@ export interface Viewer {
     from: number,
     to: number,
   ): Promise<PageLayout[] | NotReady | null>;
-  /** The original bytes, or one range of them. Null for a range past the end too. */
+  /**
+   * The original bytes of a PDF, or one range of them. `range` gets the file's size,
+   * so a suffix range needs no second lookup. Null for anything else or not visible.
+   */
   file(
     principal: Principal,
     documentId: string,
     versionId: string,
-    range: { start: number; end: number | null } | null,
-  ): Promise<FileRange | "unsatisfiable" | null>;
+    range: (total: number) => { start: number; end: number | null } | null,
+  ): Promise<(FileRange & { partial: boolean }) | { unsatisfiable: number } | null>;
   search(
     principal: Principal,
     documentId: string,
@@ -208,14 +211,15 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
     async file(principal, documentId, versionId, range) {
       if (!valid(documentId, versionId)) return null;
       const row = await asApp(pool, principal, (db) => version(db, documentId, versionId));
-      if (!row) return null;
+      if (!row || renderOf(row.mime) !== "pdf") return null;
       const total = Number(row.size);
-      const start = range?.start ?? 0;
-      const end = Math.min(range?.end ?? total - 1, total - 1);
-      if (start > end) return "unsatisfiable";
+      const asked = range(total);
+      const start = asked?.start ?? 0;
+      const end = Math.min(asked?.end ?? total - 1, total - 1);
+      if (start > end) return { unsatisfiable: total };
       const key = contentKey(row.workspace_id, row.sha256.toString("hex"));
       const bytes = await store.getRange(key, start, end);
-      return bytes ? { bytes, start, end, total, mime: row.mime } : null;
+      return bytes ? { bytes, start, end, total, mime: row.mime, partial: asked !== null } : null;
     },
 
     async search(principal, documentId, versionId, query) {

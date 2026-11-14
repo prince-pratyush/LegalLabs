@@ -2,7 +2,7 @@ import { MAX_LAYOUT_PAGES } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
-import { renderOf, type Viewer } from "./viewer.js";
+import type { Viewer } from "./viewer.js";
 
 type Env = { Variables: { principal: Principal } };
 
@@ -80,30 +80,27 @@ export function viewerRoutes(viewer: Viewer, clientOf: (c: Context) => Client) {
   });
 
   app.get("/:id/versions/:v/file", async (c) => {
-    const principal = c.get("principal");
-    const id = c.req.param("id");
-    const v = c.req.param("v");
-    // Size first, so a suffix range can be worked out before reading anything.
-    const head = await viewer.file(principal, id, v, { start: 0, end: 0 });
-    if (head === null || head === "unsatisfiable" || renderOf(head.mime) !== "pdf") {
-      return notFound(c);
-    }
-    const range = parseRange(c.req.header("range"), head.total);
-    const found = await viewer.file(principal, id, v, range);
+    const found = await viewer.file(
+      c.get("principal"),
+      c.req.param("id"),
+      c.req.param("v"),
+      (total) => parseRange(c.req.header("range"), total),
+    );
+    if (!found) return notFound(c);
     c.header("Accept-Ranges", "bytes");
     c.header("Cache-Control", "private, no-store");
     c.header("X-Content-Type-Options", "nosniff");
-    if (found === "unsatisfiable") {
-      c.header("Content-Range", `bytes */${head.total}`);
+    if ("unsatisfiable" in found) {
+      c.header("Content-Range", `bytes */${found.unsatisfiable}`);
       return c.body(null, 416);
     }
-    if (!found) return notFound(c);
     c.header("Content-Type", found.mime);
     c.header("Content-Disposition", "inline");
     c.header("Content-Length", String(found.bytes.length));
-    if (!range) return c.body(found.bytes as Uint8Array<ArrayBuffer>, 200);
+    const body = found.bytes as Uint8Array<ArrayBuffer>;
+    if (!found.partial) return c.body(body, 200);
     c.header("Content-Range", `bytes ${found.start}-${found.end}/${found.total}`);
-    return c.body(found.bytes as Uint8Array<ArrayBuffer>, 206);
+    return c.body(body, 206);
   });
 
   app.get("/:id/versions/:v/search", async (c) => {
