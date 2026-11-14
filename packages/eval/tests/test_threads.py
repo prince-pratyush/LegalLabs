@@ -9,7 +9,13 @@ import pytest
 from legallabs_eval.harnesses.legallabs_thread import LegalLabsThreadHarness
 from legallabs_eval.metrics import wilson
 from legallabs_eval.runner import Runner
-from legallabs_eval.schemas import Document, NonRetryableError, TaskDatum
+from legallabs_eval.schemas import (
+    Document,
+    HarnessError,
+    HarnessRequest,
+    NonRetryableError,
+    TaskDatum,
+)
 from legallabs_eval.suites.coverage_vdr import CoverageVdr, criterion_met, generate_room
 from legallabs_eval.suites.thread_answers import (
     CATEGORIES,
@@ -251,6 +257,36 @@ SYSTEM = {"harness": "legallabs-thread", "vendors": ["ollama"], "params": {"poll
 
 def harness(transport: httpx.MockTransport) -> LegalLabsThreadHarness:
     return LegalLabsThreadHarness("threads", SYSTEM, transport, sleep=lambda _: None)
+
+
+def test_a_stuck_run_times_out(tmp_path: Path, api_env: None) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/login":
+            return httpx.Response(200, json={}, headers={"set-cookie": "__Host-sid=tok; Secure"})
+        if request.url.path == "/api/v1/threads":
+            return httpx.Response(202, json={"thread_id": "1", "message_id": "m", "run_id": "1"})
+        return httpx.Response(200, json={"run": {"id": "1", "status": "running"}})
+
+    ticks = iter(range(0, 10_000, 600))
+    thread = LegalLabsThreadHarness(
+        "threads",
+        SYSTEM,
+        httpx.MockTransport(handler),
+        sleep=lambda _: None,
+        clock=lambda: float(next(ticks)),
+    )
+    thread._login()
+    request = HarnessRequest(build_tasks()[0], "hallucination-200", "", tmp_path / "a", tmp_path)
+    with pytest.raises(HarnessError, match="still running"):
+        thread.run(request)
+
+
+def test_connection_failure_while_preparing_is_retryable(api_env: None) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    with pytest.raises(HarnessError, match="refused"):
+        harness(httpx.MockTransport(handler)).prepare([Document("a.md", "x")])
 
 
 def test_hallucination_run_reports_rates_and_gate(tmp_path: Path, api_env: None) -> None:

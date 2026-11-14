@@ -39,6 +39,7 @@ class LegalLabsThreadHarness(LegalLabsSearchHarness):
         system: dict[str, Any],
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__(system_name, system, transport)
         params = system.get("params", {})
@@ -47,9 +48,17 @@ class LegalLabsThreadHarness(LegalLabsSearchHarness):
         self.index_timeout_s = float(params.get("index_timeout_seconds", 1800))
         self.vault_env = params.get("vault_id_env", "LEGALLABS_VAULT_ID")
         self.sleep = sleep
+        self.clock = clock
         self.vault_ids: list[str] = []
 
     def prepare(self, corpus: list[Document]) -> None:
+        # A dropped connection is worth another try, not a crash with a traceback.
+        try:
+            self._prepare(corpus)
+        except httpx.TransportError as err:
+            raise HarnessError(str(err)) from err
+
+    def _prepare(self, corpus: list[Document]) -> None:
         self._login()
         # A preloaded vault holds rooms too big to attach file by file.
         vault = os.environ.get(self.vault_env)
@@ -68,7 +77,7 @@ class LegalLabsThreadHarness(LegalLabsSearchHarness):
         assert self.client is not None
         waiting = set(self.document_ids)
         failed: set[str] = set()
-        deadline = time.monotonic() + self.index_timeout_s
+        deadline = self.clock() + self.index_timeout_s
         while waiting:
             listed = _check(self.client.get("/api/v1/documents")).json()["documents"]
             for doc in listed:
@@ -78,7 +87,7 @@ class LegalLabsThreadHarness(LegalLabsSearchHarness):
                         failed.add(doc["id"])
             if not waiting:
                 break
-            if time.monotonic() > deadline:
+            if self.clock() > deadline:
                 raise NonRetryableError(f"{len(waiting)} documents never finished indexing")
             self.sleep(self.poll_s)
         # A file that can't be read leaves the scope rather than sinking the whole run.
@@ -137,7 +146,7 @@ class LegalLabsThreadHarness(LegalLabsSearchHarness):
 
     def _wait(self, run_id: str, trace: Path) -> dict[str, Any]:
         assert self.client is not None
-        deadline = time.monotonic() + self.run_timeout_s
+        deadline = self.clock() + self.run_timeout_s
         approved = False
         while True:
             run = _check(self.client.get(f"/api/v1/runs/{run_id}")).json()["run"]
@@ -148,6 +157,6 @@ class LegalLabsThreadHarness(LegalLabsSearchHarness):
                 _check(self.client.post(f"/api/v1/runs/{run_id}/approve"))
                 append_jsonl(trace / "requests.jsonl", {"method": "POST", "path": "approve"})
                 approved = True
-            if time.monotonic() > deadline:
+            if self.clock() > deadline:
                 raise HarnessError(f"run still {run['status']} after {self.run_timeout_s:.0f}s")
             self.sleep(self.poll_s)
