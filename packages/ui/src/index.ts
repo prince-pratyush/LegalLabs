@@ -61,4 +61,10 @@ export {
   themeSetting,
 } from "./theme.js";
 export { type ColorRole, colors, motion, space, type Theme, typography } from "./tokens.js";
-export { loadPdf, type PdfDocument, type PdfLoader, setPdfWorker } from "./viewer/pdf.js";
+export {
+  loadPdf,
+  type PdfDocument,
+  type PdfLoader,
+  preloadPdf,
+  setPdfWorker,
+} from "./viewer/pdf.js";

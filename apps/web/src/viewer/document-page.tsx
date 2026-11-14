@@ -1,5 +1,11 @@
 import { type Anchor, parseDocumentHref } from "@legallabs/contracts";
-import { DocumentViewer, StatusText, setPdfWorker, ViewerSkeleton } from "@legallabs/ui";
+import {
+  DocumentViewer,
+  preloadPdf,
+  StatusText,
+  setPdfWorker,
+  ViewerSkeleton,
+} from "@legallabs/ui";
 import PdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
@@ -12,6 +18,7 @@ function startPdfWorker() {
   if (workerStarted) return;
   workerStarted = true;
   setPdfWorker(new PdfWorker());
+  preloadPdf();
 }
 
 /** The viewer as a page of its own, at /documents/:id?v=&page=&span=. */

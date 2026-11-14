@@ -21,9 +21,24 @@ export function setPdfWorker(worker: Worker) {
 // Small chunks: a citation deep in a long file should cost a few requests, not the whole file.
 const CHUNK = 64 * 1024;
 
+let engine: Promise<typeof import("pdfjs-dist")> | null = null;
+
+// Loaded on first use, so screens without a PDF never download pdf.js.
+function pdfEngine() {
+  engine ??= import("pdfjs-dist").catch((err: unknown) => {
+    engine = null;
+    throw err;
+  });
+  return engine;
+}
+
+/** Starts fetching pdf.js early, while the document's details are still loading. */
+export function preloadPdf() {
+  pdfEngine().catch(() => {});
+}
+
 export const loadPdf: PdfLoader = async (url) => {
-  // Loaded on first use, so screens without a PDF never download pdf.js.
-  const pdfjs = await import("pdfjs-dist");
+  const pdfjs = await pdfEngine();
   if (workerPort) pdfjs.GlobalWorkerOptions.workerPort = workerPort;
   const task = pdfjs.getDocument({
     url,
