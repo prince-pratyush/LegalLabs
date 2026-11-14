@@ -245,6 +245,16 @@ def build_tasks() -> list[TaskDatum]:
     return tasks
 
 
+def spread(tasks: list[TaskDatum], limit: int | None) -> list[TaskDatum]:
+    """An evenly spaced sample, so a short run still covers every category."""
+    if limit is None or limit >= len(tasks):
+        return tasks
+    if limit <= 0:
+        return []
+    step = len(tasks) / limit
+    return [tasks[int(i * step)] for i in range(limit)]
+
+
 def rate(results: list[dict[str, Any]], metric: str, selected: int) -> dict[str, Any]:
     # Failed tasks count against the system, as in the headline score.
     hits = sum(r["metrics"].get(metric, 0.0) for r in results)
@@ -275,7 +285,7 @@ class Hallucination200(Suite):
         return _corpus()
 
     def load_tasks(self, limit: int | None = None) -> list[TaskDatum]:
-        return limited(build_tasks(), limit)
+        return spread(build_tasks(), limit)
 
     def make_grader(self, system_vendors: frozenset[str]) -> Grader:
         judge = None

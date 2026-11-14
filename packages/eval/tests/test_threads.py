@@ -335,8 +335,9 @@ def test_hallucination_run_reports_rates_and_gate(tmp_path: Path, api_env: None)
     report = summary["report"]
     assert summary["completed_tasks"] == 10
     assert report["n"] == 10
-    assert set(report["by_category"]) == {"general"}
-    assert report["by_category"]["general"]["n"] == 10
+    # A short run is spread over the list, so every category is in it.
+    assert len(report["by_category"]) == 4
+    assert sum(c["n"] for c in report["by_category"].values()) == 10
     rates = report["overall"]
     assert sum(rates[k]["rate"] for k in ("correct", "incomplete", "hallucinated")) == 1.0
     assert report["gate"]["pass"] is (rates["hallucinated"]["rate"] <= 0.05)
@@ -442,3 +443,16 @@ def test_vdr_gate_fails_without_both_runs() -> None:
     assert report["gate"]["pass"] is False
     base = graded("baseline", criterion_pass=0.0)
     assert suite.report([deep, base], tasks)["gate"]["pass"] is True
+
+
+def test_a_short_hallucination_run_samples_every_category() -> None:
+    from legallabs_eval.suites.thread_answers import build_tasks, spread
+
+    sample = spread(build_tasks(), 8)
+    assert len(sample) == 8
+    assert {t.metadata["category"] for t in sample} == {
+        "general",
+        "jurisdiction_time",
+        "false_premise",
+        "factual_recall",
+    }
