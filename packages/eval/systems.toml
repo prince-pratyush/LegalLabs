@@ -1,0 +1,51 @@
+# Named systems the harness can evaluate. Secrets never go here: each system reads
+# its credentials from environment variables.
+
+# Our stack, reached over its HTTP API. Needs LEGALLABS_URL, LEGALLABS_WORKSPACE,
+# LEGALLABS_EMAIL and LEGALLABS_PASSWORD for an account in a workspace kept for evals.
+[systems.legallabs-keyword]
+harness = "legallabs-search"
+vendor = "legallabs"
+# List every model vendor the stack calls underneath, so none of them judges it.
+vendors = ["legallabs"]
+params = { search_params = {} }
+
+# Offline lexical baseline: no server, no keys. CI runs it.
+[systems.bm25-local]
+harness = "bm25"
+vendor = "local"
+params = { k1 = 1.2, b = 0.75 }
+
+# Plain-model baselines: the whole document and the question, nothing else.
+[systems.claude-plain]
+harness = "model"
+vendor = "anthropic"
+params = { model = "claude-sonnet-5-5", max_tokens = 2048 }
+
+[systems.gpt-plain]
+harness = "model"
+vendor = "openai"
+params = { model = "gpt-5.5", max_tokens = 2048 }
+
+# Model plus naive RAG: only the top BM25 chunks of the document.
+[systems.claude-naive-rag]
+harness = "naive-rag"
+vendor = "anthropic"
+params = { model = "claude-sonnet-5-5", max_tokens = 2048, top_k = 8 }
+
+# Judges grade answer suites: two per criterion, from distinct vendors the system
+# doesn't use. Keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY.
+[judges.gpt]
+vendor = "openai"
+model = "gpt-5.5"
+
+[judges.claude]
+vendor = "anthropic"
+model = "claude-sonnet-5-5"
+
+[judges.gemini]
+vendor = "google"
+model = "gemini-2.5-pro"
+
+[grading]
+judges_per_criterion = 2
