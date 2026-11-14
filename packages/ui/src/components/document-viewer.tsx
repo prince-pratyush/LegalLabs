@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -284,10 +285,12 @@ function LoadedViewer({
   const target =
     requested && requested.page >= 1 && requested.page <= count ? requested : undefined;
   const { layouts, want } = useLayouts(source, count);
+  const settled = useRef<ViewerTarget | null>(null);
   const scroller = useRef<HTMLElement>(null);
   const pageInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const [width, setWidth] = useState(800);
+  // Unknown until the pane is measured; page offsets depend on it, so nothing lays out before.
+  const [width, setWidth] = useState<number | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
   const [strip, setStrip] = useState(false);
   const [current, setCurrent] = useState(target?.page ?? 1);
@@ -300,10 +303,14 @@ function LoadedViewer({
   const [pdf, setPdf] = useState<PdfDocument | null>(null);
   const [pdfFailed, setPdfFailed] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = scroller.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => setWidth(entry?.contentRect.width ?? 800));
+    if (!element) return;
+    setWidth(element.clientWidth || 800);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry?.contentRect.width) setWidth(entry.contentRect.width);
+    });
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
@@ -328,7 +335,7 @@ function LoadedViewer({
 
   // Fits the widest page to the pane until the user zooms.
   const widest = Math.max(1, ...manifest.pages.map((p) => p.width));
-  const fit = Math.min(2, Math.max(0.25, (width - 2 * GAP) / widest));
+  const fit = Math.min(2, Math.max(0.25, ((width ?? 800) - 2 * GAP) / widest));
   const scale = zoom ?? fit;
   // A PDF that won't load still reads as text, so a citation always has somewhere to land.
   const paged = kind === "pdf" && !pdfFailed;
@@ -346,13 +353,11 @@ function LoadedViewer({
   }, [count, pageHeight]);
 
   const virtual = useVirtualizer({
-    count: sheet ? 0 : count,
+    count: sheet || width === null ? 0 : count,
     getScrollElement: () => scroller.current,
     estimateSize: pageHeight,
     overscan: 1,
     paddingStart: GAP,
-    // Starts at the cited page, so the first paint is that page and not page 1.
-    initialOffset: () => (paged && target ? (tops[target.page - 1] ?? 0) : 0),
   });
   const items = virtual.getVirtualItems();
 
@@ -362,11 +367,13 @@ function LoadedViewer({
 
   // Asks for the layouts of pages in view, and tracks which page is on screen.
   useEffect(() => {
+    // Until the cited page is reached, the pages briefly in view on the way aren't wanted.
+    if (target && settled.current !== target) return;
     for (const item of items) want(item.index + 1);
     const top = scroller.current?.scrollTop ?? 0;
     const first = items.find((item) => item.end - top > 80);
     if (first) setCurrent(first.index + 1);
-  }, [items, want]);
+  }, [items, want, target]);
 
   useEffect(() => {
     if (sheet) want(sheetPage);
@@ -383,16 +390,17 @@ function LoadedViewer({
       const start = paged
         ? (tops[clamped - 1] ?? 0)
         : (virtual.getOffsetForIndex(clamped - 1, "start")?.[0] ?? 0);
-      virtual.scrollToOffset(Math.max(0, start + offset));
+      // Set directly: the virtualiser follows the scroll event and paints only what is in view.
+      const element = scroller.current;
+      if (element) element.scrollTop = Math.max(0, start + offset);
       setCurrent(clamped);
     },
     [count, sheet, virtual, want, paged, tops],
   );
 
   // Opens at the target page first, then settles the highlight into the upper third.
-  const settled = useRef<ViewerTarget | null>(null);
   useEffect(() => {
-    if (!target || settled.current === target) return;
+    if (!target || width === null || settled.current === target) return;
     const layout = layouts.get(target.page);
     if (!layout) {
       goTo(target.page);
@@ -411,7 +419,7 @@ function LoadedViewer({
         ?.querySelector("[data-mark='cite'],[data-mark='approx']")
         ?.scrollIntoView?.({ block: "center" }),
     );
-  }, [target, layouts, goTo, paged, scale]);
+  }, [target, width, layouts, goTo, paged, scale]);
 
   const step = useCallback(
     (delta: number) => {
