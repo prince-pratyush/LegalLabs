@@ -65,7 +65,7 @@ export interface Limits {
 }
 
 // Sized so that one file can't take down a small machine.
-const DEFAULT_LIMITS: Limits = {
+export const DEFAULT_LIMITS: Limits = {
   maxPages: 1000,
   maxChars: 5_000_000,
   maxBlocks: 200_000,

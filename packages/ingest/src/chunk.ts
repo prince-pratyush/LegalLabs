@@ -1,3 +1,5 @@
+import type { Heading } from "./process.js";
+
 export interface Chunk {
   ordinal: number;
   pageNo: number;
@@ -6,13 +8,6 @@ export interface Chunk {
   text: string;
   /** Headings above the chunk, outermost first, such as "12. Liability > 12.2 Cap". */
   section: string | null;
-}
-
-interface HeadingAt {
-  pageNo: number;
-  from: number;
-  to: number;
-  level: number;
 }
 
 const MAX_HEADING = 200;
@@ -90,19 +85,23 @@ function pageSpans(text: string, breaks: ReadonlySet<number> = new Set()): Span[
 /** Offsets index the page text exactly, which is what a citation is checked against. */
 export function chunkPages(
   pages: readonly { pageNo: number; text: string }[],
-  headings: readonly HeadingAt[] = [],
+  headings: readonly Heading[] = [],
 ): Chunk[] {
   const textOf = new Map(pages.map((page) => [page.pageNo, page.text]));
   const ordered = [...headings].sort((a, b) => a.pageNo - b.pageNo || a.from - b.from);
+  const byPage = new Map<number, Heading[]>();
+  for (const heading of ordered) {
+    byPage.set(heading.pageNo, [...(byPage.get(heading.pageNo) ?? []), heading]);
+  }
   const open: { level: number; title: string }[] = [];
   let next = 0;
   const chunks: Chunk[] = [];
   for (const { pageNo, text } of pages) {
-    const breaks = new Set(ordered.filter((h) => h.pageNo === pageNo).map((h) => h.from));
+    const breaks = new Set((byPage.get(pageNo) ?? []).map((h) => h.from));
     for (const { from, to } of pageSpans(text, breaks)) {
       const here = { pageNo, from };
-      for (; next < ordered.length && before(ordered[next] as HeadingAt, here); next++) {
-        const heading = ordered[next] as HeadingAt;
+      for (; next < ordered.length && before(ordered[next] as Heading, here); next++) {
+        const heading = ordered[next] as Heading;
         const title = (textOf.get(heading.pageNo) ?? "")
           .slice(heading.from, heading.to)
           .replace(/\s+/g, " ")

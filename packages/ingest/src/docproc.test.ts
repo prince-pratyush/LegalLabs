@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDocprocParser, DocprocUnavailable } from "./docproc.js";
+import { createDocprocParser, DocprocInvalid, DocprocUnavailable } from "./docproc.js";
 import { createIngest } from "./index.js";
 import { processFile } from "./process.js";
 import { makePdf } from "./testing.js";
@@ -59,13 +59,34 @@ describe("docproc parser", () => {
     ["a heading past the text", { headings: [{ from: 5, to: 999, level: 1, text: "x" }] }],
     ["a control character", { text: `a\u0001b`, blocks: [], headings: [] }],
     ["a missing page", { page_no: 2 }],
-  ])("refuses an answer with %s", async (_, change) => {
+  ])("distrusts an answer with %s", async (_, change) => {
     const page = { ...good.pages[0], ...change };
-    expect(await parse({ ...good, pages: [page] })).toEqual({ ok: false, reason: "INTERNAL" });
+    await expect(parse({ ...good, pages: [page] })).rejects.toBeInstanceOf(DocprocInvalid);
   });
 
-  it("refuses a malformed answer", async () => {
-    expect(await parse({ ok: true, pages: "nope" })).toEqual({ ok: false, reason: "INTERNAL" });
+  it("distrusts a malformed answer or child", async () => {
+    await expect(parse({ ok: true, pages: "nope" })).rejects.toBeInstanceOf(DocprocInvalid);
+    const child = { name: "x", content_base64: "not base64!" };
+    await expect(parse({ ...good, children: [child] })).rejects.toBeInstanceOf(DocprocInvalid);
+  });
+
+  it("refuses more than the limits allow", async () => {
+    const pages = Array.from({ length: 1001 }, (_, i) => ({ ...good.pages[0], page_no: i + 1 }));
+    expect(await parse({ ...good, pages })).toEqual({ ok: false, reason: "PAGE_LIMIT_EXCEEDED" });
+    const huge = { name: "x", content_base64: Buffer.alloc(26 * 1024 * 1024).toString("base64") };
+    expect(await parse({ ...good, children: [huge] })).toEqual({
+      ok: false,
+      reason: "TOO_COMPLEX",
+    });
+  });
+
+  it("names the type itself rather than take the sidecar's word", async () => {
+    const result = await parse({ ...good, mime: "text/html" });
+    expect(result).toMatchObject({ ok: true, mime: "application/octet-stream" });
+  });
+
+  it("maps a too-large answer from the sidecar", async () => {
+    expect(await parse({}, 413)).toEqual({ ok: false, reason: "FILE_TOO_LARGE" });
   });
 
   it("says when the sidecar can't be reached", async () => {
@@ -94,6 +115,15 @@ describe("createIngest", () => {
     });
     const result = await ingest(pdf, "a.pdf");
     expect(result).toMatchObject({ ok: true, mime: "application/pdf" });
+  });
+
+  it("reads a PDF with pdf.js when the sidecar's answer is wrong", async () => {
+    const wrong = createIngest({
+      docprocUrl: "http://docproc",
+      fetch: answer({ ok: true, pages: "nope" }),
+      local: processFile,
+    });
+    expect(await wrong(pdf, "a.pdf")).toMatchObject({ ok: true, mime: "application/pdf" });
   });
 
   it("waits for the sidecar for types only it can read", async () => {

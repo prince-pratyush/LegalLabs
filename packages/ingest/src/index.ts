@@ -1,10 +1,10 @@
-import { createDocprocParser, DocprocUnavailable } from "./docproc.js";
+import { createDocprocParser, DocprocInvalid, DocprocUnavailable } from "./docproc.js";
 import { runIsolated } from "./isolate.js";
 import { detectType, type IngestResult, LOCAL_TYPES } from "./process.js";
 
 export { boxesFor } from "./boxes.js";
 export type { Chunk } from "./chunk.js";
-export { createDocprocParser, DocprocUnavailable } from "./docproc.js";
+export { createDocprocParser, DocprocInvalid, DocprocUnavailable } from "./docproc.js";
 export type { Block, Child, Failure, Heading, Ingested, IngestResult, Page } from "./process.js";
 export { DOCX, detectType, XLSX } from "./process.js";
 
@@ -34,7 +34,7 @@ export interface IngestOptions {
   local?: (bytes: Uint8Array, name: string) => Promise<IngestResult>;
 }
 
-/** Picks a parser by type. PDF falls back to pdf.js when the sidecar can't be reached. */
+/** Picks a parser by type. PDF falls back to pdf.js when the sidecar is down or wrong. */
 export function createIngest(options: IngestOptions = {}) {
   const docproc = options.docprocUrl
     ? createDocprocParser({
@@ -53,7 +53,7 @@ export function createIngest(options: IngestOptions = {}) {
     try {
       return await docproc(bytes, name);
     } catch (err) {
-      if (!(err instanceof DocprocUnavailable)) throw err;
+      if (!(err instanceof DocprocUnavailable || err instanceof DocprocInvalid)) throw err;
       // Other types have no local reader, so they wait for the sidecar to come back.
       return local ? readLocally(bytes, name) : { ok: false, reason: "INTERNAL" };
     }
