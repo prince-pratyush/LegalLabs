@@ -9,6 +9,8 @@ export const colors = {
     fg: "#111418",
     fgMuted: "#5B6472",
     border: "#E3E6EB",
+    // Borders that mark a control need 3:1; plain dividers don't.
+    control: "#848D9B",
     accent: "#2D6BE4",
     citation: "#7C3AED",
     verified: "#15803D",
@@ -26,6 +28,7 @@ export const colors = {
     fg: "#E6E9EF",
     fgMuted: "#9AA3B2",
     border: "#2A3140",
+    control: "#6B7587",
     accent: "#6B9CFF",
     citation: "#A78BFA",
     verified: "#4ADE80",
