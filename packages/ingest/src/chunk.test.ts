@@ -49,4 +49,27 @@ describe("chunkPages", () => {
   it("makes nothing from a blank page", () => {
     expect(chunkPages([page(1, " \n\n \t ")])).toEqual([]);
   });
+
+  it("names the section a chunk sits in, and starts a chunk at each heading", () => {
+    const one = "1. Definitions\n\nTerms mean things.\n\n2. Liability\n\nIntro.";
+    const two = "2.1 Cap\n\nThe cap is ten.";
+    const at = (text: string, title: string) => text.indexOf(title);
+    const chunks = chunkPages(
+      [page(1, one), page(2, two)],
+      [
+        { pageNo: 1, from: at(one, "1."), to: at(one, "1.") + 14, level: 1 },
+        { pageNo: 1, from: at(one, "2."), to: at(one, "2.") + 12, level: 1 },
+        { pageNo: 2, from: 0, to: 7, level: 2 },
+      ],
+    );
+    expect(chunks.map((c) => [c.text, c.section])).toEqual([
+      ["1. Definitions\n\nTerms mean things.", "1. Definitions"],
+      ["2. Liability\n\nIntro.", "2. Liability"],
+      ["2.1 Cap\n\nThe cap is ten.", "2. Liability > 2.1 Cap"],
+    ]);
+  });
+
+  it("leaves the section empty with no headings", () => {
+    expect(chunkPages([page(1, "Body.")])[0]?.section).toBeNull();
+  });
 });
