@@ -1,5 +1,5 @@
 import { APICallError, registerTelemetry } from "ai";
-import { MockLanguageModelV4 } from "ai/test";
+import { convertArrayToReadableStream, MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { aiSdkProvider, gatewayOptionsFromEnv, type Message } from "./index.js";
 
@@ -45,6 +45,13 @@ describe("gatewayOptionsFromEnv", () => {
     });
 
     expect(Object.keys(providers).sort()).toEqual(["deepseek", "google"]);
+  });
+
+  it("reads the Ollama window from the server's own setting", () => {
+    expect(gatewayOptionsFromEnv({ OLLAMA_CONTEXT_LENGTH: "16384" }).contextWindows).toEqual({
+      ollama: 16_384,
+    });
+    expect(gatewayOptionsFromEnv({ OLLAMA_CONTEXT_LENGTH: "lots" }).contextWindows).toBeUndefined();
   });
 
   it("allows demo models only for the exact word true", () => {
@@ -118,5 +125,45 @@ describe("aiSdkProvider", () => {
       aiSdkProvider(() => mock).complete({ model: "any", messages, max_output: 50 }),
     ).rejects.toThrow();
     expect(mock.doGenerateCalls).toHaveLength(1);
+  });
+});
+
+const streamed = (deltas: string[], failure?: Error) => ({
+  stream: convertArrayToReadableStream([
+    { type: "stream-start" as const, warnings: [] },
+    { type: "text-start" as const, id: "t" },
+    ...deltas.map((delta) => ({ type: "text-delta" as const, id: "t", delta })),
+    ...(failure ? [{ type: "error" as const, error: failure }] : []),
+    { type: "text-end" as const, id: "t" },
+    {
+      type: "finish" as const,
+      finishReason: { unified: "stop" as const, raw: "stop" },
+      usage: generated(7, 2).usage,
+    },
+  ]),
+});
+
+describe("aiSdkProvider.stream", () => {
+  it("hands each piece of text on and reports usage at the end", async () => {
+    const mock = new MockLanguageModelV4({ doStream: async () => streamed(["30 ", "days"]) });
+    const seen: string[] = [];
+
+    const completion = await aiSdkProvider(() => mock).stream?.(
+      { model: "any", messages, max_output: 50 },
+      (delta) => seen.push(delta),
+    );
+
+    expect(seen).toEqual(["30 ", "days"]);
+    expect(completion).toEqual({ text: "30 days", usage: { input_tokens: 7, output_tokens: 2 } });
+  });
+
+  it("raises a failure the stream would otherwise swallow", async () => {
+    const mock = new MockLanguageModelV4({
+      doStream: async () => streamed(["30 "], new Error("connection reset")),
+    });
+
+    await expect(
+      aiSdkProvider(() => mock).stream?.({ model: "any", messages, max_output: 50 }, () => {}),
+    ).rejects.toThrow();
   });
 });

@@ -1,8 +1,8 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText, type LanguageModel } from "ai";
-import type { GatewayOptions, ModelProvider } from "./gateway.js";
+import { generateText, type LanguageModel, streamText } from "ai";
+import type { Completion, GatewayOptions, Message, ModelProvider } from "./gateway.js";
 
 const TIMEOUT_MS = 120_000;
 
@@ -34,26 +34,57 @@ export function gatewayOptionsFromEnv(env: Env): Omit<GatewayOptions, "recordUsa
     });
     providers.ollama = aiSdkProvider((id) => ollama.languageModel(id));
   }
-  return { providers, allowDemoModels: env.LEGALLABS_ALLOW_DEMO_MODELS === "true" };
+  // The same setting the Ollama server reads, so both sides agree on the window.
+  const ollamaWindow = Number(env.OLLAMA_CONTEXT_LENGTH);
+  return {
+    providers,
+    allowDemoModels: env.LEGALLABS_ALLOW_DEMO_MODELS === "true",
+    ...(Number.isInteger(ollamaWindow) && ollamaWindow > 0
+      ? { contextWindows: { ollama: ollamaWindow } }
+      : {}),
+  };
 }
 
+type Counted = { inputTokens: number | undefined; outputTokens: number | undefined };
+
+const completion = (text: string, { inputTokens, outputTokens }: Counted): Completion =>
+  inputTokens === undefined || outputTokens === undefined
+    ? { text }
+    : { text, usage: { input_tokens: inputTokens, output_tokens: outputTokens } };
+
 export function aiSdkProvider(modelFor: (id: string) => LanguageModel): ModelProvider {
+  const settings = (model: string, messages: readonly Message[], max_output: number) => ({
+    model: modelFor(model),
+    messages: [...messages],
+    allowSystemInMessages: true,
+    maxOutputTokens: max_output,
+    // The gateway falls back to another model, so retries here would only add delay.
+    maxRetries: 0,
+    timeout: TIMEOUT_MS,
+    // Off explicitly: a registered integration would otherwise export prompts.
+    telemetry: { isEnabled: false },
+  });
   return {
     async complete({ model, messages, max_output }) {
-      const { text, usage } = await generateText({
-        model: modelFor(model),
-        messages: [...messages],
-        allowSystemInMessages: true,
-        maxOutputTokens: max_output,
-        // The gateway falls back to another model, so retries here would only add delay.
-        maxRetries: 0,
-        timeout: TIMEOUT_MS,
-        // Off explicitly: a registered integration would otherwise export prompts.
-        telemetry: { isEnabled: false },
+      const { text, usage } = await generateText(settings(model, messages, max_output));
+      return completion(text, usage);
+    },
+    async stream({ model, messages, max_output }, onText) {
+      let failure: unknown = null;
+      const result = streamText({
+        ...settings(model, messages, max_output),
+        onError: ({ error }) => {
+          failure = error;
+        },
       });
-      const { inputTokens, outputTokens } = usage;
-      if (inputTokens === undefined || outputTokens === undefined) return { text };
-      return { text, usage: { input_tokens: inputTokens, output_tokens: outputTokens } };
+      let text = "";
+      for await (const delta of result.textStream) {
+        text += delta;
+        onText(delta);
+      }
+      // The stream ends quietly on error, so the failure is raised here for the gateway.
+      if (failure !== null) throw failure;
+      return completion(text, await result.usage);
     },
   };
 }
