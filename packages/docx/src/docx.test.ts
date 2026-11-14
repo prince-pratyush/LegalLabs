@@ -139,6 +139,24 @@ describe("buildDocx", () => {
     expect(() => wellFormed(files["word/footnotes.xml"] ?? "")).not.toThrow();
   });
 
+  it("refuses a date that isn't valid or is outside 1980-2099", () => {
+    for (const date of [
+      "not a date",
+      "1979-12-31T23:59:59Z",
+      "2100-01-01T00:00:00Z",
+      new Date(Number.NaN),
+    ]) {
+      expect(() => buildDocx({ blocks, author: "Ana", date }), String(date)).toThrow(
+        /1980 and 2099/,
+      );
+      expect(
+        () => buildTrackedDocx({ before: "a", after: "b", author: "A", date }),
+        String(date),
+      ).toThrow(/1980 and 2099/);
+    }
+    expect(() => buildDocx({ blocks, author: "Ana", date: "1980-01-01T00:00:00Z" })).not.toThrow();
+  });
+
   it("refuses a reference to a missing footnote", () => {
     const bad = [{ kind: "paragraph" as const, runs: [{ footnote: 2 }] }];
     expect(() => buildDocx({ blocks: bad, author: "Ana", date: DATE, footnotes: ["one"] })).toThrow(

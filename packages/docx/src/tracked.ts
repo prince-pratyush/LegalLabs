@@ -123,11 +123,11 @@ function changedRuns(before: Block, after: Block, ops: readonly DiffOp[], rev: R
  * Formatting-only changes are not marked.
  */
 export function buildTrackedDocx(input: TrackedInput): Uint8Array {
+  let next = 1;
+  const rev: Revision = { id: () => next++, author: input.author, date: isoSeconds(input.date) };
   const before = markdownBlocks(input.before);
   const after = markdownBlocks(input.after);
   const key = (block: Block) => `${block.kind}|${blockText(block)}`;
-  let next = 1;
-  const rev: Revision = { id: () => next++, author: input.author, date: isoSeconds(input.date) };
   const lists = new Lists();
   const paragraphs: string[] = [];
 
