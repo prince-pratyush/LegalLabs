@@ -24,6 +24,15 @@ function contract(name: string, make: () => ObjectStore) {
 
     it("returns null for a missing key", async () => {
       expect(await make().get(contentKey(randomUUID(), SHA))).toBeNull();
+      expect(await make().getRange(contentKey(randomUUID(), SHA), 0, 1)).toBeNull();
+    });
+
+    it("returns a byte range, both ends included", async () => {
+      const store = make();
+      const key = contentKey(randomUUID(), SHA);
+      await store.putIfAbsent(key, bytes("hello world"));
+      const range = (await store.getRange(key, 6, 9)) ?? new Uint8Array();
+      expect(new TextDecoder().decode(range)).toBe("worl");
     });
   });
 }
