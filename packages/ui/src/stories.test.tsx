@@ -10,7 +10,7 @@ import { paintTheme } from "./theme.js";
 setProjectAnnotations(preview);
 afterEach(cleanup);
 
-const modules = import.meta.glob<Record<string, unknown>>("./components/*.stories.tsx", {
+const modules = import.meta.glob<Record<string, unknown>>("./components/**/*.stories.tsx", {
   eager: true,
 });
 
@@ -20,8 +20,8 @@ const OPTIONS: axe.RunOptions = {
 };
 
 describe("every component has stories", () => {
-  const components = Object.keys(import.meta.glob("./components/*.tsx")).filter(
-    (path) => !path.includes(".stories."),
+  const components = Object.keys(import.meta.glob("./components/**/*.tsx")).filter(
+    (path) => !path.includes(".stories.") && !path.includes(".test."),
   );
   it.each(components)("%s", (path) => {
     expect(Object.keys(modules)).toContain(path.replace(".tsx", ".stories.tsx"));
