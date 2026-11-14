@@ -1,7 +1,7 @@
 import { AwsClient } from "aws4fetch";
 
 export interface ObjectStore {
-  /** False if the key already held an object, which for content keys means the same bytes. */
+  /** False if the key was taken, which for a content key means the same bytes. */
   putIfAbsent(key: string, bytes: Uint8Array): Promise<boolean>;
   get(key: string): Promise<Uint8Array | null>;
 }
@@ -9,7 +9,7 @@ export interface ObjectStore {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
-/** Same bytes in one workspace share one object; workspaces never share. */
+/** Workspaces never share an object, even for identical bytes. */
 export function contentKey(workspaceId: string, sha256Hex: string): string {
   if (!UUID.test(workspaceId) || !SHA256.test(sha256Hex)) throw new Error("invalid content key");
   return `workspaces/${workspaceId}/sha256/${sha256Hex}`;
@@ -36,6 +36,7 @@ export interface S3Config {
   accessKeyId: string;
   secretAccessKey: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
 }
 
 // Path-style URLs, because SeaweedFS and most self-hosted servers expect them.
@@ -53,6 +54,8 @@ export function createS3Store(config: S3Config): ObjectStore {
   async function request(method: string, key: string, body?: Uint8Array): Promise<Response> {
     const signed = await client.sign(url(key), {
       method,
+      // A stalled store would otherwise hold an upload open forever.
+      signal: AbortSignal.timeout(config.timeoutMs ?? 30_000),
       ...(body ? { body, headers: { "content-type": "application/octet-stream" } } : {}),
     });
     const response = await send(signed);
