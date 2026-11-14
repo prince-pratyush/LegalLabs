@@ -16,6 +16,7 @@ import type { Documents } from "./documents.js";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_ATTACHMENTS = 200;
 const MAX_HITS = 50;
+const MAX_RANGE = 4 * 1024 * 1024;
 const SNIPPET = 160;
 
 const RENDER: Record<string, RenderKind> = {
@@ -30,7 +31,10 @@ export const renderOf = (mime: string): RenderKind => RENDER[mime] ?? "pages";
 export type NotReady = { notReady: DocumentStatus };
 
 export interface FileRange {
-  bytes: Uint8Array;
+  /** A whole file streams, so it is never held in memory; a range is small enough to buffer. */
+  body: Uint8Array | ReadableStream<Uint8Array>;
+  /** False for the whole file, answered with 200 rather than 206. */
+  partial: boolean;
   start: number;
   end: number;
   total: number;
@@ -62,7 +66,7 @@ export interface Viewer {
     documentId: string,
     versionId: string,
     range: (total: number) => { start: number; end: number | null } | null,
-  ): Promise<(FileRange & { partial: boolean }) | { unsatisfiable: number } | null>;
+  ): Promise<FileRange | { unsatisfiable: number } | null>;
   search(
     principal: Principal,
     documentId: string,
@@ -97,6 +101,9 @@ const VERSION_SQL = `
 const VERSION_NO = /^[1-9][0-9]{0,8}$/;
 const valid = (documentId: string, version: string) =>
   UUID.test(documentId) && (UUID.test(version) || VERSION_NO.test(version));
+// Ids are compared as text, so case must not decide whether a link opens.
+const ids = (documentId: string, version: string) =>
+  [documentId.toLowerCase(), version.toLowerCase()];
 
 // Narrows a chunk to the first query word in it, so the hit marks a word, not a paragraph.
 function narrow(text: string, query: string): { from: number; to: number } {
@@ -120,7 +127,7 @@ function snippet(text: string, from: number): string {
 
 export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Documents): Viewer {
   const version = (db: pg.PoolClient, documentId: string, versionId: string) =>
-    db.query<VersionRow>(VERSION_SQL, [documentId, versionId]).then((r) => r.rows[0] ?? null);
+    db.query<VersionRow>(VERSION_SQL, ids(documentId, versionId)).then((r) => r.rows[0] ?? null);
 
   return {
     async manifest(principal, documentId, versionId, client) {
@@ -138,14 +145,14 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
              join content.document_version v on v.document_id = d.id
             where d.parent_id = $1
             order by d.id limit $2`,
-          [documentId, MAX_ATTACHMENTS],
+          [row.id, MAX_ATTACHMENTS],
         );
         // Who looked at what, never which page or words.
         await db.query(
           "select admin.append_audit_event('document.previewed', 'user', $1, 'document', $2, $3, $4, $5)",
           [
             principal.userId,
-            documentId,
+            row.id,
             JSON.stringify({ version_id: row.version_id }),
             client.ip,
             uaHash(client),
@@ -186,7 +193,7 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
           width: number;
           height: number;
           text: string;
-          layout: { blocks?: PageLayout["lines"] };
+          layout: { blocks?: PageLayout["lines"] } | null;
           ocr: boolean;
         }>(
           `select page_no, width, height, text, layout, ocr from content.page
@@ -198,7 +205,7 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
           width: page.width,
           height: page.height,
           text: page.text,
-          lines: (page.layout.blocks ?? []).map(({ from, to, x0, y0, x1, y1 }) => ({
+          lines: (page.layout?.blocks ?? []).map(({ from, to, x0, y0, x1, y1 }) => ({
             from,
             to,
             x0,
@@ -217,12 +224,19 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
       if (!row || renderOf(row.mime) !== "pdf") return null;
       const total = Number(row.size);
       const asked = range(total);
-      const start = asked?.start ?? 0;
-      const end = Math.min(asked?.end ?? total - 1, total - 1);
-      if (start > end) return { unsatisfiable: total };
       const key = contentKey(row.workspace_id, row.sha256.toString("hex"));
-      const bytes = await store.getRange(key, start, end);
-      return bytes ? { bytes, start, end, total, mime: row.mime, partial: asked !== null } : null;
+      if (!asked) {
+        const body = await store.stream(key);
+        return body
+          ? { body, partial: false, start: 0, end: total - 1, total, mime: row.mime }
+          : null;
+      }
+      const start = asked.start;
+      // pdf.js asks for small chunks; a huge range would only buffer a large file in memory.
+      const end = Math.min(asked.end ?? total - 1, total - 1, start + MAX_RANGE - 1);
+      if (start > end) return { unsatisfiable: total };
+      const body = await store.getRange(key, start, end);
+      return body ? { body, partial: true, start, end, total, mime: row.mime } : null;
     },
 
     async search(principal, documentId, versionId, query) {
@@ -230,7 +244,7 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
       const visible = await asApp(pool, principal, (db) => version(db, documentId, versionId));
       if (!visible) return null;
       const passages = await documents.search(principal, query, {
-        documentIds: [documentId],
+        documentIds: [visible.id],
         versionIds: [visible.version_id],
         limit: MAX_HITS,
         match: "all",

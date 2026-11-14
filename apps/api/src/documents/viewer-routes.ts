@@ -96,8 +96,8 @@ export function viewerRoutes(viewer: Viewer, clientOf: (c: Context) => Client) {
     }
     c.header("Content-Type", found.mime);
     c.header("Content-Disposition", "inline");
-    c.header("Content-Length", String(found.bytes.length));
-    const body = found.bytes as Uint8Array<ArrayBuffer>;
+    c.header("Content-Length", String(found.end - found.start + 1));
+    const body = found.body as Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>;
     if (!found.partial) return c.body(body, 200);
     c.header("Content-Range", `bytes ${found.start}-${found.end}/${found.total}`);
     return c.body(body, 206);
