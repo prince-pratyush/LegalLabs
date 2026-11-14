@@ -52,6 +52,10 @@ class LegalLabsSearchHarness(Harness):
         return value
 
     def prepare(self, corpus: list[Document]) -> None:
+        self._login()
+        self._upload(corpus)
+
+    def _login(self) -> None:
         url = httpx.URL(self._env("url"))
         # The session cookie is sent by hand, so plain http is only safe on this machine.
         if url.scheme != "https" and url.host not in LOCAL_HOSTS:
@@ -73,6 +77,9 @@ class LegalLabsSearchHarness(Harness):
         # Set by hand: a Secure cookie is not sent back over plain http to localhost.
         self.client.headers["cookie"] = f"__Host-sid={token}"
 
+    def _upload(self, corpus: list[Document]) -> None:
+        if self.client is None:
+            raise NonRetryableError("not logged in")
         # Uploaded fresh each run: a same-named old copy could hold different text.
         self.document_ids = []
         for doc in corpus:
