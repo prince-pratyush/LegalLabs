@@ -8,6 +8,8 @@ import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
+import type { Viewer } from "./documents/viewer.js";
+import { viewerRoutes } from "./documents/viewer-routes.js";
 import { threadRoutes } from "./threads/routes.js";
 import type { Threads } from "./threads/threads.js";
 
@@ -36,6 +38,8 @@ export interface AppOptions {
   auth: Auth;
   documents: Documents;
   threads: Threads;
+  /** Pages and files for the document viewer. */
+  viewer?: Viewer;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -47,6 +51,7 @@ export function createApp({
   auth,
   documents,
   threads,
+  viewer,
   clientIp,
   now = Date.now,
   webRoot,
@@ -142,9 +147,14 @@ export function createApp({
     c.header("Cache-Control", "no-store");
   });
 
+  if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   app.route("/api/v1/threads", threadRoutes(threads, clientOf, now));
-  if (webRoot) app.get("*", serveStatic({ root: webRoot }));
+  if (webRoot) {
+    // A deep link to a document loads the app, which then opens the viewer.
+    app.get("/documents/*", serveStatic({ root: webRoot, path: "index.html" }));
+    app.get("*", serveStatic({ root: webRoot }));
+  }
 
   return app;
 }

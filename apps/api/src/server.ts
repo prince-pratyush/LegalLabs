@@ -11,6 +11,7 @@ import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { createDocuments } from "./documents/documents.js";
+import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createThreads } from "./threads/threads.js";
 
@@ -79,6 +80,7 @@ const app = createApp({
   auth: createAuth(pool),
   documents,
   threads: createThreads(pool, { gateway, documents }),
+  viewer: createViewer(pool, store, documents),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
