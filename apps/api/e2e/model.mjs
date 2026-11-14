@@ -28,6 +28,10 @@ export function reply(messages) {
   }
   const passage = PASSAGE.exec(last);
   if (!passage) return "I couldn't find this in the selected documents.";
+  // Asked to invent, it quotes words that aren't on the page, as a careless model would.
+  if (/Question: [^\n]*invent/i.test(last)) {
+    return `The cap is unlimited.<c doc="${passage[1]}" page="${passage[2]}" quote="liability is unlimited in every case"/>`;
+  }
   const quote = sentence(passage[3]);
   return `${quote}<c doc="${passage[1]}" page="${passage[2]}" quote="${attr(quote)}"/>`;
 }

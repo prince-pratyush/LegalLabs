@@ -9,7 +9,7 @@ interface Stack {
   workspace: string;
   email: string;
   password: string;
-  stop: () => void;
+  stop: () => Promise<void>;
 }
 
 const CONTRACT = `MASTER SERVICES AGREEMENT
@@ -70,7 +70,7 @@ async function events(runId: string): Promise<Event[]> {
 }
 
 async function until<T>(read: () => Promise<T>, done: (value: T) => boolean, what: string) {
-  const deadline = Date.now() + 15 * 60_000;
+  const deadline = Date.now() + 8 * 60_000;
   for (;;) {
     const value = await read();
     if (done(value)) return value;
@@ -95,6 +95,11 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(() => stack?.stop());
+
+// A signal skips afterAll, which would leave the stack running.
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => void stack?.stop().finally(() => process.exit(1)));
+}
 
 describe("pilot acceptance 1", () => {
   it(
@@ -141,6 +146,7 @@ describe("pilot acceptance 1", () => {
       expect(stream.map((e) => e.id)).toEqual(stream.map((_, i) => i + 1));
       const citation = stream.find((e) => e.event === "citation")?.data.citation as {
         verified: string;
+        document: { document_id: string; version_id: string; page_no: number };
         open_url?: string;
         quote: string;
       };
@@ -154,7 +160,12 @@ describe("pilot acceptance 1", () => {
       // 3. The citation opens the viewer at the exact span on the cited page.
       const target = parseCitationPath(citation.open_url ?? "");
       expect(target).toMatchObject({ document_id: uploaded.file.id, version_no: 1, page: 1 });
-      expect(CONTRACT.slice(target?.char_from, target?.char_to)).toBe(citation.quote);
+      const { document: cited } = citation;
+      const viewed = await json<{ pages: { page_no: number; text: string }[] }>(
+        `/api/v1/documents/${cited.document_id}/versions/${cited.version_id}/pages?from=${cited.page_no}&to=${cited.page_no}`,
+      );
+      // The viewer's own page text holds the quote at exactly the span the link highlights.
+      expect(viewed.pages[0]?.text.slice(target?.char_from, target?.char_to)).toBe(citation.quote);
       const { thread } = await json<{
         thread: {
           messages: {
@@ -194,7 +205,29 @@ describe("pilot acceptance 1", () => {
         expect.arrayContaining(["[Content_Types].xml", "word/styles.xml"]),
       );
 
-      // 5. The work shows up in History.
+      // 5. A made-up quote is flagged, never shown as a verified source.
+      const invented = await post<{ run_id: string }>(
+        `/api/v1/threads/${asked.thread_id}/messages`,
+        {
+          content: "Please invent a stricter cap.",
+          scope: { document_ids: [], vault_ids: [vault.id], sources: [] },
+        },
+        202,
+      );
+      const flagged = await events(invented.run_id);
+      const bad = flagged.find((e) => e.event === "citation")?.data.citation as {
+        verified: string;
+        open_url?: string;
+      };
+      expect(bad.verified).not.toBe("ok");
+      expect(bad.open_url).toBeUndefined();
+      const counts = flagged.at(-1)?.data as {
+        citations: { ok: number; ungrounded_sentences: number };
+      };
+      expect(counts.citations.ok).toBe(0);
+      expect(counts.citations.ungrounded_sentences).toBeGreaterThan(0);
+
+      // 6. The work shows up in History.
       const history = await json<{ items: { id: string; status: string }[] }>("/api/v1/history");
       expect(history.items[0]).toMatchObject({ id: asked.thread_id, status: "done" });
     },
