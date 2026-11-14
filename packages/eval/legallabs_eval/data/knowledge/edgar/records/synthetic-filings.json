@@ -1,0 +1,140 @@
+[
+  {
+    "ref": "edgar:accession:0009990001-24-000010",
+    "title": "Northwind Turbines Corp (synthetic) 10-K (2024-02-28)",
+    "jurisdiction": "US",
+    "docType": "10-K",
+    "decidedOn": "2024-02-28",
+    "citations": [
+      { "text": "0009990001-24-000010", "kind": "accession" },
+      { "text": "CIK 9990001 10-K 2024-02-28", "kind": "docket" }
+    ],
+    "sections": ["Item 1", "Item 1A", "Item 7"],
+    "meta": { "cik": "9990001", "company": "Northwind Turbines Corp", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 1", "text": "Item 1. Business. Northwind Turbines designs and installs offshore wind turbines for utilities in the North Atlantic. Revenue comes from turbine sales and twenty-year service contracts." },
+      { "sectionPath": "Item 1A", "text": "Item 1A. Risk Factors. Our turbines depend on rare-earth magnets from a single overseas supplier. An export ban or a tariff on those magnets would delay deliveries and could force us to pay liquidated damages under our installation contracts." },
+      { "sectionPath": "Item 1A", "text": "Severe storms during the installation season can halt offshore work for weeks. We carry weather insurance, but deductibles are high and claims may be disputed." },
+      { "sectionPath": "Item 7", "text": "Item 7. Management's Discussion and Analysis. Revenue rose 18 percent to $2.1 billion, driven by two new offshore arrays. Gross margin fell because steel prices increased faster than our contract escalation clauses allowed." }
+    ]
+  },
+  {
+    "ref": "edgar:accession:0009990001-24-000031",
+    "title": "Northwind Turbines Corp (synthetic) 8-K (2024-06-03)",
+    "jurisdiction": "US",
+    "docType": "8-K",
+    "decidedOn": "2024-06-03",
+    "citations": [
+      { "text": "0009990001-24-000031", "kind": "accession" },
+      { "text": "CIK 9990001 8-K 2024-06-03", "kind": "docket" }
+    ],
+    "sections": ["Item 5.02"],
+    "meta": { "cik": "9990001", "company": "Northwind Turbines Corp", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 5.02", "text": "Item 5.02 Departure of Directors or Certain Officers. On May 30, 2024 the Chief Financial Officer informed the board that she will resign effective July 1, 2024 to pursue other opportunities. Her resignation did not result from any disagreement with the company on accounting matters. The board appointed the corporate controller as interim Chief Financial Officer." }
+    ]
+  },
+  {
+    "ref": "edgar:accession:0009990002-24-000005",
+    "title": "Bluefin Pharmaceuticals Inc (synthetic) 10-K (2024-03-12)",
+    "jurisdiction": "US",
+    "docType": "10-K",
+    "decidedOn": "2024-03-12",
+    "citations": [
+      { "text": "0009990002-24-000005", "kind": "accession" },
+      { "text": "CIK 9990002 10-K 2024-03-12", "kind": "docket" }
+    ],
+    "sections": ["Item 1", "Item 1A", "Item 3"],
+    "meta": { "cik": "9990002", "company": "Bluefin Pharmaceuticals Inc", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 1", "text": "Item 1. Business. Bluefin is a clinical-stage company developing a once-weekly oral treatment for migraine. Our lead candidate is in a Phase 3 trial with results expected next year." },
+      { "sectionPath": "Item 1A", "text": "Item 1A. Risk Factors. We have never generated product revenue and expect losses for several years. If the Phase 3 trial fails to meet its primary endpoint, the regulator will not approve the drug and our share price could fall sharply." },
+      { "sectionPath": "Item 1A", "text": "Our patents covering the lead compound expire in 2033. Generic manufacturers may challenge their validity, and patent litigation is expensive and uncertain." },
+      { "sectionPath": "Item 3", "text": "Item 3. Legal Proceedings. A former contract research organisation has sued us for $14 million, alleging we terminated its services agreement without cause. We believe the claim lacks merit and intend to defend it vigorously." }
+    ]
+  },
+  {
+    "ref": "edgar:accession:0009990002-24-000022",
+    "title": "Bluefin Pharmaceuticals Inc (synthetic) 8-K (2024-08-19)",
+    "jurisdiction": "US",
+    "docType": "8-K",
+    "decidedOn": "2024-08-19",
+    "citations": [
+      { "text": "0009990002-24-000022", "kind": "accession" },
+      { "text": "CIK 9990002 8-K 2024-08-19", "kind": "docket" }
+    ],
+    "sections": ["Item 1.01"],
+    "meta": { "cik": "9990002", "company": "Bluefin Pharmaceuticals Inc", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 1.01", "text": "Item 1.01 Entry into a Material Definitive Agreement. Bluefin entered into an exclusive licence agreement with a Japanese partner granting rights to commercialise the migraine candidate in Japan. Bluefin will receive an upfront payment of $60 million and up to $240 million in milestone payments, plus tiered royalties on net sales." }
+    ]
+  },
+  {
+    "ref": "edgar:accession:0009990003-24-000012",
+    "title": "Harborview Bancorp (synthetic) 10-Q (2024-05-08)",
+    "jurisdiction": "US",
+    "docType": "10-Q",
+    "decidedOn": "2024-05-08",
+    "citations": [
+      { "text": "0009990003-24-000012", "kind": "accession" },
+      { "text": "CIK 9990003 10-Q 2024-05-08", "kind": "docket" }
+    ],
+    "sections": ["Item 2"],
+    "meta": { "cik": "9990003", "company": "Harborview Bancorp", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 2", "text": "Item 2. Management's Discussion and Analysis. Deposits declined 4 percent in the quarter as customers moved balances into higher-yielding money market funds. Net interest margin narrowed to 2.9 percent." },
+      { "sectionPath": "Item 2", "text": "Commercial real estate loans make up 38 percent of the portfolio. Office loans that are thirty or more days past due rose to $41 million, and we increased the allowance for credit losses accordingly." }
+    ]
+  },
+  {
+    "ref": "edgar:accession:0009990004-24-000002",
+    "title": "Quillmark Software Ltd (synthetic) 10-K (2024-01-30)",
+    "jurisdiction": "US",
+    "docType": "10-K",
+    "decidedOn": "2024-01-30",
+    "citations": [
+      { "text": "0009990004-24-000002", "kind": "accession" },
+      { "text": "CIK 9990004 10-K 2024-01-30", "kind": "docket" }
+    ],
+    "sections": ["Item 1A", "Item 1C"],
+    "meta": { "cik": "9990004", "company": "Quillmark Software Ltd", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 1A", "text": "Item 1A. Risk Factors. Most of our revenue comes from annual subscriptions. If customers do not renew, or renew for fewer seats, our revenue would decline. Ten customers account for 31 percent of annual recurring revenue." },
+      { "sectionPath": "Item 1C", "text": "Item 1C. Cybersecurity. Our chief information security officer reports quarterly to the audit committee. In 2023 we detected unauthorised access to a test environment; no customer data was taken, and we notified affected partners." }
+    ]
+  },
+  {
+    "ref": "edgar:accession:0009990005-24-000040",
+    "title": "Cedar Ridge Foods Co (synthetic) 8-K (2024-10-02)",
+    "jurisdiction": "US",
+    "docType": "8-K",
+    "decidedOn": "2024-10-02",
+    "citations": [
+      { "text": "0009990005-24-000040", "kind": "accession" },
+      { "text": "CIK 9990005 8-K 2024-10-02", "kind": "docket" }
+    ],
+    "sections": ["Item 2.01", "Item 8.01"],
+    "meta": { "cik": "9990005", "company": "Cedar Ridge Foods Co", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 2.01", "text": "Item 2.01 Completion of Acquisition or Disposition of Assets. Cedar Ridge completed its acquisition of a regional frozen-dessert maker for $420 million in cash, funded by a new term loan and cash on hand." },
+      { "sectionPath": "Item 8.01", "text": "Item 8.01 Other Events. Cedar Ridge announced a voluntary recall of two snack products after a supplier reported possible peanut contamination. No illnesses have been reported." }
+    ]
+  },
+  {
+    "ref": "edgar:accession:0009990005-24-000011",
+    "title": "Cedar Ridge Foods Co (synthetic) 10-K (2024-02-15)",
+    "jurisdiction": "US",
+    "docType": "10-K",
+    "decidedOn": "2024-02-15",
+    "citations": [
+      { "text": "0009990005-24-000011", "kind": "accession" },
+      { "text": "CIK 9990005 10-K 2024-02-15", "kind": "docket" }
+    ],
+    "sections": ["Item 1A", "Item 7"],
+    "meta": { "cik": "9990005", "company": "Cedar Ridge Foods Co", "synthetic": true },
+    "chunks": [
+      { "sectionPath": "Item 1A", "text": "Item 1A. Risk Factors. Our largest retail customer accounted for 22 percent of net sales. Losing that customer, or a change in its shelf-space decisions, would materially harm our results." },
+      { "sectionPath": "Item 7", "text": "Item 7. Management's Discussion and Analysis. Commodity costs for cocoa and sugar rose sharply. We raised list prices twice during the year, which offset most of the increase but reduced unit volumes by 3 percent." }
+    ]
+  }
+]
