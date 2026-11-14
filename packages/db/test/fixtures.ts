@@ -229,6 +229,15 @@ export async function seed(tx: Tx) {
     beta: await thread(beta, bob, documents.beta.versionId),
   };
 
+  const preset = (ws: string, user: string) =>
+    tx.rows(
+      `insert into knowledge.source_filter_preset (workspace_id, user_id, source_id, name, filter)
+       values ($1, $2, 'us_caselaw', 'Supreme Court', '{"courts":["us"]}')`,
+      [ws, user],
+    );
+  await preset(acme, ana);
+  await preset(beta, bob);
+
   return {
     documents,
     threads,
