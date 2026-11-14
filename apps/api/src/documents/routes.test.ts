@@ -1,8 +1,10 @@
 import { ingestFile } from "@legallabs/ingest";
+import { createGateway } from "@legallabs/model-gateway";
 import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
+import { createDrafts } from "../drafts/drafts.js";
 import {
   auditTrail,
   PASSWORD,
@@ -25,6 +27,9 @@ function harness(options: Partial<IngestWorkerOptions> = {}) {
     auth: createAuth(pool),
     documents,
     threads: testThreads(pool, testDocuments(pool)),
+    drafts: createDrafts(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+    }),
     clientIp: () => "203.0.113.9",
   });
   const signIn = async (m: Seeded) => {
