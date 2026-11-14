@@ -103,3 +103,27 @@ describe("parseCitedAnswer", () => {
     expect(performance.now() - started).toBeLessThan(500);
   });
 });
+
+describe("parseCitedAnswer authority tags", () => {
+  it("reads an authority citation with its pin and quote", () => {
+    const parsed = parseCitedAnswer(
+      'Plausibility is required<c authority="556 U.S. 662" pin="678" quote="facial plausibility"/>.',
+    );
+    expect(parsed.citations).toEqual([
+      {
+        at: 24,
+        doc: null,
+        page: null,
+        quote: "facial plausibility",
+        authority: "556 U.S. 662",
+        pin: "678",
+      },
+    ]);
+  });
+
+  it("leaves the authority fields off a document tag", () => {
+    const [citation] = parseCitedAnswer('A<c doc="D1" page="1" quote="aaa"/>').citations;
+    expect(citation).not.toHaveProperty("authority");
+    expect(citation).not.toHaveProperty("pin");
+  });
+});

@@ -4,6 +4,9 @@ export interface ParsedCitation {
   doc: string | null;
   page: number | null;
   quote: string | null;
+  /** A public-law citation string, such as "556 U.S. 662"; set only when the tag has one. */
+  authority?: string;
+  pin?: string;
 }
 
 export interface CitedAnswer {
@@ -33,6 +36,7 @@ function toPage(value: string): number | null {
 
 /**
  * Splits model output into plain text and the `<c doc page quote/>` tags in it.
+ * An authority tag is `<c authority pin quote/>`.
  * Cut-off or garbled tags still leave the text, and stay as citations with
  * whatever could be read, so they show as unresolved instead of vanishing.
  */
@@ -98,6 +102,8 @@ export function parseCitedAnswer(raw: string): CitedAnswer {
       if (name === "doc") fields.doc = value;
       else if (name === "page") fields.page = toPage(value);
       else if (name === "quote") fields.quote = value;
+      else if (name === "authority") fields.authority = value;
+      else if (name === "pin") fields.pin = value;
     }
   };
 
