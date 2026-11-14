@@ -35,10 +35,10 @@ export interface ViewerSource {
 
 export interface ViewerTarget {
   page: number;
-  char_from?: number | null;
-  char_to?: number | null;
-  quote?: string | null;
-  status?: Anchor["status"];
+  char_from?: number | null | undefined;
+  char_to?: number | null | undefined;
+  quote?: string | null | undefined;
+  status?: Anchor["status"] | undefined;
 }
 
 export interface DocumentViewerProps {
