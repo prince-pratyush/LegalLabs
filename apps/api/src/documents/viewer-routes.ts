@@ -33,8 +33,9 @@ export function parseRange(header: string | undefined, total: number) {
   return { start: Number(match[1]), end: match[2] === "" ? null : Number(match[2]) };
 }
 
-const notFound = (c: Context) =>
-  c.json({ code: "NOT_FOUND", message: "That document wasn't found." }, 404);
+const failure = (c: Context, status: 400 | 404 | 409, code: string, message: string) =>
+  c.json({ code, message }, status);
+const notFound = (c: Context) => failure(c, 404, "NOT_FOUND", "That document wasn't found.");
 
 export function viewerRoutes(viewer: Viewer, clientOf: (c: Context) => Client) {
   const app = new Hono<Env>();
@@ -52,10 +53,7 @@ export function viewerRoutes(viewer: Viewer, clientOf: (c: Context) => Client) {
   app.get("/:id/versions/:v/pages", async (c) => {
     const parsed = pageRange.safeParse({ from: c.req.query("from"), to: c.req.query("to") });
     if (!parsed.success) {
-      return c.json(
-        { code: "INVALID_REQUEST", message: `Ask for 1 to ${MAX_LAYOUT_PAGES} pages.` },
-        400,
-      );
+      return failure(c, 400, "INVALID_REQUEST", `Ask for 1 to ${MAX_LAYOUT_PAGES} pages.`);
     }
     const found = await viewer.pages(
       c.get("principal"),
@@ -106,7 +104,7 @@ export function viewerRoutes(viewer: Viewer, clientOf: (c: Context) => Client) {
   app.get("/:id/versions/:v/search", async (c) => {
     const parsed = query.safeParse(c.req.query("q"));
     if (!parsed.success) {
-      return c.json({ code: "INVALID_REQUEST", message: "Check the search terms." }, 400);
+      return failure(c, 400, "INVALID_REQUEST", "Check the search terms.");
     }
     const hits = await viewer.search(
       c.get("principal"),
