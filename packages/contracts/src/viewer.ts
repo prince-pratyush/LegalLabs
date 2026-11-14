@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Id } from "./id.js";
+import { parseCitationPath } from "./thread.js";
 
 const MAX_INT = 2 ** 31 - 1;
 const Count = z.int().min(0).max(MAX_INT);
@@ -53,17 +54,35 @@ export function citationHref(anchor: Anchor): string {
 export interface DocumentLocation {
   document_id: string;
   version_id: string | null;
+  /** Set instead of `version_id` by the spec's `/d/:id/v/:n` links. */
+  version_no: number | null;
   page: number | null;
   span: { from: number; to: number } | null;
 }
 
-/** Null for anything that isn't a document link. Bad parameters are dropped, not trusted. */
+/**
+ * Reads both link forms: `/documents/:id?v=<version id>&page=&span=`, which needs only what a
+ * citation carries, and the spec's `/d/:id/v/:version_no?p=&cf=&ct=`. Null for anything else.
+ * Bad parameters are dropped, not trusted.
+ */
 export function parseDocumentHref(href: string): DocumentLocation | null {
   let url: URL;
   try {
     url = new URL(href, "http://local");
   } catch {
     return null;
+  }
+  if (url.pathname.startsWith("/d/")) {
+    const target = parseCitationPath(`${url.pathname}${url.search}`);
+    if (!target) return null;
+    const { char_from: from, char_to: to } = target;
+    return {
+      document_id: target.document_id,
+      version_id: null,
+      version_no: target.version_no,
+      page: target.page,
+      span: from !== undefined && to !== undefined && to > from ? { from, to } : null,
+    };
   }
   if (!url.pathname.startsWith(DOCUMENTS)) return null;
   const id = Id.safeParse(url.pathname.slice(DOCUMENTS.length));
@@ -77,6 +96,7 @@ export function parseDocumentHref(href: string): DocumentLocation | null {
   return {
     document_id: id.data,
     version_id: version.success ? version.data : null,
+    version_no: null,
     page: page.success ? page.data : null,
     span,
   };

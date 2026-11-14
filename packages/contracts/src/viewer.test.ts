@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Anchor, citationHref, parseDocumentHref, viewerPaths } from "./index.js";
+import { Anchor, citationHref, citationPath, parseDocumentHref, viewerPaths } from "./index.js";
 
 const anchor = {
   document_id: "01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f",
@@ -36,6 +36,7 @@ describe("citationHref", () => {
     expect(parseDocumentHref(href)).toEqual({
       document_id: anchor.document_id,
       version_id: anchor.version_id,
+      version_no: null,
       page: 12,
       span: { from: 340, to: 410 },
     });
@@ -56,8 +57,26 @@ describe("parseDocumentHref", () => {
     expect(parseDocumentHref(`/documents/${anchor.document_id}?v=x&page=-1&span=9-3`)).toEqual({
       document_id: anchor.document_id,
       version_id: null,
+      version_no: null,
       page: null,
       span: null,
+    });
+  });
+
+  it("reads the spec's /d/ links that thread citations carry", () => {
+    const href = citationPath({
+      document_id: anchor.document_id,
+      version_no: 3,
+      page: 12,
+      char_from: 340,
+      char_to: 410,
+    });
+    expect(parseDocumentHref(href)).toEqual({
+      document_id: anchor.document_id,
+      version_id: null,
+      version_no: 3,
+      page: 12,
+      span: { from: 340, to: 410 },
     });
   });
 });
