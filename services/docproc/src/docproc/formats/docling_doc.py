@@ -1,4 +1,5 @@
 import io
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -12,6 +13,19 @@ from docling_core.types.doc import (
 )
 
 from docproc.page import ParseFailure
+
+
+# A short numbered line with no closing stop, like "12.2 Cap" or "1. DEFINITIONS".
+_CLAUSE = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+[A-Z][^:,;]{0,78}$")
+
+
+def clause_level(text: str) -> int | None:
+    """Contracts number their headings, so a layout model's miss can still be caught."""
+    line = text.strip()
+    match = _CLAUSE.match(line)
+    if not match or line.endswith((".", ";", ":", ",")) or "\n" in line:
+        return None
+    return min(match.group(1).count(".") + 1, 6)
 
 
 @dataclass
@@ -51,6 +65,8 @@ def items(doc, layout: bool) -> Iterator[Item]:
             heading = 1
         elif isinstance(node, SectionHeaderItem):
             heading = max(1, int(node.level or 1))
+        else:
+            heading = clause_level(text)
         yield Item(_page_no(node), text, _box(doc, node) if layout else None, heading)
 
 
