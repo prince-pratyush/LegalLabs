@@ -14,6 +14,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@legallabs/contracts": "workspace:*",
     "@hono/node-server": "2.1.6",
     "@legallabs/citations": "workspace:*",
     "@legallabs/db": "workspace:*",
