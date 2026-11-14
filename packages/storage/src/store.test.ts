@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { AwsClient } from "aws4fetch";
+import { beforeAll, describe, expect, it } from "vitest";
 import { contentKey, createMemoryStore, createS3Store, type ObjectStore } from "./index.js";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -31,15 +32,14 @@ contract("memory store", createMemoryStore);
 
 const endpoint = process.env.TEST_S3_ENDPOINT;
 if (endpoint) {
-  contract("s3 store", () =>
-    createS3Store({
-      endpoint,
-      bucket: process.env.TEST_S3_BUCKET ?? "legallabs-test",
-      region: "us-east-1",
-      accessKeyId: process.env.TEST_S3_ACCESS_KEY ?? "test",
-      secretAccessKey: process.env.TEST_S3_SECRET_KEY ?? "test",
-    }),
-  );
+  const s3 = { endpoint, bucket: "legallabs-test", region: "us-east-1" };
+  const keys = { accessKeyId: "test", secretAccessKey: "test" };
+  beforeAll(async () => {
+    const client = new AwsClient({ ...keys, region: s3.region, service: "s3" });
+    const res = await client.fetch(`${endpoint}/${s3.bucket}`, { method: "PUT" });
+    await res.body?.cancel();
+  });
+  contract("s3 store", () => createS3Store({ ...s3, ...keys }));
 }
 
 describe("contentKey", () => {
