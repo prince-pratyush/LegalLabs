@@ -45,18 +45,21 @@ interface Claim {
 
 class LostLease extends Error {}
 
-export type IngestReason = Failure | "FORBIDDEN" | "MISSING_ORIGINAL";
-
-const BATCH_SIZE = 200;
-const MAX_DEPTH = 3;
-const MAX_CHILDREN = 5000;
-
 // Names come from inside the file, so they are cleaned like a typed one would be.
 const safeName = (name: string) =>
   name
     .replace(/[\p{C}\p{Zl}\p{Zp}]/gu, "")
     .slice(0, 255)
     .trim() || "attachment";
+
+export type IngestReason = Failure | "FORBIDDEN" | "MISSING_ORIGINAL";
+
+const BATCH_SIZE = 200;
+// A mailbox holds messages, a message holds attachments, and that is as deep as it goes.
+const MAX_DEPTH = 2;
+// Per level, so one uploaded file stays bounded: messages in a mailbox, then attachments.
+const MAX_CHILDREN = [5000, 50];
+
 // Worth another try: the same bytes may well succeed on a quieter machine.
 const TRANSIENT = new Set<IngestReason>(["INTERNAL", "PARSE_TIMEOUT", "TOO_COMPLEX"]);
 
@@ -175,8 +178,7 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
     const parsed = await ingest(bytes, name);
     if (!parsed.ok) return parsed.reason;
 
-    // Too deep a nest is more likely a bomb than a real mailbox.
-    const children = source.depth < MAX_DEPTH ? (parsed.children ?? []).slice(0, MAX_CHILDREN) : [];
+    const children = (parsed.children ?? []).slice(0, MAX_CHILDREN[source.depth] ?? 0);
     const stored: (Child & { sha256: Buffer })[] = [];
     for (const child of children) {
       const sha256 = createHash("sha256").update(child.bytes).digest();

@@ -178,11 +178,10 @@ describe("ingest worker", () => {
       client,
     );
     if (!result.ok) throw new Error(result.reason);
-    expect(await documents.worker.drain(m.workspaceId)).toBe(4);
+    expect(await documents.worker.drain(m.workspaceId)).toBe(3);
 
     const listed = await documents.list(asPrincipal(m));
     expect(listed.map((d) => [d.name, d.status, d.matterId])).toEqual([
-      ["in-in-in-mail.txt.txt.txt.txt", "indexed", matterId],
       ["in-in-mail.txt.txt.txt", "indexed", matterId],
       ["in-mail.txt.txt", "indexed", matterId],
       ["mail.txt", "indexed", matterId],

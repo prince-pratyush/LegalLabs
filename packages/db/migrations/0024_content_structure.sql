@@ -4,7 +4,7 @@ alter table content.chunk add column section text check (char_length(section) <=
 alter table content.page add column ocr boolean not null default false;
 
 -- An attachment or a message inside a mailbox is a document of its own, filed under its source.
-alter table content.document add column parent_id uuid;
+alter table content.document add column parent_id uuid check (parent_id <> id);
 alter table content.document
   add foreign key (workspace_id, parent_id) references content.document (workspace_id, id)
   on delete cascade;
