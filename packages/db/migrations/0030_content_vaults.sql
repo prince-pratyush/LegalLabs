@@ -74,6 +74,27 @@ grant select on content.vault, content.folder to legallabs_definer;
 create policy definer_read on content.vault for select to legallabs_definer using (true);
 create policy definer_read on content.folder for select to legallabs_definer using (true);
 
+-- A move into a binned folder would hide a live file, then purge it along with the folder.
+-- A function, not a subquery: a policy on folder can't query folder (see parent_fits).
+create function content.folder_live(p_folder uuid) returns boolean
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  return p_folder is null or exists (
+    select 1 from content.folder f where f.id = p_folder and f.deleted_at is null);
+end
+$$;
+alter function content.folder_live(uuid) owner to legallabs_definer;
+grant execute on function content.folder_live(uuid) to legallabs_app;
+
+-- Guests reach vaults only through a Space, never by a direct grant or a group.
+create function content.is_member() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from core."user" u
+                  where u.id = core.current_user_id() and u.kind = 'member')
+$$;
+alter function content.is_member() owner to legallabs_definer;
+grant execute on function content.is_member() to legallabs_app, legallabs_definer;
+
 -- Every open vault the caller reaches at a level, past the vault's wall. Policies call it as
 -- (select ...), so it runs once per statement instead of once per row.
 create function content.readable_vaults(min_level text) returns uuid[]
@@ -82,6 +103,7 @@ language sql stable security definer set search_path = '' as $$
     from content.vault v
    where v.workspace_id = core.current_workspace_id()
      and core.is_active_member()
+     and content.is_member()
      and v.deleted_at is null
      and core.can_access_matter(v.matter_id)
      and (v.owner_id = core.current_user_id() or core.has_access('vault', v.id, min_level))
@@ -100,6 +122,7 @@ language sql stable security definer set search_path = '' as $$
    where v.id = p_vault
      and v.workspace_id = core.current_workspace_id()
      and core.is_active_member()
+     and content.is_member()
      and v.deleted_at is null
      and core.can_access_matter(v.matter_id)
 $$;
@@ -129,7 +152,8 @@ create policy vault_read on content.vault for select to legallabs_app
   using (core.in_tenant(workspace_id)
          and core.can_access_matter(matter_id)
          and (owner_id = core.current_user_id()
-              or (deleted_at is null and core.has_access('vault', id, 'view'))
+              or (deleted_at is null and content.is_member()
+                  and core.has_access('vault', id, 'view'))
               or core.has_permission('admin.config')));
 create policy vault_insert on content.vault for insert to legallabs_app
   with check (core.in_tenant(workspace_id)
@@ -154,7 +178,8 @@ create policy folder_update on content.folder for update to legallabs_app
   using (core.in_tenant(workspace_id) and deleted_at is null
          and vault_id = any ((select content.readable_vaults('edit'))::uuid[]))
   with check (core.in_tenant(workspace_id)
-              and vault_id = any ((select content.readable_vaults('edit'))::uuid[]));
+              and vault_id = any ((select content.readable_vaults('edit'))::uuid[])
+              and content.folder_live(parent_id));
 
 -- A move must not put a folder inside itself.
 create function content.check_folder_cycle() returns trigger
@@ -222,6 +247,7 @@ create policy document_update on content.document for update to legallabs_app
   using (core.in_tenant(workspace_id) and deleted_at is null
          and vault_id = any ((select content.readable_vaults('edit'))::uuid[]))
   with check (core.in_tenant(workspace_id)
-              and vault_id = any ((select content.readable_vaults('edit'))::uuid[]));
+              and vault_id = any ((select content.readable_vaults('edit'))::uuid[])
+              and content.folder_live(folder_id));
 
 revoke execute on all functions in schema content from public;

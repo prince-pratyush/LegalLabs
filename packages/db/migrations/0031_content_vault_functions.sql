@@ -44,7 +44,9 @@ language sql stable security definer set search_path = '' as $$
              select 1 from core.wall w join principals p
                on w.principal_type = p.type and w.principal_id = p.id
               where w.matter_id = mt.id and w.effect = 'deny')
-           and (mt.wall_mode = 'open' or exists (
+           and ((mt.wall_mode = 'open' and exists (
+                  select 1 from core."user" u where u.id = p_user and u.kind = 'member'))
+                or exists (
              select 1 from core.wall w join principals p
                on w.principal_type = p.type and w.principal_id = p.id
               where w.matter_id = mt.id and w.effect = 'allow'))
@@ -114,6 +116,7 @@ begin
   with recursive picked as (
     select d.id, d.deleted_at from content.document d
      where d.vault_id = p_vault and d.deleted_at is not null
+       and d.deleted_reason = 'user'
        and ((d.id = any (p_document_ids) and core.can_access_matter(d.matter_id))
             or exists (select 1 from content.folder f
                         where f.id = d.folder_id and f.id = any (folder_ids)
@@ -295,6 +298,10 @@ begin
       raise exception 'unknown principal or level' using errcode = '22023';
     end if;
     continue when kind = 'user' and principal = vault_owner;
+    if kind = 'user' and not exists (
+      select 1 from core."user" u where u.id = principal and u.kind = 'member') then
+      raise exception 'guests reach vaults through a Space' using errcode = '22023';
+    end if;
     if kind = 'user' and not content.user_can_access_matter(principal, vault_matter) then
       denied := denied || principal;
       continue;

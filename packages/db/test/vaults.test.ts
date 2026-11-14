@@ -159,6 +159,54 @@ describe("what each level may do", () => {
     });
   });
 
+  it("lets a viewer add no text to a file others will cite", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const documentId = await addFile(tx, s, null, "Original clause.");
+      await share(tx, s, [{ principal_type: "user", principal_id: s.ben, level: "view" }]);
+      await tx.as(s.ben, s.acme);
+      expect(
+        await tx.error(
+          `insert into content.document_version (workspace_id, document_id, sha256, created_by)
+           values ($1, $2, $3, $4)`,
+          [s.acme, documentId, SHA, s.ben],
+        ),
+      ).toMatch(/row-level security/);
+      const { id: versionId } = await tx.one<{ id: string }>(
+        "select id from content.document_version where document_id = $1",
+        [documentId],
+      );
+      expect(
+        await tx.error(
+          `insert into content.chunk (workspace_id, version_id, page_no, ordinal, char_from, char_to, text)
+           values ($1, $2, 1, 9, 0, 5, 'Fake.')`,
+          [s.acme, versionId],
+        ),
+      ).toMatch(/row-level security|violates/);
+    });
+  });
+
+  it("keeps a file out of a folder in the recycle bin", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { vaultId, folderId } = s.vaults.acme;
+      await tx.as(s.ana, s.acme);
+      const { id: other } = await tx.one<{ id: string }>(
+        "insert into content.folder (workspace_id, vault_id, name, created_by) values ($1, $2, 'Old', $3) returning id",
+        [s.acme, vaultId, s.ana],
+      );
+      await tx.rows("select content.trash_items($1, '{}', $2)", [vaultId, [other]]);
+      const doc = await addFile(tx, s, null, "Live file.");
+      await tx.as(s.ana, s.acme);
+      expect(
+        await tx.error("update content.document set folder_id = $1 where id = $2", [other, doc]),
+      ).toMatch(/row-level security/);
+      expect(
+        await tx.error("update content.document set folder_id = $1 where id = $2", [folderId, doc]),
+      ).toBeUndefined();
+    });
+  });
+
   it("keeps a folder from moving inside itself", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
@@ -250,6 +298,27 @@ describe("walls inside a vault", () => {
         );
       expect(await insert(null)).toMatch(/row-level security/);
       expect(await insert(s.matters.m2)).toBeUndefined();
+    });
+  });
+});
+
+describe("guests", () => {
+  it("can't be given a vault directly, nor reach one through a group", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(
+        await tx.error("select content.set_vault_shares($1, $2, false)", [
+          s.vaults.acme.vaultId,
+          JSON.stringify([{ principal_type: "user", principal_id: s.gia, level: "view" }]),
+        ]),
+      ).toMatch(/through a Space/);
+      await share(tx, s, [
+        { principal_type: "group", principal_id: s.groups.partyP, level: "view" },
+      ]);
+      await tx.as(s.gia, s.acme);
+      expect(await vaultFiles(tx, s)).toBe(0);
+      expect(await count(tx, "content.vault")).toBe(0);
     });
   });
 });
@@ -383,7 +452,7 @@ describe("limits, transfer and retention", () => {
     });
   });
 
-  it("moves files past a vault's retention to the bin, then purges them after 30 days", async () => {
+  it("deletes files past a vault's retention for good, with no way back", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
       const { vaultId, documentId } = s.vaults.acme;
@@ -399,16 +468,22 @@ describe("limits, transfer and retention", () => {
       expect(
         await tx.one("select deleted_reason from content.document where id = $1", [documentId]),
       ).toEqual({ deleted_reason: "retention" });
-      expect(
-        await tx.one<{ action: string }>(
-          "select action from admin.audit_event where workspace_id = $1 order by seq desc limit 1",
-          [s.acme],
-        ),
-      ).toEqual({ action: "retention.sweep" });
-      await tx.rows(
-        "update content.document set deleted_at = now() - interval '31 days' where id = $1",
-        [documentId],
+      const actions = await tx.rows<{ action: string; reason: string | null }>(
+        `select action, details ->> 'deleted_reason' reason from admin.audit_event
+          where workspace_id = $1 order by seq desc limit 2`,
+        [s.acme],
       );
+      expect(actions).toEqual([
+        { action: "retention.sweep", reason: null },
+        { action: "document.deleted", reason: "retention" },
+      ]);
+      await tx.as(s.ana, s.acme);
+      await tx.rows("select content.restore_items($1, $2, '{}')", [vaultId, [documentId]]);
+      await tx.asOwner();
+      expect(
+        await tx.one("select deleted_reason from content.document where id = $1", [documentId]),
+      ).toEqual({ deleted_reason: "retention" });
+      // Retention is final: the purge removes it at once, not after 30 days.
       await tx.asWorker();
       await tx.rows("select * from content.purge_expired_bin(30)");
       await tx.asOwner();

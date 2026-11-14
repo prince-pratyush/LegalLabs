@@ -1,9 +1,11 @@
--- Each vault's retention moves its old files to the recycle bin; the bin empties after 30 days.
--- Both run from the background job, so they act for no one and are audited as the system.
+-- A vault's retention deletes old files for good: they pass through the bin only so the purge
+-- below removes rows and stored files in one place, and nobody can restore them meanwhile.
+-- What people delete stays in the bin 30 days. Both run as the system, audited per file.
 create function content.sweep_vault_retention() returns integer
 language plpgsql security definer set search_path = '' as $$
 declare
   ws record;
+  doc record;
   moved integer;
   total integer := 0;
 begin
@@ -13,16 +15,23 @@ begin
      where v.retention_hours is not null and v.deleted_at is null
      group by v.workspace_id
   loop
-    update content.document d
-       set deleted_at = now(), deleted_reason = 'retention', updated_at = now()
-      from content.vault v
-     where v.id = d.vault_id and v.id = any (ws.vaults)
-       and d.deleted_at is null
-       and d.created_at < now() - make_interval(hours => v.retention_hours);
-    get diagnostics moved = row_count;
+    perform set_config('app.user_id', '', true);
+    perform set_config('app.workspace_id', ws.workspace_id::text, true);
+    moved := 0;
+    for doc in
+      update content.document d
+         set deleted_at = now(), deleted_reason = 'retention', updated_at = now()
+        from content.vault v
+       where v.id = d.vault_id and v.id = any (ws.vaults)
+         and d.deleted_at is null
+         and d.created_at < now() - make_interval(hours => v.retention_hours)
+      returning d.id, d.vault_id
+    loop
+      perform admin.append_audit_event('document.deleted', 'system', null, 'document',
+        doc.id::text, jsonb_build_object('deleted_reason', 'retention', 'vault_id', doc.vault_id));
+      moved := moved + 1;
+    end loop;
     if moved > 0 then
-      perform set_config('app.user_id', '', true);
-      perform set_config('app.workspace_id', ws.workspace_id::text, true);
       perform admin.append_audit_event('retention.sweep', 'system', null, null, null,
         jsonb_build_object('documents', moved, 'vaults', cardinality(ws.vaults)));
       total := total + moved;
@@ -47,7 +56,9 @@ begin
            coalesce((select array_agg(f.id) from content.folder f
                       where f.workspace_id = w.id and f.deleted_at < cutoff), '{}') folders,
            coalesce((select array_agg(d.id) from content.document d
-                      where d.workspace_id = w.id and d.deleted_at < cutoff), '{}') documents
+                      where d.workspace_id = w.id
+                        and (d.deleted_at < cutoff or d.deleted_reason = 'retention')),
+                    '{}') documents
       from core.workspace w
   loop
     continue when cardinality(ws.vaults) + cardinality(ws.folders) + cardinality(ws.documents) = 0;

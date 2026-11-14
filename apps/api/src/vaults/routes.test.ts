@@ -417,12 +417,13 @@ describe("the recycle bin, limits and admin", () => {
     expect((await h.call(ana, "GET", "/admin/vaults")).body.vaults).toEqual([]);
   });
 
-  it("applies a vault's retention, then purges the bin after 30 days", async () => {
+  it("applies a vault's retention and deletes those files for good", async () => {
     const h = harness();
     const m = await seedMember(pool);
     const cookie = await h.signIn(m);
     const vault = await newVault(h, cookie);
     const file = await h.upload(cookie, vault, "old.txt", OPEN);
+    const kept = await h.upload(cookie, vault, "kept.txt", `${OPEN} Kept.`);
     await h.drain(m);
     await pool.query(
       "update content.document set created_at = now() - interval '2 days' where id = $1",
@@ -437,20 +438,31 @@ describe("the recycle bin, limits and admin", () => {
       (await h.call(cookie, "PATCH", `/vaults/${vault}`, { retention_hours: 24 })).status,
     ).toBe(200);
 
+    // A file someone deleted waits in the bin; retention doesn't.
+    await h.call(cookie, "POST", `/vaults/${vault}/trash`, { document_ids: [kept.body.file.id] });
     const job = createRetentionJob(pool, { store: h.store });
     expect((await job.runOnce()).moved).toBeGreaterThanOrEqual(1);
     const bin = await h.call(cookie, "GET", `/vaults/${vault}/bin`);
-    expect(bin.body.items).toMatchObject([{ id: file.body.file.id, deleted_reason: "retention" }]);
+    expect(bin.body.items.map((i: { id: string }) => i.id)).toEqual([kept.body.file.id]);
+    const gone = await pool.query("select 1 from content.document where id = $1", [
+      file.body.file.id,
+    ]);
+    expect(gone.rows).toEqual([]);
 
     await pool.query(
       "update content.document set deleted_at = now() - interval '31 days' where id = $1",
-      [file.body.file.id],
+      [kept.body.file.id],
     );
     await job.runOnce();
     expect((await h.call(cookie, "GET", `/vaults/${vault}/bin`)).body.items).toEqual([]);
     const actions = (await auditTrail(pool, m.workspaceId)).map((row) => row.action);
     expect(actions).toEqual(
-      expect.arrayContaining(["retention.policy_changed", "retention.sweep", "deletion.completed"]),
+      expect.arrayContaining([
+        "retention.policy_changed",
+        "retention.sweep",
+        "document.deleted",
+        "deletion.completed",
+      ]),
     );
   });
 
