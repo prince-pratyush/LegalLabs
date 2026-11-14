@@ -6,6 +6,8 @@ export interface ObjectStore {
   get(key: string): Promise<Uint8Array | null>;
   /** Bytes `start` to `end`, both included, so a viewer reads one page without the whole file. */
   getRange(key: string, start: number, end: number): Promise<Uint8Array | null>;
+  /** The whole object as a stream, so serving a large file never holds it all in memory. */
+  stream(key: string): Promise<ReadableStream<Uint8Array> | null>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -30,6 +32,10 @@ export function createMemoryStore(): ObjectStore {
     },
     async getRange(key, start, end) {
       return objects.get(key)?.slice(start, end + 1) ?? null;
+    },
+    async stream(key) {
+      const bytes = objects.get(key);
+      return bytes ? new Blob([bytes.slice()]).stream() : null;
     },
   };
 }
@@ -96,6 +102,11 @@ export function createS3Store(config: S3Config): ObjectStore {
       const bytes = new Uint8Array(await response.arrayBuffer());
       // A store that ignores Range sends the whole object with a 200.
       return response.status === 206 ? bytes : bytes.slice(start, end + 1);
+    },
+    async stream(key) {
+      const response = await request("GET", key);
+      if (response.status === 404) return null;
+      return response.body;
     },
   };
 }

@@ -34,6 +34,15 @@ function contract(name: string, make: () => ObjectStore) {
       const range = (await store.getRange(key, 6, 9)) ?? new Uint8Array();
       expect(new TextDecoder().decode(range)).toBe("worl");
     });
+
+    it("streams a whole object, and nothing for a missing key", async () => {
+      const store = make();
+      const key = contentKey(randomUUID(), SHA);
+      await store.putIfAbsent(key, bytes("hello world"));
+      const stream = await store.stream(key);
+      expect(await new Response(stream).text()).toBe("hello world");
+      expect(await store.stream(contentKey(randomUUID(), SHA))).toBeNull();
+    });
   });
 }
 
