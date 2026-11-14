@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { contextual, type Embedder, EmbedUnavailable, type Reranker } from "@legallabs/embed";
 import { type Block, detectType, type Failure } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
@@ -85,6 +86,10 @@ export interface PageContent {
 
 export interface DocumentsOptions {
   store: ObjectStore;
+  /** Adds meaning-based matches to keyword search. Must be the model the worker used. */
+  embedder?: Embedder | null;
+  /** Reorders the best candidates with a cross-encoder. */
+  reranker?: Reranker | null;
 }
 
 const LIST_LIMIT = 100;
@@ -141,7 +146,55 @@ const SUMMARY_SQL = `
     left join content.ingest_job j on j.version_id = v.id
    where core.has_permission('threads.use')`;
 
+interface PassageRow {
+  id: string;
+  version_id: string;
+  document_id: string;
+  name: string;
+  page_no: number;
+  char_from: number;
+  char_to: number;
+  text: string;
+  section: string | null;
+}
+
+const toPassage = (row: PassageRow): Passage => ({
+  chunkId: row.id,
+  documentId: row.document_id,
+  documentVersionId: row.version_id,
+  documentName: row.name,
+  page: row.page_no,
+  from: row.char_from,
+  to: row.char_to,
+  text: row.text,
+});
+
+// Enough for fusion and reranking to find what either list alone ranked low.
+const CANDIDATES = 100;
+// Without a floor the nearest chunks always come back, however unrelated.
+const MAX_DISTANCE = 0.65;
+// A question, not a document: longer text only slows every step that follows.
+const MAX_QUERY = 2000;
+
 export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Documents {
+  async function reranked(query: string, rows: PassageRow[]): Promise<PassageRow[]> {
+    if (!options.reranker || rows.length < 2) return rows;
+    try {
+      const scores = await options.reranker.rerank(
+        query,
+        rows.map((row) => contextual(row.text, row.section)),
+      );
+      return rows
+        .map((row, i) => ({ row, score: scores[i] ?? Number.NEGATIVE_INFINITY }))
+        .sort((a, b) => b.score - a.score)
+        .map(({ row }) => row);
+    } catch (err) {
+      // The fused order stands when the reranker is down.
+      if (err instanceof EmbedUnavailable) return rows;
+      throw err;
+    }
+  }
+
   async function save(principal: Principal, input: UploadInput, mime: string, client: Client) {
     const { userId, workspaceId } = principal;
     const sha256 = createHash("sha256").update(input.bytes).digest();
@@ -273,49 +326,71 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       query,
       { limit = DEFAULT_PASSAGES, documentIds, versionIds, match = "all" } = {},
     ) {
-      return asApp(pool, principal, async (db) => {
-        // Row security rules out the text index, so these joins are what limit the scan.
-        const { rows } = await db.query<{
-          id: string;
-          version_id: string;
-          document_id: string;
-          name: string;
-          page_no: number;
-          char_from: number;
-          char_to: number;
-          text: string;
-        }>(
-          `select c.id, c.version_id, v.document_id, d.name, c.page_no, c.char_from, c.char_to, c.text
-             from (select case when $4 then replace(w::text, ' & ', ' | ')::tsquery else w end q
-                     from websearch_to_tsquery('english', $1) w) words,
-                  content.document d
-             join content.document_version v on v.document_id = d.id
-             join content.chunk c on c.version_id = v.id
-            where c.tsv @@ q
-              and core.has_permission('threads.use')
-              and ($3::uuid[] is null or d.id = any($3::uuid[]))
-              and ($5::uuid[] is null or v.id = any($5::uuid[]))
-            order by ts_rank_cd(c.tsv, q) desc, c.id
+      query = query.slice(0, MAX_QUERY);
+      const take = clampPassages(limit);
+      // Embedded outside the transaction, so a slow model never holds a connection.
+      let vector: string | null = null;
+      if (options.embedder) {
+        try {
+          const [embedded] = await options.embedder.embed([query.replaceAll("\0", "")]);
+          vector = embedded ? `[${embedded.join(",")}]` : null;
+        } catch (err) {
+          // Keyword search still answers when the model server is down.
+          if (!(err instanceof EmbedUnavailable)) throw err;
+        }
+      }
+      const rows = await asApp(pool, principal, async (db) => {
+        // Row security rules out both indexes, so the scope joins are what limit the scan.
+        const result = await db.query<PassageRow>(
+          `with words as (
+             select case when $4 then replace(w::text, ' & ', ' | ')::tsquery else w end q
+               from websearch_to_tsquery('english', $1) w
+           ), scope as not materialized (
+             select c.id, c.version_id, v.document_id, d.name, c.page_no, c.char_from, c.char_to,
+                    c.text, c.section, c.tsv, c.embedding, c.embedding_model
+               from content.document d
+               join content.document_version v on v.document_id = d.id
+               join content.chunk c on c.version_id = v.id
+              where core.has_permission('threads.use')
+                and ($3::uuid[] is null or d.id = any($3::uuid[]))
+                and ($5::uuid[] is null or v.id = any($5::uuid[]))
+           ), lexical as (
+             select s.id, row_number() over (order by ts_rank_cd(s.tsv, w.q) desc, s.id) r
+               from scope s, words w
+              where s.tsv @@ w.q
+              order by r limit $7
+           ), dense as (
+             select s.id, row_number() over (order by s.embedding <=> $6::vector, s.id) r
+               from scope s
+              where $6::vector is not null and s.embedding_model = $8
+                and s.embedding <=> $6::vector <= $9
+              order by r limit $7
+           ), fused as (
+             -- Reciprocal rank fusion: rank, not raw score, so the two lists can be compared.
+             select id, sum(1.0 / (60 + r)) score
+               from (select * from lexical union all select * from dense) ranked
+              group by id
+           )
+           select s.id, s.version_id, s.document_id, s.name, s.page_no, s.char_from, s.char_to,
+                  s.text, s.section
+             from fused f join scope s on s.id = f.id
+            order by f.score desc, s.id
             limit $2`,
           [
             searchText(query, match),
-            clampPassages(limit),
+            options.reranker ? CANDIDATES : take,
             documentIds?.filter((id) => UUID.test(id)) ?? null,
             match === "any",
             versionIds?.filter((id) => UUID.test(id)) ?? null,
+            vector,
+            CANDIDATES,
+            options.embedder?.model ?? null,
+            MAX_DISTANCE,
           ],
         );
-        return rows.map((row) => ({
-          chunkId: row.id,
-          documentId: row.document_id,
-          documentVersionId: row.version_id,
-          documentName: row.name,
-          page: row.page_no,
-          from: row.char_from,
-          to: row.char_to,
-          text: row.text,
-        }));
+        return result.rows;
       });
+      return (await reranked(query, rows)).slice(0, take).map(toPassage);
     },
 
     async page(principal, versionId, pageNo) {

@@ -17,6 +17,7 @@
     "@hono/node-server": "2.1.6",
     "@legallabs/citations": "workspace:*",
     "@legallabs/db": "workspace:*",
+    "@legallabs/embed": "workspace:*",
     "@legallabs/ingest": "workspace:*",
     "@legallabs/model-gateway": "workspace:*",
     "@legallabs/storage": "workspace:*",
