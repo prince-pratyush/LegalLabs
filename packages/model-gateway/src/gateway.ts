@@ -42,10 +42,16 @@ export type GatewayResult = Measured & {
 
 export type UsageRecord = Measured & { workspace: string; trace: string; task_class: TaskClass };
 
-export type ModelInfo = { id: string; context_window: number; free: boolean };
+export type ModelInfo = {
+  id: string;
+  context_window: number;
+  free: boolean;
+  /** US dollars per million tokens, so callers can estimate a run before it starts. */
+  price: { input: number; output: number };
+};
 
 export type Gateway = {
-  call(request: GatewayCall): Promise<GatewayResult>;
+  call(request: GatewayCall, signal?: AbortSignal): Promise<GatewayResult>;
   /** A signal stops the model, so a cancelled answer stops costing. */
   stream(
     request: GatewayCall,
@@ -183,11 +189,15 @@ export function createGateway(options: GatewayOptions): Gateway {
   }
 
   return {
-    call: (request) =>
+    call: (request, signal) =>
       run(
         request,
-        (provider, providerRequest) => provider.complete(providerRequest),
-        () => false,
+        (provider, providerRequest) => {
+          if (signal?.aborted) throw new Error("aborted");
+          return provider.complete(signal ? { ...providerRequest, signal } : providerRequest);
+        },
+        // A cancelled call must not fall back to another model.
+        () => signal?.aborted === true,
       ),
 
     stream(request, onText, signal) {
@@ -217,6 +227,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         id: idOf(route),
         context_window: windowOf(route),
         free: route.price.input === 0 && route.price.output === 0,
+        price: { input: route.price.input, output: route.price.output },
       })),
 
     contextTokens(taskClass) {
