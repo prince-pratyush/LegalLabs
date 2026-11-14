@@ -1,0 +1,159 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* Components live beside this file; apps that import it get their classes too. */
+@source "./";
+
+/* Values are variables painted by applyTheme from tokens.ts, so tokens stay the one source. */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-raised: var(--bg-raised);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-border: var(--border);
+  --color-control: var(--control);
+  --color-accent: var(--accent);
+  --color-citation: var(--citation);
+  --color-verified: var(--verified);
+  --color-flagged: var(--flagged);
+  --color-locked: var(--locked);
+  --color-external-fg: var(--external-fg);
+  --color-external-bg: var(--external-bg);
+  --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --text-caption: var(--text-caption-size);
+  --text-caption--line-height: var(--text-caption-line);
+  --text-dense: var(--text-dense-size);
+  --text-dense--line-height: var(--text-dense-line);
+  --text-body: var(--text-body-size);
+  --text-body--line-height: var(--text-body-line);
+  --text-prose: var(--text-prose-size);
+  --text-prose--line-height: var(--text-prose-line);
+  --text-section: var(--text-section-size);
+  --text-section--line-height: var(--text-section-line);
+  --text-title: var(--text-title-size);
+  --text-title--line-height: var(--text-title-line);
+  --text-display: var(--text-display-size);
+  --text-display--line-height: var(--text-display-line);
+  --text-ui: var(--ui-size);
+  --text-ui--line-height: var(--ui-line);
+
+  --breakpoint-tablet: 768px;
+  --breakpoint-standard: 1024px;
+  --breakpoint-wide: 1440px;
+
+  --animate-pop-in: var(--pop-in);
+  --animate-fade-in: var(--fade-in);
+  --animate-slide-in: var(--slide-in);
+  --animate-pulse-dot: var(--pulse-dot);
+  --animate-shimmer: var(--shimmer);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes shimmer {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@layer base {
+  :root {
+    --ui-size: var(--text-body-size);
+    --ui-line: var(--text-body-line);
+    --row-height: 40px;
+    --pop-in: pop-in var(--motion-panel) ease-out;
+    --slide-in: slide-in var(--motion-panel) ease-out;
+    --fade-in: fade-in var(--motion-content) ease-out;
+    --pulse-dot: pulse-dot 1s ease-in-out infinite;
+    --shimmer: shimmer 1.2s ease-in-out infinite;
+  }
+
+  [data-density="compact"] {
+    --ui-size: var(--text-dense-size);
+    --ui-line: var(--text-dense-line);
+    --row-height: 32px;
+  }
+
+  /* Reduced motion keeps only fades: nothing slides, scales or pulses. */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --pop-in: fade-in var(--motion-panel) ease-out;
+      --slide-in: fade-in var(--motion-panel) ease-out;
+      --pulse-dot: none;
+      --shimmer: none;
+    }
+
+    /* Must beat every component's own transition. */
+    *,
+    *::before,
+    *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: see above */
+      transition-property: opacity !important;
+      /* biome-ignore lint/complexity/noImportantStyles: see above */
+      scroll-behavior: auto !important;
+    }
+  }
+
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    font-size: var(--ui-size);
+    line-height: var(--ui-line);
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  /* One ring for everything, so no component can forget it. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+}
+
+@utility h-row {
+  height: var(--row-height);
+}
+
+@utility tint-hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+@utility tint-selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
