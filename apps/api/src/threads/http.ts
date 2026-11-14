@@ -1,10 +1,10 @@
 import {
   ContentBlock,
   citationPath,
+  FINISHED,
   isTerminal,
   type KnowledgePort,
   ResponseMode,
-  type RunEvent,
   ThreadScope,
   type VaultPort,
 } from "@legallabs/contracts";
@@ -41,7 +41,10 @@ export interface ThreadHttpOptions {
 }
 
 const ASK_WINDOW_MS = 10 * 60_000;
-const KEEPALIVE_MS = 15_000;
+// Polled as well as woken, so a run finished by another server process still reaches the reader.
+const POLL_MS = 5_000;
+const MAX_STREAM_MS = 30 * 60_000;
+const MAX_STREAMS = 10;
 
 const FAILURES: Record<AskFailure, { status: 400 | 403 | 404 | 409; message: string }> = {
   FORBIDDEN: { status: 403, message: "You don't have permission to ask questions." },
@@ -61,7 +64,8 @@ const blocks = z
   .refine(
     (content) => {
       const text = content.map((b) => (b.type === "text" ? b.text : b.label)).join("");
-      return text.trim().length > 0 && text.length <= 100_000 && noNul(text);
+      const refs = content.every((b) => b.type === "text" || noNul(b.ref_id));
+      return refs && text.trim().length > 0 && text.length <= 100_000 && noNul(text);
     },
     { message: "Write a question of up to 100,000 characters." },
   );
@@ -108,7 +112,9 @@ const citationJson = (citation: CitationView) => ({
     citation.status !== "ok"
       ? null
       : citation.authority
-        ? citation.authority.url
+        ? /^https:\/\//i.test(citation.authority.url)
+          ? citation.authority.url
+          : null
         : citation.documentId && citation.versionNo && citation.page
           ? citationPath({
               document_id: citation.documentId,
@@ -196,6 +202,7 @@ export function threadHttp(options: ThreadHttpOptions) {
   });
   const limitBody = bodyLimit({ maxSize: 512 * 1024, onError: (c) => invalid(c) });
   const app = new Hono<Env>();
+  const streams = new Map<string, number>();
 
   // Checked after the body is valid, so a malformed request doesn't use up an ask.
   const tooMany = (c: Context<Env>) => {
@@ -352,54 +359,52 @@ export function threadHttp(options: ThreadHttpOptions) {
     const runId = c.req.param("id");
     const run = await threads.run(principal, runId);
     if (!run) return notFound(c);
+    const open = streams.get(principal.userId) ?? 0;
+    if (open >= MAX_STREAMS) {
+      return c.json({ code: "TOO_MANY_STREAMS", message: "Close another tab first." }, 429);
+    }
+    streams.set(principal.userId, open + 1);
     const after = Number(c.req.header("last-event-id") ?? c.req.query("after") ?? 0);
     const start = Number.isInteger(after) && after >= 0 ? after : 0;
     c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
-      const waiting: RunEvent[] = [];
       let wake: (() => void) | null = null;
-      // Subscribed before the replay, so nothing saved in between is lost.
-      const stop = log.subscribe(runId, (event) => {
-        waiting.push(event);
-        wake?.();
-      });
-      stream.onAbort(() => {
-        stop();
-        wake?.();
-      });
+      // Live events only wake the loop; the log is always read back, so order and gaps are safe.
+      const stop = log.subscribe(runId, () => wake?.());
+      stream.onAbort(() => wake?.());
+      const opened = now();
       let last = start;
-      const send = async (event: RunEvent) => {
-        if (event.seq <= last) return false;
-        last = event.seq;
-        const { type, ...data } = event;
-        await stream.writeSSE({ id: String(event.seq), event: type, data: JSON.stringify(data) });
-        return isTerminal(event);
-      };
       try {
-        for (const event of await log.replay(principal, runId, start)) {
-          if (await send(event)) return;
-        }
-        // A run that ended before this request has nothing more to send.
-        const current = await threads.run(principal, runId);
-        if (!current || ["done", "failed", "cancelled"].includes(current.status)) return;
-        while (!stream.aborted) {
-          if (waiting.length === 0) {
-            const timer = new Promise<void>((resolve) => {
-              wake = resolve;
-              setTimeout(resolve, KEEPALIVE_MS);
+        while (!stream.aborted && now() - opened < MAX_STREAM_MS) {
+          // Read back as the caller each time, so a new wall or a revoked share ends the stream.
+          const batch = await log.replay(principal, runId, last);
+          for (const event of batch) {
+            last = event.seq;
+            const { type, ...data } = event;
+            await stream.writeSSE({
+              id: String(event.seq),
+              event: type,
+              data: JSON.stringify(data),
             });
-            await timer;
-            wake = null;
-            if (waiting.length === 0) {
-              await stream.write(": keep-alive\n\n");
-              continue;
-            }
+            if (isTerminal(event)) return;
           }
-          const event = waiting.shift();
-          if (event && (await send(event))) return;
+          if (batch.length > 0) continue;
+          const current = await threads.run(principal, runId);
+          if (!current || FINISHED.includes(current.status)) return;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+            timer = setTimeout(resolve, POLL_MS);
+          });
+          clearTimeout(timer);
+          wake = null;
+          await stream.write(": keep-alive\n\n");
         }
       } finally {
         stop();
+        const left = (streams.get(principal.userId) ?? 1) - 1;
+        if (left > 0) streams.set(principal.userId, left);
+        else streams.delete(principal.userId);
       }
     });
   });

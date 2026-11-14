@@ -161,6 +161,47 @@ describe("thread API", () => {
     expect(options.vaults).toEqual([]);
   });
 
+  it("closes the stream after a failure, even a retryable one", async () => {
+    const documents = testDocuments(pool);
+    const deps = testThreads(pool, documents, {
+      anthropic: {
+        complete: async () => {
+          throw new Error("down");
+        },
+      },
+    });
+    const app = createApp({
+      auth: createAuth(pool),
+      documents,
+      threads: deps,
+      clientIp: () => "203.0.113.9",
+    });
+    const m = await seedMember(pool);
+    const login = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspace: m.slug, email: m.email, password: PASSWORD }),
+    });
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const form = new FormData();
+    form.set("file", new File([CLAUSE], "msa.txt", { type: "text/plain" }));
+    const uploaded = (await (
+      await app.request("/api/v1/documents", { method: "POST", headers: { cookie }, body: form })
+    ).json()) as { document: { id: string } };
+    const started = (await (
+      await app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ content: "Q?", scope: { document_ids: [uploaded.document.id] } }),
+      })
+    ).json()) as { run_id: string };
+    await deps.threads.settled();
+
+    const res = await app.request(`/api/v1/runs/${started.run_id}/events`, { headers: { cookie } });
+    const all = events(await res.text());
+    expect(all.slice(-2).map((e) => e.event)).toEqual(["error", "status"]);
+  });
+
   it("hides another person's run and its events", async () => {
     const { deps, signIn, upload, call } = harness();
     const owner = await seedMember(pool);
