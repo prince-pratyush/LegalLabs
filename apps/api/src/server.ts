@@ -12,6 +12,7 @@ import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
+import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
@@ -113,6 +114,7 @@ const app = createApp({
     knowledge,
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
+  viewer: createViewer(pool, store, documents),
   drafts: createDrafts(pool, { gateway }),
   knowledge: knowledgeStore,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
