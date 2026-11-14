@@ -90,10 +90,13 @@ const VERSION_SQL = `
     from content.document d
     join content.document_version v on v.document_id = d.id
     left join content.ingest_job j on j.version_id = v.id
-   where d.id = $1 and v.id = $2 and core.has_permission('threads.use')`;
+   where d.id = $1 and core.has_permission('threads.use')
+     and (case when $2 ~ '^[0-9]{1,9}$' then v.version_no = $2::int else v.id::text = $2 end)`;
 
-const valid = (documentId: string, versionId: string) =>
-  UUID.test(documentId) && UUID.test(versionId);
+// A version is named by its id, or by its number as the spec's /d/:id/v/:n links do.
+const VERSION_NO = /^[1-9][0-9]{0,8}$/;
+const valid = (documentId: string, version: string) =>
+  UUID.test(documentId) && (UUID.test(version) || VERSION_NO.test(version));
 
 // Narrows a chunk to the first query word in it, so the hit marks a word, not a paragraph.
 function narrow(text: string, query: string): { from: number; to: number } {
@@ -127,7 +130,7 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
         if (!row) return null;
         const pages = await db.query<{ page_no: number; width: number; height: number }>(
           "select page_no, width, height from content.page where version_id = $1 order by page_no",
-          [versionId],
+          [row.version_id],
         );
         const attachments = await db.query<{ id: string; version_id: string; name: string }>(
           `select d.id, v.id version_id, d.name
@@ -143,7 +146,7 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
           [
             principal.userId,
             documentId,
-            JSON.stringify({ version_id: versionId }),
+            JSON.stringify({ version_id: row.version_id }),
             client.ip,
             uaHash(client),
           ],
@@ -188,7 +191,7 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
         }>(
           `select page_no, width, height, text, layout, ocr from content.page
             where version_id = $1 and page_no between $2 and $3 order by page_no`,
-          [versionId, from, last],
+          [row.version_id, from, last],
         );
         return rows.map((page) => ({
           page_no: page.page_no,
@@ -228,7 +231,7 @@ export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Docum
       if (!visible) return null;
       const passages = await documents.search(principal, query, {
         documentIds: [documentId],
-        versionIds: [versionId],
+        versionIds: [visible.version_id],
         limit: MAX_HITS,
         match: "all",
       });

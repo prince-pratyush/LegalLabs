@@ -143,6 +143,18 @@ describe("viewer API", () => {
     expect((await h.get(cookie, path, { range: `bytes=${bytes.length}-` })).status).toBe(416);
   });
 
+  it("finds a version by its number, as the spec's /d/ links name it", async () => {
+    const h = harness();
+    const cookie = await h.signIn(await seedMember(pool));
+    const doc = await h.upload(cookie, "msa.pdf", pdf());
+    const manifest = await (await h.get(cookie, `/${doc.id}/versions/1/manifest`)).json();
+    expect(manifest).toMatchObject({ version_id: doc.v, page_count: 3 });
+    expect((await h.get(cookie, `/${doc.id}/versions/1/pages?from=1&to=1`)).status).toBe(200);
+    for (const v of ["2", "0", "01", "1e3", "-1"]) {
+      expect((await h.get(cookie, `/${doc.id}/versions/${v}/manifest`)).status).toBe(404);
+    }
+  });
+
   it("serves no file for kinds painted from text", async () => {
     const h = harness();
     const cookie = await h.signIn(await seedMember(pool));
