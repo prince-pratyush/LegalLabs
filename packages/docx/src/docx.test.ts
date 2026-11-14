@@ -2,7 +2,7 @@ import { DOMParser } from "@xmldom/xmldom";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { buildDocx, citationFootnote } from "./docx.js";
-import { markdownBlocks } from "./markdown.js";
+import { inlineRuns, markdownBlocks } from "./markdown.js";
 import { buildTrackedDocx } from "./tracked.js";
 
 const DATE = "2026-11-14T03:04:05.678Z";
@@ -60,6 +60,34 @@ describe("markdownBlocks", () => {
       { text: "use some_var_name here" },
     ]);
   });
+
+  it("matches the usual emphasis rules", () => {
+    expect(inlineRuns("a **b** *c* _d_ e_f_ **g h** *")).toEqual([
+      { text: "a " },
+      { text: "b", bold: true },
+      { text: " " },
+      { text: "c", italic: true },
+      { text: " " },
+      { text: "d", italic: true },
+      { text: " e_f_ " },
+      { text: "g h", bold: true },
+      { text: " *" },
+    ]);
+    expect(inlineRuns("**")).toEqual([{ text: "**" }]);
+    expect(inlineRuns("***x***")).toEqual([{ text: "*x", bold: true }, { text: "*" }]);
+  });
+
+  // A rescan per mark would take minutes here, so a loose bound still catches it
+  // without failing on a slow CI machine.
+  it("reads a 1 MB line of unmatched marks quickly", () => {
+    for (const unit of [" _a", " **a", " *a", "_a"]) {
+      const line = unit.repeat(Math.ceil(1_000_000 / unit.length));
+      const started = performance.now();
+      const runs = inlineRuns(line);
+      expect(performance.now() - started, unit).toBeLessThan(5000);
+      expect(runs.length).toBeGreaterThan(0);
+    }
+  }, 30_000);
 });
 
 describe("buildDocx", () => {
