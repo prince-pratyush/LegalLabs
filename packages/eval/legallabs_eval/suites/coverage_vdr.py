@@ -7,7 +7,7 @@ from typing import Any
 from ..config import sha256
 from ..schemas import Document, GraderResult, HarnessResult, TaskDatum
 from .base import Grader, Suite, limited
-from .thread_answers import ThreadAnswer, has_any, holds, normalise
+from .thread_answers import ThreadAnswer, errors, has_any, holds, normalise
 
 # Bump when the generated text changes, so old runs are never compared with new rooms.
 GENERATOR_VERSION = 1
@@ -152,7 +152,7 @@ class VdrGrader(Grader):
         metrics = {"criterion_pass": passed, "all_pass": float(all(met))}
         coverage = answer.coverage or {}
         if coverage.get("docs_in_scope"):
-            metrics["read_fraction"] = coverage["docs_read"] / coverage["docs_in_scope"]
+            metrics["read_fraction"] = coverage.get("docs_read", 0) / coverage["docs_in_scope"]
         missed = [c["id"] for c, ok in zip(task.answer, met, strict=True) if not ok]
         return GraderResult(passed, metrics, f"missed: {', '.join(missed) or 'none'}")
 
@@ -198,21 +198,33 @@ class CoverageVdr(Suite):
 
     def report(self, results: list[dict[str, Any]], tasks: list[TaskDatum]) -> dict[str, Any]:
         by_mode = {r["task_id"]: r["metrics"] for r in results}
-        deep = by_mode.get("deep-analysis", {})
-        base = by_mode.get("baseline", {})
-        read = deep.get("read_fraction", 0.0)
-        lift = deep.get("criterion_pass", 0.0) - base.get("criterion_pass", 0.0)
+        deep = by_mode.get("deep-analysis")
+        base = by_mode.get("baseline")
+        failed = errors(results, tasks)
+        # Without both runs there is nothing to compare, so the gate fails rather than guess.
+        complete = deep is not None and base is not None and failed["count"] == 0
+        read = (deep or {}).get("read_fraction")
+        lift = (
+            deep["criterion_pass"] - base["criterion_pass"]
+            if deep is not None and base is not None
+            else None
+        )
         return {
             "docs": self.docs,
             "seed": self.seed,
             "criteria": len(self._room[1]),
             "deep_analysis": deep,
             "baseline": base,
-            "lift": round(lift, 6),
+            "lift": None if lift is None else round(lift, 6),
+            "errors": failed,
             "gate": {
                 "read_min": self.read_gate,
                 "lift_min": self.lift_gate,
-                "pass": read >= self.read_gate and lift >= self.lift_gate,
+                "pass": complete
+                and read is not None
+                and lift is not None
+                and read >= self.read_gate
+                and lift >= self.lift_gate,
             },
         }
 

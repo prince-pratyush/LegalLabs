@@ -243,6 +243,12 @@ def rate(results: list[dict[str, Any]], metric: str, selected: int) -> dict[str,
     return {"rate": round(hits / selected, 6) if selected else 0.0, "ci95": [low, high]}
 
 
+def errors(results: list[dict[str, Any]], tasks: list[TaskDatum]) -> dict[str, Any]:
+    """Tasks with no graded answer. Any at all fails a gate: a missing answer proves nothing."""
+    missing = len(tasks) - len(results)
+    return {"count": missing, "rate": round(missing / len(tasks), 6) if tasks else 0.0}
+
+
 class Hallucination200(Suite):
     name = "hallucination-200"
     kind = "thread"
@@ -280,14 +286,16 @@ class Hallucination200(Suite):
             by_category[category] = {"n": len(ids)} | {
                 label: rate(chosen, label, len(ids)) for label in labels
             }
+        failed = errors(results, tasks)
         overall = {label: rate(results, label, len(tasks)) for label in labels}
         return {
             "n": len(tasks),
             "overall": overall,
             "by_category": by_category,
+            "errors": failed,
             "gate": {
                 "hallucinated_max": self.gate,
-                "pass": overall["hallucinated"]["rate"] <= self.gate,
+                "pass": failed["count"] == 0 and overall["hallucinated"]["rate"] <= self.gate,
             },
         }
 
@@ -320,6 +328,7 @@ class VerifierLive(Suite):
         return VerifierGrader()
 
     def report(self, results: list[dict[str, Any]], tasks: list[TaskDatum]) -> dict[str, Any]:
+        failed = errors(results, tasks)
         total = sum(r["metrics"].get("citations_total", 0.0) for r in results)
         ok = sum(r["metrics"].get("citations_ok", 0.0) for r in results)
         low, high = wilson(ok, int(total))
@@ -329,7 +338,11 @@ class VerifierLive(Suite):
             "verified_rate": round(verified, 6),
             "ci95": [low, high],
             "uncited_answers": rate(results, "uncited", len(tasks)),
-            "gate": {"verified_min": self.gate, "pass": total > 0 and verified >= self.gate},
+            "errors": failed,
+            "gate": {
+                "verified_min": self.gate,
+                "pass": failed["count"] == 0 and total > 0 and verified >= self.gate,
+            },
         }
 
 

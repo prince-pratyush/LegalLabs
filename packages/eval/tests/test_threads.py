@@ -329,3 +329,38 @@ def test_vault_scope_skips_uploads(
     assert not [r for r in seen if r.method == "POST" and r.url.path == "/api/v1/documents"]
     body = json.loads(next(r for r in seen if r.url.path == "/api/v1/threads").content)
     assert body["scope"] == {"document_ids": [], "vault_ids": ["v1"], "sources": []}
+
+
+# Gates
+
+
+def graded(task_id: str, **metrics: float) -> dict[str, Any]:
+    return {"task_id": task_id, "score": 0.0, "metrics": metrics}
+
+
+def test_missing_answers_fail_the_hallucination_gate() -> None:
+    tasks = build_tasks()[:10]
+    results = [graded(t.id, correct=1.0, hallucinated=0.0) for t in tasks[:9]]
+    report = Hallucination200().report(results, tasks)
+    assert report["errors"] == {"count": 1, "rate": 0.1}
+    assert report["gate"]["pass"] is False
+    full = Hallucination200().report(results + [graded(tasks[9].id, correct=1.0)], tasks)
+    assert full["gate"]["pass"] is True
+
+
+def test_missing_answers_fail_the_verifier_gate() -> None:
+    tasks = VerifierLive().load_tasks(2)
+    results = [graded(tasks[0].id, citations_total=3.0, citations_ok=3.0)]
+    assert VerifierLive().report(results, tasks)["gate"]["pass"] is False
+
+
+def test_vdr_gate_fails_without_both_runs() -> None:
+    suite = CoverageVdr(docs=10, seed=1)
+    tasks = suite.load_tasks()
+    deep = graded("deep-analysis", criterion_pass=1.0, read_fraction=1.0)
+    report = suite.report([deep], tasks)
+    assert report["baseline"] is None
+    assert report["lift"] is None
+    assert report["gate"]["pass"] is False
+    base = graded("baseline", criterion_pass=0.0)
+    assert suite.report([deep, base], tasks)["gate"]["pass"] is True
