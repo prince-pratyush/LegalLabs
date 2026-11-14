@@ -28,6 +28,8 @@ import {
   type ThreadSummary,
 } from "./api.js";
 import { documentStatus, segments } from "./text.js";
+import { go, parseRoute, useHash } from "./vaults/route.js";
+import { VaultsApp } from "./vaults/VaultsApp.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 
@@ -41,11 +43,17 @@ export function App() {
       () => setSignedIn(false),
     );
   }, []);
+  const hash = useHash();
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
-  return signedIn ? (
-    <Workspace onSignedOut={() => setSignedIn(false)} />
+  if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
+  return parseRoute(hash) ? (
+    <VaultsApp
+      onLeave={() => {
+        window.location.hash = "";
+      }}
+    />
   ) : (
-    <SignIn onSignedIn={() => setSignedIn(true)} />
+    <Workspace onSignedOut={() => setSignedIn(false)} />
   );
 }
 
@@ -253,6 +261,13 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       }),
     ),
     { id: "new", kind: "action", group: "Actions", label: "New question", run: startOver },
+    {
+      id: "vaults",
+      kind: "action",
+      group: "Go to",
+      label: "Vaults",
+      run: () => go({ page: "list" }),
+    },
     {
       id: "upload",
       kind: "action",
