@@ -7,6 +7,7 @@ import {
   type IngestResult,
   ingestFile,
   type Scanner,
+  ScannerRefused,
   ScannerUnavailable,
 } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
@@ -194,6 +195,7 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
       verdict = await options.scanner.scan(bytes);
     } catch (err) {
       if (err instanceof ScannerUnavailable) return "SCAN_UNAVAILABLE";
+      if (err instanceof ScannerRefused) return "FILE_TOO_LARGE";
       throw err;
     }
     if (!verdict.clean) {
