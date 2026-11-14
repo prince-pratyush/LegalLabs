@@ -6,6 +6,7 @@ import {
   type IngestResult,
   ingestFile,
 } from "@legallabs/ingest";
+import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp } from "../db.js";
@@ -72,6 +73,7 @@ export interface PageContent {
 }
 
 export interface DocumentsOptions {
+  store: ObjectStore;
   ingest?: (bytes: Uint8Array, name: string) => Promise<IngestResult>;
 }
 
@@ -122,7 +124,7 @@ function batches<T>(items: readonly T[]): T[][] {
   return groups;
 }
 
-export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): Documents {
+export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Documents {
   const ingest = options.ingest ?? ingestFile;
 
   async function save(
@@ -132,8 +134,10 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
     client: Client,
   ): Promise<Summary> {
     const { userId, workspaceId } = principal;
+    const sha256 = createHash("sha256").update(input.bytes).digest();
+    // First, so a row never points at a missing object; a retry reuses an orphan.
+    await options.store.putIfAbsent(contentKey(workspaceId, sha256.toString("hex")), input.bytes);
     return asApp(pool, principal, async (db) => {
-      const sha256 = createHash("sha256").update(input.bytes).digest();
       const document = await db.query<
         Omit<SummaryRow, "version_id" | "page_count" | "empty_page_count">
       >(
@@ -153,10 +157,6 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions = {}): 
       const versionId = version.rows[0]?.id;
       if (!versionId) throw new Error("insert returned no version");
 
-      await db.query(
-        "insert into content.document_blob (workspace_id, version_id, bytes) values ($1, $2, $3)",
-        [workspaceId, versionId, Buffer.from(input.bytes)],
-      );
       for (const group of batches(parsed.pages)) {
         await db.query(
           `insert into content.page (workspace_id, version_id, page_no, width, height, text, layout)

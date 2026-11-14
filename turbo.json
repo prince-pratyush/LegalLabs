@@ -10,7 +10,7 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "env": ["TEST_DATABASE_URL", "PG_BIN"]
+      "env": ["TEST_DATABASE_URL", "PG_BIN", "TEST_S3_ENDPOINT"]
     },
     "@legallabs/api#test": {
       "dependsOn": ["^build", "@legallabs/db#test"],

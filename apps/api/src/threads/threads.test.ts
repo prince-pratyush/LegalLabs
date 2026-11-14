@@ -1,5 +1,6 @@
 import { makePdf } from "@legallabs/ingest/testing";
 import { createGateway, type Message, type ModelProvider } from "@legallabs/model-gateway";
+import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Principal } from "../auth/auth.js";
 import { createDocuments } from "../documents/documents.js";
@@ -36,7 +37,7 @@ const failingModel: ModelProvider = {
 };
 
 function harness(provider: ModelProvider) {
-  const documents = createDocuments(pool);
+  const documents = createDocuments(pool, { store: createMemoryStore() });
   const gateway = createGateway({
     providers: { anthropic: provider },
     recordUsage: async () => {},
@@ -45,7 +46,7 @@ function harness(provider: ModelProvider) {
 }
 
 async function upload(m: Seeded, text = CLAUSE, name = "msa.txt", matterId: string | null = null) {
-  const result = await createDocuments(pool).upload(
+  const result = await createDocuments(pool, { store: createMemoryStore() }).upload(
     asPrincipal(m),
     { name, bytes: new TextEncoder().encode(text), matterId },
     client,
@@ -188,7 +189,7 @@ describe("asking a question", () => {
       ["Recitals and definitions."],
       ["The supplier accepts liability for loss."],
     ]);
-    const result = await createDocuments(pool).upload(
+    const result = await createDocuments(pool, { store: createMemoryStore() }).upload(
       asPrincipal(m),
       { name: "msa.pdf", bytes: pdf, matterId: null },
       client,

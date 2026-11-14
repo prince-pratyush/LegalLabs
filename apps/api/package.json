@@ -19,6 +19,7 @@
     "@legallabs/db": "workspace:*",
     "@legallabs/ingest": "workspace:*",
     "@legallabs/model-gateway": "workspace:*",
+    "@legallabs/storage": "workspace:*",
     "@node-rs/argon2": "2.2.2",
     "hono": "4.13.17",
     "pg": "8.23.1",

@@ -26,8 +26,11 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      TEST_S3_ENDPOINT: http://127.0.0.1:8333
     steps:
       - uses: actions/checkout@v7
+      # A service container can't take arguments, and SeaweedFS needs `server -s3`.
+      - run: docker run -d -p 8333:8333 chrislusf/seaweedfs:4.53 server -s3 -dir=/data
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -36,6 +39,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: timeout 60 sh -c 'until curl -s -o /dev/null http://127.0.0.1:8333; do sleep 1; done'
       - run: pnpm test
       - run: pnpm build
       - run: pnpm --filter @legallabs/ui build-storybook
