@@ -197,6 +197,13 @@
       "when": 1794009627000,
       "tag": "0028_content_vault_retention",
       "breakpoints": false
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794009628000,
+      "tag": "0029_content_read_once",
+      "breakpoints": false
     }
   ]
 }

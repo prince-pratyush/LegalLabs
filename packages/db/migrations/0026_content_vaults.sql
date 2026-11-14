@@ -104,6 +104,18 @@ language sql stable security definer set search_path = '' as $$
      and core.can_access_matter(v.matter_id)
 $$;
 
+-- Every matter the caller's walls let them into. Policies compare against this list, worked
+-- out once per statement, instead of checking the walls again for each of thousands of rows.
+create function content.accessible_matters() returns uuid[]
+language sql stable security definer set search_path = '' as $$
+  select coalesce(array_agg(mt.id), '{}')
+    from core.matter mt
+   where mt.workspace_id = core.current_workspace_id()
+     and core.can_access_matter(mt.id)
+$$;
+
+alter function content.accessible_matters() owner to legallabs_definer;
+grant execute on function content.accessible_matters() to legallabs_app, legallabs_definer;
 alter function content.readable_vaults(text) owner to legallabs_definer;
 alter function content.vault_level(uuid) owner to legallabs_definer;
 grant execute on function content.readable_vaults(text), content.vault_level(uuid)
@@ -170,7 +182,8 @@ drop policy document_read on content.document;
 create policy document_read on content.document for select to legallabs_app
   using (core.in_tenant(workspace_id)
          and deleted_at is null
-         and core.can_access_matter(matter_id)
+         and (matter_id is null
+              or matter_id = any ((select content.accessible_matters())::uuid[]))
          and case when vault_id is null then owner_id = core.current_user_id()
                   else vault_id = any ((select content.readable_vaults('view'))::uuid[]) end);
 
