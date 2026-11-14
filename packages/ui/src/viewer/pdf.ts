@@ -18,8 +18,9 @@ export function setPdfWorker(worker: Worker) {
   workerPort = worker;
 }
 
-// Small chunks: a citation deep in a long file should cost a few requests, not the whole file.
-const CHUNK = 64 * 1024;
+// Each chunk is a round trip, and pdf.js asks for them one after another while it walks the
+// file, so chunks are big enough to cover the trailer and page tree in a few requests.
+const CHUNK = 256 * 1024;
 
 let engine: Promise<typeof import("pdfjs-dist")> | null = null;
 
