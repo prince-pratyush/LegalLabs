@@ -1,11 +1,10 @@
 from pathlib import Path
-from typing import Any
 
 from ..datasets import Pinned, load_json
 from ..metrics import locate, token_f1
 from ..models import parse_json
 from ..schemas import Cost, GraderResult, HarnessResult, TaskDatum
-from .base import Grader, Suite
+from .base import AnswerSuite, Grader, limited
 from .judge import Judge
 
 CUAD = Pinned(
@@ -52,6 +51,9 @@ class CuadGrader(Grader):
             metrics["f1"] = 0.0 if quotes else 1.0
         else:
             metrics["f1"] = token_f1(" ".join(quotes), " ".join(gold))
+            # Most CUAD questions have no clause; this shows how we do when one exists.
+            metrics["f1_has_clause"] = metrics["f1"]
+        metrics[f"f1:{task.metadata['category']}"] = metrics["f1"]
         cost = Cost.free()
         notes = ""
         if self.judge is not None:
@@ -67,9 +69,8 @@ class CuadGrader(Grader):
         return GraderResult(metrics["f1"], metrics, notes, cost)
 
 
-class ExtractCuad(Suite):
+class ExtractCuad(AnswerSuite):
     name = "extract-cuad"
-    kind = "answer"
     instructions = (
         "Find every passage of the contract that answers the request. Quote each passage "
         "verbatim from the document. If there is none, return an empty list."
@@ -77,16 +78,7 @@ class ExtractCuad(Suite):
     primary_metric = "f1"
     output_schema = OUTPUT
 
-    def __init__(
-        self,
-        judges: dict[str, dict[str, Any]] | None = None,
-        local: Path | None = None,
-        judges_per_criterion: int = 2,
-    ) -> None:
-        self.judges = judges
-        self.local = local
-        self.judges_per_criterion = judges_per_criterion
-        self.dataset_fingerprint = CUAD.fingerprint
+    dataset_fingerprint = CUAD.fingerprint
 
     def load_tasks(self, limit: int | None = None) -> list[TaskDatum]:
         data = load_json(CUAD, self.local)
@@ -104,11 +96,7 @@ class ExtractCuad(Suite):
                             context=para["context"],
                         )
                     )
-        return tasks[:limit] if limit else tasks
+        return limited(tasks, limit)
 
-    def make_grader(self, system_vendor: str) -> Grader:
-        judge = None
-        if self.judges:
-            judge = Judge(self.judges, system_vendor, self.judges_per_criterion)
-            judge.preflight()
+    def grader(self, judge: Judge | None) -> Grader:
         return CuadGrader(judge)

@@ -1,16 +1,18 @@
 import json
 from pathlib import Path
+from typing import Any
 
 from ..config import sha256
 from ..metrics import Relevant, ndcg_at, recall_at
 from ..schemas import Document, GraderResult, HarnessResult, TaskDatum
-from .base import Grader, Suite
+from .base import Grader, Suite, limited
 
 DATA = Path(__file__).resolve().parent.parent / "data" / "retrieval_golden"
-BUDGET = 20
+# The API returns at most 50 passages per search.
+BUDGET = 50
 
 
-def resolve(relevant: dict, documents: dict[str, str]) -> Relevant:
+def resolve(relevant: dict[str, Any], documents: dict[str, str]) -> Relevant:
     """A golden item names a quote; its span is found in the document so offsets never drift."""
     if "span" in relevant:
         return Relevant(relevant["doc"], relevant.get("page"), tuple(relevant["span"]))
@@ -33,6 +35,7 @@ class RetrievalGrader(Grader):
                 "ndcg_at_10": ndcg,
                 f"recall_at_{BUDGET}": recall_at(result.hits, relevant, BUDGET),
                 "recall_at_5": recall_at(result.hits, relevant, 5),
+                "recall_at_20": recall_at(result.hits, relevant, 20),
             },
         )
 
@@ -64,7 +67,7 @@ class RetrievalGolden(Suite):
             tasks.append(
                 TaskDatum(id=f"q{i + 1:03d}", problem=row["query"], answer=relevant, metadata=row)
             )
-        return tasks[:limit] if limit else tasks
+        return limited(tasks, limit)
 
-    def make_grader(self, system_vendor: str) -> Grader:
+    def make_grader(self, system_vendors: frozenset[str]) -> Grader:
         return RetrievalGrader()

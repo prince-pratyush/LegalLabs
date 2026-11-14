@@ -3,9 +3,12 @@ import json
 import re
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .schemas import SCHEMA_VERSION
+
+if TYPE_CHECKING:
+    from .suites.base import Suite
 
 DEFAULT_SYSTEMS = Path(__file__).resolve().parent.parent / "systems.toml"
 
@@ -28,7 +31,7 @@ def sha256(text: str) -> str:
 
 
 def make_manifest(
-    system_name: str, system: dict[str, Any], suite: Any, suffix: str = ""
+    system_name: str, system: dict[str, Any], suite: "Suite", suffix: str = ""
 ) -> dict[str, Any]:
     """Anything that changes a score goes in the hash, so old results can't be reused."""
     manifest = {
@@ -40,7 +43,7 @@ def make_manifest(
         "dataset_fingerprint": suite.dataset_fingerprint,
         "output_schema": suite.output_schema,
         # The judges grade the answers, so a new judge model means a new run.
-        "judges": getattr(suite, "judges", None),
+        "judges": suite.judges,
         "run_suffix": suffix,
     }
     manifest["config_hash"] = sha256(json.dumps(manifest, sort_keys=True))[:12]

@@ -1,11 +1,10 @@
 from pathlib import Path
-from typing import Any
 
 from ..datasets import Pinned, load_json
 from ..metrics import locate, span_iou
 from ..models import parse_json
 from ..schemas import Cost, GraderResult, HarnessResult, TaskDatum
-from .base import Grader, Suite
+from .base import AnswerSuite, Grader, limited
 from .judge import Judge
 
 CONTRACT_NLI = Pinned(
@@ -63,9 +62,8 @@ class NliGrader(Grader):
         return GraderResult(metrics["accuracy"], metrics, notes, cost)
 
 
-class NliContractNli(Suite):
+class NliContractNli(AnswerSuite):
     name = "nli-contractnli"
-    kind = "answer"
     instructions = (
         "Decide whether the contract entails, contradicts, or does not mention the hypothesis. "
         "Quote the sentences that are your evidence verbatim from the document."
@@ -73,16 +71,7 @@ class NliContractNli(Suite):
     primary_metric = "accuracy"
     output_schema = OUTPUT
 
-    def __init__(
-        self,
-        judges: dict[str, dict[str, Any]] | None = None,
-        local: Path | None = None,
-        judges_per_criterion: int = 2,
-    ) -> None:
-        self.judges = judges
-        self.local = local
-        self.judges_per_criterion = judges_per_criterion
-        self.dataset_fingerprint = CONTRACT_NLI.fingerprint
+    dataset_fingerprint = CONTRACT_NLI.fingerprint
 
     def load_tasks(self, limit: int | None = None) -> list[TaskDatum]:
         data = load_json(CONTRACT_NLI, self.local)
@@ -103,11 +92,7 @@ class NliContractNli(Suite):
                         context=doc["text"],
                     )
                 )
-        return tasks[:limit] if limit else tasks
+        return limited(tasks, limit)
 
-    def make_grader(self, system_vendor: str) -> Grader:
-        judge = None
-        if self.judges:
-            judge = Judge(self.judges, system_vendor, self.judges_per_criterion)
-            judge.preflight()
+    def grader(self, judge: Judge | None) -> Grader:
         return NliGrader(judge)
