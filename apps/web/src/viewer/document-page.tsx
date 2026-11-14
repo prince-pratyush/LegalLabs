@@ -1,4 +1,4 @@
-import { type Anchor, parseDocumentHref } from "@legallabs/contracts";
+import { type Anchor, type DocumentLocation, parseDocumentHref } from "@legallabs/contracts";
 import {
   DocumentViewer,
   preloadPdf,
@@ -21,18 +21,22 @@ function startPdfWorker() {
   preloadPdf();
 }
 
+// A version id, or a version number from a /d/ link; the API takes either.
+const pinned = (l: DocumentLocation | null) =>
+  l?.version_id ?? (l?.version_no ? String(l.version_no) : null);
+
 /** The viewer as a page of its own, at /documents/:id?v=&page=&span=. */
 export function DocumentPage({ href, state }: { href: string; state: ViewerState | null }) {
   const location = useMemo(() => parseDocumentHref(href), [href]);
-  const [versionId, setVersionId] = useState<string | null>(location?.version_id ?? null);
+  const [versionId, setVersionId] = useState<string | null>(pinned(location));
   const [failed, setFailed] = useState(false);
   startPdfWorker();
 
   // A link without a version opens the current one.
   useEffect(() => {
-    setVersionId(location?.version_id ?? null);
+    setVersionId(pinned(location));
     setFailed(false);
-    if (!location || location.version_id) return;
+    if (!location || pinned(location)) return;
     api.document(location.document_id).then(
       (document) => setVersionId(document.version_id),
       () => setFailed(true),
