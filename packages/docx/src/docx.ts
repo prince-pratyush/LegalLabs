@@ -1,5 +1,6 @@
 import { strToU8, type ZipOptions, zipSync } from "fflate";
 import type { Block, BlockKind, Run, TextRun } from "./markdown.js";
+import { packIntoTemplate } from "./template.js";
 import { isoSeconds, XML_HEAD, xmlText } from "./xml.js";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -100,9 +101,11 @@ export interface PackageInput {
   lists: Lists;
   footnotes?: readonly string[];
   trackRevisions?: boolean;
+  /** A firm's .docx or .dotx: its styles, headers, footers, numbering and page setup are kept. */
+  template?: Uint8Array;
 }
 
-const titleXml = (title: string) =>
+export const titleXml = (title: string) =>
   `<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>${runXml({ text: title })}</w:p>`;
 
 function documentXml(input: PackageInput): string {
@@ -116,20 +119,39 @@ function documentXml(input: PackageInput): string {
 const heading = (id: string, name: string, size: number, level: number) =>
   `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="${level}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${size}"/></w:rPr></w:style>`;
 
-const STYLES = `${XML_HEAD}<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:lang w:val="en-AU"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:rPr><w:sz w:val="48"/></w:rPr></w:style>${heading("Heading1", "heading 1", 32, 0)}${heading("Heading2", "heading 2", 28, 1)}${heading("Heading3", "heading 3", 24, 2)}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="FootnoteText"><w:name w:val="footnote text"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="20"/></w:rPr></w:style><w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style></w:styles>`;
+/** Our paragraph and character styles by id, so a firm template can borrow the ones it lacks. */
+export const STYLE_DEFS: Record<string, string> = {
+  Normal:
+    '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>',
+  Title:
+    '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:rPr><w:sz w:val="48"/></w:rPr></w:style>',
+  Heading1: heading("Heading1", "heading 1", 32, 0),
+  Heading2: heading("Heading2", "heading 2", 28, 1),
+  Heading3: heading("Heading3", "heading 3", 24, 2),
+  ListParagraph:
+    '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style>',
+  FootnoteText:
+    '<w:style w:type="paragraph" w:styleId="FootnoteText"><w:name w:val="footnote text"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="20"/></w:rPr></w:style>',
+  FootnoteReference:
+    '<w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>',
+};
+
+const STYLES = `${XML_HEAD}<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:lang w:val="en-AU"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>${Object.values(STYLE_DEFS).join("")}</w:styles>`;
 
 const level = (format: "bullet" | "decimal", text: string) =>
   `<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="${format}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>`;
 
+/** Our list formats: abstract 0 is bullets, 1 is numbers. */
+export const abstractNumXml = (id: number, abstract: 0 | 1) =>
+  `<w:abstractNum w:abstractNumId="${id}"><w:multiLevelType w:val="singleLevel"/>${abstract === 0 ? level("bullet", "•") : level("decimal", "%1.")}</w:abstractNum>`;
+
+/** A list instance that restarts at 1. */
+export const numXml = (id: number, abstractId: number) =>
+  `<w:num w:numId="${id}"><w:abstractNumId w:val="${abstractId}"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>`;
+
 function numberingXml(lists: Lists): string {
-  const abstracts = `<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/>${level("bullet", "•")}</w:abstractNum><w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/>${level("decimal", "%1.")}</w:abstractNum>`;
-  const nums = lists.nums
-    .map(
-      (num) =>
-        `<w:num w:numId="${num.id}"><w:abstractNumId w:val="${num.abstract}"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>`,
-    )
-    .join("");
-  return `${XML_HEAD}<w:numbering xmlns:w="${W}">${abstracts}${nums}</w:numbering>`;
+  const nums = lists.nums.map((num) => numXml(num.id, num.abstract)).join("");
+  return `${XML_HEAD}<w:numbering xmlns:w="${W}">${abstractNumXml(0, 0)}${abstractNumXml(1, 1)}${nums}</w:numbering>`;
 }
 
 function settingsXml(input: PackageInput): string {
@@ -137,10 +159,10 @@ function settingsXml(input: PackageInput): string {
   return `${XML_HEAD}<w:settings xmlns:w="${W}"><w:zoom w:percent="100"/>${input.trackRevisions ? "<w:trackRevisions/>" : ""}<w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/>${input.footnotes?.length ? '<w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/></w:footnotePr>' : ""}<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
 }
 
-const separator = (type: string, id: number, mark: string) =>
+export const separator = (type: string, id: number, mark: string) =>
   `<w:footnote w:type="${type}" w:id="${id}"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:${mark}/></w:r></w:p></w:footnote>`;
 
-function footnotesXml(footnotes: readonly string[]): string {
+export function footnotesXml(footnotes: readonly string[]): string {
   const notes = footnotes
     .map(
       (text, i) =>
@@ -153,8 +175,12 @@ function footnotesXml(footnotes: readonly string[]): string {
 const rel = (id: string, type: string, target: string) =>
   `<Relationship Id="${id}" Type="${R}/${type}" Target="${target}"/>`;
 
+export const coreXml = (title: string | undefined, author: string, date: string) =>
+  `${XML_HEAD}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${title ? `<dc:title>${xmlText(title)}</dc:title>` : ""}<dc:creator>${xmlText(author)}</dc:creator><cp:lastModifiedBy>${xmlText(author)}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${date}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${date}</dcterms:modified></cp:coreProperties>`;
+
 /** Zips the parts of a Word document. Same input, same bytes. */
 export function pack(input: PackageInput): Uint8Array {
+  if (input.template) return packIntoTemplate(input.template, input);
   const date = isoSeconds(input.date);
   const footnotes = Boolean(input.footnotes?.length);
   const override = (part: string, type: string) =>
@@ -167,7 +193,7 @@ export function pack(input: PackageInput): Uint8Array {
     "word/styles.xml": STYLES,
     "word/settings.xml": settingsXml(input),
     "word/numbering.xml": numberingXml(input.lists),
-    "docProps/core.xml": `${XML_HEAD}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${input.title ? `<dc:title>${xmlText(input.title)}</dc:title>` : ""}<dc:creator>${xmlText(input.author)}</dc:creator><cp:lastModifiedBy>${xmlText(input.author)}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${date}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${date}</dcterms:modified></cp:coreProperties>`,
+    "docProps/core.xml": coreXml(input.title, input.author, date),
     "docProps/app.xml": `${XML_HEAD}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>LegalLabs</Application></Properties>`,
   };
   if (footnotes) parts["word/footnotes.xml"] = footnotesXml(input.footnotes ?? []);
@@ -188,6 +214,7 @@ export interface DocxInput {
   date: Date | string;
   /** Footnote texts; a `{ footnote: n }` run points at the nth, from 1. */
   footnotes?: readonly string[];
+  template?: Uint8Array;
 }
 
 export function buildDocx(input: DocxInput): Uint8Array {
