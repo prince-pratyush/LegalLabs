@@ -241,11 +241,11 @@ describe("asking a question", () => {
 
     const run = await done(await threads.ask(principal, ask("Q?", [document.id]), client));
 
-    expect((await log.replay(principal, run.runId, 0)).at(-1)).toMatchObject({
-      type: "error",
-      code: "MODEL_UNAVAILABLE",
-      retryable: true,
-    });
+    const trail = await log.replay(principal, run.runId, 0);
+    expect(trail.slice(-2)).toMatchObject([
+      { type: "error", code: "MODEL_UNAVAILABLE", retryable: true },
+      { type: "status", status: "failed" },
+    ]);
     expect((await threads.run(principal, run.runId))?.status).toBe("failed");
     expect((await threads.get(principal, run.threadId))?.messages.map((x) => x.role)).toEqual([
       "user",

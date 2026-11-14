@@ -94,14 +94,17 @@ create policy run_insert on work.run for insert to legallabs_app
               and core.has_permission('threads.use')
               and exists (select 1 from work.thread t
                            where t.id = thread_id and t.owner_id = core.current_user_id()));
+-- Losing the permission or the wall mid-run stops the run's writes too.
 create policy run_update on work.run for update to legallabs_app
-  using (core.in_tenant(workspace_id) and owner_id = core.current_user_id())
+  using (core.in_tenant(workspace_id) and owner_id = core.current_user_id()
+         and core.has_permission('threads.use')
+         and exists (select 1 from work.thread t where t.id = thread_id))
   with check (core.in_tenant(workspace_id) and owner_id = core.current_user_id());
 
 create policy run_event_read on work.run_event for select to legallabs_app
   using (core.in_tenant(workspace_id) and exists (select 1 from work.run r where r.id = run_id));
 create policy run_event_insert on work.run_event for insert to legallabs_app
-  with check (core.in_tenant(workspace_id) and exists (
+  with check (core.in_tenant(workspace_id) and core.has_permission('threads.use') and exists (
     select 1 from work.run r where r.id = run_id and r.owner_id = core.current_user_id()));
 
 create policy thread_update on work.thread for update to legallabs_app
@@ -113,3 +116,22 @@ create policy favourite_own on work.thread_favourite for all to legallabs_app
   using (core.in_tenant(workspace_id) and user_id = core.current_user_id())
   with check (core.in_tenant(workspace_id) and user_id = core.current_user_id()
               and exists (select 1 from work.thread t where t.id = thread_id));
+
+-- Runs live in one server process, so after a restart any unfinished run is
+-- orphaned. Only the worker role may call this, at startup.
+create function work.fail_orphaned_runs(started_before timestamptz) returns integer
+language sql security definer set search_path = '' as $$
+  with failed as (
+    update work.run set status = 'failed', updated_at = now()
+     where status in ('planned', 'running', 'verifying')
+       and updated_at < fail_orphaned_runs.started_before
+    returning 1)
+  select count(*)::int from failed
+$$;
+grant usage on schema work to legallabs_definer;
+grant select, update (status, updated_at) on work.run to legallabs_definer;
+create policy definer_read on work.run for select to legallabs_definer using (true);
+create policy definer_fail on work.run for update to legallabs_definer using (true) with check (true);
+alter function work.fail_orphaned_runs(timestamptz) owner to legallabs_definer;
+grant usage on schema work to legallabs_worker;
+grant execute on function work.fail_orphaned_runs(timestamptz) to legallabs_worker;

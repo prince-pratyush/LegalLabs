@@ -41,9 +41,10 @@ describe("citationStream", () => {
     expect(stream.end().citations).toHaveLength(1);
   });
 
-  it("lets a plain less-than sign through once it is clearly not a tag", () => {
+  it("lets a plain less-than sign through at once", () => {
     const stream = citationStream();
-    expect(stream.push("a < b").text).toBe("a ");
-    expect(stream.end().text).toBe("< b");
+    expect(stream.push("a <").text).toBe("a ");
+    expect(stream.push(" b").text).toBe("< b");
+    expect(stream.push(" and <c").text).toBe(" and ");
   });
 });

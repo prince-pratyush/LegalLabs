@@ -7,7 +7,12 @@ export type Completion = {
   usage?: { input_tokens: number; output_tokens: number };
 };
 
-type ProviderRequest = { model: string; messages: readonly Message[]; max_output: number };
+type ProviderRequest = {
+  model: string;
+  messages: readonly Message[];
+  max_output: number;
+  signal?: AbortSignal;
+};
 
 export type ModelProvider = {
   complete(request: ProviderRequest): Promise<Completion>;
@@ -41,7 +46,12 @@ export type ModelInfo = { id: string; context_window: number; free: boolean };
 
 export type Gateway = {
   call(request: GatewayCall): Promise<GatewayResult>;
-  stream(request: GatewayCall, onText: (delta: string) => void): Promise<GatewayResult>;
+  /** A signal stops the model, so a cancelled answer stops costing. */
+  stream(
+    request: GatewayCall,
+    onText: (delta: string) => void,
+    signal?: AbortSignal,
+  ): Promise<GatewayResult>;
   /** Models this install can actually use for a task, in routing order. */
   models(task_class: TaskClass): ModelInfo[];
   /** The smallest window among usable models, so a prompt sized to it fits any of them. */
@@ -180,7 +190,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         () => false,
       ),
 
-    stream(request, onText) {
+    stream(request, onText, signal) {
       let started = false;
       const emit = (delta: string) => {
         if (delta === "") return;
@@ -190,12 +200,15 @@ export function createGateway(options: GatewayOptions): Gateway {
       return run(
         request,
         async (provider, providerRequest) => {
-          if (provider.stream) return provider.stream(providerRequest, emit);
+          if (signal?.aborted) throw new Error("aborted");
+          const withSignal = signal ? { ...providerRequest, signal } : providerRequest;
+          if (provider.stream) return provider.stream(withSignal, emit);
           const completion = await provider.complete(providerRequest);
           emit(completion.text);
           return completion;
         },
-        () => started,
+        // A cancelled answer must not fall back to another model either.
+        () => started || signal?.aborted === true,
       );
     },
 
