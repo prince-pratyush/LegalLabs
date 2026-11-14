@@ -64,3 +64,9 @@ export type VaultGrant = z.infer<typeof VaultGrant>;
 
 /** At least three hours, or null to keep files until someone deletes them. */
 export const RetentionHours = z.number().int().min(3).max(1_000_000).nullable();
+
+const RANK: Record<VaultAccess, number> = { view: 1, edit: 2, full: 3, owner: 4 };
+
+/** Null means no access, which is below every level. */
+export const hasAccess = (access: VaultAccess | null | undefined, atLeast: VaultAccess) =>
+  access ? RANK[access] >= RANK[atLeast] : false;

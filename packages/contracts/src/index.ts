@@ -36,6 +36,7 @@ export {
   FILE_TYPE_LIMITS,
   FileState,
   fileTypeLimit,
+  hasAccess,
   RetentionHours,
   UploadRejection,
   VAULT_LIMITS,
