@@ -153,6 +153,11 @@ export function createApp({
   if (webRoot) {
     // A deep link to a document loads the app, which then opens the viewer.
     app.get("/documents/*", serveStatic({ root: webRoot, path: "index.html" }));
+    // Build files carry a hash of their content in the name, so a copy never goes stale.
+    app.use("/assets/*", async (c, next) => {
+      await next();
+      if (c.res.status === 200) c.header("Cache-Control", "public, max-age=31536000, immutable");
+    });
     app.get("*", serveStatic({ root: webRoot }));
   }
 
