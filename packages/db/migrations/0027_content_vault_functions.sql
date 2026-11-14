@@ -340,11 +340,14 @@ $$;
 create function content.vault_usage(p_vault uuid)
 returns table (files bigint, bytes bigint, hidden bigint, max_files bigint, max_bytes bigint)
 language plpgsql stable security definer set search_path = '' as $$
+declare
+  reachable uuid[] := content.accessible_matters();
 begin
   perform content.require_level(p_vault, array['owner', 'full', 'edit', 'view']);
   return query
     select count(d.id), coalesce(sum(d.size), 0)::bigint,
-           count(d.id) filter (where not core.can_access_matter(d.matter_id)),
+           count(d.id) filter (where d.matter_id is not null
+                                 and not (d.matter_id = any (reachable))),
            least(100000, coalesce((w.settings #>> '{vault_limits,files}')::bigint, 100000)),
            least(107374182400,
                  coalesce((w.settings #>> '{vault_limits,bytes}')::bigint, 107374182400))
@@ -397,6 +400,25 @@ begin
 end
 $$;
 
+-- People and groups to share with: active members by email, and groups the caller can see.
+create function content.find_principals(p_query text)
+returns table (principal_type text, principal_id uuid, label text)
+language sql stable security definer set search_path = '' as $$
+  select * from (
+    select 'user'::text, u.id, u.email from core."user" u
+     where u.workspace_id = core.current_workspace_id() and core.is_active_member()
+       and u.status = 'active' and u.kind = 'member'
+       and strpos(lower(u.email), lower(p_query)) > 0
+    union all
+    select 'group'::text, g.id, g.name from core."group" g
+     where g.workspace_id = core.current_workspace_id() and core.is_active_member()
+       and (g.visibility = 'public' or core.is_group_member(g.id))
+       and strpos(lower(g.name), lower(p_query)) > 0
+  ) found
+  order by 3 limit 20
+$$;
+
+alter function content.find_principals(text) owner to legallabs_definer;
 alter function content.admin_vault_stats() owner to legallabs_definer;
 alter function content.require_level(uuid, text[]) owner to legallabs_definer;
 alter function content.user_can_access_matter(uuid, uuid) owner to legallabs_definer;
@@ -423,5 +445,6 @@ grant execute on function content.trash_items(uuid, uuid[], uuid[]),
   content.trash_vault(uuid), content.restore_vault(uuid), content.purge_vault(uuid),
   content.transfer_vault(uuid, uuid), content.set_vault_shares(uuid, jsonb, boolean),
   content.vault_shares(uuid), content.vault_usage(uuid),
-  content.claim_vault_room(uuid, integer, bigint), content.admin_vault_stats()
+  content.claim_vault_room(uuid, integer, bigint), content.admin_vault_stats(),
+  content.find_principals(text)
   to legallabs_app;

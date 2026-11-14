@@ -189,6 +189,11 @@ export interface Vaults {
     vaultId: string,
     hours: number,
   ): Promise<{ documents: number; earliestDeletionAt: string | null } | null>;
+  /** People and groups to share with, matched on email or group name. */
+  findPrincipals(
+    p: Principal,
+    query: string,
+  ): Promise<{ principalType: "user" | "group"; principalId: string; label: string }[]>;
   adminList(p: Principal): Promise<AdminVault[] | null>;
   transfer(
     p: Principal,
@@ -876,6 +881,21 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
             ? new Date(Math.max(row.earliest.getTime(), Date.now())).toISOString()
             : null,
         };
+      });
+    },
+
+    async findPrincipals(p, query) {
+      return asApp(pool, p, async (db) => {
+        const { rows } = await db.query<{
+          principal_type: "user" | "group";
+          principal_id: string;
+          label: string;
+        }>("select * from content.find_principals($1)", [query.replaceAll("\0", "")]);
+        return rows.map((row) => ({
+          principalType: row.principal_type,
+          principalId: row.principal_id,
+          label: row.label,
+        }));
       });
     },
 

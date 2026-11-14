@@ -223,6 +223,20 @@ export function vaultRoutes(vaults: Vaults, clientOf: (c: Context) => Client) {
     return c.json({ vaults: found.map((v) => ({ ...vaultJson(v), files: v.files })) });
   });
 
+  // Before "/:id", so "principals" is never taken for an id.
+  app.get("/principals", async (c) => {
+    const query = text(2, 100).safeParse(c.req.query("q"));
+    if (!query.success) return invalid(c);
+    const found = await vaults.findPrincipals(c.get("principal"), query.data);
+    return c.json({
+      principals: found.map((f) => ({
+        principal_type: f.principalType,
+        principal_id: f.principalId,
+        label: f.label,
+      })),
+    });
+  });
+
   app.get("/:id", async (c) => {
     const found = await vaults.get(c.get("principal"), c.req.param("id"));
     if (!found) return notFound(c);

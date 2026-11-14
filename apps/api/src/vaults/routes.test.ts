@@ -232,6 +232,10 @@ describe("sharing and walls", () => {
     expect((await h.call(benCookie, "GET", `/vaults/${vault}`)).status).toBe(404);
     expect((await search(h, benCookie, `vault_id=${vault}`)).body.passages).toEqual([]);
 
+    const found = await h.call(ana, "GET", `/vaults/principals?q=${ben.email.slice(0, 6)}`);
+    expect(found.body.principals).toEqual([
+      { principal_type: "user", principal_id: ben.userId, label: ben.email },
+    ]);
     const shared = await h.call(ana, "PUT", `/vaults/${vault}/shares`, {
       grants: [{ principal_type: "user", principal_id: ben.userId, level: "view" }],
       workspace_view: false,
