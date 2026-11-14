@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { type Failure, type Ingested, type IngestResult, ingestFile } from "@legallabs/ingest";
+import {
+  type Child,
+  detectType,
+  type Failure,
+  type Ingested,
+  type IngestResult,
+  ingestFile,
+} from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { asApp, asWorker, RLS_REFUSED } from "../db.js";
@@ -41,6 +48,15 @@ class LostLease extends Error {}
 export type IngestReason = Failure | "FORBIDDEN" | "MISSING_ORIGINAL";
 
 const BATCH_SIZE = 200;
+const MAX_DEPTH = 3;
+const MAX_CHILDREN = 5000;
+
+// Names come from inside the file, so they are cleaned like a typed one would be.
+const safeName = (name: string) =>
+  name
+    .replace(/[\p{C}\p{Zl}\p{Zp}]/gu, "")
+    .slice(0, 255)
+    .trim() || "attachment";
 // Worth another try: the same bytes may well succeed on a quieter machine.
 const TRANSIENT = new Set<IngestReason>(["INTERNAL", "PARSE_TIMEOUT", "TOO_COMPLEX"]);
 
@@ -51,10 +67,11 @@ function batches<T>(items: readonly T[]): T[][] {
 }
 
 async function savePages(db: pg.PoolClient, job: Claim, parsed: Ingested) {
+  const ocr = new Set(parsed.ocrPages ?? []);
   for (const group of batches(parsed.pages)) {
     await db.query(
-      `insert into content.page (workspace_id, version_id, page_no, width, height, text, layout)
-       select $1, $2, * from unnest($3::int[], $4::real[], $5::real[], $6::text[], $7::jsonb[])`,
+      `insert into content.page (workspace_id, version_id, page_no, width, height, text, layout, ocr)
+       select $1, $2, * from unnest($3::int[], $4::real[], $5::real[], $6::text[], $7::jsonb[], $8::bool[])`,
       [
         job.workspace_id,
         job.version_id,
@@ -63,13 +80,15 @@ async function savePages(db: pg.PoolClient, job: Claim, parsed: Ingested) {
         group.map((page) => page.height),
         group.map((page) => page.text),
         group.map((page) => JSON.stringify({ blocks: page.blocks })),
+        group.map((page) => ocr.has(page.pageNo)),
       ],
     );
   }
   for (const group of batches(parsed.chunks)) {
     await db.query(
-      `insert into content.chunk (workspace_id, version_id, page_no, ordinal, char_from, char_to, text)
-       select $1, $2, * from unnest($3::int[], $4::int[], $5::int[], $6::int[], $7::text[])`,
+      `insert into content.chunk
+         (workspace_id, version_id, page_no, ordinal, char_from, char_to, text, section)
+       select $1, $2, * from unnest($3::int[], $4::int[], $5::int[], $6::int[], $7::text[], $8::text[])`,
       [
         job.workspace_id,
         job.version_id,
@@ -78,6 +97,7 @@ async function savePages(db: pg.PoolClient, job: Claim, parsed: Ingested) {
         group.map((chunk) => chunk.from),
         group.map((chunk) => chunk.to),
         group.map((chunk) => chunk.text),
+        group.map((chunk) => chunk.section),
       ],
     );
   }
@@ -129,14 +149,22 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
   }
 
   async function read(job: Claim): Promise<IngestReason | null> {
-    const name = await asUploader(job, async (db) => {
-      const { rows } = await db.query<{ name: string }>(
-        "select name from content.document where id = $1 and core.has_permission('threads.use')",
-        [job.document_id],
+    const source = await asUploader(job, async (db) => {
+      const { rows } = await db.query<{ name: string; matter_id: string | null; depth: number }>(
+        `with recursive up as (
+           select id, parent_id, 0 depth from content.document where id = $1
+           union all
+           select d.id, d.parent_id, up.depth + 1 from content.document d
+             join up on d.id = up.parent_id where up.depth < $2
+         )
+         select d.name, d.matter_id, (select max(depth) from up)::int depth
+           from content.document d where d.id = $1 and core.has_permission('threads.use')`,
+        [job.document_id, MAX_DEPTH],
       );
-      return rows[0]?.name ?? null;
+      return rows[0] ?? null;
     });
-    if (name === null) return "FORBIDDEN";
+    if (source === null) return "FORBIDDEN";
+    const { name } = source;
 
     const hex = job.sha256.toString("hex");
     const bytes = await options.store.get(contentKey(job.workspace_id, hex));
@@ -147,8 +175,46 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
     const parsed = await ingest(bytes, name);
     if (!parsed.ok) return parsed.reason;
 
+    // Too deep a nest is more likely a bomb than a real mailbox.
+    const children = source.depth < MAX_DEPTH ? (parsed.children ?? []).slice(0, MAX_CHILDREN) : [];
+    const stored: (Child & { sha256: Buffer })[] = [];
+    for (const child of children) {
+      const sha256 = createHash("sha256").update(child.bytes).digest();
+      await options.store.putIfAbsent(
+        contentKey(job.workspace_id, sha256.toString("hex")),
+        child.bytes,
+      );
+      stored.push({ ...child, sha256 });
+    }
+
     await asUploader(job, async (db) => {
       await savePages(db, job, parsed);
+      // One statement each: a policy can't see a row inserted earlier in the same statement.
+      for (const child of stored) {
+        const document = await db.query<{ id: string }>(
+          `insert into content.document
+             (workspace_id, owner_id, matter_id, parent_id, name, mime, size)
+           values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+          [
+            job.workspace_id,
+            job.created_by,
+            source.matter_id,
+            job.document_id,
+            safeName(child.name),
+            detectType(child.bytes, child.name) ?? "application/octet-stream",
+            child.bytes.length,
+          ],
+        );
+        const version = await db.query<{ id: string }>(
+          `insert into content.document_version (workspace_id, document_id, sha256, created_by)
+           values ($1, $2, $3, $4) returning id`,
+          [job.workspace_id, document.rows[0]?.id, child.sha256, job.created_by],
+        );
+        await db.query(
+          "insert into content.ingest_job (workspace_id, version_id) values ($1, $2)",
+          [job.workspace_id, version.rows[0]?.id],
+        );
+      }
       // Thrown, not returned, so the pages just written roll back with it.
       if (!(await finish(db, job, "indexed"))) throw new LostLease();
     });

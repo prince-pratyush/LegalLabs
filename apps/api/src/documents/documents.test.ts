@@ -139,6 +139,7 @@ describe("upload", () => {
       from: 0,
       to: p.text.length,
       text: p.text,
+      section: null,
     }));
     const long: Ingested = { ok: true, mime: "text/plain", pages, chunks, emptyPageCount: 0 };
     const document = stored(

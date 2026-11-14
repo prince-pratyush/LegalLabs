@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
+import { createIngest } from "@legallabs/ingest";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
@@ -38,7 +39,11 @@ try {
 }
 
 const documents = createDocuments(pool, { store });
-const worker = createIngestWorker(pool, { store, log: (line) => console.log(line) });
+const worker = createIngestWorker(pool, {
+  store,
+  ingest: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
+  log: (line) => console.log(line),
+});
 worker.start();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   // A job cut off mid-read is picked up again once its lease runs out.

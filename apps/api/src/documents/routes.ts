@@ -27,7 +27,10 @@ const REASONS: Record<Reason, { status: 403 | 404 | 413 | 415; message: string }
   FORBIDDEN: { status: 403, message: "You don't have permission to upload documents." },
   MATTER_NOT_FOUND: { status: 404, message: "That matter wasn't found." },
   FILE_TOO_LARGE: { status: 413, message: "The file is too large." },
-  UNSUPPORTED_TYPE: { status: 415, message: "Only PDF, TXT and Markdown files can be read." },
+  UNSUPPORTED_TYPE: {
+    status: 415,
+    message: "Only PDF, Word, Excel, email, TXT and Markdown files can be read.",
+  },
 };
 
 const uuid = z.uuid();
