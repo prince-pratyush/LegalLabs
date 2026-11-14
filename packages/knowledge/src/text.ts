@@ -20,21 +20,34 @@ export function decodeEntities(value: string): string {
     if (!body.startsWith("#")) return NAMED[body.toLowerCase()] ?? entity;
     const hex = body[1] === "x" || body[1] === "X";
     const code = hex ? Number.parseInt(body.slice(2), 16) : Number(body.slice(1));
-    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+    // No NULs or lone surrogates: Postgres text can't hold them.
+    const ok = code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+    return ok ? String.fromCodePoint(code) : entity;
   });
 }
 
 const BLOCK =
-  /<\/?(?:p|div|br|tr|li|h[1-6]|table|section|article|blockquote|pre|dt|dd|ul|ol|hr)\b[^>]*>/gi;
+  /<\/?(?:p|div|br|tr|td|th|li|h[1-6]|table|section|article|blockquote|pre|dt|dd|ul|ol|hr)\b[^>]*>/gi;
+
+/** Text Postgres will store: no NUL bytes and no lone surrogates. */
+export function clean(text: string): string {
+  return text
+    .replaceAll("\0", "")
+    .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "\ufffd");
+}
 
 /** Readable text from HTML; scripts, styles and markup go, line breaks stay. */
 export function htmlToText(html: string): string {
-  return decodeEntities(
-    html
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<(script|style|head|noscript)\b[\s\S]*?<\/\1\s*>/gi, "")
-      .replace(BLOCK, "\n")
-      .replace(/<[^>]*>/g, " "),
+  return clean(
+    decodeEntities(
+      html
+        .replace(/<!--[\s\S]*?(?:-->|$)/g, "")
+        // An unclosed script or style runs to the end, so its body never leaks into the text.
+        .replace(/<(script|style|head|noscript)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, "")
+        .replace(BLOCK, "\n")
+        // Inline tags join their neighbours: <i>s</i>ection is one word.
+        .replace(/<[^>]*>/g, ""),
+    ),
   )
     .replace(/[ \t\f\v ]+/g, " ")
     .replace(/ *\n */g, "\n")
@@ -57,7 +70,7 @@ export function chunkText(text: string, sectionPath: string | null, size = CHUNK
     if (current.trim()) chunks.push({ sectionPath, text: current.trim() });
     current = "";
   };
-  for (const paragraph of text.split(/\n+/)) {
+  for (const paragraph of clean(text).split(/\n+/)) {
     const line = paragraph.trim();
     if (!line) continue;
     if (current && current.length + line.length + 1 > size) flush();

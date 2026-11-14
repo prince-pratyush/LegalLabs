@@ -5,8 +5,13 @@ describe("htmlToText", () => {
   it("keeps the words and the line breaks, and drops scripts and styles", () => {
     const html =
       "<head><title>t</title></head><style>p{}</style><script>alert(1)</script>" +
-      "<p class='oj-normal'>First&nbsp;line &amp; more</p><div>Second <b>bold</b></div>";
-    expect(htmlToText(html)).toBe("First line & more\nSecond bold");
+      "<p class='oj-normal'>First&nbsp;line &amp; more</p><div>Second <b>bold</b> <i>s</i>ection</div>";
+    expect(htmlToText(html)).toBe("First line & more\nSecond bold section");
+  });
+
+  it("drops an unclosed script, NULs and lone surrogates", () => {
+    expect(htmlToText("<p>kept\u0000 &#xD800;x</p><script>steal()")).toBe("kept &#xD800;x");
+    expect(chunkText("a\u0000b \ud800c", null)[0]?.text).toBe("ab \ufffdc");
   });
 
   it("decodes numeric entities", () => {
