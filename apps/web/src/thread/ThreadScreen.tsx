@@ -350,8 +350,16 @@ function SavedAnswer({
     message.requested_model && message.requested_model !== message.model
       ? message.requested_model
       : null;
+  // A reply with no model is the fixed "not found" answer, which claims nothing.
+  const unsupported = message.model !== null && !message.citations.some((c) => c.status === "ok");
   return (
     <article className="grid gap-2" aria-label="Answer" data-testid={`answer-${message.id}`}>
+      {unsupported && (
+        <p role="note" className="border-l-4 border-warning py-2 pl-3 font-semibold text-warning">
+          Nothing in this answer was checked against your documents. Don't rely on it without
+          reading the source.
+        </p>
+      )}
       <AnswerText
         text={message.content}
         citations={message.citations.map(toAnswerCitation)}
