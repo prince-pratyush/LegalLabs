@@ -1,7 +1,9 @@
 import type { ModelProvider } from "@legallabs/model-gateway";
+import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
+import { createDrafts } from "../drafts/drafts.js";
 import {
   PASSWORD,
   type Seeded,
@@ -30,6 +32,9 @@ function harness(asksPerWindow?: number) {
     auth: createAuth(pool),
     documents,
     threads: { ...deps, ...(asksPerWindow ? { asksPerWindow } : {}) },
+    drafts: createDrafts(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+    }),
     clientIp: () => "203.0.113.9",
   });
   const signIn = async (m: Seeded) => {
@@ -174,6 +179,9 @@ describe("thread API", () => {
       auth: createAuth(pool),
       documents,
       threads: deps,
+      drafts: createDrafts(pool, {
+        gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+      }),
       clientIp: () => "203.0.113.9",
     });
     const m = await seedMember(pool);
