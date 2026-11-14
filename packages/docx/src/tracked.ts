@@ -13,6 +13,11 @@ import {
 import { type Block, blockText, markdownBlocks, type TextRun } from "./markdown.js";
 import { isoSeconds } from "./xml.js";
 
+/**
+ * Both sides are Markdown text, so there are no footnotes here: a marker such as
+ * `[^1]` stays as typed text and is tracked like any other words. Export citations
+ * as footnotes with `buildDocx` instead.
+ */
 export interface TrackedInput {
   /** Markdown of the earlier version. */
   before: string;

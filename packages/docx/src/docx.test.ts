@@ -250,6 +250,14 @@ describe("buildTrackedDocx", () => {
     expect(doc?.match(/<w:delText xml:space="preserve">Old<\/w:delText>/g)).toHaveLength(40);
   });
 
+  it("keeps a footnote marker as tracked text rather than dropping it", () => {
+    const doc = parts(
+      buildTrackedDocx({ before: "The cap.", after: "The cap.[^1]", author: "A", date: DATE }),
+    )["word/document.xml"];
+    expect(doc).toContain("[^1]");
+    expect(doc).not.toContain("footnoteReference");
+  });
+
   it("leaves an unchanged draft without revisions", () => {
     const same = parts(buildTrackedDocx({ before, after: before, author: "A", date: DATE }));
     expect(same["word/document.xml"]).not.toMatch(/<w:(ins|del) /);
