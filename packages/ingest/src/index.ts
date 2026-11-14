@@ -7,6 +7,15 @@ export type { Chunk } from "./chunk.js";
 export { createDocprocParser, DocprocInvalid, DocprocUnavailable } from "./docproc.js";
 export type { Block, Child, Failure, Heading, Ingested, IngestResult, Page } from "./process.js";
 export { DOCX, detectType, XLSX } from "./process.js";
+export {
+  type ClamdOptions,
+  createClamdScanner,
+  createStubScanner,
+  EICAR,
+  type Scanner,
+  ScannerUnavailable,
+  type ScanResult,
+} from "./scan.js";
 
 const LIMITS = { timeoutMs: 60_000, maxMemoryMb: 256, maxGrowthMb: 1024 };
 
