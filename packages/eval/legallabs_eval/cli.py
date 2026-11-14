@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--suffix", default="")
     run.add_argument("--runs-dir", type=Path, default=Path("runs"))
     run.add_argument("--no-judge", action="store_true", help="skip paid judge criteria")
+    run.add_argument("--spread", action="store_true", help="with --limit, take evenly spaced tasks")
     room = commands.add_parser("make-room", help="write a coverage-vdr data room to disk")
     room.add_argument("--out", type=Path, required=True)
     room.add_argument("--docs", type=int, default=DEFAULT_DOCS)
@@ -57,7 +58,14 @@ def main(argv: list[str] | None = None) -> int:
         suite = make_suite(args.suite, judges, per_criterion)
         harness = make_harness(args.system, system)
         runner = Runner(
-            args.system, system, harness, suite, args.runs_dir, args.suffix, args.concurrency
+            args.system,
+            system,
+            harness,
+            suite,
+            args.runs_dir,
+            args.suffix,
+            args.concurrency,
+            spread=args.spread,
         )
         summary = runner.run(args.limit)
     except (HarnessError, NonRetryableError, ValueError) as err:

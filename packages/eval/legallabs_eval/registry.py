@@ -3,6 +3,7 @@ from typing import Any
 
 from .harnesses.base import Harness
 from .harnesses.bm25 import Bm25Harness
+from .harnesses.cell import ReviewCellHarness
 from .harnesses.legallabs_search import LegalLabsSearchHarness
 from .harnesses.legallabs_thread import LegalLabsThreadHarness
 from .harnesses.model import NaiveRagHarness, PlainModelHarness
@@ -10,8 +11,10 @@ from .schemas import NonRetryableError
 from .suites.base import Suite
 from .suites.coverage_vdr import CoverageVdr
 from .suites.extract_cuad import ExtractCuad
+from .suites.extract_maud import ExtractMaud
 from .suites.nli_contractnli import NliContractNli
 from .suites.retrieval_golden import RetrievalGolden
+from .suites.review_table_e2e import ReviewTableE2e
 from .suites.thread_answers import Hallucination200, VerifierLive
 
 HARNESSES: dict[str, type[Harness]] = {
@@ -20,6 +23,7 @@ HARNESSES: dict[str, type[Harness]] = {
     "legallabs-thread": LegalLabsThreadHarness,
     "model": PlainModelHarness,
     "naive-rag": NaiveRagHarness,
+    "review-cell": ReviewCellHarness,
 }
 
 # Each factory takes the judges table, or None to grade without judges.
@@ -30,6 +34,9 @@ SUITES: dict[str, Callable[[dict[str, Any] | None, int], Suite]] = {
     "hallucination-200": lambda judges, n: Hallucination200(judges, n),
     "verifier-live": lambda judges, n: VerifierLive(),
     "coverage-vdr": lambda judges, n: CoverageVdr(),
+    # Graded by rules, not judges: the answers are typed values and checkable quotes.
+    "extract-maud": lambda judges, n: ExtractMaud(),
+    "review-table-e2e": lambda judges, n: ReviewTableE2e(),
 }
 
 

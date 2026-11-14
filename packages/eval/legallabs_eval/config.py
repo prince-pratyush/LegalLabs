@@ -31,7 +31,7 @@ def sha256(text: str) -> str:
 
 
 def make_manifest(
-    system_name: str, system: dict[str, Any], suite: "Suite", suffix: str = ""
+    system_name: str, system: dict[str, Any], suite: "Suite", suffix: str = "", spread: bool = False
 ) -> dict[str, Any]:
     """Anything that changes a score goes in the hash, so old results can't be reused."""
     manifest = {
@@ -46,6 +46,8 @@ def make_manifest(
         "judges": suite.judges,
         "run_suffix": suffix,
     }
+    if spread:
+        manifest["sample"] = "spread"
     manifest["config_hash"] = sha256(json.dumps(manifest, sort_keys=True))[:12]
     return manifest
 
