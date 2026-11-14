@@ -12,20 +12,25 @@ from .io import read_json, write_json
 from .schemas import (
     Cost,
     GraderResult,
-    HarnessError,
     HarnessRequest,
     HarnessResult,
     Hit,
     NonRetryableError,
     TaskDatum,
 )
-from .suites.base import Suite
+from .suites.base import Grader, Suite
 
 MAX_TASK_ATTEMPTS = 3
 
 
 def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _clear_traces(stage_dir: Path) -> None:
+    """A redone stage starts clean, so its trace shows one call, not two."""
+    for path in stage_dir.rglob("*.jsonl"):
+        path.unlink()
 
 
 def _result_json(result: HarnessResult) -> dict[str, Any]:
@@ -74,7 +79,7 @@ class Runner:
         write_json(config_path, self.manifest)
 
         tasks = self.suite.load_tasks(limit)
-        grader = self.suite.make_grader(self.harness.vendor)
+        grader = self.suite.make_grader(self.harness.vendors)
         self.harness.prepare(self.suite.corpus())
         try:
             with ThreadPoolExecutor(self.concurrency) as pool:
@@ -88,9 +93,9 @@ class Runner:
     def _task_dir(self, index: int, task: TaskDatum) -> Path:
         return self.run_dir / "tasks" / f"{index:06d}-{slug(task.id)}"
 
-    def _task(self, index: int, task: TaskDatum, grader: Any) -> None:
+    def _task(self, index: int, task: TaskDatum, grader: Grader) -> None:
         task_dir = self._task_dir(index, task)
-        # Level 1: a finished task is never redone.
+        # A finished task is never redone.
         if (task_dir / "result.json").exists():
             return
         write_json(task_dir / "task.json", {"id": task.id, "problem": task.problem})
@@ -105,7 +110,8 @@ class Runner:
             except NonRetryableError as err:
                 self._fail(task_dir, attempt_dir, err)
                 return
-            except (HarnessError, OSError, ValueError) as err:
+            # Anything else, even a malformed reply, costs one attempt rather than the whole run.
+            except Exception as err:
                 self._fail(task_dir, attempt_dir, err)
                 time.sleep(self.retry_delay)
                 continue
@@ -132,7 +138,7 @@ class Runner:
             if (last / "attempt.json").exists()
             else "running"
         )
-        # Level 3: an interrupted attempt is reused; a failed one moves on.
+        # An interrupted attempt is reused; a failed one moves on.
         if status == "failed":
             if (task_dir / "error.json").exists() and read_json(task_dir / "error.json").get(
                 "retryable"
@@ -141,8 +147,8 @@ class Runner:
             return int(last.name) + 1
         return int(last.name)
 
-    def _attempt(self, task: TaskDatum, attempt_dir: Path, grader: Any) -> GraderResult:
-        # Level 2: a stage that already finished is read back, not paid for again.
+    def _attempt(self, task: TaskDatum, attempt_dir: Path, grader: Grader) -> GraderResult:
+        # A stage that already finished is read back, not paid for again.
         agent_path = attempt_dir / "agent" / "result.json"
         if agent_path.exists():
             result = _result_from(read_json(agent_path))
@@ -156,6 +162,7 @@ class Runner:
                 top_k=self.suite.top_k,
                 output_schema=self.suite.output_schema,
             )
+            _clear_traces(attempt_dir / "agent")
             result = self.harness.run(request)
             record_cost(attempt_dir / "agent", result.cost or Cost.free())
             write_json(agent_path, _result_json(result))
@@ -164,6 +171,7 @@ class Runner:
         if grader_path.exists():
             data = read_json(grader_path)
             return GraderResult(data["score"], data["metrics"], data["grade_text"])
+        _clear_traces(attempt_dir / "grader")
         graded = grader.grade(task, result, attempt_dir / "grader")
         record_cost(attempt_dir / "grader", graded.cost or Cost.free())
         write_json(
@@ -193,10 +201,13 @@ class Runner:
         completed = len(results)
         total = sum(r["score"] for r in results)
         names = sorted({k for r in results for k in r["metrics"]})
-        metrics = {
-            n: sum(r["metrics"].get(n, 0.0) for r in results) / completed if completed else 0.0
-            for n in names
-        }
+        # Averaged over the tasks that report it: IoU exists only when the label is right.
+        metrics = {}
+        counts = {}
+        for n in names:
+            values = [r["metrics"][n] for r in results if n in r["metrics"]]
+            metrics[n] = sum(values) / len(values)
+            counts[n] = len(values)
         return {
             "system": self.manifest["system"],
             "suite": self.suite.name,
@@ -210,6 +221,7 @@ class Runner:
             "failed_as_zero": round(total / selected, 6) if selected else 0.0,
             "failed_excluded": round(total / completed, 6) if completed else 0.0,
             "metrics_failed_excluded": {k: round(v, 6) for k, v in metrics.items()},
+            "metric_counts": counts,
             "cost": ledger(self.run_dir),
             "finished_at": _now(),
         }
