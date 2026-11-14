@@ -1,4 +1,10 @@
-import { type CitationEvent, FINISHED, type RunEvent, type RunStatus } from "@legallabs/contracts";
+import {
+  type CitationEvent,
+  FINISHED,
+  Plan,
+  type RunEvent,
+  type RunStatus,
+} from "@legallabs/contracts";
 import type { AnswerCitation, Range, RunCoverage, RunStep } from "@legallabs/ui";
 
 export interface LiveCitation extends AnswerCitation {
@@ -13,6 +19,8 @@ export interface LiveRun {
   citations: LiveCitation[];
   steps: RunStep[];
   coverage: RunCoverage | null;
+  /** A deep analysis's plan, shown for approval before anything is read. */
+  plan: Plan | null;
   /** Sentences the verifier found no source for, sent with `done`. */
   ungrounded: Range[];
   error: { code: string; message: string; retryable: boolean } | null;
@@ -21,9 +29,14 @@ export interface LiveRun {
   finished: boolean;
 }
 
-export const startRun = (runId: string): LiveRun => ({
+/** `known` is what the thread said about the run, so a reload shows a waiting plan at once. */
+export const startRun = (
+  runId: string,
+  known: { status?: RunStatus; plan?: unknown } = {},
+): LiveRun => ({
   runId,
-  status: "running",
+  status: known.status ?? "running",
+  plan: Plan.safeParse(known.plan).data ?? null,
   text: "",
   citations: [],
   steps: [],
@@ -58,6 +71,8 @@ export function reduceRun(run: LiveRun, event: RunEvent): LiveRun {
         status: event.status,
         finished: run.finished || FINISHED.includes(event.status),
       };
+    case "plan":
+      return { ...run, plan: event.plan };
     case "token":
       return { ...run, text: run.text + event.delta };
     case "citation": {

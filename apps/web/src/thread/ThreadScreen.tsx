@@ -6,6 +6,8 @@ import {
   ComposerSkeleton,
   EmptyState,
   ModelBadge,
+  PlanCard,
+  PlanCardSkeleton,
   RunProgress,
 } from "@legallabs/ui";
 import { FilePen, Share2 } from "lucide-react";
@@ -69,6 +71,7 @@ export function ThreadScreen({
   const [sendError, setSendError] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [attempt, setAttempt] = useState(0);
+  const [planBusy, setPlanBusy] = useState(false);
   const following = useRef<string | null>(null);
 
   const load = useCallback(async () => {
@@ -91,10 +94,14 @@ export function ThreadScreen({
   // Follow whichever run is still going; a reload picks it up again from the start.
   const active = thread?.runs.find((run) => !FINISHED.includes(run.status)) ?? null;
   const activeId = active?.id ?? null;
+  // Read when the stream starts, so a waiting plan shows before any event replays.
+  const activeRun = useRef(active);
+  activeRun.current = active;
   useEffect(() => {
     if (!activeId || following.current === activeId) return;
     following.current = activeId;
-    setLive(startRun(activeId));
+    const known = activeRun.current;
+    setLive(startRun(activeId, known ? { status: known.status, plan: known.plan } : {}));
     let settled = false;
     const close = streamRun(
       activeId,
@@ -187,7 +194,21 @@ export function ThreadScreen({
     if (citation) follow(citation);
   };
 
-  const streaming = sending || (live !== null && !live.finished);
+  const awaiting = live?.status === "awaiting_approval" && !live.finished;
+  // While a plan waits, the composer is blocked rather than offering Stop.
+  const streaming = sending || (live !== null && !live.finished && !awaiting);
+
+  const decide = async (action: () => Promise<void>) => {
+    setPlanBusy(true);
+    setSendError(null);
+    try {
+      await action();
+    } catch (err) {
+      setSendError(messageOf(err));
+    } finally {
+      setPlanBusy(false);
+    }
+  };
   const liveQuestion = live ? thread?.runs.find((r) => r.id === live.runId)?.question_id : null;
   // A run that failed before saving an answer still deserves a way forward.
   const lastRun = thread?.runs.at(-1);
@@ -306,6 +327,10 @@ export function ThreadScreen({
                     run={live}
                     onCite={(n) => cite(live.runId, live.citations, n)}
                     onRetry={() => retry(message.id)}
+                    planBusy={planBusy}
+                    onApprove={() => decide(() => api.approve(live.runId))}
+                    onEditPlan={(text) => decide(() => api.editPlan(live.runId, text))}
+                    onCancelPlan={() => decide(() => api.cancel(live.runId))}
                   />
                 )}
                 {message.id === failed && (
@@ -339,6 +364,7 @@ export function ThreadScreen({
               thread={thread}
               options={options}
               streaming={streaming}
+              {...(awaiting ? { blockedReason: "Answer above to continue." } : {})}
               onSend={ask}
               onStop={stop}
             />
@@ -419,14 +445,41 @@ function LiveAnswer({
   run,
   onCite,
   onRetry,
+  planBusy,
+  onApprove,
+  onEditPlan,
+  onCancelPlan,
 }: {
   run: LiveRun;
   onCite: (n: number) => void;
   onRetry: () => void;
+  planBusy: boolean;
+  onApprove: () => void;
+  onEditPlan: (instruction: string) => void;
+  onCancelPlan: () => void;
 }) {
+  // Nothing is read until a person approves the plan and its cost.
+  if (run.status === "awaiting_approval" && !run.finished) {
+    return run.plan ? (
+      <PlanCard
+        steps={run.plan.steps}
+        costLow={run.plan.estimated_cost_usd.low}
+        costHigh={run.plan.estimated_cost_usd.high}
+        onApprove={onApprove}
+        onEdit={onEditPlan}
+        onCancel={onCancelPlan}
+        busy={planBusy}
+      />
+    ) : (
+      <PlanCardSkeleton />
+    );
+  }
   return (
     <article className="grid gap-3" aria-label="Answer in progress">
-      {run.steps.length > 0 && !run.finished && (
+      {run.status === "planned" && !run.finished && (
+        <p className="text-dense text-fg-muted">Planning the analysis…</p>
+      )}
+      {(run.steps.length > 0 || run.coverage) && !run.finished && (
         <RunProgress steps={run.steps} {...(run.coverage ? { coverage: run.coverage } : {})} />
       )}
       {run.text ? (
