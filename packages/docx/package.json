@@ -19,7 +19,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "fflate": "0.8.3"
+    "fflate": "0.8.3",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "@xmldom/xmldom": "0.9.12",
