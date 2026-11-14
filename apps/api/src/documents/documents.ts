@@ -406,13 +406,22 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
         }
       }
       const rows = await asApp(pool, principal, async (db) => {
+        // Folders first, as a plain list: inside the search the planner guesses badly.
+        const folders = scope?.folder_ids
+          ? (
+              await db.query<{ id: string }>(
+                `with recursive tree as (
+                   select f.id from content.folder f where f.id = any($1::uuid[])
+                   union
+                   select f.id from content.folder f join tree on f.parent_id = tree.id
+                 ) select id from tree`,
+                [scope.folder_ids.filter((id) => UUID.test(id))],
+              )
+            ).rows.map((row) => row.id)
+          : null;
         // Row security rules out both indexes, so the scope joins are what limit the scan.
         const result = await db.query<PassageRow>(
-          `with recursive folders as (
-             select f.id from content.folder f where f.id = any($11::uuid[])
-             union
-             select f.id from content.folder f join folders on f.parent_id = folders.id
-           ), words as (
+          `with words as (
              select case when $4 then replace(w::text, ' & ', ' | ')::tsquery else w end q
                from websearch_to_tsquery('english', $1) w
            ), scope as not materialized (
@@ -425,7 +434,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
                 and ($3::uuid[] is null or d.id = any($3::uuid[]))
                 and ($5::uuid[] is null or v.id = any($5::uuid[]))
                 and ($10::uuid[] is null or d.vault_id = any($10::uuid[]))
-                and ($11::uuid[] is null or d.folder_id in (select id from folders))
+                and ($11::uuid[] is null or d.folder_id = any($11::uuid[]))
            ), lexical as (
              select s.id, row_number() over (order by ts_rank_cd(s.tsv, w.q) desc, s.id) r
                from scope s, words w
@@ -459,7 +468,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
             options.embedder?.model ?? null,
             MAX_DISTANCE,
             scope?.vault_ids?.filter((id) => UUID.test(id)) ?? null,
-            scope?.folder_ids?.filter((id) => UUID.test(id)) ?? null,
+            folders,
           ],
         );
         return result.rows;
