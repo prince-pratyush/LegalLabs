@@ -59,7 +59,11 @@ export interface Answer {
   coverage: Coverage;
 }
 
-export type AnswerFailure = "MODEL_UNAVAILABLE" | "MODEL_NOT_ALLOWED" | "STREAM_INTERRUPTED";
+export type AnswerFailure =
+  | "MODEL_UNAVAILABLE"
+  | "MODEL_NOT_ALLOWED"
+  | "STREAM_INTERRUPTED"
+  | "CANCELLED";
 
 export interface AnswerInput {
   principal: Principal;
@@ -71,6 +75,8 @@ export interface AnswerInput {
   emit: (event: NewEvent) => Promise<unknown>;
   /** True once the run is cancelled; output after that is dropped. */
   cancelled: () => boolean;
+  /** Stops the model mid-answer, so a cancelled run stops costing. */
+  signal?: AbortSignal;
 }
 
 export const MAX_OUTPUT = 1500;
@@ -100,9 +106,21 @@ An answer without a tag after each claim is wrong.
 
 If the passages don't answer the question, say it wasn't found in the selected documents. Don't use outside knowledge. Write plain text, without markdown or HTML.`;
 
+// Names sit outside the passage fence, so they can't carry line breaks or run long.
+const safeName = (name: string) =>
+  name
+    .replace(/[\p{Cc}\p{Cf}\s]+/gu, " ")
+    .trim()
+    .slice(0, 200);
+const LISTED = 200;
+const httpsOnly = (url: string) => (/^https:\/\//i.test(url) ? url : null);
+
 // Documents are kept in id order, so each keeps its label for the life of the thread.
 const docLabel = (index: number) => `D${index + 1}`;
 const authLabel = (index: number) => `A${index + 1}`;
+
+// The live view reads [[c:N]] as a marker, so a model can't write one itself.
+const visible = (text: string) => text.replaceAll("[[", "[\u200b[");
 
 const charsOf = (messages: readonly Message[]) =>
   messages.reduce((total, message) => total + message.content.length, 0);
@@ -143,8 +161,9 @@ async function gather(deps: AnswerDeps, input: AnswerInput, budgetChars: number)
           where version_id = any($1::uuid[]) and text <> '' order by version_id, page_no`,
         [versionIds],
       );
+      const byVersion = new Map(documents.map((d) => [d.versionId, d]));
       return rows.map((row) => {
-        const document = documents.find((d) => d.versionId === row.version_id);
+        const document = byVersion.get(row.version_id);
         return {
           chunkId: `${row.version_id}:${row.page_no}`,
           documentId: document?.id ?? "",
@@ -208,9 +227,15 @@ function prompt(
         `<passage-${code} auth="${authLabel(i)}">\n${authority.citation_string}: ${authority.text}\n</passage-${code}>`,
     ),
   ];
+  const shown = new Set(passages.map((passage) => passage.documentVersionId));
+  // Only the files passages came from are named, so a big vault can't fill the window.
   const listing = [
-    ...input.documents.map((document, i) => `${docLabel(i)}: ${document.name}`),
-    ...authorities.map((authority, i) => `${authLabel(i)}: ${authority.title}`),
+    ...input.documents
+      .flatMap((document, i) =>
+        shown.has(document.versionId) ? [`${docLabel(i)}: ${safeName(document.name)}`] : [],
+      )
+      .slice(0, LISTED),
+    ...authorities.map((authority, i) => `${authLabel(i)}: ${safeName(authority.title)}`),
   ];
   return [
     { role: "system", content: SYSTEM_PROMPT },
@@ -354,7 +379,7 @@ export function createAnswerer(deps: AnswerDeps) {
                   : {}),
               }),
             }
-          : ok && checked.authority
+          : ok && checked.authority && httpsOnly(checked.authority.url)
             ? { open_url: checked.authority.url }
             : {}),
       },
@@ -431,7 +456,7 @@ export function createAnswerer(deps: AnswerDeps) {
       let rest = piece.text;
       for (const citation of piece.citations) {
         const cut = citation.at - cursor;
-        buffer += `${rest.slice(0, cut)}[[c:${checked.length + 1}]]`;
+        buffer += `${visible(rest.slice(0, cut))}[[c:${checked.length + 1}]]`;
         rest = rest.slice(cut);
         cursor = citation.at;
         await flush();
@@ -446,7 +471,7 @@ export function createAnswerer(deps: AnswerDeps) {
         checked.push(result);
         if (!input.cancelled()) await emit(event(input, messageId, result));
       }
-      buffer += rest;
+      buffer += visible(rest);
       text += piece.text;
       if (Date.now() - flushedAt >= FLUSH_MS) await flush();
     };
@@ -460,6 +485,19 @@ export function createAnswerer(deps: AnswerDeps) {
       title: "Writing the answer",
     });
     let pending: Promise<void> = Promise.resolve();
+    // The first failure is kept and rethrown once the model stops, so a rejected
+    // step never goes unhandled while tokens are still arriving.
+    let failure: unknown = null;
+    const queue = (work: () => Promise<void>) => {
+      pending = pending.then(async () => {
+        if (failure !== null || input.cancelled()) return;
+        try {
+          await work();
+        } catch (err) {
+          failure = err;
+        }
+      });
+    };
     let result: GatewayResult;
     try {
       result = await deps.gateway.stream(
@@ -474,11 +512,14 @@ export function createAnswerer(deps: AnswerDeps) {
         // Postgres text can't hold a NUL byte, and an answer that can't be saved is money wasted.
         (delta) => {
           const clean = delta.replaceAll("\0", "");
-          pending = pending.then(() => take(stream.push(clean)));
+          queue(() => take(stream.push(clean)));
         },
+        input.signal,
       );
     } catch (err) {
-      await pending.catch(() => {});
+      await pending;
+      if (input.cancelled()) return "CANCELLED";
+      if (failure !== null) throw failure;
       if (err instanceof GatewayError) {
         if (err.code === "MODEL_NOT_ALLOWED") return "MODEL_NOT_ALLOWED";
         if (err.code === "STREAM_INTERRUPTED") return "STREAM_INTERRUPTED";
@@ -487,6 +528,8 @@ export function createAnswerer(deps: AnswerDeps) {
       throw err;
     }
     await pending;
+    if (failure !== null) throw failure;
+    if (input.cancelled()) return "CANCELLED";
     await take(stream.end());
     await flush();
     await emit({
