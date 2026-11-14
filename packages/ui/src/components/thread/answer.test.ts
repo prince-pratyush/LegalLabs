@@ -27,6 +27,17 @@ describe("splitAnswer", () => {
     ]);
   });
 
+  it("shows a source cited twice as two markers", () => {
+    const parts = splitAnswer("A.[[c:1]] B.[[c:1]]", [cite(1, 0)]);
+    expect(parts.filter((p) => p.kind === "citation")).toHaveLength(2);
+    expect(parts.some((p) => p.kind === "pending")).toBe(false);
+  });
+
+  it("keeps a repeated pending placeholder pending at both spots", () => {
+    const parts = splitAnswer("A.[[c:3]] B.[[c:3]]", []);
+    expect(parts.filter((p) => p.kind === "pending")).toHaveLength(2);
+  });
+
   it("flags ungrounded ranges", () => {
     const parts = splitAnswer("Grounded. Made up.", [cite(1, 9)], [[10, 18]]);
     expect(parts).toEqual([
