@@ -121,7 +121,10 @@ export interface FilterPreset {
 
 export type PresetResult =
   | { ok: true; preset: FilterPreset }
-  | { ok: false; reason: "NOT_FOUND" | "NAME_TAKEN" | "INVALID_FILTER" | "TOO_MANY" };
+  | {
+      ok: false;
+      reason: "FORBIDDEN" | "NOT_FOUND" | "NAME_TAKEN" | "INVALID_FILTER" | "TOO_MANY";
+    };
 
 export interface Knowledge {
   sources(principal: Principal): Promise<SourceSummary[] | null>;
@@ -141,7 +144,7 @@ export interface Knowledge {
   ): Promise<Resolved | null>;
   /** For the thread verifier: lookups bound to one caller, so membership is still checked. */
   authoritySources(principal: Principal, sourceHint?: SourceId): AuthoritySources;
-  presets(principal: Principal, sourceId: SourceId): Promise<FilterPreset[]>;
+  presets(principal: Principal, sourceId: SourceId): Promise<FilterPreset[] | null>;
   createPreset(
     principal: Principal,
     sourceId: SourceId,
@@ -152,7 +155,7 @@ export interface Knowledge {
     id: string,
     input: { name?: string; filter?: Record<string, unknown>; isDefault?: boolean },
   ): Promise<PresetResult>;
-  deletePreset(principal: Principal, id: string): Promise<boolean>;
+  deletePreset(principal: Principal, id: string): Promise<boolean | null>;
   /** The loader's side: runs as the knowledge role, never as a tenant. */
   writer(): Writer;
 }
@@ -382,8 +385,9 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
         const result = await db.query<PassageRow>(
           `with words as (
              -- Any word may match; the ranking, not the match, decides what comes first.
+             -- Plain words only: search syntax such as -word has no meaning here.
              select replace(w::text, ' & ', ' | ')::tsquery q
-               from websearch_to_tsquery('english', $1) w
+               from plainto_tsquery('english', $1) w
            ), wanted as (
              select * from jsonb_to_recordset($2::jsonb) as f(
                source text, courts text[], doc_types text[], jurisdictions text[],
@@ -422,6 +426,8 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
               order by r limit $5
            ), fused as (
              -- Reciprocal rank fusion: rank, not raw score, so the lists can be compared.
+             -- The scope joins come first, so filters hold; past ~100k chunks per source,
+             -- an over-fetching HNSW query should replace the exact distance scan.
              select id, sum(1.0 / (60 + r)) score
                from (select * from cited union all select * from lexical
                      union all select * from dense) ranked
@@ -569,6 +575,7 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
 
     async presets(principal, sourceId) {
       return asApp(pool, principal, async (db) => {
+        if (!(await canUse(db))) return null;
         const { rows } = await db.query<PresetRow>(
           `select ${PRESET_COLUMNS} from knowledge.source_filter_preset
             where source_id = $1 and user_id = core.current_user_id()
@@ -580,11 +587,11 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
     },
 
     async createPreset(principal, sourceId, input) {
-      if (parseFilter(sourceId, input.filter) === null) {
-        return { ok: false, reason: "INVALID_FILTER" };
-      }
+      const filter = parseFilter(sourceId, input.filter);
+      if (filter === null) return { ok: false, reason: "INVALID_FILTER" };
       try {
         return await asApp(pool, principal, async (db): Promise<PresetResult> => {
+          if (!(await canUse(db))) return { ok: false, reason: "FORBIDDEN" };
           const { rows: count } = await db.query<{ n: string }>(
             `select count(*) as n from knowledge.source_filter_preset
               where source_id = $1 and user_id = core.current_user_id()`,
@@ -604,9 +611,10 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
                (workspace_id, user_id, source_id, name, filter, is_default)
              values (core.current_workspace_id(), core.current_user_id(), $1, $2, $3, $4)
              returning ${PRESET_COLUMNS}`,
-            [sourceId, input.name, JSON.stringify(input.filter), input.isDefault],
+            [sourceId, input.name, JSON.stringify(filter), input.isDefault],
           );
-          const row = rows[0] as PresetRow;
+          const row = rows[0];
+          if (!row) throw new Error("insert returned no row");
           await audit(db, principal, "knowledge.filter_preset.created", row);
           return { ok: true, preset: toPreset(row) };
         });
@@ -620,6 +628,7 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
       try {
         return await asApp(pool, principal, async (db): Promise<PresetResult> => {
+          if (!(await canUse(db))) return { ok: false, reason: "FORBIDDEN" };
           const { rows: found } = await db.query<PresetRow>(
             `select ${PRESET_COLUMNS} from knowledge.source_filter_preset
               where id = $1 for update`,
@@ -627,9 +636,9 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
           );
           const current = found[0];
           if (!current) return { ok: false, reason: "NOT_FOUND" };
-          if (input.filter !== undefined && parseFilter(current.source_id, input.filter) === null) {
-            return { ok: false, reason: "INVALID_FILTER" };
-          }
+          const filter =
+            input.filter === undefined ? undefined : parseFilter(current.source_id, input.filter);
+          if (filter === null) return { ok: false, reason: "INVALID_FILTER" };
           if (input.isDefault) {
             await db.query(
               `update knowledge.source_filter_preset set is_default = false
@@ -647,11 +656,12 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
             [
               id,
               input.name ?? null,
-              input.filter === undefined ? null : JSON.stringify(input.filter),
+              filter === undefined ? null : JSON.stringify(filter),
               input.isDefault ?? null,
             ],
           );
-          const row = rows[0] as PresetRow;
+          const row = rows[0];
+          if (!row) return { ok: false, reason: "NOT_FOUND" };
           await audit(db, principal, "knowledge.filter_preset.updated", row);
           return { ok: true, preset: toPreset(row) };
         });
@@ -664,6 +674,7 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
     async deletePreset(principal, id) {
       if (!UUID.test(id)) return false;
       return asApp(pool, principal, async (db) => {
+        if (!(await canUse(db))) return null;
         const { rows } = await db.query<{ id: string; source_id: string }>(
           "delete from knowledge.source_filter_preset where id = $1 returning id, source_id",
           [id],
@@ -723,10 +734,12 @@ function createWriter(pool: pg.Pool, embedder: Embedder | null): Writer {
       const hash = contentHash(record);
       const existing = await asKnowledgeLoader(pool, async (db) => {
         const { rows } = await db.query<{ content_hash: string; stale: boolean }>(
+          // Stale only when there is a model to embed with and a chunk lacks its vectors.
           `select a.content_hash,
-                  exists (select 1 from knowledge.authority_chunk c
-                           where c.authority_id = a.id
-                             and c.embedding_model is distinct from $2) as stale
+                  $2::text is not null and exists (
+                    select 1 from knowledge.authority_chunk c
+                     where c.authority_id = a.id
+                       and c.embedding_model is distinct from $2) as stale
              from knowledge.authority a where a.ref = $1`,
           [record.ref, embedder?.model ?? null],
         );
@@ -742,12 +755,17 @@ function createWriter(pool: pg.Pool, embedder: Embedder | null): Writer {
           const out: string[] = [];
           for (let i = 0; i < record.chunks.length; i += EMBED_BATCH) {
             const batch = record.chunks.slice(i, i + EMBED_BATCH).map((c) => c.text);
-            for (const vector of await embedder.embed(batch)) out.push(`[${vector.join(",")}]`);
+            const embedded = await embedder.embed(batch);
+            // One vector per chunk, or every later vector would sit on the wrong text.
+            if (embedded.length !== batch.length) throw new EmbedUnavailable("vector count");
+            for (const vector of embedded) out.push(`[${vector.join(",")}]`);
           }
           vectors = out;
         } catch (err) {
-          // Stored without vectors; the next sync sees them as stale and tries again.
           if (!(err instanceof EmbedUnavailable)) throw err;
+          // Same text: keep the vectors it has rather than wiping them.
+          if (existing?.content_hash === hash) return "unchanged";
+          // New text is stored without vectors; the next sync finds it stale and tries again.
         }
       }
 

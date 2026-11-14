@@ -47,7 +47,10 @@ const resolveBody = z.strictObject({
 });
 
 const presetName = z.string().trim().min(1).max(80).refine(noNul);
-const filterValue = z.record(z.string(), z.unknown());
+// Capped well under the table's limit, so an oversized filter is a 400, not a database error.
+const filterValue = z
+  .record(z.string(), z.unknown())
+  .refine((value) => JSON.stringify(value).length <= 4000, "filter too large");
 const createPresetBody = z.strictObject({
   name: presetName,
   filter: filterValue,
@@ -123,6 +126,7 @@ const presetJson = (p: FilterPreset) => ({
 });
 
 const PRESET_FAILURES = {
+  FORBIDDEN: [403, "You don't have permission to use knowledge sources."],
   NOT_FOUND: [404, "That saved filter wasn't found."],
   NAME_TAKEN: [409, "You already have a saved filter with that name."],
   INVALID_FILTER: [400, "That filter doesn't fit this source."],
@@ -256,6 +260,7 @@ export function knowledgeRoutes(knowledge: Knowledge) {
     const id = c.req.param("id");
     if (!isSourceId(id)) return noSource(c);
     const found = await knowledge.presets(c.get("principal"), id);
+    if (found === null) return forbidden(c);
     return c.json({ items: found.map(presetJson) });
   });
 
@@ -286,6 +291,7 @@ export function knowledgeRoutes(knowledge: Knowledge) {
 
   app.delete("/filters/:id", async (c) => {
     const deleted = await knowledge.deletePreset(c.get("principal"), c.req.param("id"));
+    if (deleted === null) return forbidden(c);
     if (!deleted) return fail(c, 404, "NOT_FOUND", "That saved filter wasn't found.");
     return c.body(null, 204);
   });

@@ -145,7 +145,10 @@ function quoteInPassages(
     : { status: "mismatch", reason: "meaning_changed", authorityId, closest: refused };
 }
 
-/** Only a citation that reached a stored authority gets a link; an unresolved one stays text. */
+/**
+ * Only a citation that reached a stored authority gets a link: ok, or a flagged mismatch the
+ * reader can check against the source. Unresolved and ambiguous ones stay plain text.
+ */
 export function authorityHref(result: AuthorityVerification): string | null {
   if (result.status === "unresolved") return null;
   return `/knowledge/authorities/${encodeURIComponent(result.authorityId)}`;
