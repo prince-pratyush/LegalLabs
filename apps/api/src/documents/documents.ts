@@ -171,6 +171,10 @@ const toPassage = (row: PassageRow): Passage => ({
 
 // Enough for fusion and reranking to find what either list alone ranked low.
 const CANDIDATES = 100;
+// Without a floor the nearest chunks always come back, however unrelated.
+const MAX_DISTANCE = 0.65;
+// A question, not a document: longer text only slows every step that follows.
+const MAX_QUERY = 2000;
 
 export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Documents {
   async function reranked(query: string, rows: PassageRow[]): Promise<PassageRow[]> {
@@ -322,6 +326,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       query,
       { limit = DEFAULT_PASSAGES, documentIds, versionIds, match = "all" } = {},
     ) {
+      query = query.slice(0, MAX_QUERY);
       const take = clampPassages(limit);
       // Embedded outside the transaction, so a slow model never holds a connection.
       let vector: string | null = null;
@@ -340,7 +345,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
           `with words as (
              select case when $4 then replace(w::text, ' & ', ' | ')::tsquery else w end q
                from websearch_to_tsquery('english', $1) w
-           ), scope as (
+           ), scope as not materialized (
              select c.id, c.version_id, v.document_id, d.name, c.page_no, c.char_from, c.char_to,
                     c.text, c.section, c.tsv, c.embedding, c.embedding_model
                from content.document d
@@ -358,6 +363,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
              select s.id, row_number() over (order by s.embedding <=> $6::vector, s.id) r
                from scope s
               where $6::vector is not null and s.embedding_model = $8
+                and s.embedding <=> $6::vector <= $9
               order by r limit $7
            ), fused as (
              -- Reciprocal rank fusion: rank, not raw score, so the two lists can be compared.
@@ -379,6 +385,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
             vector,
             CANDIDATES,
             options.embedder?.model ?? null,
+            MAX_DISTANCE,
           ],
         );
         return result.rows;
