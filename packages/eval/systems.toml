@@ -10,6 +10,22 @@ vendor = "legallabs"
 vendors = ["legallabs"]
 params = { search_params = {} }
 
+# Our threads over HTTP: ask, wait for the verified answer, approve deep-analysis plans.
+# Same env as above; rooms over 50 files need a preloaded vault in LEGALLABS_VAULT_ID.
+# The server picks the model, so vendors must match the server's configured providers.
+[systems.legallabs-threads]
+harness = "legallabs-thread"
+vendor = "legallabs"
+vendors = ["legallabs", "ollama"]
+params = { poll_seconds = 1.0, run_timeout_seconds = 1800 }
+
+# The same stack with a paid model configured on the server (ANTHROPIC_API_KEY there).
+[systems.legallabs-threads-anthropic]
+harness = "legallabs-thread"
+vendor = "legallabs"
+vendors = ["legallabs", "anthropic"]
+params = { poll_seconds = 1.0, run_timeout_seconds = 3600 }
+
 # Public-law search over the same API, for the retrieval-golden-<source> suites.
 # Same credentials; the sources must be synced first (legallabs-knowledge sync).
 [systems.legallabs-knowledge]

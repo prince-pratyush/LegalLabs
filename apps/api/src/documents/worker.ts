@@ -189,14 +189,20 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
 
   async function read(job: Claim): Promise<IngestReason | "indexed" | "quarantined"> {
     const source = await asUploader(job, async (db) => {
-      const { rows } = await db.query<{ name: string; matter_id: string | null; depth: number }>(
+      const { rows } = await db.query<{
+        name: string;
+        matter_id: string | null;
+        vault_id: string | null;
+        folder_id: string | null;
+        depth: number;
+      }>(
         `with recursive up as (
            select id, parent_id, 0 depth from content.document where id = $1
            union all
            select d.id, d.parent_id, up.depth + 1 from content.document d
              join up on d.id = up.parent_id where up.depth < $2
          )
-         select d.name, d.matter_id, (select max(depth) from up)::int depth
+         select d.name, d.matter_id, d.vault_id, d.folder_id, (select max(depth) from up)::int depth
            from content.document d where d.id = $1 and core.has_permission('threads.use')`,
         [job.document_id, MAX_DEPTH],
       );
@@ -270,8 +276,8 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
       for (const child of stored) {
         const document = await db.query<{ id: string }>(
           `insert into content.document
-             (workspace_id, owner_id, matter_id, parent_id, name, mime, size)
-           values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+             (workspace_id, owner_id, matter_id, parent_id, name, mime, size, vault_id, folder_id)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
           [
             job.workspace_id,
             job.created_by,
@@ -280,6 +286,9 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
             safeName(child.name),
             detectType(child.bytes, child.name) ?? "application/octet-stream",
             child.bytes.length,
+            // Attachments stay beside their message, in the same vault and folder.
+            source.vault_id,
+            source.folder_id,
           ],
         );
         const version = await db.query<{ id: string }>(

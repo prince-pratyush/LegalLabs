@@ -65,8 +65,11 @@ export function aiSdkProvider(modelFor: (id: string) => LanguageModel): ModelPro
     telemetry: { isEnabled: false },
   });
   return {
-    async complete({ model, messages, max_output }) {
-      const { text, usage } = await generateText(settings(model, messages, max_output));
+    async complete({ model, messages, max_output, signal }) {
+      const { text, usage } = await generateText({
+        ...settings(model, messages, max_output),
+        ...(signal ? { abortSignal: signal } : {}),
+      });
       return completion(text, usage);
     },
     async stream({ model, messages, max_output, signal }, onText) {

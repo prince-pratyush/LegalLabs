@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DIMENSIONS, type Embedder, EmbedUnavailable } from "@legallabs/embed";
 import { type AuthorityRecord, createFileLoader, type SourceId, sync } from "@legallabs/knowledge";
+import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth, type Principal } from "../auth/auth.js";
+import { createDrafts } from "../drafts/drafts.js";
 import {
   auditTrail,
   PASSWORD,
@@ -407,6 +409,9 @@ describe("knowledge API", () => {
     auth: createAuth(pool),
     documents: testDocuments(pool),
     threads: testThreads(pool, testDocuments(pool), {}, noVaults, knowledgePort(knowledge)),
+    drafts: createDrafts(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+    }),
     knowledge,
     clientIp: () => "203.0.113.9",
   });

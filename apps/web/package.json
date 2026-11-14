@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@legallabs/contracts": "workspace:*",
     "@legallabs/ui": "workspace:*",
     "lucide-react": "1.72.0",
     "react": "19.3.1",

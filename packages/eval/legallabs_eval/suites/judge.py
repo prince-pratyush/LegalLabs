@@ -51,6 +51,7 @@ class Judge:
             (name, ModelClient(j["vendor"], j["model"], 1024, send))
             for name, j in list(picked.values())[:count]
         ]
+        self.vendors = frozenset(client.vendor for _, client in self.clients)
 
     def preflight(self) -> None:
         for _, client in self.clients:

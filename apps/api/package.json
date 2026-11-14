@@ -15,10 +15,11 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@legallabs/contracts": "workspace:*",
     "@hono/node-server": "2.1.6",
     "@legallabs/citations": "workspace:*",
-    "@legallabs/contracts": "workspace:*",
     "@legallabs/db": "workspace:*",
+    "@legallabs/docx": "workspace:*",
     "@legallabs/embed": "workspace:*",
     "@legallabs/ingest": "workspace:*",
     "@legallabs/knowledge": "workspace:*",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
+    "fflate": "0.8.3",
     "vitest": "5.1.0"
   }
 }
