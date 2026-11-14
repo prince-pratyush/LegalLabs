@@ -8,6 +8,8 @@ import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
+import type { Knowledge } from "./knowledge/knowledge.js";
+import { knowledgeRoutes } from "./knowledge/routes.js";
 import { threadRoutes } from "./threads/routes.js";
 import type { Threads } from "./threads/threads.js";
 
@@ -36,6 +38,8 @@ export interface AppOptions {
   auth: Auth;
   documents: Documents;
   threads: Threads;
+  /** Public-law sources; left out, the knowledge endpoints are not mounted. */
+  knowledge?: Knowledge;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -47,6 +51,7 @@ export function createApp({
   auth,
   documents,
   threads,
+  knowledge,
   clientIp,
   now = Date.now,
   webRoot,
@@ -144,6 +149,7 @@ export function createApp({
 
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   app.route("/api/v1/threads", threadRoutes(threads, clientOf, now));
+  if (knowledge) app.route("/api/v1/knowledge", knowledgeRoutes(knowledge));
   if (webRoot) app.get("*", serveStatic({ root: webRoot }));
 
   return app;

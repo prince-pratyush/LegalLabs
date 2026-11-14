@@ -12,6 +12,7 @@ import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
+import { createKnowledge } from "./knowledge/knowledge.js";
 import { createThreads } from "./threads/threads.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -79,6 +80,7 @@ const app = createApp({
   auth: createAuth(pool),
   documents,
   threads: createThreads(pool, { gateway, documents }),
+  knowledge: createKnowledge(pool, { embedder }),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
