@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Reranker } from "@legallabs/embed";
 import { createStubScanner } from "@legallabs/ingest";
 import { createMemoryStore } from "@legallabs/storage";
 import pg from "pg";
@@ -58,9 +59,16 @@ export async function auditTrail(pool: pg.Pool, workspaceId: string) {
 }
 
 // Uploads, then reads the caller's queue as the worker would, so tests see an indexed file.
-export function testDocuments(pool: pg.Pool, options: Partial<IngestWorkerOptions> = {}) {
+export function testDocuments(
+  pool: pg.Pool,
+  options: Partial<IngestWorkerOptions> & { reranker?: Reranker } = {},
+) {
   const store = options.store ?? createMemoryStore();
-  const raw = createDocuments(pool, { store });
+  const raw = createDocuments(pool, {
+    store,
+    embedder: options.embedder ?? null,
+    reranker: options.reranker ?? null,
+  });
   const worker = createIngestWorker(pool, {
     maxAttempts: 1,
     scanner: createStubScanner(),
