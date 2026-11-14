@@ -45,7 +45,7 @@ class HarnessRequest:
     output_schema: dict[str, Any] | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class Cost:
     usd: float | None
     cost_known: bool
@@ -74,7 +74,7 @@ class Cost:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class HarnessResult:
     answer: str | None = None
     hits: list[Hit] = field(default_factory=list)
@@ -83,7 +83,7 @@ class HarnessResult:
     cost: Cost | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class GraderResult:
     score: float
     metrics: dict[str, float] = field(default_factory=dict)
@@ -97,3 +97,11 @@ class HarnessError(Exception):
 
 class NonRetryableError(Exception):
     """Another attempt would fail the same way."""
+
+
+def raise_for_status(status: int, what: str) -> None:
+    """Rate limits and server errors may pass; other client errors will repeat."""
+    if status == 429 or status >= 500:
+        raise HarnessError(f"{what} returned {status}")
+    if status >= 400:
+        raise NonRetryableError(f"{what} returned {status}")

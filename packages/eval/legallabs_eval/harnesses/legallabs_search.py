@@ -12,18 +12,17 @@ from ..schemas import (
     HarnessResult,
     Hit,
     NonRetryableError,
+    raise_for_status,
 )
 from .base import Harness
 
 # The API caps a search at this many passages.
 MAX_LIMIT = 50
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def _check(response: httpx.Response) -> httpx.Response:
-    if response.status_code == 429 or response.status_code >= 500:
-        raise HarnessError(f"{response.request.url.path} returned {response.status_code}")
-    if response.status_code >= 400:
-        raise NonRetryableError(f"{response.request.url.path} returned {response.status_code}")
+    raise_for_status(response.status_code, response.request.url.path)
     return response
 
 
@@ -33,7 +32,7 @@ class LegalLabsSearchHarness(Harness):
     kinds = frozenset({"retrieval"})
 
     def __init__(
-        self, system_name: str, system: dict, transport: httpx.BaseTransport | None = None
+        self, system_name: str, system: dict[str, Any], transport: httpx.BaseTransport | None = None
     ) -> None:
         super().__init__(system_name, system)
         params = system.get("params", {})
@@ -53,7 +52,11 @@ class LegalLabsSearchHarness(Harness):
         return value
 
     def prepare(self, corpus: list[Document]) -> None:
-        self.client = httpx.Client(base_url=self._env("url"), timeout=60, transport=self.transport)
+        url = httpx.URL(self._env("url"))
+        # The session cookie is sent by hand, so plain http is only safe on this machine.
+        if url.scheme != "https" and url.host not in LOCAL_HOSTS:
+            raise NonRetryableError("LegalLabs URL must use https unless it is localhost")
+        self.client = httpx.Client(base_url=url, timeout=60, transport=self.transport)
         login = _check(
             self.client.post(
                 "/auth/login",
@@ -70,18 +73,12 @@ class LegalLabsSearchHarness(Harness):
         # Set by hand: a Secure cookie is not sent back over plain http to localhost.
         self.client.headers["cookie"] = f"__Host-sid={token}"
 
-        listed = _check(self.client.get("/api/v1/documents")).json()["documents"]
-        existing = {(d["name"], d["size"]): d["id"] for d in listed}
+        # Uploaded fresh each run: a same-named old copy could hold different text.
         self.document_ids = []
         for doc in corpus:
-            data = doc.text.encode()
-            found = existing.get((doc.name, len(data)))
-            if found is None:
-                files = {"file": (doc.name, data, "text/markdown")}
-                found = _check(self.client.post("/api/v1/documents", files=files)).json()[
-                    "document"
-                ]["id"]
-            self.document_ids.append(found)
+            files = {"file": (doc.name, doc.text.encode(), "text/markdown")}
+            response = _check(self.client.post("/api/v1/documents", files=files))
+            self.document_ids.append(response.json()["document"]["id"])
 
     def run(self, request: HarnessRequest) -> HarnessResult:
         if self.client is None:
