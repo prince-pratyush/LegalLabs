@@ -149,10 +149,11 @@
   height: var(--row-height);
 }
 
+/* Faint on purpose: any stronger and status text on a row drops below 4.5:1. */
 @utility tint-hover {
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  background: color-mix(in srgb, var(--fg) 3%, var(--bg));
 }
 
 @utility tint-selected {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
 }
