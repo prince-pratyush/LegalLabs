@@ -12,33 +12,42 @@ export interface Revision {
   date: string;
 }
 
-const revisionAttrs = (rev: Revision) =>
+export const revisionAttrs = (rev: Revision) =>
   `w:id="${rev.id()}" w:author="${xmlText(rev.author)}" w:date="${rev.date}"`;
 
-function textXml(text: string, tag: "w:t" | "w:delText"): string {
-  // Tabs are their own element; a literal tab inside w:t is lost.
+export function textXml(text: string, tag: "w:t" | "w:delText"): string {
+  // Tabs and breaks are their own elements; a literal tab or newline inside w:t is lost.
   return text
-    .split("\t")
-    .map((part) => (part ? `<${tag} xml:space="preserve">${xmlText(part)}</${tag}>` : ""))
-    .join("<w:tab/>");
+    .split("\n")
+    .map((line) =>
+      line
+        .split("\t")
+        .map((part) => (part ? `<${tag} xml:space="preserve">${xmlText(part)}</${tag}>` : ""))
+        .join("<w:tab/>"),
+    )
+    .join("<w:br/>");
 }
 
-export function runXml(run: Run, deleted = false): string {
+/** A text run whose formatting is a whole `w:rPr` element copied from an existing document. */
+export type RawRun = TextRun & { rPr?: string };
+
+export function runXml(run: Run | RawRun, deleted = false): string {
   if ("footnote" in run) {
     return `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="${run.footnote}"/></w:r>`;
   }
-  const props = `${run.bold ? "<w:b/>" : ""}${run.italic ? "<w:i/>" : ""}`;
   const body = textXml(run.text, deleted ? "w:delText" : "w:t");
   if (!body) return "";
+  if ("rPr" in run && run.rPr !== undefined) return `<w:r>${run.rPr}${body}</w:r>`;
+  const props = `${run.bold ? "<w:b/>" : ""}${run.italic ? "<w:i/>" : ""}`;
   return `<w:r>${props ? `<w:rPr>${props}</w:rPr>` : ""}${body}</w:r>`;
 }
 
-export const insXml = (runs: readonly TextRun[], rev: Revision) => {
+export const insXml = (runs: readonly RawRun[], rev: Revision) => {
   const body = runs.map((run) => runXml(run)).join("");
   return body ? `<w:ins ${revisionAttrs(rev)}>${body}</w:ins>` : "";
 };
 
-export const delXml = (runs: readonly TextRun[], rev: Revision) => {
+export const delXml = (runs: readonly RawRun[], rev: Revision) => {
   const body = runs.map((run) => runXml(run, true)).join("");
   return body ? `<w:del ${revisionAttrs(rev)}>${body}</w:del>` : "";
 };
