@@ -22,18 +22,11 @@ const failure = (c: Context, status: 400 | 413 | 503, code: string, message: str
 
 type Reason = Extract<UploadResult, { ok: false }>["reason"];
 
-const REASONS: Record<Reason, { status: 403 | 404 | 413 | 415 | 422 | 500; message: string }> = {
+const REASONS: Record<Reason, { status: 403 | 404 | 413 | 415; message: string }> = {
   FORBIDDEN: { status: 403, message: "You don't have permission to upload documents." },
   MATTER_NOT_FOUND: { status: 404, message: "That matter wasn't found." },
   FILE_TOO_LARGE: { status: 413, message: "The file is too large." },
   UNSUPPORTED_TYPE: { status: 415, message: "Only PDF, TXT and Markdown files can be read." },
-  CORRUPT_FILE: { status: 422, message: "The file is damaged and can't be read." },
-  ENCRYPTED_NO_PASSWORD: { status: 422, message: "The file is password protected." },
-  PAGE_LIMIT_EXCEEDED: { status: 422, message: "The document is too long." },
-  NO_TEXT: { status: 422, message: "No text was found. Scanned documents can't be read yet." },
-  PARSE_TIMEOUT: { status: 422, message: "The file took too long to read." },
-  TOO_COMPLEX: { status: 422, message: "The file needs too much memory to read." },
-  INTERNAL: { status: 500, message: "The file couldn't be processed." },
 };
 
 const uuid = z.uuid();
@@ -61,6 +54,8 @@ const summaryJson = (document: Summary) => ({
   name: document.name,
   mime: document.mime,
   size: document.size,
+  status: document.status,
+  failure_reason: document.failureReason,
   page_count: document.pageCount,
   empty_page_count: document.emptyPageCount,
   matter_id: document.matterId,
@@ -122,7 +117,7 @@ export function documentRoutes(documents: Documents, clientOf: (c: Context) => C
       const { status, message } = REASONS[result.reason];
       return c.json({ code: result.reason, message }, status);
     }
-    return c.json({ document: summaryJson(result.document) }, 201);
+    return c.json({ document: summaryJson(result.document) }, 202);
   });
 
   app.get("/", async (c) => {
@@ -144,6 +139,23 @@ export function documentRoutes(documents: Documents, clientOf: (c: Context) => C
       ...(document_ids ? { documentIds: document_ids } : {}),
     });
     return c.json({ passages: passages.map(passageJson) });
+  });
+
+  // After /search, so "search" is never taken for an id.
+  app.get("/:id", async (c) => {
+    const found = await documents.get(c.get("principal"), c.req.param("id"));
+    if (!found) return c.json({ code: "NOT_FOUND", message: "That document wasn't found." }, 404);
+    return c.json({ document: summaryJson(found) });
+  });
+
+  app.post("/:id/retry", async (c) => {
+    const principal = c.get("principal");
+    const id = c.req.param("id");
+    if (!(await documents.retry(principal, id))) {
+      return c.json({ code: "NOT_FOUND", message: "No failed document with that id." }, 404);
+    }
+    const found = await documents.get(principal, id);
+    return c.json({ document: found ? summaryJson(found) : null }, 202);
   });
 
   return app;

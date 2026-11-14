@@ -1,25 +1,26 @@
-import type { IngestResult } from "@legallabs/ingest";
+import { ingestFile } from "@legallabs/ingest";
 import { createGateway } from "@legallabs/model-gateway";
 import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
-import { PASSWORD, type Seeded, seedMember, testPool } from "../test-db.js";
+import { PASSWORD, type Seeded, seedMember, testDocuments, testPool } from "../test-db.js";
 import { createThreads } from "../threads/threads.js";
-import { createDocuments, type DocumentsOptions } from "./documents.js";
+import type { IngestWorkerOptions } from "./worker.js";
 
 const pool = testPool();
 afterAll(() => pool.end());
 
 const CLAUSE = "The supplier accepts liability for direct loss.";
 
-function harness(options: Partial<DocumentsOptions> = {}) {
+function harness(options: Partial<IngestWorkerOptions> = {}) {
+  const documents = testDocuments(pool, options);
   const app = createApp({
     auth: createAuth(pool),
-    documents: createDocuments(pool, { store: createMemoryStore(), ...options }),
+    documents,
     threads: createThreads(pool, {
       gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
-      documents: createDocuments(pool, { store: createMemoryStore() }),
+      documents: testDocuments(pool),
     }),
     clientIp: () => "203.0.113.9",
   });
@@ -39,7 +40,10 @@ function harness(options: Partial<DocumentsOptions> = {}) {
     });
   const get = (cookie: string, path: string) =>
     app.request(`/api/v1/documents${path}`, { headers: { cookie } });
-  return { app, signIn, upload, get };
+  const post = (cookie: string, path: string) =>
+    app.request(`/api/v1/documents${path}`, { method: "POST", headers: { cookie } });
+  const drain = (m: Seeded) => documents.worker.drain(m.workspaceId);
+  return { app, signIn, upload, get, post, drain };
 }
 
 function formWith(name: string, content = CLAUSE, matterId?: string) {
@@ -56,6 +60,8 @@ describe("documents API", () => {
       await h.upload("", formWith("a.txt")),
       await h.get("", ""),
       await h.get("", "/search?q=liability"),
+      await h.get("", "/00000000-0000-7000-8000-000000000001"),
+      await h.post("", "/00000000-0000-7000-8000-000000000001/retry"),
     ];
     for (const res of responses) {
       expect(res.status).toBe(401);
@@ -69,11 +75,13 @@ describe("documents API", () => {
     const cookie = await h.signIn(m);
 
     const created = await h.upload(cookie, formWith("msa.txt"));
-    expect(created.status).toBe(201);
+    expect(created.status).toBe(202);
     const { document } = (await created.json()) as { document: Record<string, unknown> };
     expect(document).toMatchObject({
       name: "msa.txt",
       mime: "text/plain",
+      status: "indexed",
+      failure_reason: null,
       page_count: 1,
       empty_page_count: 0,
       matter_id: null,
@@ -175,37 +183,75 @@ describe("documents API", () => {
     expect(await res.json()).toMatchObject({ code: "MATTER_NOT_FOUND" });
   });
 
-  it.each([
-    ["an unsupported type", "contract.docx", CLAUSE, 415, "UNSUPPORTED_TYPE"],
-    ["a file with no text", "blank.txt", "   ", 422, "NO_TEXT"],
-  ])("explains %s", async (_, name, content, status, code) => {
+  it("explains an unsupported type", async () => {
     const m = await seedMember(pool);
     const h = harness();
-    const res = await h.upload(await h.signIn(m), formWith(name, content));
-    expect(res.status).toBe(status);
+    const res = await h.upload(await h.signIn(m), formWith("contract.docx", CLAUSE));
+    expect(res.status).toBe(415);
     const body = (await res.json()) as { code: string; message: string };
-    expect(body.code).toBe(code);
+    expect(body.code).toBe("UNSUPPORTED_TYPE");
     expect(body.message.length).toBeGreaterThan(0);
   });
 
-  it("turns away a third upload while two are parsing", async () => {
+  it("shows why a file failed, and retries it", async () => {
+    const m = await seedMember(pool);
+    let reason: "NO_TEXT" | null = "NO_TEXT";
+    const h = harness({
+      ingest: async (bytes, name) => (reason ? { ok: false, reason } : ingestFile(bytes, name)),
+    });
+    const cookie = await h.signIn(m);
+    const res = await h.upload(cookie, formWith("blank.txt", CLAUSE));
+    expect(res.status).toBe(202);
+    const { document } = (await res.json()) as { document: { id: string } };
+    expect(await (await h.get(cookie, `/${document.id}`)).json()).toMatchObject({
+      document: { status: "failed", failure_reason: "NO_TEXT", page_count: null },
+    });
+
+    reason = null;
+    const retried = await h.post(cookie, `/${document.id}/retry`);
+    expect(retried.status).toBe(202);
+    expect(await retried.json()).toMatchObject({ document: { status: "queued" } });
+    await h.drain(m);
+    expect(await (await h.get(cookie, `/${document.id}`)).json()).toMatchObject({
+      document: { status: "indexed", failure_reason: null, page_count: 1 },
+    });
+    expect((await h.post(cookie, `/${document.id}/retry`)).status).toBe(404);
+  });
+
+  it("hides another person's document and refuses to retry it", async () => {
+    const m = await seedMember(pool);
+    const h = harness({ ingest: async () => ({ ok: false, reason: "NO_TEXT" }) });
+    const res = await h.upload(await h.signIn(m), formWith("a.txt"));
+    const { document } = (await res.json()) as { document: { id: string } };
+    const other = await seedMember(pool);
+    const theirs = await h.signIn(other);
+    expect((await h.get(theirs, `/${document.id}`)).status).toBe(404);
+    expect((await h.post(theirs, `/${document.id}/retry`)).status).toBe(404);
+    expect((await h.get(theirs, "/not-a-uuid")).status).toBe(404);
+  });
+
+  it("turns away a third upload while two are being stored", async () => {
     const m = await seedMember(pool);
     let release = () => {};
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let parsing = 0;
-    let bothParsing = () => {};
+    let storing = 0;
+    let bothStoring = () => {};
     const ready = new Promise<void>((resolve) => {
-      bothParsing = resolve;
+      bothStoring = resolve;
     });
-    const ingest = async (): Promise<IngestResult> => {
-      parsing++;
-      if (parsing === 2) bothParsing();
-      await blocked;
-      return { ok: false, reason: "NO_TEXT" };
+    const memory = createMemoryStore();
+    const store = {
+      ...memory,
+      async putIfAbsent(key: string, bytes: Uint8Array) {
+        storing++;
+        if (storing === 2) bothStoring();
+        await blocked;
+        return memory.putIfAbsent(key, bytes);
+      },
     };
-    const h = harness({ ingest });
+    const h = harness({ store });
     const cookie = await h.signIn(m);
     const first = h.upload(cookie, formWith("a.txt"));
     const second = h.upload(cookie, formWith("b.txt"));
@@ -216,9 +262,9 @@ describe("documents API", () => {
     expect(third.headers.get("retry-after")).toBeTruthy();
 
     release();
-    expect((await first).status).toBe(422);
-    expect((await second).status).toBe(422);
-    expect((await h.upload(cookie, formWith("d.txt"))).status).toBe(422);
+    expect((await first).status).toBe(202);
+    expect((await second).status).toBe(202);
+    expect((await h.upload(cookie, formWith("d.txt"))).status).toBe(202);
   });
 
   it.each([
