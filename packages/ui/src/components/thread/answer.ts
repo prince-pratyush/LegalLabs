@@ -29,15 +29,18 @@ export function splitAnswer(
   citations: readonly AnswerCitation[],
   ungrounded: readonly Range[] = [],
 ): AnswerPart[] {
-  const unplaced = new Map(citations.map((c) => [c.n, c]));
-  // Placeholders come out of the text, so all offsets below are in the clean text.
+  const byN = new Map(citations.map((c) => [c.n, c]));
+  const unplaced = new Map(byN);
+  // Placeholders come out of the text, so citation and ungrounded offsets are in
+  // placeholder-free text, which is how the API computes them.
   let plain = "";
   const marks: { at: number; part: AnswerPart }[] = [];
   let last = 0;
   for (const match of text.matchAll(PLACEHOLDER)) {
     plain += text.slice(last, match.index);
     const n = Number(match[1]);
-    const citation = unplaced.get(n);
+    // Looked up in the full map, so a source cited twice shows twice, not pending.
+    const citation = byN.get(n);
     marks.push({
       at: plain.length,
       part: citation ? { kind: "citation", citation } : { kind: "pending", n },

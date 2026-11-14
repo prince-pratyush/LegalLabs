@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,7 +57,7 @@ describe("Composer", () => {
   it("does not send an empty question", async () => {
     const onSend = vi.fn();
     render(<Harness onSend={onSend} />);
-    await userEvent.type(screen.getByRole("textbox"), "  {Enter}");
+    await userEvent.type(screen.getByRole("textbox", { name: "Ask a question" }), "  {Enter}");
     expect(onSend).not.toHaveBeenCalled();
   });
 
@@ -65,13 +65,33 @@ describe("Composer", () => {
     const onMention = vi.fn();
     const onSend = vi.fn();
     render(<Harness onMention={onMention} onSend={onSend} />);
-    const box = screen.getByRole("textbox");
+    const box = screen.getByRole("textbox", { name: "Ask a question" });
     await userEvent.type(box, "see @lea");
     expect(screen.getAllByRole("option")).toHaveLength(2);
     await userEvent.keyboard("{ArrowDown}{Enter}");
     expect(onMention).toHaveBeenCalledWith({ type: "vault", id: "v1", label: "Leases" });
     expect(box).toHaveProperty("value", "see @Leases ");
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("leaves keys alone while an input method is composing", async () => {
+    const onMention = vi.fn();
+    const onSend = vi.fn();
+    render(<Harness onMention={onMention} onSend={onSend} />);
+    const box = screen.getByRole("textbox", { name: "Ask a question" });
+    await userEvent.type(box, "@lea");
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    expect(onMention).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps the picker closed for a lone @", async () => {
+    render(<Harness />);
+    const box = screen.getByRole("textbox", { name: "Ask a question" });
+    await userEvent.type(box, "meet @ 5pm");
+    expect(screen.queryByText(/suggestion/)).toBeNull();
+    expect(screen.queryByRole("listbox")).toBeNull();
   });
 
   it("explains why sending is off", () => {

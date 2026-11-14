@@ -69,5 +69,15 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const ServerFiltered: Story = {
+  args: {
+    rows: ROWS.slice(0, 1),
+    filters: { search: "cap", type: "any", date: "any", docs: "any", favouritesOnly: false },
+    onFiltersChange: fn(),
+  },
+};
+export const BadDate: Story = {
+  args: { rows: [{ ...(ROWS[0] as HistoryRow), lastActivityAt: "not a date" }] },
+};
 export const Empty: Story = { args: { rows: [] } };
 export const Loading: Story = { args: { rows: [], loading: true } };

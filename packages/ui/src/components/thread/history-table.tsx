@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { StatusText, type Tone } from "../status.js";
 import { formatCost, isLocalModel } from "./format.js";
 import {
+  activityTime,
   type DatePreset,
   type DocBucket,
   filterRows,
@@ -90,10 +91,10 @@ export function HistoryTable({
   onOpen,
   onFavourite,
   onStart,
+  loading = false,
+  now: nowProp,
   filters: controlled,
   onFiltersChange,
-  loading = false,
-  now = new Date(),
   className,
 }: {
   rows: readonly HistoryRow[];
@@ -101,28 +102,34 @@ export function HistoryTable({
   onFavourite: (row: HistoryRow) => void;
   /** The empty state's action, so a new workspace isn't a dead end. */
   onStart: () => void;
+  loading?: boolean;
+  now?: Date;
   /**
-   * Hand filtering to the caller, e.g. to search on the server. The rows are
-   * then shown as given, since the caller has already filtered them.
+   * Controlled filters. When given, the page sends them to the server (which also
+   * searches the user's own prompts) and `rows` are taken as already filtered.
    */
   filters?: HistoryFilters;
   onFiltersChange?: (filters: HistoryFilters) => void;
-  loading?: boolean;
-  now?: Date;
   className?: string;
 }) {
-  const [own, setOwn] = useState<HistoryFilters>(NO_FILTERS);
-  const filters = controlled ?? own;
-  const setFilters = onFiltersChange ?? setOwn;
+  // Held once, so the memos below don't recompute on every render.
+  const [mountedAt] = useState(() => new Date());
+  const now = nowProp ?? mountedAt;
+  const [local, setLocal] = useState<HistoryFilters>(NO_FILTERS);
+  const filters = controlled ?? local;
+  const serverFiltered = controlled !== undefined;
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const favouritesId = useId();
+  const setFilters = (next: HistoryFilters) => {
+    if (!serverFiltered) setLocal(next);
+    onFiltersChange?.(next);
+  };
   const set = <K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]) =>
     setFilters({ ...filters, [key]: value });
 
-  const serverSide = onFiltersChange !== undefined;
   const filtered = useMemo(
-    () => (serverSide ? [...rows] : filterRows(rows, filters, now)),
-    [serverSide, rows, filters, now],
+    () => (serverFiltered ? [...rows] : filterRows(rows, filters, now)),
+    [rows, filters, now, serverFiltered],
   );
   const groups = useMemo(() => groupRows(filtered, groupBy, now), [filtered, groupBy, now]);
   const filtering = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
@@ -193,8 +200,15 @@ export function HistoryTable({
     {
       id: "activity",
       header: "Last activity",
-      sortValue: (row) => row.lastActivityAt,
-      cell: (row) => when.format(new Date(row.lastActivityAt)),
+      sortValue: (row) => {
+        const time = activityTime(row);
+        return Number.isNaN(time) ? 0 : time;
+      },
+      // Intl throws on an invalid date, so one bad row can't blank the page.
+      cell: (row) => {
+        const time = activityTime(row);
+        return Number.isNaN(time) ? "Unknown" : when.format(time);
+      },
     },
     {
       id: "status",
@@ -234,7 +248,7 @@ export function HistoryTable({
         <Input
           type="search"
           aria-label="Search history"
-          placeholder="Search titles"
+          placeholder={serverFiltered ? "Search your threads" : "Search titles"}
           value={filters.search}
           onChange={(e) => set("search", e.target.value)}
           className="w-56"

@@ -31,5 +31,6 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Grouped: Story = {};
+export const FlaggedCanSearch: Story = { args: { onFlagged: fn() } };
 export const Empty: Story = { args: { citations: [] } };
 export const Loading: Story = { render: () => <SourcesListSkeleton /> };

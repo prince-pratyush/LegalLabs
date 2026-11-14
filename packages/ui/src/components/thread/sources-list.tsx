@@ -24,11 +24,15 @@ export function groupSources(citations: readonly AnswerCitation[]) {
 export function SourcesList({
   citations,
   onOpen,
+  onFlagged,
   activeN,
   className,
 }: {
   citations: readonly AnswerCitation[];
+  /** Verified sources only: opens the viewer at the span. */
   onOpen: (n: number) => void;
+  /** Unverified sources, e.g. to search the document for the quote. Static rows when absent. */
+  onFlagged?: (n: number) => void;
   activeN?: number;
   className?: string;
 }) {
@@ -50,27 +54,52 @@ export function SourcesList({
           <ul className="grid gap-1">
             {group.citations.map((citation) => {
               const ok = citation.status === "ok";
+              const body = (
+                <>
+                  <span className="flex items-baseline justify-between gap-2 text-caption">
+                    <span className="font-semibold tabular-nums">[{citation.n}]</span>
+                    <span className="text-fg-muted tabular-nums">
+                      {citation.page === null ? "No page" : `Page ${citation.page}`}
+                    </span>
+                    <StatusText tone={ok ? "verified" : "flagged"} className="ml-auto">
+                      {ok ? "Verified" : "Not verified"}
+                    </StatusText>
+                  </span>
+                  {!ok && (
+                    <span className="text-caption text-fg-muted">Couldn't verify on the page</span>
+                  )}
+                  <span
+                    className={cn(
+                      "border-l-2 pl-2 text-dense text-fg",
+                      ok ? "border-citation" : "border-dashed border-flagged",
+                    )}
+                  >
+                    {citation.quote ? clip(citation.quote, 240) : "No quote given"}
+                  </span>
+                </>
+              );
+              const row =
+                "grid w-full gap-1 rounded-md px-2 py-1.5 text-left aria-current:tint-selected";
+              // Only a verified source opens at its span; a flagged one must not look like one.
+              const action = ok
+                ? () => onOpen(citation.n)
+                : onFlagged && (() => onFlagged(citation.n));
               return (
                 <li key={citation.n}>
-                  <button
-                    type="button"
-                    onClick={() => onOpen(citation.n)}
-                    aria-current={activeN === citation.n || undefined}
-                    className="grid w-full gap-1 rounded-md px-2 py-1.5 text-left hover:tint-hover aria-current:tint-selected"
-                  >
-                    <span className="flex items-baseline justify-between gap-2 text-caption">
-                      <span className="font-semibold tabular-nums">[{citation.n}]</span>
-                      <span className="text-fg-muted tabular-nums">
-                        {citation.page === null ? "No page" : `Page ${citation.page}`}
-                      </span>
-                      <StatusText tone={ok ? "verified" : "flagged"} className="ml-auto">
-                        {ok ? "Verified" : "Not verified"}
-                      </StatusText>
-                    </span>
-                    <span className="border-l-2 border-citation pl-2 text-dense text-fg">
-                      {citation.quote ? clip(citation.quote, 240) : "No quote given"}
-                    </span>
-                  </button>
+                  {action ? (
+                    <button
+                      type="button"
+                      onClick={action}
+                      aria-current={activeN === citation.n || undefined}
+                      className={cn(row, "hover:tint-hover")}
+                    >
+                      {body}
+                    </button>
+                  ) : (
+                    <div aria-current={activeN === citation.n || undefined} className={row}>
+                      {body}
+                    </div>
+                  )}
                 </li>
               );
             })}
