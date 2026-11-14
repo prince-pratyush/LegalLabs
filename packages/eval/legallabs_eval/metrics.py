@@ -86,3 +86,14 @@ def locate(quote: str, text: str) -> set[int] | None:
     pattern = r"\s+".join(re.escape(w) for w in words)
     match = re.search(pattern, text)
     return set(range(match.start(), match.end())) if match else None
+
+
+def wilson(successes: float, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% interval for a rate; unlike p ± 1.96·se it stays inside [0, 1] at small n or p=0."""
+    if n == 0:
+        return (0.0, 1.0)
+    p = successes / n
+    denominator = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denominator
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator
+    return (max(0.0, centre - half), min(1.0, centre + half))

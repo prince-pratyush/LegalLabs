@@ -12,19 +12,86 @@ const isText = (run: Run): run is TextRun => "text" in run;
 export const blockText = (block: Block) =>
   block.runs.map((run) => (isText(run) ? run.text : "")).join("");
 
-/** **bold**, *italic* and _italic_; anything unmatched stays as typed. */
+// Same set as \w, compared by code so a long line does no regex work per mark.
+function isWord(text: string, at: number): boolean {
+  const code = text.charCodeAt(at);
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    code === 95
+  );
+}
+
+/** Positions in ascending order, read with a cursor that only moves forward. */
+function closers(positions: number[]) {
+  let at = 0;
+  return (from: number) => {
+    while (at < positions.length && (positions[at] ?? 0) < from) at++;
+    return positions[at] ?? -1;
+  };
+}
+
+/**
+ * **bold**, *italic* and _italic_; anything unmatched stays as typed. Closing
+ * marks are listed once up front and searched forward only, so a long line of
+ * unmatched marks costs linear time rather than a rescan per mark.
+ */
 export function inlineRuns(text: string): TextRun[] {
-  const runs: TextRun[] = [];
-  const pattern = /\*\*(.+?)\*\*|\*(.+?)\*|(?<![\w])_(.+?)_(?![\w])/g;
-  let last = 0;
-  for (const match of text.matchAll(pattern)) {
-    const at = match.index ?? 0;
-    if (at > last) runs.push({ text: text.slice(last, at) });
-    if (match[1] !== undefined) runs.push({ text: match[1], bold: true });
-    else runs.push({ text: match[2] ?? match[3] ?? "", italic: true });
-    last = at + match[0].length;
+  const marks: number[] = [];
+  const doubles: number[] = [];
+  const stars: number[] = [];
+  const unders: number[] = [];
+  for (let p = 0; p < text.length; p++) {
+    if (text[p] === "*" || text[p] === "_") marks.push(p);
+    if (text[p] === "*") {
+      stars.push(p);
+      if (text[p + 1] === "*") doubles.push(p);
+    } else if (text[p] === "_" && !isWord(text, p + 1)) unders.push(p);
   }
-  if (last < text.length) runs.push({ text: text.slice(last) });
+  const nextDouble = closers(doubles);
+  const nextStar = closers(stars);
+  const nextUnder = closers(unders);
+  const nextMark = closers(marks);
+
+  const runs: TextRun[] = [];
+  // Unformatted text is always one stretch since the last run, so it is sliced once.
+  let plainFrom = 0;
+  let i = 0;
+  const emit = (run: TextRun, end: number) => {
+    if (plainFrom < i) runs.push({ text: text.slice(plainFrom, i) });
+    runs.push(run);
+    plainFrom = end;
+  };
+  while (i < text.length) {
+    const char = text[i];
+    if (char === "*" && text[i + 1] === "*") {
+      const close = nextDouble(i + 3);
+      if (close !== -1) {
+        emit({ text: text.slice(i + 2, close), bold: true }, close + 2);
+        i = close + 2;
+        continue;
+      }
+    }
+    if (char === "*") {
+      const close = nextStar(i + 2);
+      if (close !== -1) {
+        emit({ text: text.slice(i + 1, close), italic: true }, close + 1);
+        i = close + 1;
+        continue;
+      }
+    } else if (char === "_" && !isWord(text, i - 1)) {
+      const close = nextUnder(i + 2);
+      if (close !== -1) {
+        emit({ text: text.slice(i + 1, close), italic: true }, close + 1);
+        i = close + 1;
+        continue;
+      }
+    }
+    const mark = nextMark(i + 1);
+    i = mark === -1 ? text.length : mark;
+  }
+  if (plainFrom < text.length) runs.push({ text: text.slice(plainFrom) });
   return runs;
 }
 

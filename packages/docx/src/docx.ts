@@ -191,6 +191,7 @@ export interface DocxInput {
 }
 
 export function buildDocx(input: DocxInput): Uint8Array {
+  isoSeconds(input.date);
   const count = input.footnotes?.length ?? 0;
   for (const block of input.blocks) {
     for (const run of block.runs) {

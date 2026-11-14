@@ -2,7 +2,7 @@ import { DOMParser } from "@xmldom/xmldom";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { buildDocx, citationFootnote } from "./docx.js";
-import { markdownBlocks } from "./markdown.js";
+import { inlineRuns, markdownBlocks } from "./markdown.js";
 import { buildTrackedDocx } from "./tracked.js";
 
 const DATE = "2026-11-14T03:04:05.678Z";
@@ -60,6 +60,34 @@ describe("markdownBlocks", () => {
       { text: "use some_var_name here" },
     ]);
   });
+
+  it("matches the usual emphasis rules", () => {
+    expect(inlineRuns("a **b** *c* _d_ e_f_ **g h** *")).toEqual([
+      { text: "a " },
+      { text: "b", bold: true },
+      { text: " " },
+      { text: "c", italic: true },
+      { text: " " },
+      { text: "d", italic: true },
+      { text: " e_f_ " },
+      { text: "g h", bold: true },
+      { text: " *" },
+    ]);
+    expect(inlineRuns("**")).toEqual([{ text: "**" }]);
+    expect(inlineRuns("***x***")).toEqual([{ text: "*x", bold: true }, { text: "*" }]);
+  });
+
+  // A rescan per mark would take minutes here, so a loose bound still catches it
+  // without failing on a slow CI machine.
+  it("reads a 1 MB line of unmatched marks quickly", () => {
+    for (const unit of [" _a", " **a", " *a", "_a"]) {
+      const line = unit.repeat(Math.ceil(1_000_000 / unit.length));
+      const started = performance.now();
+      const runs = inlineRuns(line);
+      expect(performance.now() - started, unit).toBeLessThan(5000);
+      expect(runs.length).toBeGreaterThan(0);
+    }
+  }, 30_000);
 });
 
 describe("buildDocx", () => {
@@ -109,6 +137,24 @@ describe("buildDocx", () => {
     expect(files["[Content_Types].xml"]).toContain("footnotes+xml");
     expect(files["word/_rels/document.xml.rels"]).toContain("footnotes.xml");
     expect(() => wellFormed(files["word/footnotes.xml"] ?? "")).not.toThrow();
+  });
+
+  it("refuses a date that isn't valid or is outside 1980-2099", () => {
+    for (const date of [
+      "not a date",
+      "1979-12-31T23:59:59Z",
+      "2100-01-01T00:00:00Z",
+      new Date(Number.NaN),
+    ]) {
+      expect(() => buildDocx({ blocks, author: "Ana", date }), String(date)).toThrow(
+        /1980 and 2099/,
+      );
+      expect(
+        () => buildTrackedDocx({ before: "a", after: "b", author: "A", date }),
+        String(date),
+      ).toThrow(/1980 and 2099/);
+    }
+    expect(() => buildDocx({ blocks, author: "Ana", date: "1980-01-01T00:00:00Z" })).not.toThrow();
   });
 
   it("refuses a reference to a missing footnote", () => {
@@ -176,6 +222,40 @@ describe("buildTrackedDocx", () => {
     )["word/document.xml"];
     expect(swapped).toMatch(/<w:rPr><w:del [^>]*\/><\/w:rPr>.*This clause will be removed/);
     expect(swapped).toMatch(/<w:rPr><w:ins [^>]*\/><\/w:rPr>.*A new carve-out for data breaches/);
+  });
+
+  it("stays quick on a large rewrite, replacing it whole past the pairing limit", () => {
+    const para = (tag: string, i: number) => `${tag} paragraph ${i} about the supply of goods`;
+    const before = Array.from({ length: 150 }, (_, i) => para("Old", i)).join("\n\n");
+    const after = Array.from({ length: 150 }, (_, i) => para("New", i)).join("\n\n");
+    const started = performance.now();
+    const doc = parts(buildTrackedDocx({ before, after, author: "A", date: DATE }))[
+      "word/document.xml"
+    ];
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(() => wellFormed(doc ?? "")).not.toThrow();
+    // Every old paragraph removed whole, every new one added whole.
+    expect(doc?.match(/<w:rPr><w:del /g)).toHaveLength(150);
+    expect(doc?.match(/<w:rPr><w:ins /g)).toHaveLength(150);
+  });
+
+  it("still pairs similar paragraphs in a smaller rewrite", () => {
+    const para = (tag: string, i: number) => `${tag} paragraph ${i} about the supply of goods`;
+    const before = Array.from({ length: 40 }, (_, i) => para("Old", i)).join("\n\n");
+    const after = Array.from({ length: 40 }, (_, i) => para("New", i)).join("\n\n");
+    const doc = parts(buildTrackedDocx({ before, after, author: "A", date: DATE }))[
+      "word/document.xml"
+    ];
+    expect(doc).not.toMatch(/<w:rPr><w:(ins|del) /);
+    expect(doc?.match(/<w:delText xml:space="preserve">Old<\/w:delText>/g)).toHaveLength(40);
+  });
+
+  it("keeps a footnote marker as tracked text rather than dropping it", () => {
+    const doc = parts(
+      buildTrackedDocx({ before: "The cap.", after: "The cap.[^1]", author: "A", date: DATE }),
+    )["word/document.xml"];
+    expect(doc).toContain("[^1]");
+    expect(doc).not.toContain("footnoteReference");
   });
 
   it("leaves an unchanged draft without revisions", () => {
