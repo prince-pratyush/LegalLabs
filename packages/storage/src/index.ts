@@ -4,6 +4,8 @@ export interface ObjectStore {
   /** False if the key was taken, which for a content key means the same bytes. */
   putIfAbsent(key: string, bytes: Uint8Array): Promise<boolean>;
   get(key: string): Promise<Uint8Array | null>;
+  /** Removes a key; a missing key is not an error, so a purge can be run again. */
+  delete(key: string): Promise<void>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -25,6 +27,9 @@ export function createMemoryStore(): ObjectStore {
     },
     async get(key) {
       return objects.get(key)?.slice() ?? null;
+    },
+    async delete(key) {
+      objects.delete(key);
     },
   };
 }
@@ -78,6 +83,9 @@ export function createS3Store(config: S3Config): ObjectStore {
       const response = await request("GET", key);
       if (response.status === 404) return null;
       return new Uint8Array(await response.arrayBuffer());
+    },
+    async delete(key) {
+      await (await request("DELETE", key)).body?.cancel();
     },
   };
 }
