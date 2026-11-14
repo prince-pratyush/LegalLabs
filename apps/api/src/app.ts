@@ -10,6 +10,8 @@ import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
 import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
+import type { Knowledge } from "./knowledge/knowledge.js";
+import { knowledgeRoutes } from "./knowledge/routes.js";
 import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
@@ -42,6 +44,8 @@ export interface AppOptions {
   drafts: Drafts;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
+  /** Public-law sources; left out, the knowledge endpoints are not mounted. */
+  knowledge?: Knowledge;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -55,6 +59,7 @@ export function createApp({
   threads,
   drafts,
   vaults,
+  knowledge,
   clientIp,
   now = Date.now,
   webRoot,
@@ -157,6 +162,7 @@ export function createApp({
     app.route("/api/v1/vaults", vaultRoutes(vaults, clientOf));
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
   }
+  if (knowledge) app.route("/api/v1/knowledge", knowledgeRoutes(knowledge));
   if (webRoot) app.get("*", serveStatic({ root: webRoot }));
 
   return app;
