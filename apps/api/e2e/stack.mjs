@@ -1,8 +1,9 @@
 // Brings up a clean stack: a fresh migrated Postgres cluster, S3 storage, a
-// seeded admin and the API server serving the web build. Used by the pilot
-// test and to run the eval suites against a real server.
+// seeded admin and the API server. Used by the pilot test, and on its own to
+// run the eval suites against a real server.
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { startTestDatabase } from "@legallabs/db/testing";
@@ -27,32 +28,39 @@ async function waitFor(check, what, ms = 60_000) {
   for (;;) {
     try {
       if (await check()) return;
-    } catch {}
+    } catch (err) {
+      if (err?.fatal) throw err;
+    }
     if (Date.now() > until) throw new Error(`timed out waiting for ${what}`);
     await new Promise((r) => setTimeout(r, 500));
   }
 }
 
-// CI passes its own S3 (SeaweedFS); elsewhere a throwaway container is started.
 async function startStorage() {
+  // CI's SeaweedFS runs without auth, so any key pair is accepted.
   if (process.env.PILOT_S3_ENDPOINT) {
     return { endpoint: process.env.PILOT_S3_ENDPOINT, key: "test", secret: "test", stop: () => {} };
   }
   const port = await freePort();
   const key = "pilot";
   const secret = randomBytes(12).toString("hex");
-  const id = execFileSync("docker", [
-    "run",
-    "-d",
-    "--rm",
-    "-p",
-    `127.0.0.1:${port}:9000`,
-    "-e",
-    `RUSTFS_ACCESS_KEY=${key}`,
-    "-e",
-    `RUSTFS_SECRET_KEY=${secret}`,
-    process.env.PILOT_S3_IMAGE ?? "rustfs/rustfs:latest",
-  ])
+  // Passed by name from the environment, so the secret isn't visible in `ps`.
+  const id = execFileSync(
+    "docker",
+    [
+      "run",
+      "-d",
+      "--rm",
+      "-p",
+      `127.0.0.1:${port}:9000`,
+      "-e",
+      "RUSTFS_ACCESS_KEY",
+      "-e",
+      "RUSTFS_SECRET_KEY",
+      process.env.PILOT_S3_IMAGE ?? "rustfs/rustfs:latest",
+    ],
+    { env: { ...process.env, RUSTFS_ACCESS_KEY: key, RUSTFS_SECRET_KEY: secret } },
+  )
     .toString()
     .trim();
   const endpoint = `http://127.0.0.1:${port}`;
@@ -67,14 +75,20 @@ async function startStorage() {
 
 export async function startStack({ log = () => {} } = {}) {
   const stops = [];
-  const stop = () => {
+  // In reverse and each awaited, so the server is gone before its database is.
+  const stop = async () => {
     for (const fn of stops.reverse()) {
       try {
-        fn();
+        await fn();
       } catch {}
     }
   };
   try {
+    for (const file of ["dist/cli.js", "dist/server.js"]) {
+      if (!existsSync(`${API}/${file}`)) {
+        throw new Error(`build the API first (pnpm build): ${file} is missing`);
+      }
+    }
     const db = await startTestDatabase();
     stops.push(db.stop);
     const apiPassword = randomBytes(18).toString("hex");
@@ -82,7 +96,20 @@ export async function startStack({ log = () => {} } = {}) {
     await owner.connect();
     await owner.query(`alter role legallabs_api login password '${apiPassword}'`);
     await owner.end();
-    const apiUrl = db.url.replace("postgres@", `legallabs_api:${apiPassword}@`);
+    // A shared database (CI) gets the login switched off again afterwards.
+    stops.push(async () => {
+      const reset = new pg.Client({ connectionString: db.url });
+      await reset.connect();
+      try {
+        await reset.query("alter role legallabs_api nologin password null");
+      } finally {
+        await reset.end();
+      }
+    });
+    // Built field by field: a password in the owner's URL must not be mistaken for the user.
+    const api = new URL(db.url);
+    api.username = "legallabs_api";
+    api.password = apiPassword;
 
     const workspace = `pilot-${randomBytes(3).toString("hex")}`;
     const email = "pilot@example.test";
@@ -115,7 +142,7 @@ export async function startStack({ log = () => {} } = {}) {
     const server = spawn(process.execPath, [`${API}/dist/server.js`], {
       env: {
         PATH: process.env.PATH,
-        DATABASE_URL: apiUrl,
+        DATABASE_URL: api.toString(),
         PORT: String(port),
         S3_ENDPOINT: storage.endpoint,
         S3_BUCKET: bucket,
@@ -136,12 +163,26 @@ export async function startStack({ log = () => {} } = {}) {
     });
     server.stdout.on("data", (d) => log(String(d)));
     server.stderr.on("data", (d) => log(String(d)));
-    stops.push(() => server.kill("SIGTERM"));
+    let exited = false;
+    const gone = new Promise((resolve) =>
+      server.once("exit", () => {
+        exited = true;
+        resolve();
+      }),
+    );
+    stops.push(() => {
+      if (!exited) server.kill("SIGTERM");
+      return gone;
+    });
     const url = `http://127.0.0.1:${port}`;
-    await waitFor(async () => (await fetch(`${url}/auth/session`)).status === 401, "the API");
+    await waitFor(async () => {
+      // A server that crashed at boot fails the wait now, not after a minute.
+      if (exited) throw Object.assign(new Error("the API exited at start"), { fatal: true });
+      return (await fetch(`${url}/auth/session`)).status === 401;
+    }, "the API");
     return { url, workspace, email, password, stop };
   } catch (err) {
-    stop();
+    await stop();
     throw err;
   }
 }
@@ -157,9 +198,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       password: stack.password,
     }),
   );
-  for (const signal of ["SIGINT", "SIGTERM"])
-    process.once(signal, () => {
-      stack.stop();
-      process.exit(0);
-    });
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.once(signal, () => void stack.stop().finally(() => process.exit(0)));
+  }
 }
