@@ -1,27 +1,12 @@
 import { useEffect, useRef } from "react";
 
-/** The global and thread keys from the keyboard map; shown in the `?` help. */
+/** Only keys that work today, so the `?` help never promises a dead shortcut. */
 export const KEYMAP = [
   { scope: "Global", keys: "mod+k", label: "Open the command palette" },
-  { scope: "Global", keys: "mod+shift+o", label: "New thread" },
+  { scope: "Global", keys: "?", label: "Show shortcuts" },
   { scope: "Global", keys: "mod+b", label: "Show or hide the sidebar" },
   { scope: "Global", keys: "mod+/", label: "Show or hide the context panel" },
-  { scope: "Global", keys: "mod+\\", label: "Split view" },
-  { scope: "Global", keys: "mod+.", label: "Stop the run" },
-  { scope: "Global", keys: "?", label: "Show shortcuts" },
-  { scope: "Global", keys: "Escape", label: "Close the topmost panel" },
-  { scope: "Global", keys: "g t", label: "Go to Threads" },
-  { scope: "Global", keys: "g a", label: "Go to Agents" },
-  { scope: "Global", keys: "g r", label: "Go to Review tables" },
-  { scope: "Global", keys: "g v", label: "Go to Vaults" },
-  { scope: "Global", keys: "g s", label: "Go to Spaces" },
-  { scope: "Global", keys: "g l", label: "Go to Library" },
-  { scope: "Global", keys: "g h", label: "Go to History" },
-  { scope: "Global", keys: "g n", label: "Go to Notifications" },
-  { scope: "Thread", keys: "Enter", label: "Send" },
-  { scope: "Thread", keys: "shift+Enter", label: "New line" },
-  { scope: "Thread", keys: "[", label: "Previous citation" },
-  { scope: "Thread", keys: "]", label: "Next citation" },
+  { scope: "Global", keys: "Escape", label: "Close the context panel" },
 ] as const;
 
 type KeyLike = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;
