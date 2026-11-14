@@ -43,6 +43,15 @@ function contract(name: string, make: () => ObjectStore) {
       expect(await new Response(stream).text()).toBe("hello world");
       expect(await store.stream(contentKey(randomUUID(), SHA))).toBeNull();
     });
+
+    it("deletes a key, and deleting it again is fine", async () => {
+      const store = make();
+      const key = contentKey(randomUUID(), SHA);
+      await store.putIfAbsent(key, bytes("gone"));
+      await store.delete(key);
+      await store.delete(key);
+      expect(await store.get(key)).toBeNull();
+    });
   });
 }
 

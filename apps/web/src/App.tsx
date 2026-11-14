@@ -28,6 +28,8 @@ import {
   type ThreadSummary,
 } from "./api.js";
 import { documentStatus, segments } from "./text.js";
+import { go, parseRoute, useHash } from "./vaults/route.js";
+import { VaultsApp } from "./vaults/VaultsApp.js";
 import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
 import { anchorOf, openCitation, useLocation, useReturnFocus } from "./viewer/open-citation.js";
 
@@ -46,15 +48,24 @@ export function App() {
   const location = useLocation();
   const viewing = isDocumentHref(location.href);
   useReturnFocus(viewing);
+  const hash = useHash();
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
   return (
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        <Workspace onSignedOut={() => setSignedIn(false)} />
+        {parseRoute(hash) ? (
+          <VaultsApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : (
+          <Workspace onSignedOut={() => setSignedIn(false)} />
+        )}
       </div>
-      {/* Over the workspace, not instead of it, so closing returns to the same answer. */}
+      {/* Over the page, not instead of it, so closing returns to the same place. */}
       {viewing ? (
         <div className="fixed inset-0 z-40 bg-bg">
           <DocumentPage href={location.href} state={location.state} />
@@ -268,6 +279,13 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       }),
     ),
     { id: "new", kind: "action", group: "Actions", label: "New question", run: startOver },
+    {
+      id: "vaults",
+      kind: "action",
+      group: "Go to",
+      label: "Vaults",
+      run: () => go({ page: "list" }),
+    },
     {
       id: "upload",
       kind: "action",

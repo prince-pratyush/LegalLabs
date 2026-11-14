@@ -8,6 +8,8 @@ export interface ObjectStore {
   getRange(key: string, start: number, end: number): Promise<Uint8Array | null>;
   /** The whole object as a stream, so serving a large file never holds it all in memory. */
   stream(key: string): Promise<ReadableStream<Uint8Array> | null>;
+  /** Removes a key; a missing key is not an error, so a purge can be run again. */
+  delete(key: string): Promise<void>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -36,6 +38,9 @@ export function createMemoryStore(): ObjectStore {
     async stream(key) {
       const bytes = objects.get(key);
       return bytes ? new Blob([bytes.slice()]).stream() : null;
+    },
+    async delete(key) {
+      objects.delete(key);
     },
   };
 }
@@ -107,6 +112,9 @@ export function createS3Store(config: S3Config): ObjectStore {
       const response = await request("GET", key);
       if (response.status === 404) return null;
       return response.body;
+    },
+    async delete(key) {
+      await (await request("DELETE", key)).body?.cancel();
     },
   };
 }
