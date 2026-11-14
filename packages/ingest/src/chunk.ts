@@ -1,10 +1,18 @@
+import type { Heading } from "./process.js";
+
 export interface Chunk {
   ordinal: number;
   pageNo: number;
   from: number;
   to: number;
   text: string;
+  /** Headings above the chunk, outermost first, such as "12. Liability > 12.2 Cap". */
+  section: string | null;
 }
+
+const MAX_HEADING = 200;
+const before = (a: { pageNo: number; from: number }, b: { pageNo: number; from: number }) =>
+  a.pageNo < b.pageNo || (a.pageNo === b.pageNo && a.from <= b.from);
 
 const MAX_CHUNK = 1500;
 
@@ -61,12 +69,13 @@ function splitLong(text: string, span: Span): Span[] {
   return parts;
 }
 
-function pageSpans(text: string): Span[] {
+// A heading always starts a chunk, so each chunk sits under one section.
+function pageSpans(text: string, breaks: ReadonlySet<number> = new Set()): Span[] {
   const spans: Span[] = [];
   for (const paragraph of paragraphs(text)) {
     for (const part of splitLong(text, paragraph)) {
       const last = spans.at(-1);
-      if (last && part.to - last.from <= MAX_CHUNK) last.to = part.to;
+      if (last && part.to - last.from <= MAX_CHUNK && !breaks.has(part.from)) last.to = part.to;
       else spans.push({ ...part });
     }
   }
@@ -74,11 +83,42 @@ function pageSpans(text: string): Span[] {
 }
 
 /** Offsets index the page text exactly, which is what a citation is checked against. */
-export function chunkPages(pages: readonly { pageNo: number; text: string }[]): Chunk[] {
+export function chunkPages(
+  pages: readonly { pageNo: number; text: string }[],
+  headings: readonly Heading[] = [],
+): Chunk[] {
+  const textOf = new Map(pages.map((page) => [page.pageNo, page.text]));
+  const ordered = [...headings].sort((a, b) => a.pageNo - b.pageNo || a.from - b.from);
+  const byPage = new Map<number, Heading[]>();
+  for (const heading of ordered) {
+    byPage.set(heading.pageNo, [...(byPage.get(heading.pageNo) ?? []), heading]);
+  }
+  const open: { level: number; title: string }[] = [];
+  let next = 0;
   const chunks: Chunk[] = [];
   for (const { pageNo, text } of pages) {
-    for (const { from, to } of pageSpans(text)) {
-      chunks.push({ ordinal: chunks.length, pageNo, from, to, text: text.slice(from, to) });
+    const breaks = new Set((byPage.get(pageNo) ?? []).map((h) => h.from));
+    for (const { from, to } of pageSpans(text, breaks)) {
+      const here = { pageNo, from };
+      for (; next < ordered.length && before(ordered[next] as Heading, here); next++) {
+        const heading = ordered[next] as Heading;
+        const title = (textOf.get(heading.pageNo) ?? "")
+          .slice(heading.from, heading.to)
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, MAX_HEADING);
+        while (open.length > 0 && (open.at(-1)?.level ?? 0) >= heading.level) open.pop();
+        if (title) open.push({ level: heading.level, title });
+      }
+      const section = open.length > 0 ? open.map((h) => h.title).join(" > ") : null;
+      chunks.push({
+        ordinal: chunks.length,
+        pageNo,
+        from,
+        to,
+        text: text.slice(from, to),
+        section,
+      });
     }
   }
   return chunks;

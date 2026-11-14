@@ -162,6 +162,13 @@
       "when": 1794009622000,
       "tag": "0023_content_ingest_jobs",
       "breakpoints": false
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794009623000,
+      "tag": "0024_content_structure",
+      "breakpoints": false
     }
   ]
 }

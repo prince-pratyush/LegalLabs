@@ -146,4 +146,52 @@ describe("ingest worker", () => {
     await documents.worker.stop();
     expect(await job(document.versionId)).toMatchObject({ status: "indexed" });
   });
+
+  it("files attachments as documents of their own, in the parent's matter", async () => {
+    const m = await seedMember(pool);
+    const { rows: matters } = await pool.query<{ id: string }>(
+      `insert into core.matter (workspace_id, client_id, client_name, matter_number, matter_name, wall_mode)
+       values ($1, 'C1', 'Client', 'M1', 'M1', 'open') returning id`,
+      [m.workspaceId],
+    );
+    const matterId = matters[0]?.id ?? null;
+    const encode = (text: string) => new TextEncoder().encode(text);
+    const ingest = async (bytes: Uint8Array, name: string): Promise<IngestResult> => {
+      const text = new TextDecoder().decode(bytes);
+      const page = { pageNo: 1, width: 0, height: 0, text, blocks: [] };
+      const chunk = { ordinal: 0, pageNo: 1, from: 0, to: text.length, text, section: "1. Scope" };
+      return {
+        ok: true,
+        mime: "text/plain",
+        pages: [page],
+        chunks: [chunk],
+        emptyPageCount: 0,
+        ocrPages: [1],
+        // Every level has a child, so only the depth limit stops it.
+        children: [{ name: `in-${name}\u0007.txt`, bytes: encode(`${text} again`) }],
+      };
+    };
+    const documents = testDocuments(pool, { ingest });
+    const result = await documents.raw.upload(
+      asPrincipal(m),
+      { name: "mail.txt", bytes: encode("Note"), matterId },
+      client,
+    );
+    if (!result.ok) throw new Error(result.reason);
+    expect(await documents.worker.drain(m.workspaceId)).toBe(3);
+
+    const listed = await documents.list(asPrincipal(m));
+    expect(listed.map((d) => [d.name, d.status, d.matterId])).toEqual([
+      ["in-in-mail.txt.txt.txt", "indexed", matterId],
+      ["in-mail.txt.txt", "indexed", matterId],
+      ["mail.txt", "indexed", matterId],
+    ]);
+    const { rows } = await pool.query<{ section: string; ocr: boolean }>(
+      `select c.section, p.ocr from content.chunk c
+         join content.page p on p.version_id = c.version_id and p.page_no = c.page_no
+        where c.version_id = $1`,
+      [result.document.versionId],
+    );
+    expect(rows).toEqual([{ section: "1. Scope", ocr: true }]);
+  });
 });
