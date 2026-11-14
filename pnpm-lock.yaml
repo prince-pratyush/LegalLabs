@@ -187,6 +187,9 @@ importers:
       '@legallabs/citations':
         specifier: workspace:*
         version: link:../../packages/citations
+      '@legallabs/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@legallabs/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -224,12 +227,18 @@ importers:
 
   apps/web:
     dependencies:
+      '@legallabs/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@legallabs/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       lucide-react:
         specifier: 1.72.0
         version: 1.72.0(@types/react@19.3.0)(react@19.3.1)
+      pdfjs-dist:
+        specifier: 6.5.438
+        version: 6.5.438
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -357,6 +366,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
+      '@legallabs/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@tanstack/react-table':
         specifier: 9.3.1
         version: 9.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -375,6 +387,9 @@ importers:
       lucide-react:
         specifier: 1.72.0
         version: 1.72.0(@types/react@19.3.0)(react@19.3.1)
+      pdfjs-dist:
+        specifier: 6.5.438
+        version: 6.5.438
       radix-ui:
         specifier: 1.8.1
         version: 1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
