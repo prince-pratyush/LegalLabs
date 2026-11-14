@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { type Authority, type CitationStatus, type Sources, verifyCitation } from "./index.js";
+import {
+  type Authority,
+  type AuthorityVerification,
+  authorityHref,
+  type CitationStatus,
+  normalizeCitation,
+  type Sources,
+  verifyCitation,
+} from "./index.js";
 
 const sources = (pages: Record<string, string>, more: Partial<Sources> = {}): Sources => ({
   documentPage: async (id, page) => pages[`${id}:${page}`] ?? null,
@@ -354,3 +362,57 @@ describe("document citations", () => {
     expect(result).toEqual({ status: "unresolved", reason: "page_not_found" });
   });
 });
+
+describe("authority citation grammar", () => {
+  it.each([
+    ["CELEX:32016R0679", "celex 32016r0679"],
+    ["32016R0679", "celex 32016r0679"],
+    ["celex 62012CJ0131", "celex 62012cj0131"],
+    ["ECLI:EU:C:2014:317", "ecli:eu:c:2014:317"],
+    ["Regulation (EU) 2016/679", "regulation (eu) 2016/679"],
+    ["Regulation (EU) No 2016/679", "regulation (eu) 2016/679"],
+    ["Directive 95/46/EC", "directive (ec) 95/46"],
+    ["0000320193-23-000106", "accession 0000320193-23-000106"],
+    ["Accession No. 000032019323000106", "accession 0000320193-23-000106"],
+    ["556 U.S. 662", "556 us 662"],
+    ["129 S. Ct. 1937 (2009)", "129 sct 1937"],
+    ["173 L. Ed. 2d 868", "173 led2d 868"],
+  ])("normalises %s", (written, normalized) => {
+    expect(normalizeCitation(written)).toBe(normalized);
+  });
+});
+
+describe("authority links", () => {
+  const cite = (reference: string) => ({ kind: "authority", reference }) as const;
+
+  it("links a resolved citation to its authority", async () => {
+    const result = await verifyAuthorityOnly(cite("410 U.S. 113"), { "410 us 113": [roe] });
+    expect(authorityHref(result)).toBe(`/knowledge/authorities/${encodeURIComponent(roe.id)}`);
+  });
+
+  it("never links a citation that is not in the index", async () => {
+    const result = await verifyAuthorityOnly(cite("999 U.S. 1"), {});
+    expect(result.status).toBe("unresolved");
+    expect(authorityHref(result)).toBeNull();
+  });
+
+  it("never links an ambiguous citation", async () => {
+    const other: Authority = { id: "us_caselaw:cap:2" };
+    const result = await verifyAuthorityOnly(cite("1 U.S. 1"), { "1 us 1": [roe, other] });
+    expect(result).toMatchObject({ status: "unresolved", reason: "ambiguous_authority" });
+    expect(authorityHref(result)).toBeNull();
+  });
+
+  it("never links a made-up identifier", async () => {
+    const result = await verifyAuthorityOnly(cite("eurlex:celex:39999R9999"), {});
+    expect(authorityHref(result)).toBeNull();
+  });
+});
+
+async function verifyAuthorityOnly(
+  citation: { kind: "authority"; reference: string },
+  index: Record<string, readonly Authority[]>,
+): Promise<AuthorityVerification> {
+  const result = await verifyCitation(citation, inIndex(index));
+  return result as AuthorityVerification;
+}
