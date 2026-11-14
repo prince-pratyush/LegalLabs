@@ -46,11 +46,15 @@ export function App() {
   const location = useLocation();
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
+  const viewing = isDocumentHref(location.href);
   return (
     <>
-      <Workspace onSignedOut={() => setSignedIn(false)} />
+      {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
+      <div className="contents" inert={viewing}>
+        <Workspace onSignedOut={() => setSignedIn(false)} />
+      </div>
       {/* Over the workspace, not instead of it, so closing returns to the same answer. */}
-      {isDocumentHref(location.href) ? (
+      {viewing ? (
         <div className="fixed inset-0 z-40 bg-bg">
           <DocumentPage href={location.href} state={location.state} />
         </div>
