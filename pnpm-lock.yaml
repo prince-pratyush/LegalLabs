@@ -196,6 +196,9 @@ importers:
       '@legallabs/ingest':
         specifier: workspace:*
         version: link:../../packages/ingest
+      '@legallabs/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
       '@legallabs/model-gateway':
         specifier: workspace:*
         version: link:../../packages/model-gateway
