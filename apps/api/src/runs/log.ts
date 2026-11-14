@@ -18,6 +18,8 @@ export interface RunLog {
   replay(principal: Principal, runId: string, after: number): Promise<RunEvent[]>;
   /** Events as they are saved, in this process. */
   subscribe(runId: string, listener: (event: RunEvent) => void): () => void;
+  /** Forgets a finished run's counters; called once its work has stopped. */
+  release(runId: string): void;
 }
 
 const REPLAY_LIMIT = 5_000;
@@ -45,6 +47,7 @@ export function createRunLog(pool: pg.Pool): RunLog {
          values ($1, $2, $3, $4, $5)`,
         [principal.workspaceId, runId, seq, type, JSON.stringify(data)],
       );
+      // Set before commit: a failed commit only leaves a gap in seq, never a repeat.
       next.set(runId, seq + 1);
       return { ...event, seq } as RunEvent;
     });
@@ -57,11 +60,6 @@ export function createRunLog(pool: pg.Pool): RunLog {
       queues.set(runId, written);
       return written.then((saved) => {
         live.emit(runId, saved);
-        if (saved.type === "done" || saved.type === "error") {
-          // Nothing follows a terminal event, so the counters can go.
-          next.delete(runId);
-          if (queues.get(runId) === written) queues.delete(runId);
-        }
         return saved;
       });
     },
@@ -75,6 +73,11 @@ export function createRunLog(pool: pg.Pool): RunLog {
         );
         return rows.map((row) => ({ ...row.data, type: row.type, seq: row.seq }) as RunEvent);
       });
+    },
+
+    release(runId) {
+      next.delete(runId);
+      queues.delete(runId);
     },
 
     subscribe(runId, listener) {

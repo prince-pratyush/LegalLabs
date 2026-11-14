@@ -141,3 +141,26 @@ describe("favourites", () => {
     });
   });
 });
+
+describe("orphaned runs", () => {
+  it("are failed at startup by the worker, and nobody else can call it", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { threadId, questionId } = await addThread(tx, s.acme, s.ben);
+      await tx.as(s.ben, s.acme);
+      const run = await startRun(tx, s.acme, s.ben, threadId, questionId);
+      expect(await tx.error("select work.fail_orphaned_runs(now() + interval '1 minute')")).toMatch(
+        /permission denied/,
+      );
+      await tx.asWorker();
+      const { n } = await tx.one<{ n: number }>(
+        "select work.fail_orphaned_runs(now() + interval '1 minute') n",
+      );
+      expect(n).toBeGreaterThanOrEqual(1);
+      await tx.asOwner();
+      expect(await tx.rows("select status from work.run where id = $1", [run.id])).toEqual([
+        { status: "failed" },
+      ]);
+    });
+  });
+});

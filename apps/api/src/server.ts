@@ -10,6 +10,7 @@ import pg from "pg";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
+import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createRunLog } from "./runs/log.js";
@@ -78,6 +79,13 @@ const gateway = createGateway({
 const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
 const log = createRunLog(pool);
+// Runs live in this process, so any left unfinished by the last one can never finish.
+// One API process per database for now; several would need a lease per run.
+const orphaned = await asWorker(pool, async (db) => {
+  const { rows } = await db.query<{ n: number }>("select work.fail_orphaned_runs(now()) n");
+  return rows[0]?.n ?? 0;
+});
+if (orphaned > 0) console.log(`marked ${orphaned} unfinished runs as failed`);
 // Stubs until the vault and knowledge work lands; both plug in through the same ports.
 const vaults = noVaults;
 const knowledge = noKnowledge;

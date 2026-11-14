@@ -69,10 +69,11 @@ export function aiSdkProvider(modelFor: (id: string) => LanguageModel): ModelPro
       const { text, usage } = await generateText(settings(model, messages, max_output));
       return completion(text, usage);
     },
-    async stream({ model, messages, max_output }, onText) {
+    async stream({ model, messages, max_output, signal }, onText) {
       let failure: unknown = null;
       const result = streamText({
         ...settings(model, messages, max_output),
+        ...(signal ? { abortSignal: signal } : {}),
         onError: ({ error }) => {
           failure = error;
         },

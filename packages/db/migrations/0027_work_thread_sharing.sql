@@ -71,12 +71,24 @@ create policy citation_insert on work.citation for insert to legallabs_app
                      select 1 from work.thread_document td
                       where td.thread_id = m.thread_id and td.version_id = citation.version_id))));
 
-grant usage on schema work to legallabs_definer;
+-- Threads are shared only through work.share_thread, which checks ownership and walls.
+drop policy share_grant_insert on core.share_grant;
+create policy share_grant_insert on core.share_grant for insert to legallabs_app
+  with check (core.in_tenant(workspace_id) and granted_by = core.current_user_id()
+              and object_type <> 'thread');
+drop policy share_grant_delete on core.share_grant;
+create policy share_grant_delete on core.share_grant for delete to legallabs_app
+  using (core.in_tenant(workspace_id) and object_type <> 'thread'
+         and (granted_by = core.current_user_id() or core.has_permission('admin.config')));
+
 grant select on work.thread to legallabs_definer;
-create policy definer_read on work.thread for select to legallabs_definer using (true);
+create policy definer_read on work.thread for select to legallabs_definer
+  using (workspace_id = core.current_workspace_id());
 grant insert, delete on core.share_grant to legallabs_definer;
-create policy definer_insert on core.share_grant for insert to legallabs_definer with check (true);
-create policy definer_delete on core.share_grant for delete to legallabs_definer using (true);
+create policy definer_insert on core.share_grant for insert to legallabs_definer
+  with check (workspace_id = core.current_workspace_id());
+create policy definer_delete on core.share_grant for delete to legallabs_definer
+  using (workspace_id = core.current_workspace_id());
 
 -- The caller's own thread, or null; walls apply to the caller too.
 create function work.owned_thread(thread_id uuid) returns work.thread

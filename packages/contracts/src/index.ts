@@ -6,6 +6,7 @@ export {
   CitationEvent,
   CitationVerdict,
   Coverage,
+  FINISHED,
   isTerminal,
   Plan,
   RunEvent,

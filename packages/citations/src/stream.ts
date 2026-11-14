@@ -7,14 +7,18 @@ export interface CitationStream {
   end(): CitedAnswer;
 }
 
-// Where an unfinished tag starts, if the output ends inside one. Quotes are
-// respected, so a `>` inside a quote value doesn't count as the end.
+// Where an unfinished citation tag starts, if the output ends inside one. Only
+// `<c` and `</c` can open one, so a plain "a < b" streams on at once.
 function openTagAt(raw: string): number {
   const start = raw.lastIndexOf("<");
   if (start === -1) return -1;
+  const rest = raw.slice(start + 1);
+  // Still too short to tell: "<", "<c", "</", "</c".
+  if (/^\/?c?$/.test(rest)) return start;
+  if (rest.startsWith("/c")) return rest.startsWith("/c>") ? -1 : start;
+  if (!/^c[\s/>]/.test(rest)) return -1;
   let quote: string | null = null;
-  for (let i = start + 1; i < raw.length; i++) {
-    const char = raw[i];
+  for (const char of rest.slice(1)) {
     if (quote) {
       if (char === quote) quote = null;
     } else if (char === '"' || char === "'") {
@@ -27,7 +31,9 @@ function openTagAt(raw: string): number {
 }
 
 /**
- * Parses cited output as it streams. Only settled text is released, so a tag
+ * Parses cited output as it streams. Each push re-reads the whole output, which
+ * is fine for answers capped at a few thousand tokens.
+ * Only settled text is released, so a tag
  * is never shown half-written and offsets match the final parse.
  */
 export function citationStream(): CitationStream {

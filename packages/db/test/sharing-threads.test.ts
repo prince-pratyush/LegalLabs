@@ -28,6 +28,22 @@ const sees = async (tx: Tx, user: string, ws: string, thread: string) => {
 };
 
 describe("sharing a thread", () => {
+  it("can't be done by writing a grant directly", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const thread = await threadOf(tx, s.acme, s.ana, null);
+      await tx.as(s.ben, s.acme);
+      expect(
+        await tx.error(
+          `insert into core.share_grant (workspace_id, object_type, object_id, principal_type,
+                                         principal_id, level, granted_by)
+           values ($1, 'thread', $2, 'user', $3, 'view', $3)`,
+          [s.acme, thread, s.ben],
+        ),
+      ).toMatch(/row-level security/);
+    });
+  });
+
   it("lets a recipient read it but not add to it", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);

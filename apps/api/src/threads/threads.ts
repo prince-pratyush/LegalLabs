@@ -446,6 +446,9 @@ const audit = (
     uaHash(client),
   ]);
 
+/** The run was cancelled or failed while its answer was being saved. */
+class RunStopped extends Error {}
+
 const RUN_MESSAGES = {
   MODEL_NOT_ALLOWED: "That model isn't available to you.",
   MODEL_UNAVAILABLE: "No model could answer just now. Try again shortly.",
@@ -456,7 +459,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   const { log, vaults } = options;
   const answer = createAnswerer({ pool, ...options });
   const inFlight = new Set<Promise<void>>();
-  const cancelled = new Set<string>();
+  // Runs this process is working on, so a cancel can stop the model mid-answer.
+  const active = new Map<string, AbortController>();
+  const cancelled = (runId: string) => active.get(runId)?.signal.aborted === true;
 
   async function save(
     db: Db,
@@ -529,9 +534,10 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         ],
       );
     }
-    await db.query(
+    // Only a run still going can finish, so a cancel that lands mid-save wins.
+    const finished = await db.query(
       `update work.run set status = 'done', answer_id = $2, coverage = $3, model = $4,
-              cost_usd = $5, updated_at = now() where id = $1`,
+              cost_usd = $5, updated_at = now() where id = $1 and status = 'running'`,
       [
         run.id,
         messageId,
@@ -540,6 +546,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         model?.cost_usd ?? 0,
       ],
     );
+    if (finished.rowCount === 0) throw new RunStopped();
     await db.query("update work.thread set last_activity_at = now() where id = $1", [run.threadId]);
     if (model) {
       const count = (status: CitationStatus) =>
@@ -577,10 +584,16 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     message: string,
     retryable: boolean,
   ) {
-    await asApp(pool, principal, (db) =>
-      db.query("update work.run set status = 'failed', updated_at = now() where id = $1", [runId]),
+    const changed = await asApp(pool, principal, (db) =>
+      db.query(
+        "update work.run set status = 'failed', updated_at = now() where id = $1 and status = 'running'",
+        [runId],
+      ),
     );
+    if (changed.rowCount === 0) return;
     await log.append(principal, runId, { type: "error", code, message, retryable });
+    // The status closes every open stream, retryable or not.
+    await log.append(principal, runId, { type: "status", status: "failed" });
   }
 
   async function execute(
@@ -594,7 +607,10 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     const started = Date.now();
     const emit = (event: NewEvent) => log.append(principal, run.id, event);
     const responseMode = input.responseMode ?? "auto";
+    const controller = new AbortController();
+    active.set(run.id, controller);
     try {
+      await emit({ type: "status", status: "running" });
       // Streamed tokens carry the run id; the saved answer gets its own id at the end.
       const reply = await answer(
         {
@@ -605,11 +621,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           question: context.question,
           ...(input.model ? { model: input.model } : {}),
           emit,
-          cancelled: () => cancelled.has(run.id),
+          cancelled: () => cancelled(run.id),
+          signal: controller.signal,
         },
         run.id,
       );
-      if (cancelled.has(run.id)) return;
+      if (reply === "CANCELLED" || cancelled(run.id)) return;
       if (typeof reply === "string") {
         await fail(principal, run.id, reply, RUN_MESSAGES[reply], reply !== "MODEL_NOT_ALLOWED");
         return;
@@ -621,6 +638,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           save(db, principal, run, reply, documents, client),
         );
       } catch (err) {
+        if (err instanceof RunStopped) return;
         // A wall or permission can change while the model is answering.
         if (isRefusal(err)) {
           await fail(
@@ -653,6 +671,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           unresolved: count("unresolved"),
           ungrounded_sentences: reply.ungrounded.length,
         },
+        ungrounded: reply.ungrounded.map(([from, to]): [number, number] => [from, to]),
         coverage: reply.coverage,
         duration_ms: Date.now() - started,
       });
@@ -663,7 +682,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         () => {},
       );
     } finally {
-      cancelled.delete(run.id);
+      active.delete(run.id);
+      log.release(run.id);
     }
   }
 
@@ -807,7 +827,6 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         role: message.role,
         content: message.content.slice(0, HISTORY_CHARS),
       }));
-      await log.append(principal, created.runId, { type: "status", status: "running" });
       const finished = execute(
         principal,
         { id: created.runId, threadId: created.threadId },
@@ -939,7 +958,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         return threadId !== undefined;
       });
       if (!stopped) return false;
-      cancelled.add(runId);
+      active.get(runId)?.abort();
       await log.append(principal, runId, { type: "status", status: "cancelled" });
       return true;
     },
@@ -1098,6 +1117,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
 
     async members(principal, query) {
       return asApp(pool, principal, async (db) => {
+        // Only people who can share threads get to look colleagues up.
+        if (!(await permitted(db))) return [];
         const { rows } = await db.query<Member>(
           `select id, email, name from core."user"
             where status = 'active' and kind = 'member' and id <> $1
