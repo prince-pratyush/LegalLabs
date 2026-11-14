@@ -13,20 +13,15 @@ type Env = Record<string, string | undefined>;
 // A provider with no setting is left out, so it can never be called or billed.
 export function gatewayOptionsFromEnv(env: Env): Omit<GatewayOptions, "recordUsage" | "now"> {
   const providers: GatewayOptions["providers"] = {};
-  const configured = Number(env.LEGALLABS_MODEL_TIMEOUT_MS);
-  const timeoutMs =
-    Number.isInteger(configured) && configured > 0
-      ? Math.min(configured, MAX_TIMEOUT_MS)
-      : TIMEOUT_MS;
-  const aiSdkProvider = (modelFor: (id: string) => LanguageModel) =>
-    providerFor(modelFor, timeoutMs);
+  const timeoutMs = modelTimeout(env.LEGALLABS_MODEL_TIMEOUT_MS);
+  const provider = (modelFor: (id: string) => LanguageModel) => providerFor(modelFor, timeoutMs);
   if (env.ANTHROPIC_API_KEY) {
     const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
-    providers.anthropic = aiSdkProvider((id) => anthropic.languageModel(id));
+    providers.anthropic = provider((id) => anthropic.languageModel(id));
   }
   if (env.GOOGLE_GENERATIVE_AI_API_KEY) {
     const google = createGoogleGenerativeAI({ apiKey: env.GOOGLE_GENERATIVE_AI_API_KEY });
-    providers.google = aiSdkProvider((id) => google.languageModel(id));
+    providers.google = provider((id) => google.languageModel(id));
   }
   if (env.DEEPSEEK_API_KEY) {
     const deepseek = createOpenAICompatible({
@@ -34,14 +29,14 @@ export function gatewayOptionsFromEnv(env: Env): Omit<GatewayOptions, "recordUsa
       baseURL: "https://api.deepseek.com",
       apiKey: env.DEEPSEEK_API_KEY,
     });
-    providers.deepseek = aiSdkProvider((id) => deepseek.languageModel(id));
+    providers.deepseek = provider((id) => deepseek.languageModel(id));
   }
   if (env.OLLAMA_BASE_URL) {
     const ollama = createOpenAICompatible({
       name: "ollama",
       baseURL: `${env.OLLAMA_BASE_URL}/v1`,
     });
-    providers.ollama = aiSdkProvider((id) => ollama.languageModel(id));
+    providers.ollama = provider((id) => ollama.languageModel(id));
   }
   // The same setting the Ollama server reads, so both sides agree on the window.
   const ollamaWindow = Number(env.OLLAMA_CONTEXT_LENGTH);
@@ -60,6 +55,14 @@ const completion = (text: string, { inputTokens, outputTokens }: Counted): Compl
   inputTokens === undefined || outputTokens === undefined
     ? { text }
     : { text, usage: { input_tokens: inputTokens, output_tokens: outputTokens } };
+
+/** Milliseconds to wait for a model; a longer wait also holds the request longer. */
+export function modelTimeout(value: string | undefined): number {
+  const configured = Number(value);
+  return Number.isInteger(configured) && configured > 0
+    ? Math.min(configured, MAX_TIMEOUT_MS)
+    : TIMEOUT_MS;
+}
 
 export function aiSdkProvider(
   modelFor: (id: string) => LanguageModel,

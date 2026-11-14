@@ -1,6 +1,7 @@
 import { APICallError, registerTelemetry } from "ai";
 import { convertArrayToReadableStream, MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
+import { modelTimeout } from "./ai-sdk.js";
 import { aiSdkProvider, gatewayOptionsFromEnv, type Message } from "./index.js";
 
 const messages: Message[] = [
@@ -54,19 +55,11 @@ describe("gatewayOptionsFromEnv", () => {
     expect(gatewayOptionsFromEnv({ OLLAMA_CONTEXT_LENGTH: "lots" }).contextWindows).toBeUndefined();
   });
 
-  it("waits longer for a model when told to, within a cap", async () => {
-    const seen: number[] = [];
-    const mock = new MockLanguageModelV4({
-      doGenerate: async (options) => {
-        seen.push(options.abortSignal ? 1 : 0);
-        return generated(1, 1);
-      },
-    });
-    await aiSdkProvider(() => mock, 600_000).complete({ model: "any", messages, max_output: 5 });
-    expect(seen).toEqual([1]);
-    expect(
-      Object.keys(gatewayOptionsFromEnv({ LEGALLABS_MODEL_TIMEOUT_MS: "600000" }).providers),
-    ).toEqual([]);
+  it("reads the model timeout, ignoring nonsense and capping it", () => {
+    expect(modelTimeout(undefined)).toBe(120_000);
+    for (const bad of ["abc", "0", "-5", "1.5"]) expect(modelTimeout(bad)).toBe(120_000);
+    expect(modelTimeout("600000")).toBe(600_000);
+    expect(modelTimeout("99999999")).toBe(30 * 60_000);
   });
 
   it("allows demo models only for the exact word true", () => {
