@@ -1,6 +1,5 @@
 import { RenderManifest } from "@legallabs/contracts";
 import { makePdf } from "@legallabs/ingest/testing";
-import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
@@ -11,8 +10,8 @@ import {
   seedMember,
   testDocuments,
   testPool,
+  testThreads,
 } from "../test-db.js";
-import { createThreads } from "../threads/threads.js";
 import { createViewer } from "./viewer.js";
 import { parseRange } from "./viewer-routes.js";
 
@@ -26,10 +25,7 @@ function harness() {
   const app = createApp({
     auth: createAuth(pool),
     documents,
-    threads: createThreads(pool, {
-      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
-      documents,
-    }),
+    threads: testThreads(pool, documents),
     viewer: createViewer(pool, documents.store, documents),
     clientIp: () => "203.0.113.9",
   });

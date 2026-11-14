@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
+import type { KnowledgePort, VaultPort } from "@legallabs/contracts";
 import type { Reranker } from "@legallabs/embed";
 import { createStubScanner } from "@legallabs/ingest";
+import { createGateway, type GatewayOptions } from "@legallabs/model-gateway";
 import { createMemoryStore } from "@legallabs/storage";
 import pg from "pg";
 import { inject } from "vitest";
 import { hashPassword } from "./auth/password.js";
 import { createDocuments, type Documents } from "./documents/documents.js";
 import { createIngestWorker, type IngestWorkerOptions } from "./documents/worker.js";
+import { createRunLog } from "./runs/log.js";
+import { noKnowledge, noVaults } from "./threads/ports.js";
+import { createThreads } from "./threads/threads.js";
 
 export const testPool = () => new pg.Pool({ connectionString: inject("databaseUrl"), max: 3 });
 
@@ -86,4 +91,18 @@ export function testDocuments(
     },
   };
   return Object.assign(documents, { raw, worker, store });
+}
+
+/** The thread service with everything it needs, answering through the given providers. */
+export function testThreads(
+  pool: pg.Pool,
+  documents: Documents,
+  providers: GatewayOptions["providers"] = {},
+  vaults: VaultPort = noVaults,
+  knowledge: KnowledgePort = noKnowledge,
+) {
+  const gateway = createGateway({ providers, recordUsage: async () => {} });
+  const log = createRunLog(pool);
+  const threads = createThreads(pool, { gateway, documents, log, vaults, knowledge });
+  return { threads, log, gateway, vaults, knowledge };
 }

@@ -10,8 +10,7 @@ import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
 import type { Viewer } from "./documents/viewer.js";
 import { viewerRoutes } from "./documents/viewer-routes.js";
-import { threadRoutes } from "./threads/routes.js";
-import type { Threads } from "./threads/threads.js";
+import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -37,7 +36,7 @@ const loginBody = z.object({
 export interface AppOptions {
   auth: Auth;
   documents: Documents;
-  threads: Threads;
+  threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
   /** Pages and files for the document viewer. */
   viewer?: Viewer;
   /** The socket address only: forwarded headers can be forged by the caller. */
@@ -149,10 +148,11 @@ export function createApp({
 
   if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
-  app.route("/api/v1/threads", threadRoutes(threads, clientOf, now));
+  app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
   if (webRoot) {
     // A deep link to a document loads the app, which then opens the viewer.
     app.get("/documents/*", serveStatic({ root: webRoot, path: "index.html" }));
+    app.get("/d/*", serveStatic({ root: webRoot, path: "index.html" }));
     // Build files carry a hash of their content in the name, so a copy never goes stale.
     app.use("/assets/*", async (c, next) => {
       await next();

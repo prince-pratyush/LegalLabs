@@ -7,6 +7,7 @@ export type {
   GatewayOptions,
   GatewayResult,
   Message,
+  ModelInfo,
   ModelProvider,
   Usage,
   UsageRecord,
