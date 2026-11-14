@@ -40,6 +40,9 @@ create table content.folder (
   foreign key (workspace_id, created_by) references core."user" (workspace_id, id),
   foreign key (workspace_id, deleted_by) references core."user" (workspace_id, id)
 );
+-- One live folder per name in a place, so parallel uploads of a folder share it.
+create unique index folder_name_idx on content.folder
+  (vault_id, coalesce(parent_id, vault_id), lower(name)) where deleted_at is null;
 create index folder_children_idx on content.folder (vault_id, parent_id, lower(name))
   where deleted_at is null;
 

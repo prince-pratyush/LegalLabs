@@ -375,6 +375,29 @@ begin
 end
 $$;
 
+-- Totals for the admin list, which covers vaults the admin can't open.
+create function content.admin_vault_stats()
+returns table (vault_id uuid, files bigint, bytes bigint, grants bigint, owner_email text)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not core.has_permission('admin.config') then
+    raise exception 'only an admin can list every vault' using errcode = '42501';
+  end if;
+  return query
+    select v.id,
+           (select count(*) from content.document d
+             where d.vault_id = v.id and d.deleted_at is null),
+           (select coalesce(sum(d.size), 0)::bigint from content.document d
+             where d.vault_id = v.id and d.deleted_at is null),
+           (select count(*) from core.share_grant g
+             where g.object_type = 'vault' and g.object_id = v.id),
+           u.email
+      from content.vault v join core."user" u on u.id = v.owner_id
+     where v.workspace_id = core.current_workspace_id();
+end
+$$;
+
+alter function content.admin_vault_stats() owner to legallabs_definer;
 alter function content.require_level(uuid, text[]) owner to legallabs_definer;
 alter function content.user_can_access_matter(uuid, uuid) owner to legallabs_definer;
 alter function content.trash_items(uuid, uuid[], uuid[]) owner to legallabs_definer;
@@ -400,5 +423,5 @@ grant execute on function content.trash_items(uuid, uuid[], uuid[]),
   content.trash_vault(uuid), content.restore_vault(uuid), content.purge_vault(uuid),
   content.transfer_vault(uuid, uuid), content.set_vault_shares(uuid, jsonb, boolean),
   content.vault_shares(uuid), content.vault_usage(uuid),
-  content.claim_vault_room(uuid, integer, bigint)
+  content.claim_vault_room(uuid, integer, bigint), content.admin_vault_stats()
   to legallabs_app;
