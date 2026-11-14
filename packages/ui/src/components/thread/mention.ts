@@ -6,10 +6,7 @@ export type Mentionable = { type: MentionKind; id: string; label: string };
  * The text typed after an `@` that the caret is still inside, or null.
  * An `@` mid-word (an email address) doesn't open the picker.
  */
-export function mentionQuery(
-  text: string,
-  caret: number,
-): { query: string; start: number } | null {
+export function mentionQuery(text: string, caret: number): { query: string; start: number } | null {
   const before = text.slice(0, caret);
   const at = before.lastIndexOf("@");
   if (at === -1) return null;
