@@ -6,7 +6,7 @@ from typing import Any
 
 from ..config import sha256
 from ..metrics import wilson
-from ..schemas import Cost, Document, GraderResult, HarnessResult, TaskDatum
+from ..schemas import Cost, Document, GraderResult, HarnessResult, NonRetryableError, TaskDatum
 from .base import Grader, Suite, limited
 from .judge import Judge
 
@@ -166,6 +166,13 @@ class ThreadAnswerGrader(Grader):
 
     def grade(self, task: TaskDatum, result: HarnessResult, trace_dir: Path) -> GraderResult:
         answer = ThreadAnswer.parse(result.answer)
+        # systems.toml only guesses the server's models; the answer says which one was used.
+        # Read from model, not provider, because a resumed attempt keeps only the model.
+        answered_by = result.model.split("/", 1)[0] if "/" in result.model else ""
+        if self.judge is not None and answered_by in self.judge.vendors:
+            raise NonRetryableError(
+                f"answered by {answered_by}, which also judges; list it in the system's vendors"
+            )
         label, reason = classify(task, answer)
         cost = Cost.free()
         # The judge can only demote: a model may miss a slip the string checks can't see.

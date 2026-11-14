@@ -10,17 +10,21 @@ from legallabs_eval.harnesses.legallabs_thread import LegalLabsThreadHarness
 from legallabs_eval.metrics import wilson
 from legallabs_eval.runner import Runner
 from legallabs_eval.schemas import (
+    Cost,
     Document,
     HarnessError,
     HarnessRequest,
+    HarnessResult,
     NonRetryableError,
     TaskDatum,
 )
 from legallabs_eval.suites.coverage_vdr import CoverageVdr, criterion_met, generate_room
+from legallabs_eval.suites.judge import Verdict
 from legallabs_eval.suites.thread_answers import (
     CATEGORIES,
     Hallucination200,
     ThreadAnswer,
+    ThreadAnswerGrader,
     VerifierLive,
     build_tasks,
     classify,
@@ -108,6 +112,29 @@ def test_unsupported_premise_is_correct_only_when_rejected() -> None:
     assert classify(unsaid, answer("The agreement does not say that.", []))[0] == "hallucinated"
     assert classify(unsaid, answer("Harbourline supplies exclusively.", []))[0] == "hallucinated"
     assert classify(unsaid, answer("Prices rise by 3% at most.", []))[0] == "hallucinated"
+
+
+class FakeJudge:
+    vendors = frozenset({"anthropic"})
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def check(self, criterion: str, material: str, trace_dir: Path) -> Verdict:
+        self.calls += 1
+        return Verdict(1.0, "fine", Cost.free())
+
+
+def test_a_judge_never_grades_its_own_vendor(tmp_path: Path) -> None:
+    judge = FakeJudge()
+    grader = ThreadAnswerGrader(judge)  # type: ignore[arg-type]
+    gold = task("general", [["48 hours"]])
+    raw = json.dumps({"content": "Within 48 hours.", "citations": [OK]})
+    with pytest.raises(NonRetryableError, match="anthropic"):
+        grader.grade(gold, HarnessResult(answer=raw, model="anthropic/claude-haiku-5-5"), tmp_path)
+    graded = grader.grade(gold, HarnessResult(answer=raw, model="ollama/qwen3:4b"), tmp_path)
+    assert graded.score == 1.0
+    assert judge.calls == 1
 
 
 def test_two_hundred_tasks_fifty_per_category() -> None:

@@ -137,10 +137,12 @@ class LegalLabsThreadHarness(LegalLabsSearchHarness):
             input_tokens=int(message.get("input_tokens") or 0),
             output_tokens=int(message.get("output_tokens") or 0),
         )
+        # The API names models "provider/model"; the provider is who actually answered.
+        model = message.get("model") or ""
         return HarnessResult(
             answer=json.dumps(answer, sort_keys=True),
-            provider="legallabs",
-            model=message.get("model") or "",
+            provider=model.split("/", 1)[0] if "/" in model else "legallabs",
+            model=model,
             cost=cost,
         )
 
