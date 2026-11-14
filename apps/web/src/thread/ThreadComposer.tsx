@@ -27,12 +27,15 @@ export function ThreadComposer({
   thread,
   options,
   streaming,
+  blockedReason,
   onSend,
   onStop,
 }: {
   thread: Thread | null;
   options: ScopeOptions | null;
   streaming: boolean;
+  /** Set while the thread waits on the person, e.g. a plan to approve. */
+  blockedReason?: string;
   /** Resolves true once the question was accepted, so the draft can be cleared. */
   onSend: (input: AskInput) => Promise<boolean>;
   onStop: () => void;
@@ -44,6 +47,7 @@ export function ThreadComposer({
   const [vaultIds, setVaultIds] = useState<string[]>(thread?.vault_ids ?? []);
   const [sources, setSources] = useState<SourceSelection[]>(thread?.sources ?? []);
   const [model, setModel] = useState(AUTO);
+  const [deep, setDeep] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   // Files are read in the background, so their chips are refreshed until each settles.
@@ -112,11 +116,13 @@ export function ThreadComposer({
   const ready = files.filter((f) => f.status === "ready").map((f) => f.id);
   const content = toBlocks(draft, mentions);
   const mentioned = typeof content !== "string";
-  const disabledReason = files.some((f) => f.status === "processing")
-    ? "Wait until your files have been read."
-    : ready.length + vaultIds.length + sources.length === 0 && !mentioned
-      ? "Attach a file, a vault or a source to ask about."
-      : undefined;
+  const disabledReason = blockedReason
+    ? blockedReason
+    : files.some((f) => f.status === "processing")
+      ? "Wait until your files have been read."
+      : ready.length + vaultIds.length + sources.length === 0 && !mentioned
+        ? "Attach a file, a vault or a source to ask about."
+        : undefined;
 
   const attach = async (chosen: File[]) => {
     setNotice(null);
@@ -143,6 +149,7 @@ export function ThreadComposer({
       content,
       scope: { document_ids: ready, vault_ids: vaultIds, sources },
       ...(model !== AUTO ? { model } : {}),
+      ...(deep ? { deep_analysis: true } : {}),
     };
     if (await onSend(input)) {
       setDraft("");
@@ -189,8 +196,8 @@ export function ThreadComposer({
         models={models}
         model={model}
         onModel={setModel}
-        deepAnalysis={false}
-        onDeepAnalysis={() => setNotice("Deep analysis is coming soon.")}
+        deepAnalysis={deep}
+        onDeepAnalysis={setDeep}
         mentionables={mentionables}
         onMention={(item) =>
           setMentions((list) => [...list.filter((m) => m.label !== item.label), item])
