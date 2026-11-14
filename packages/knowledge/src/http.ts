@@ -86,6 +86,8 @@ export function createHttp(options: HttpOptions): Http {
         await res.body?.cancel();
         const location = res.headers.get("location");
         const target = location ? new URL(location, url) : null;
+        // CELLAR redirects to plain http on its own host; the same path over https is taken instead.
+        if (target?.protocol === "http:" && target.host === host) target.protocol = "https:";
         if (target?.protocol !== "https:" || target.host !== host || ++hops > 5) {
           throw new SourceUnavailable(`${host} redirected somewhere this source can't go`);
         }

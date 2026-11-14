@@ -311,13 +311,24 @@ describe("createHttp", () => {
 
   it("follows a redirect on the same host and refuses one that leaves it", async () => {
     const hop = (location: string) => new Response(null, { status: 303, headers: { location } });
-    const answers = [hop("/b"), new Response("ok"), hop("http://example.org/c")];
+    const seen: string[] = [];
+    const answers = [
+      hop("/b"),
+      new Response("ok"),
+      hop("http://example.org/c"),
+      new Response("up"),
+    ];
     const http = createHttp({
       perSecond: 1000,
-      fetch: async () => answers.shift() ?? response(500),
+      fetch: async (url) => {
+        seen.push(String(url));
+        return answers.shift() ?? response(500);
+      },
     });
     expect(await http.text("https://example.org/a")).toBe("ok");
-    await expect(http.text("https://example.org/a")).rejects.toBeInstanceOf(SourceUnavailable);
+    // Plain http on the same host is taken over https instead.
+    expect(await http.text("https://example.org/a")).toBe("up");
+    expect(seen.at(-1)).toBe("https://example.org/c");
     const away = createHttp({
       perSecond: 1000,
       fetch: async () => hop("https://elsewhere.example/"),
