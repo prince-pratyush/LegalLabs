@@ -1,0 +1,241 @@
+{
+  "name": "Starter NDA playbook",
+  "contract_type": "Non-disclosure agreement",
+  "guidance": "Orientation: this playbook is written for an in-house legal team reviewing a counterparty's draft (their paper) of a mutual or one-way NDA entered before a purchase, partnership or evaluation. We are usually the customer. We will disclose our own sensitive material (plans, pricing, systems, personal data) and also receive the counterparty's material, so positions protect us as discloser first and keep our obligations as recipient workable. Where the paper is one-way and we only receive, relax the discloser-side positions and keep the recipient-side ones.\n\nStandard positions are what we ask for on first turn. Fallbacks are balanced market positions we can accept without escalation, most preferred first. Anything matching the unacceptable line should be marked not acceptable and escalated to the playbook owner.\n\nPaper defaults: on our paper, expect few findings and treat any counterparty edit as a gap to review. On their paper, look hardest at one-way drafting dressed as mutual, broad residuals clauses, short survival periods, and anything that would let them use our information beyond the stated purpose.\n\nJurisdictions: positions are written for agreements governed by US (state), EU member state, UK (England and Wales) or Australian law. Rule guidance notes where outcomes differ, including restraint of trade, data protection and how courts read remedies clauses. For any other governing law, review with local counsel before relying on these positions.",
+  "rules": [
+    {
+      "title": "Mutuality",
+      "standard_position": "Obligations are mutual: each party is both a disclosing and a receiving party, and every protection, exclusion and remedy applies equally to both.",
+      "fallbacks": [
+        "One-way in favour of the counterparty only where we will genuinely disclose nothing confidential, and the agreement says so expressly.",
+        "Mutual core obligations with a small number of asymmetric terms that reflect a real difference in what each side discloses (for example, extra security measures for our personal data)."
+      ],
+      "unacceptable": "A document titled or described as mutual whose operative clauses protect only the counterparty's information; obligations that bind only us; exclusions or remedies available only to the counterparty.",
+      "guidance": "Counterparty paper is often one-way in their favour even when both sides will share material. Check the definitions of disclosing and receiving party and trace each obligation to see who it binds. A one-way NDA is fine if we disclose nothing, but in most evaluations we share at least pricing, requirements or system details.",
+      "flag": false,
+      "actions": [
+        {
+          "scenario": "The draft is one-way in the counterparty's favour and we will share information.",
+          "instruction": "Propose converting it to mutual by redefining the parties as each a discloser and recipient, rather than adding a separate set of clauses."
+        }
+      ],
+      "sample_language": "Each party may disclose Confidential Information to the other. Each party, when receiving Confidential Information, is the Recipient and must comply with this agreement, and each party, when disclosing, is the Discloser and has the benefit of it."
+    },
+    {
+      "title": "Definition of Confidential Information",
+      "standard_position": "Confidential Information covers all non-public information disclosed by or for a party in connection with the purpose, in any form and whether or not marked, including information that a reasonable person would understand to be confidential, plus the existence and terms of the discussions.",
+      "fallbacks": [
+        "Marking required for written information, with oral or visual disclosures covered if identified as confidential at the time or confirmed in writing within 30 days.",
+        "Marking required generally, but information that is obviously confidential by its nature (such as personal data, source code, security and financial information) is covered without marking."
+      ],
+      "unacceptable": "A strict marking requirement with no catch-all for information that is obviously confidential; a definition limited to information labelled as a trade secret; a definition that excludes oral disclosures entirely.",
+      "guidance": "As the likely larger discloser of sensitive material, we want a wide definition that does not depend on marking, because in practice teams rarely label every email or call. Trade secret protection differs by jurisdiction (US Defend Trade Secrets Act and state laws, the EU Trade Secrets Directive and its national implementations, the UK Trade Secrets Regulations 2018, and equitable breach of confidence in Australia), so the contract definition should not depend on information meeting a statutory trade secret test.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "Confidential Information means all information, in any form, disclosed by or on behalf of the Discloser in connection with the Purpose that is not public, whether or not marked, including information a reasonable person would understand to be confidential, and the fact and content of the parties' discussions."
+    },
+    {
+      "title": "Exclusions from Confidential Information",
+      "standard_position": "Only the usual four exclusions apply, and the Recipient bears the burden of proving them with written records: information that is or becomes public through no fault of the Recipient; was lawfully known to the Recipient before disclosure without restriction; is lawfully received from a third party free of any confidentiality duty; or is independently developed without use of or reference to the Discloser's information.",
+      "fallbacks": [
+        "The same four exclusions without an express burden of proof clause, provided independent development requires no use of or reference to the Discloser's information.",
+        "Adding an exclusion for information the Discloser approves for release in writing."
+      ],
+      "unacceptable": "Exclusions for information that is merely 'available' to the public in pieces or could be derived; exclusions for anything the Recipient later 'possesses' without showing lawful source; exclusions for information the Recipient considers not confidential; personal data falling out of protection because it is publicly available elsewhere.",
+      "guidance": "Watch for the exclusions being widened in subtle ways. Combination wording matters: a combination of public facts can still be confidential. Personal data should remain protected under privacy law even if some of it is public, so say the exclusions do not reduce data protection duties.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The obligations in this agreement do not apply to information that the Recipient can show by written records: (a) is or becomes public other than through a breach of this agreement; (b) was lawfully known to it before disclosure without any duty of confidence; (c) is lawfully received from a third party who owes no duty of confidence; or (d) is developed independently without use of or reference to the Discloser's Confidential Information."
+    },
+    {
+      "title": "Permitted Use and Need-to-Know Disclosure",
+      "standard_position": "The Recipient may use Confidential Information only for the stated purpose and may disclose it only to its employees, officers and professional advisers who need to know it for that purpose and are bound by confidentiality duties at least as protective. The Recipient is liable for any breach by those people.",
+      "fallbacks": [
+        "Disclosure also to affiliates, contractors and financing sources who need to know, if bound by written obligations no less protective and the Recipient remains liable for them.",
+        "Disclosure to named subcontractors with our prior written consent, not to be unreasonably withheld."
+      ],
+      "unacceptable": "Use for 'any business purpose' or to improve the Recipient's products generally; disclosure to affiliates or third parties without the Recipient remaining responsible; use of our information to train machine learning models or to benchmark us; no defined purpose at all.",
+      "guidance": "The purpose clause is the main limit on use, so it must be specific (for example, evaluating a proposed supply of software services). For AI and software vendors, check that 'use for the purpose' does not stretch to training or improving models on our data.",
+      "flag": true,
+      "actions": [
+        {
+          "scenario": "The draft permits use of our information to develop or improve the counterparty's products or models.",
+          "instruction": "Strike it and replace with use only for the defined purpose; escalate if the counterparty insists."
+        }
+      ],
+      "sample_language": "The Recipient must use the Discloser's Confidential Information only for the Purpose, and may disclose it only to its and its affiliates' employees, officers and professional advisers who need to know it for the Purpose and are bound by duties of confidence no less protective than this agreement. The Recipient is responsible for any act or omission of those persons as if it were its own."
+    },
+    {
+      "title": "Compelled Disclosure",
+      "standard_position": "If law, regulation, a court or a stock exchange requires disclosure, the Recipient must, where lawful, notify the Discloser promptly, cooperate with any effort to obtain a protective order, and disclose only the minimum required.",
+      "fallbacks": [
+        "Notice 'where legally permitted and reasonably practicable' and reasonable efforts to limit disclosure, without an obligation to cooperate in seeking a protective order.",
+        "An exception allowing disclosure to regulators in routine supervisory examinations without notice."
+      ],
+      "unacceptable": "Disclosure permitted whenever the Recipient 'believes' disclosure is required or advisable; no notice obligation at all; a carve-out for informal government requests.",
+      "guidance": "Banks and regulated entities often need the routine regulator carve-out; accept it. Make sure the carve-out does not extend to voluntary disclosures or civil discovery without notice.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "If the Recipient is required by law, court order or the rules of a securities exchange to disclose Confidential Information, it must, to the extent lawful, promptly notify the Discloser, give reasonable assistance to any attempt to limit the disclosure, and disclose only the part that it is legally required to disclose."
+    },
+    {
+      "title": "Standard of Care",
+      "standard_position": "The Recipient must protect Confidential Information using at least the care it uses for its own information of a similar kind, and never less than reasonable care, plus appropriate technical and organisational security measures, and must notify the Discloser promptly of any unauthorised access or disclosure.",
+      "fallbacks": [
+        "Reasonable care only, with notice of any known unauthorised disclosure within a reasonable time.",
+        "The Recipient's own standard of care, provided it is not less than reasonable care."
+      ],
+      "unacceptable": "A 'commercially reasonable efforts' or 'best efforts to try' standard that turns the duty into an effort obligation; no breach notification; liability only for gross negligence or wilful misconduct.",
+      "guidance": "Breach notification matters most where our material includes personal data, because we may have our own regulatory notification duties (GDPR and UK GDPR 72-hour regulator notice; Australia's Notifiable Data Breaches scheme under the Privacy Act 1988; US state breach notification laws).",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The Recipient must protect the Discloser's Confidential Information with at least the degree of care it uses for its own confidential information of a similar nature, and in any case no less than reasonable care, and must notify the Discloser without undue delay after becoming aware of any unauthorised use or disclosure."
+    },
+    {
+      "title": "Term and Survival",
+      "standard_position": "The agreement covers disclosures for at least two years, and confidentiality obligations survive for five years after expiry or termination, with trade secrets and personal data protected for as long as they remain confidential or are held.",
+      "fallbacks": [
+        "Obligations survive three years after the end of the disclosure period, with trade secrets and personal data protected indefinitely.",
+        "Obligations survive two years after the end of the disclosure period, provided trade secrets, source code and personal data are carved out and protected indefinitely."
+      ],
+      "unacceptable": "Confidentiality obligations ending when the agreement ends; survival under two years; no carve-out for trade secrets or personal data where survival is time-limited.",
+      "guidance": "Under US law in particular, a fixed confidentiality period can undermine trade secret status if information is released from protection after it ends, so trade secrets should survive indefinitely. In Australia and the UK equitable duties of confidence may continue, but an express contractual term is simpler to enforce.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "This agreement applies to Confidential Information disclosed in the two years after the Effective Date. The Recipient's obligations continue for five years after that period ends, except that obligations in respect of trade secrets and personal information continue for as long as the information remains a trade secret or is held by the Recipient."
+    },
+    {
+      "title": "Return and Destruction",
+      "standard_position": "On request or when the purpose ends, the Recipient must promptly return or destroy all Confidential Information and copies and confirm in writing that it has done so.",
+      "fallbacks": [
+        "Copies retained in routine backups or as required by law may be kept, if they stay subject to this agreement and are not accessed for any other purpose until deleted in the ordinary course.",
+        "Destruction instead of return at the Recipient's choice, with written confirmation on request."
+      ],
+      "unacceptable": "A right to keep copies indefinitely 'for record purposes' without continued confidentiality; no return obligation; the agreement's protections lapsing for retained copies.",
+      "guidance": "Backup and legal-hold exceptions are market standard; accept them only if the retained copies remain confidential for as long as they exist. Where personal data is involved, deletion should align with data protection storage limitation duties.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "Within 15 days after the Discloser's request or the end of the Purpose, the Recipient must return or destroy the Discloser's Confidential Information and confirm this in writing. The Recipient may keep copies that are held in automatic backups or that it must keep by law, but those copies remain subject to this agreement for as long as they are kept."
+    },
+    {
+      "title": "No Licence or Transfer of IP",
+      "standard_position": "All Confidential Information remains the Discloser's property. Nothing in the agreement grants any licence or right to the Recipient under any patent, copyright, trade secret or other intellectual property, other than the limited right to use the information for the purpose.",
+      "fallbacks": [
+        "The same position, with an acknowledgement that each party may independently develop similar products without using the other's information."
+      ],
+      "unacceptable": "Any assignment of feedback, ideas or suggestions we provide to the counterparty without limit; any implied licence beyond the purpose; ownership of improvements based on our information vesting in the counterparty.",
+      "guidance": "Vendor NDAs sometimes include a feedback clause assigning or licensing anything we say about their product. Narrow it to a non-exclusive licence to use general product feedback that contains none of our Confidential Information.",
+      "flag": false,
+      "actions": [
+        {
+          "scenario": "The draft gives the counterparty ownership or an unrestricted licence of our feedback.",
+          "instruction": "Replace with a non-exclusive licence to use product feedback that excludes our Confidential Information and does not identify us."
+        }
+      ],
+      "sample_language": "All Confidential Information remains the property of the Discloser. No licence or other right in any intellectual property is granted or implied by this agreement, except the limited right to use Confidential Information for the Purpose."
+    },
+    {
+      "title": "Residuals",
+      "standard_position": "No residuals clause. Nothing permits the Recipient to use information retained in memory outside the purpose.",
+      "fallbacks": [
+        "A narrow residuals clause limited to general skills, ideas and know-how retained in the unaided memory of individuals with authorised access, with no intentional memorisation, no licence under any patent or copyright, and excluding personal data, financial information, product and business plans, source code, security information and trade secrets."
+      ],
+      "unacceptable": "Any residuals clause that allows use of information retained in memory 'aided or unaided', that covers specific information rather than general know-how, that grants a right to use residuals for any purpose including competing products, or that does not exclude personal data and trade secrets.",
+      "guidance": "Residuals clauses favour whichever party receives more. Even in a mutual NDA, an in-house customer usually discloses more sensitive material (plans, systems, pricing, data) to a vendor than it receives, so the clause benefits the counterparty. Our default is to strike it. Large technology vendors often refuse to remove it; the fallback narrows it so it cannot be used to launder our specific information. Escalate if the counterparty insists on a broad version.",
+      "flag": true,
+      "actions": [
+        {
+          "scenario": "The counterparty insists on keeping a residuals clause.",
+          "instruction": "Offer the narrow fallback and list the excluded categories expressly; escalate to the playbook owner if they refuse the exclusions."
+        }
+      ],
+      "sample_language": "Nothing in this agreement permits the Recipient to use or disclose any Confidential Information on the basis that it is retained in the memory of any person."
+    },
+    {
+      "title": "Remedies and Injunctive Relief",
+      "standard_position": "Each party acknowledges that damages may not be an adequate remedy for breach and that the Discloser may seek injunctive or other equitable relief, without needing to prove actual loss and without posting a bond, in addition to any other remedy.",
+      "fallbacks": [
+        "Acknowledgement that the Discloser may seek equitable relief, leaving the court to decide on proof of harm and security.",
+        "Mutual acknowledgement of the availability of equitable relief with no reference to bonds."
+      ],
+      "unacceptable": "Exclusive remedies limited to damages; a liability cap on breach of confidentiality; exclusion of injunctive relief; liquidated damages payable by us for our own breach.",
+      "guidance": "Courts in all four jurisdictions treat equitable relief as discretionary, so contract wording supports but does not guarantee an injunction. Do not accept a cap on liability for breach of confidence in an NDA. In the UK and Australia, a fixed sum payable on breach may be unenforceable as a penalty if it is out of all proportion to the innocent party's legitimate interest (Cavendish v Makdessi in the UK; Andrews v ANZ and Paciocco v ANZ in Australia), so avoid relying on liquidated damages.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The Recipient acknowledges that damages alone may not adequately compensate the Discloser for a breach of this agreement, and that the Discloser may seek injunctive relief or specific performance in addition to any other remedy available to it."
+    },
+    {
+      "title": "Non-Solicitation",
+      "standard_position": "No non-solicitation or no-hire restriction on us in an NDA.",
+      "fallbacks": [
+        "A mutual restriction for 12 months on actively soliciting employees with whom a party had material contact through the discussions, excluding general advertisements and people who approach a party on their own initiative.",
+        "A mutual restriction for up to 12 months limited to named key personnel."
+      ],
+      "unacceptable": "A one-way restriction on us; a no-hire covering all employees of the counterparty and its affiliates; a restriction longer than 12 months; any restriction on customers or suppliers; a fee for hiring.",
+      "guidance": "Non-solicits are not needed to protect confidential information and can hamper recruitment across a large organisation. Enforceability differs: California Business and Professions Code s 16600 voids most contractual restraints on engaging in a lawful profession and courts there have applied it to some employee non-solicits, and several other US states limit restraints by statute; in Australia, restraints are void unless reasonably necessary to protect a legitimate interest (and NSW courts may read down under the Restraints of Trade Act 1976); UK courts likewise test reasonableness. Treat any restraint as a negotiation point, not boilerplate.",
+      "flag": false,
+      "actions": [
+        {
+          "scenario": "The draft contains a one-way no-hire on us.",
+          "instruction": "Delete it; if the counterparty needs protection, offer the mutual non-solicit fallback."
+        }
+      ],
+      "sample_language": "Nothing in this agreement restricts either party from hiring or engaging any person, including through general recruitment advertising."
+    },
+    {
+      "title": "Personal Information",
+      "standard_position": "If either party discloses personal information, the Recipient must handle it only for the purpose, in line with applicable data protection law, with appropriate security, and must notify the Discloser without undue delay of any breach. Parties will sign a data processing agreement before any personal data beyond business contact details is shared.",
+      "fallbacks": [
+        "A short clause requiring each party to comply with applicable data protection law for any personal data received, plus breach notification, with no separate data processing agreement while only business contact details are exchanged."
+      ],
+      "unacceptable": "Silence where we will share employee or customer personal data; any statement that personal data received is not Confidential Information; a right to transfer personal data outside our jurisdiction without safeguards.",
+      "guidance": "Most NDAs only involve business contact details, but evaluations of HR, CRM or data platforms often include samples of real personal data. EU and UK: if the counterparty will process personal data on our behalf, GDPR or UK GDPR Article 28 requires processor terms, and cross-border transfers need an approved mechanism. Australia: the Australian Privacy Principles in the Privacy Act 1988 (Cth) govern use, disclosure and cross-border disclosure (APP 8), and we remain accountable for overseas recipients. US: state laws (such as California's CCPA/CPRA and its regulations) require specific service provider or contractor terms if personal information is disclosed for a business purpose.",
+      "flag": true,
+      "actions": [
+        {
+          "scenario": "We will share personal data of customers or employees during the evaluation.",
+          "instruction": "Require a data processing agreement or a short processing schedule before disclosure; do not rely on the NDA alone."
+        }
+      ],
+      "sample_language": "Where Confidential Information includes personal information, the Recipient must use it only for the Purpose, comply with applicable data protection laws, protect it with appropriate security measures, and notify the Discloser without undue delay after becoming aware of any unauthorised access to it."
+    },
+    {
+      "title": "No Warranty and No Obligation to Proceed",
+      "standard_position": "Confidential Information is provided as is, without warranty, and neither party is obliged to enter any further agreement or transaction. Any commitment must be in a separate signed agreement.",
+      "fallbacks": [
+        "The same, with a statement that each party has the right to disclose the information it discloses."
+      ],
+      "unacceptable": "Any exclusivity, standstill or obligation on us to negotiate or to purchase; warranties from us about the accuracy of our information; a restriction on dealing with the counterparty's competitors.",
+      "guidance": "NDAs should not quietly create commercial commitments. Exclusivity and standstill clauses belong in a separate term sheet approved by the business.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "Confidential Information is provided as is. Neither party gives any warranty about its accuracy or completeness, and neither party is obliged to enter into any further agreement or transaction by reason of this agreement."
+    },
+    {
+      "title": "Governing Law and Jurisdiction",
+      "standard_position": "The law of our home jurisdiction governs, and its courts have jurisdiction, while either party may seek urgent injunctive relief in any competent court.",
+      "fallbacks": [
+        "A neutral, well-developed governing law (for example England and Wales, New York or New South Wales) with that forum's courts.",
+        "The counterparty's governing law, if it is one of the US, EU member state, UK or Australian systems these positions cover, provided injunctive relief can be sought anywhere."
+      ],
+      "unacceptable": "Mandatory arbitration that prevents urgent injunctive relief in court; a governing law outside the jurisdictions this playbook covers without local counsel review; exclusive jurisdiction in the counterparty's home courts with no carve-out for injunctions.",
+      "guidance": "For confidentiality breaches speed matters, so preserve access to injunctive relief wherever the breach happens. Record the governing law of the paper when starting a review so jurisdiction-specific guidance applies.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "This agreement is governed by the laws of [our jurisdiction], and the parties submit to the non-exclusive jurisdiction of its courts. Either party may seek urgent injunctive relief in any court of competent jurisdiction."
+    },
+    {
+      "title": "Assignment",
+      "standard_position": "Neither party may assign or transfer the agreement without the other's prior written consent, except that we may assign to an affiliate or to a successor to our business.",
+      "fallbacks": [
+        "Mutual right to assign to an affiliate or a successor in a merger or sale of substantially all relevant assets, with notice and the assignee bound in writing.",
+        "No assignment by either party without consent, not to be unreasonably withheld."
+      ],
+      "unacceptable": "A one-sided right for the counterparty to assign freely, including to our competitors; an assignment that releases the assignor from obligations for information already disclosed.",
+      "guidance": "Free assignment can send our information to an unknown party. Where the counterparty insists on a successor carve-out, require written notice so we can stop disclosing if the successor is a competitor.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "Neither party may assign or transfer its rights or obligations under this agreement without the other party's prior written consent, except to an affiliate or to a successor to all or substantially all of the business to which this agreement relates, on written notice."
+    }
+  ]
+}
