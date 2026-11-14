@@ -24,6 +24,24 @@ function contract(name: string, make: () => ObjectStore) {
 
     it("returns null for a missing key", async () => {
       expect(await make().get(contentKey(randomUUID(), SHA))).toBeNull();
+      expect(await make().getRange(contentKey(randomUUID(), SHA), 0, 1)).toBeNull();
+    });
+
+    it("returns a byte range, both ends included", async () => {
+      const store = make();
+      const key = contentKey(randomUUID(), SHA);
+      await store.putIfAbsent(key, bytes("hello world"));
+      const range = (await store.getRange(key, 6, 9)) ?? new Uint8Array();
+      expect(new TextDecoder().decode(range)).toBe("worl");
+    });
+
+    it("streams a whole object, and nothing for a missing key", async () => {
+      const store = make();
+      const key = contentKey(randomUUID(), SHA);
+      await store.putIfAbsent(key, bytes("hello world"));
+      const stream = await store.stream(key);
+      expect(await new Response(stream).text()).toBe("hello world");
+      expect(await store.stream(contentKey(randomUUID(), SHA))).toBeNull();
     });
 
     it("deletes a key, and deleting it again is fine", async () => {

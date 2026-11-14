@@ -202,6 +202,9 @@ importers:
       '@legallabs/ingest':
         specifier: workspace:*
         version: link:../../packages/ingest
+      '@legallabs/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
       '@legallabs/model-gateway':
         specifier: workspace:*
         version: link:../../packages/model-gateway
@@ -242,6 +245,9 @@ importers:
       lucide-react:
         specifier: 1.72.0
         version: 1.72.0(@types/react@19.3.0)(react@19.3.1)
+      pdfjs-dist:
+        specifier: 6.5.438
+        version: 6.5.438
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -345,6 +351,19 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@22.20.5)(jsdom@30.1.3)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0))
 
+  packages/knowledge:
+    dependencies:
+      '@legallabs/citations':
+        specifier: workspace:*
+        version: link:../citations
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@22.20.5)(jsdom@30.1.3)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0))
+
   packages/model-gateway:
     dependencies:
       '@ai-sdk/anthropic':
@@ -382,6 +401,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
+      '@legallabs/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@tanstack/react-table':
         specifier: 9.3.1
         version: 9.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -400,6 +422,9 @@ importers:
       lucide-react:
         specifier: 1.72.0
         version: 1.72.0(@types/react@19.3.0)(react@19.3.1)
+      pdfjs-dist:
+        specifier: 6.5.438
+        version: 6.5.438
       radix-ui:
         specifier: 1.8.1
         version: 1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

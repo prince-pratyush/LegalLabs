@@ -21,9 +21,14 @@ export function asWorker<T>(pool: pg.Pool, work: (client: pg.PoolClient) => Prom
   return asRole(pool, "legallabs_worker", { userId: null, workspaceId: null }, work);
 }
 
+// Writes public law only; it has no grant on any workspace's data.
+export function asKnowledgeLoader<T>(pool: pg.Pool, work: (client: pg.PoolClient) => Promise<T>) {
+  return asRole(pool, "legallabs_knowledge", { userId: null, workspaceId: null }, work);
+}
+
 async function asRole<T>(
   pool: pg.Pool,
-  role: "legallabs_app" | "legallabs_worker",
+  role: "legallabs_app" | "legallabs_worker" | "legallabs_knowledge",
   identity: Identity,
   work: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
