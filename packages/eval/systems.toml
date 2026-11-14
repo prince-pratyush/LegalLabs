@@ -10,6 +10,14 @@ vendor = "legallabs"
 vendors = ["legallabs"]
 params = { search_params = {} }
 
+# Public-law search over the same API, for the retrieval-golden-<source> suites.
+# Same credentials; the sources must be synced first (legallabs-knowledge sync).
+[systems.legallabs-knowledge]
+harness = "legallabs-knowledge"
+vendor = "legallabs"
+vendors = ["legallabs"]
+params = { search_params = {} }
+
 # Offline lexical baseline: no server, no keys. CI runs it.
 [systems.bm25-local]
 harness = "bm25"
