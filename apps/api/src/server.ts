@@ -95,7 +95,7 @@ const orphaned = await asWorker(pool, async (db) => {
   return rows[0]?.n ?? 0;
 });
 if (orphaned > 0) console.log(`marked ${orphaned} unfinished runs as failed`);
-// Stubs until the vault and knowledge work lands; both plug in through the same ports.
+// Knowledge is a stub until its sources land; it plugs in through the same port.
 const vaults = createVaultPort(pool);
 const knowledge = noKnowledge;
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);

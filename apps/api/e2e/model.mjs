@@ -8,8 +8,9 @@ const PAGE = /<page-[0-9a-f]+ n="(\d+)">\n([\s\S]*?)\n<\/page-/;
 const DRAFT = /<draft-[0-9a-f]+>\n([\s\S]*?)\n<\/draft-/;
 
 const sentence = (text) =>
-  (text.match(/[^.!?]+[.!?]/g) ?? [text]).map((s) => s.trim()).find((s) => s.split(/\s+/).length >= 4) ??
-  text.trim();
+  (text.match(/[^.!?]+[.!?]/g) ?? [text])
+    .map((s) => s.trim())
+    .find((s) => s.split(/\s+/).length >= 4) ?? text.trim();
 const attr = (text) => text.replaceAll('"', "&quot;");
 
 export function reply(messages) {
@@ -37,7 +38,10 @@ export function startFakeModel() {
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw || "{}");
     const text = reply(body.messages ?? []);
-    const usage = { prompt_tokens: Math.ceil(raw.length / 4), completion_tokens: Math.ceil(text.length / 4) };
+    const usage = {
+      prompt_tokens: Math.ceil(raw.length / 4),
+      completion_tokens: Math.ceil(text.length / 4),
+    };
     if (!body.stream) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
@@ -46,7 +50,9 @@ export function startFakeModel() {
           object: "chat.completion",
           created: 0,
           model: body.model,
-          choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+          choices: [
+            { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
+          ],
           usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens },
         }),
       );
@@ -58,7 +64,9 @@ export function startFakeModel() {
         `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 0, model: body.model, choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`,
       );
     for (let i = 0; i < text.length; i += 12) chunk({ content: text.slice(i, i + 12) });
-    chunk({}, "stop", { usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens } });
+    chunk({}, "stop", {
+      usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens },
+    });
     res.end("data: [DONE]\n\n");
   });
   return new Promise((resolve) => {

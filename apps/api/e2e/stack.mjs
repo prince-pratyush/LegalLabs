@@ -42,13 +42,27 @@ async function startStorage() {
   const key = "pilot";
   const secret = randomBytes(12).toString("hex");
   const id = execFileSync("docker", [
-    "run", "-d", "--rm", "-p", `127.0.0.1:${port}:9000`,
-    "-e", `RUSTFS_ACCESS_KEY=${key}`, "-e", `RUSTFS_SECRET_KEY=${secret}`,
+    "run",
+    "-d",
+    "--rm",
+    "-p",
+    `127.0.0.1:${port}:9000`,
+    "-e",
+    `RUSTFS_ACCESS_KEY=${key}`,
+    "-e",
+    `RUSTFS_SECRET_KEY=${secret}`,
     process.env.PILOT_S3_IMAGE ?? "rustfs/rustfs:latest",
-  ]).toString().trim();
+  ])
+    .toString()
+    .trim();
   const endpoint = `http://127.0.0.1:${port}`;
   await waitFor(async () => (await fetch(endpoint)).status > 0, "object storage");
-  return { endpoint, key, secret, stop: () => execFileSync("docker", ["rm", "-f", id], { stdio: "ignore" }) };
+  return {
+    endpoint,
+    key,
+    secret,
+    stop: () => execFileSync("docker", ["rm", "-f", id], { stdio: "ignore" }),
+  };
 }
 
 export async function startStack({ log = () => {} } = {}) {
@@ -81,7 +95,12 @@ export async function startStack({ log = () => {} } = {}) {
     const storage = await startStorage();
     stops.push(storage.stop);
     const bucket = "legallabs-pilot";
-    const s3 = new AwsClient({ accessKeyId: storage.key, secretAccessKey: storage.secret, region: "us-east-1", service: "s3" });
+    const s3 = new AwsClient({
+      accessKeyId: storage.key,
+      secretAccessKey: storage.secret,
+      region: "us-east-1",
+      service: "s3",
+    });
     await (await s3.fetch(`${storage.endpoint}/${bucket}`, { method: "PUT" })).body?.cancel();
 
     // A real local model when asked for, otherwise the scripted one.
@@ -105,8 +124,12 @@ export async function startStack({ log = () => {} } = {}) {
         LEGALLABS_SCANNER: "stub",
         OLLAMA_BASE_URL: modelUrl,
         LEGALLABS_MODEL_TIMEOUT_MS: process.env.LEGALLABS_MODEL_TIMEOUT_MS ?? "900000",
-        ...(process.env.OLLAMA_CONTEXT_LENGTH ? { OLLAMA_CONTEXT_LENGTH: process.env.OLLAMA_CONTEXT_LENGTH } : {}),
-        ...(process.env.PILOT_OLLAMA_EMBED_URL ? { OLLAMA_EMBED_URL: process.env.PILOT_OLLAMA_EMBED_URL } : {}),
+        ...(process.env.OLLAMA_CONTEXT_LENGTH
+          ? { OLLAMA_CONTEXT_LENGTH: process.env.OLLAMA_CONTEXT_LENGTH }
+          : {}),
+        ...(process.env.PILOT_OLLAMA_EMBED_URL
+          ? { OLLAMA_EMBED_URL: process.env.PILOT_OLLAMA_EMBED_URL }
+          : {}),
         LEGALLABS_ASKS_PER_10_MIN: process.env.LEGALLABS_ASKS_PER_10_MIN ?? "1000",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -126,6 +149,17 @@ export async function startStack({ log = () => {} } = {}) {
 // `node e2e/stack.mjs` keeps a stack up and prints how to reach it.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const stack = await startStack({ log: (line) => process.stderr.write(line) });
-  console.log(JSON.stringify({ url: stack.url, workspace: stack.workspace, email: stack.email, password: stack.password }));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { stack.stop(); process.exit(0); });
+  console.log(
+    JSON.stringify({
+      url: stack.url,
+      workspace: stack.workspace,
+      email: stack.email,
+      password: stack.password,
+    }),
+  );
+  for (const signal of ["SIGINT", "SIGTERM"])
+    process.once(signal, () => {
+      stack.stop();
+      process.exit(0);
+    });
 }
