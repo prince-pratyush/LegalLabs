@@ -136,6 +136,18 @@ export interface AnswerDeps {
   knowledge: KnowledgePort;
 }
 
+/** Passages in order, up to what the window holds. */
+function fit(passages: readonly Passage[], budgetChars: number): Passage[] {
+  const kept: Passage[] = [];
+  let room = budgetChars;
+  for (const passage of passages) {
+    if (passage.text.length > room) continue;
+    room -= passage.text.length;
+    kept.push(passage);
+  }
+  return kept;
+}
+
 /** Fills the window with whole documents when they fit, else with the best passages. */
 async function gather(deps: AnswerDeps, input: AnswerInput, budgetChars: number) {
   const { principal, documents, question } = input;
@@ -410,7 +422,7 @@ export function createAnswerer(deps: AnswerDeps) {
     const budgetTokens = deps.gateway.contextTokens("synthesize") - MAX_OUTPUT;
     const budgetChars = Math.max(2_000, budgetTokens * CHARS_PER_TOKEN - fixedChars);
     const { passages, authorities, coverage } = input.prepared
-      ? { ...input.prepared, authorities: [] }
+      ? { ...input.prepared, passages: fit(input.prepared.passages, budgetChars), authorities: [] }
       : await gather(deps, input, budgetChars);
     await emit({ type: "coverage", coverage });
     await emit({
