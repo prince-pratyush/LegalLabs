@@ -206,6 +206,8 @@ export function Composer(props: ComposerProps) {
   const canSend = !streaming && !disabledReason && value.trim().length > 0;
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Keys during IME composition belong to the input method, not to us.
+    if (event.nativeEvent.isComposing) return;
     if (open && current) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -224,7 +226,7 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (canSend) onSend();
     }
@@ -279,6 +281,8 @@ export function Composer(props: ComposerProps) {
       <div className="relative px-3 py-2">
         <textarea
           ref={textarea}
+          // A textarea can't take role=combobox or aria-expanded, so the live region below
+          // announces the picker instead.
           aria-label="Ask a question"
           aria-autocomplete="list"
           aria-controls={open ? listId : undefined}
@@ -293,6 +297,11 @@ export function Composer(props: ComposerProps) {
           placeholder="Ask anything, or type @ to mention a file, vault or source"
           className="block w-full resize-none bg-transparent text-body text-fg outline-none placeholder:text-fg-muted"
         />
+        <p aria-live="polite" className="sr-only">
+          {open
+            ? `${matches.length} ${matches.length === 1 ? "suggestion" : "suggestions"}. Up and down to choose, Enter to insert, Escape to close.`
+            : ""}
+        </p>
         {open && (
           <div
             id={listId}
