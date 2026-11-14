@@ -137,6 +137,9 @@ describe("viewer API", () => {
       `bytes ${bytes.length - 5}-${bytes.length - 1}/${bytes.length}`,
     );
     expect((await h.get(cookie, path, { range: `bytes=${bytes.length}-` })).status).toBe(416);
+
+    const upper = `/${doc.id.toUpperCase()}/versions/${doc.v.toUpperCase()}/file`;
+    expect((await h.get(cookie, upper, { range: "bytes=0-7" })).status).toBe(206);
   });
 
   it("finds a version by its number, as the spec's /d/ links name it", async () => {
