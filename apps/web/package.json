@@ -11,8 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@legallabs/contracts": "workspace:*",
     "@legallabs/ui": "workspace:*",
     "lucide-react": "1.72.0",
+    "pdfjs-dist": "6.5.438",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
