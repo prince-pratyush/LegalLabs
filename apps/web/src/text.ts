@@ -28,6 +28,7 @@ const FAILURES: Record<string, string> = {
   PARSE_TIMEOUT: "The file took too long to read.",
   TOO_COMPLEX: "The file needs too much memory to read.",
   FORBIDDEN: "You no longer have access to this file.",
+  MALWARE_FOUND: "The file was blocked because it may be harmful.",
 };
 
 /** What the list says about a file while, or after, it is read. */

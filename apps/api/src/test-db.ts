@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createStubScanner } from "@legallabs/ingest";
 import { createMemoryStore } from "@legallabs/storage";
 import pg from "pg";
 import { inject } from "vitest";
@@ -60,7 +61,12 @@ export async function auditTrail(pool: pg.Pool, workspaceId: string) {
 export function testDocuments(pool: pg.Pool, options: Partial<IngestWorkerOptions> = {}) {
   const store = options.store ?? createMemoryStore();
   const raw = createDocuments(pool, { store });
-  const worker = createIngestWorker(pool, { maxAttempts: 1, ...options, store });
+  const worker = createIngestWorker(pool, {
+    maxAttempts: 1,
+    scanner: createStubScanner(),
+    ...options,
+    store,
+  });
   const documents: Documents = {
     ...raw,
     async upload(principal, input, client) {

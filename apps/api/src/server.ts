@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { createIngest } from "@legallabs/ingest";
+import { createClamdScanner, createIngest, createStubScanner } from "@legallabs/ingest";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
@@ -39,8 +39,23 @@ try {
 }
 
 const documents = createDocuments(pool, { store });
+// No scanner at all would be a silent gap, so a deployment must name one.
+const scanner = process.env.CLAMAV_HOST
+  ? createClamdScanner({
+      host: process.env.CLAMAV_HOST,
+      port: Number(process.env.CLAMAV_PORT ?? 3310),
+    })
+  : process.env.LEGALLABS_SCANNER === "stub"
+    ? createStubScanner()
+    : null;
+if (!scanner) {
+  console.error("CLAMAV_HOST is not set (or set LEGALLABS_SCANNER=stub on a dev machine)");
+  process.exit(1);
+}
+
 const worker = createIngestWorker(pool, {
   store,
+  scanner,
   ingest: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
   log: (line) => console.log(line),
 });
