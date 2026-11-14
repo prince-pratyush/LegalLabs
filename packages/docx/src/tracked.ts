@@ -39,18 +39,57 @@ function slice(runs: readonly TextRun[], from: number, to: number): TextRun[] {
   return out;
 }
 
-const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
+const wordsOf = (text: string) => text.split(/\s+/).filter(Boolean);
 
-/** At least half the words are shared (Dice), so a word diff reads as an edit. */
-function similar(old: Block, now: Block): boolean {
-  const a = blockText(old);
-  const b = blockText(now);
-  const total = wordCount(a) + wordCount(b);
-  if (total === 0) return true;
-  const shared = diffWords(a, b)
-    .filter((op) => op.op === "equal")
-    .reduce((sum, op) => sum + wordCount(op.text), 0);
-  return (2 * shared) / total >= 0.5;
+// Bounds on the work spent pairing one replaced region. Past them the region is
+// shown as removed then added, which is correct, just less fine-grained.
+const MAX_PAIR_CHECKS = 10_000;
+const MAX_WORD_DIFFS = 500;
+
+/** Dice score of shared words at or above one half, so a word diff reads as an edit. */
+function isSimilar(shared: number, total: number) {
+  return total === 0 || (2 * shared) / total >= 0.5;
+}
+
+/** Shared words regardless of order: an upper bound on what a diff can keep. */
+function overlap(a: readonly string[], b: readonly string[]) {
+  const counts = new Map<string, number>();
+  for (const word of a) counts.set(word, (counts.get(word) ?? 0) + 1);
+  let shared = 0;
+  for (const word of b) {
+    const left = counts.get(word) ?? 0;
+    if (left > 0) {
+      shared++;
+      counts.set(word, left - 1);
+    }
+  }
+  return shared;
+}
+
+/** Decides whether two paragraphs are one edited paragraph, cheapest test first. */
+function similarity(budget: { diffs: number }) {
+  const cache = new Map<Block, string[]>();
+  const wordsFor = (block: Block) => {
+    let found = cache.get(block);
+    if (!found) {
+      found = wordsOf(blockText(block));
+      cache.set(block, found);
+    }
+    return found;
+  };
+  return (old: Block, now: Block) => {
+    const a = wordsFor(old);
+    const b = wordsFor(now);
+    const total = a.length + b.length;
+    if (!isSimilar(Math.min(a.length, b.length), total)) return false;
+    if (!isSimilar(overlap(a, b), total)) return false;
+    if (budget.diffs <= 0) return false;
+    budget.diffs--;
+    const shared = diffWords(blockText(old), blockText(now))
+      .filter((op) => op.op === "equal")
+      .reduce((sum, op) => sum + wordsOf(op.text).length, 0);
+    return isSimilar(shared, total);
+  };
 }
 
 function changedRuns(before: Block, after: Block, ops: readonly DiffOp[], rev: Revision): string {
@@ -113,18 +152,30 @@ export function buildTrackedDocx(input: TrackedInput): Uint8Array {
   // A replaced paragraph is diffed word by word only against a similar one, in
   // order; pairing unrelated paragraphs would show a confusing word soup.
   const settle = () => {
-    let g = 0;
-    for (const now of fresh) {
-      const match = gone.findIndex((old, k) => k >= g && similar(old, now));
-      if (match === -1) {
-        paragraphs.push(added(now));
-        continue;
+    if (gone.length * fresh.length > MAX_PAIR_CHECKS) {
+      for (const block of gone) paragraphs.push(removed(block));
+      for (const block of fresh) paragraphs.push(added(block));
+    } else {
+      const similar = similarity({ diffs: MAX_WORD_DIFFS });
+      let g = 0;
+      for (const now of fresh) {
+        let match = -1;
+        for (let k = g; k < gone.length; k++) {
+          if (similar(gone[k] as Block, now)) {
+            match = k;
+            break;
+          }
+        }
+        if (match === -1) {
+          paragraphs.push(added(now));
+          continue;
+        }
+        for (; g < match; g++) paragraphs.push(removed(gone[g] as Block));
+        paragraphs.push(changed(gone[match] as Block, now));
+        g = match + 1;
       }
-      for (; g < match; g++) paragraphs.push(removed(gone[g] as Block));
-      paragraphs.push(changed(gone[match] as Block, now));
-      g = match + 1;
+      for (; g < gone.length; g++) paragraphs.push(removed(gone[g] as Block));
     }
-    for (; g < gone.length; g++) paragraphs.push(removed(gone[g] as Block));
     gone = [];
     fresh = [];
   };

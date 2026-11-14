@@ -206,6 +206,32 @@ describe("buildTrackedDocx", () => {
     expect(swapped).toMatch(/<w:rPr><w:ins [^>]*\/><\/w:rPr>.*A new carve-out for data breaches/);
   });
 
+  it("stays quick on a large rewrite, replacing it whole past the pairing limit", () => {
+    const para = (tag: string, i: number) => `${tag} paragraph ${i} about the supply of goods`;
+    const before = Array.from({ length: 150 }, (_, i) => para("Old", i)).join("\n\n");
+    const after = Array.from({ length: 150 }, (_, i) => para("New", i)).join("\n\n");
+    const started = performance.now();
+    const doc = parts(buildTrackedDocx({ before, after, author: "A", date: DATE }))[
+      "word/document.xml"
+    ];
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(() => wellFormed(doc ?? "")).not.toThrow();
+    // Every old paragraph removed whole, every new one added whole.
+    expect(doc?.match(/<w:rPr><w:del /g)).toHaveLength(150);
+    expect(doc?.match(/<w:rPr><w:ins /g)).toHaveLength(150);
+  });
+
+  it("still pairs similar paragraphs in a smaller rewrite", () => {
+    const para = (tag: string, i: number) => `${tag} paragraph ${i} about the supply of goods`;
+    const before = Array.from({ length: 40 }, (_, i) => para("Old", i)).join("\n\n");
+    const after = Array.from({ length: 40 }, (_, i) => para("New", i)).join("\n\n");
+    const doc = parts(buildTrackedDocx({ before, after, author: "A", date: DATE }))[
+      "word/document.xml"
+    ];
+    expect(doc).not.toMatch(/<w:rPr><w:(ins|del) /);
+    expect(doc?.match(/<w:delText xml:space="preserve">Old<\/w:delText>/g)).toHaveLength(40);
+  });
+
   it("leaves an unchanged draft without revisions", () => {
     const same = parts(buildTrackedDocx({ before, after: before, author: "A", date: DATE }));
     expect(same["word/document.xml"]).not.toMatch(/<w:(ins|del) /);
