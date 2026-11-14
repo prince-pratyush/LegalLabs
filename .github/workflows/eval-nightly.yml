@@ -22,9 +22,6 @@ jobs:
     defaults:
       run:
         working-directory: packages/eval
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
@@ -32,10 +29,19 @@ jobs:
       - run: uv run legallabs-eval run --system bm25-local --suite retrieval-golden
       # A small sample each night; the full suites run before a release.
       - run: uv run legallabs-eval run --system claude-plain --suite extract-cuad --limit 50
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       - run: uv run legallabs-eval run --system claude-plain --suite nli-contractnli --limit 50
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: eval-runs
-          path: packages/eval/runs
+          # Scores only: the traces hold dataset text, which we must not redistribute.
+          path: |
+            packages/eval/runs/*/summary.json
+            packages/eval/runs/*/run_config.json
           retention-days: 30
