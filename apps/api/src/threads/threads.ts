@@ -16,6 +16,7 @@ import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
 import { type Answer, type Checked, createAnswerer, type ScopeDocument } from "./answer.js";
+import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
 
 export { NOT_FOUND_ANSWER } from "./answer.js";
 
@@ -119,6 +120,8 @@ export interface AskInput {
   matterId?: string | null;
   model?: string;
   responseMode?: ResponseMode;
+  /** Plans a read of the whole scope and waits for approval before spending. */
+  deepAnalysis?: boolean;
 }
 
 export type AskFailure =
@@ -169,6 +172,10 @@ export interface Threads {
   ): Promise<{ rows: HistoryRow[]; nextCursor: string | null }>;
   run(principal: Principal, runId: string): Promise<RunView | null>;
   cancel(principal: Principal, runId: string, client: Client): Promise<boolean>;
+  /** Starts a planned deep analysis. False unless it is the caller's and awaiting approval. */
+  approve(principal: Principal, runId: string, client: Client): Promise<boolean>;
+  /** Re-plans with a plain-language change; the run stays awaiting approval. */
+  editPlan(principal: Principal, runId: string, instruction: string): Promise<boolean>;
   favourite(principal: Principal, threadId: string, on: boolean): Promise<boolean>;
   share(
     principal: Principal,
@@ -468,8 +475,10 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     principal: Principal,
     run: { id: string; threadId: string },
     reply: Answer,
-    documents: readonly ThreadDocument[],
+    documents: readonly ScopeDocument[],
     client: Client,
+    /** What earlier steps of the run spent, such as deep analysis reading. */
+    spent = 0,
   ): Promise<string> {
     const { workspaceId } = principal;
     const model = reply.model;
@@ -543,7 +552,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         messageId,
         JSON.stringify(reply.coverage),
         model?.model ?? null,
-        model?.cost_usd ?? 0,
+        (model?.cost_usd ?? 0) + spent,
       ],
     );
     if (finished.rowCount === 0) throw new RunStopped();
@@ -594,6 +603,165 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     await log.append(principal, runId, { type: "error", code, message, retryable });
     // The status closes every open stream, retryable or not.
     await log.append(principal, runId, { type: "status", status: "failed" });
+  }
+
+  function track(work: Promise<void>) {
+    inFlight.add(work);
+    void work.finally(() => inFlight.delete(work));
+    return work;
+  }
+
+  /** Plans a deep analysis and stops at awaiting_approval; nothing is spent on models yet. */
+  async function plan(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    documents: ThreadDocument[],
+    question: string,
+    focus: string | null,
+  ) {
+    const emit = (event: NewEvent) => log.append(principal, run.id, event);
+    try {
+      await emit({ type: "status", status: "planned" });
+      const stored = await planDeep({ pool, ...options }, principal, documents, question, focus);
+      const saved = await asApp(pool, principal, (db) =>
+        db.query(
+          `update work.run set plan = $2, status = 'awaiting_approval', updated_at = now()
+            where id = $1 and status in ('planned', 'awaiting_approval')`,
+          [run.id, JSON.stringify(stored)],
+        ),
+      );
+      if (saved.rowCount === 0) return;
+      const { scope: _scope, ...shown } = stored;
+      await emit({ type: "plan", plan: shown });
+      await emit({ type: "status", status: "awaiting_approval" });
+    } catch (err) {
+      console.error(`plan ${run.id} failed: ${err instanceof Error ? err.name : "unknown"}`);
+      await asApp(pool, principal, (db) =>
+        db.query("update work.run set status = 'failed' where id = $1 and status = 'planned'", [
+          run.id,
+        ]),
+      ).catch(() => {});
+      await log.append(principal, run.id, { type: "status", status: "failed" }).catch(() => {});
+    } finally {
+      log.release(run.id);
+    }
+  }
+
+  /** Reads the approved plan's files with bounded readers, then writes a verified report. */
+  async function executeDeep(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    stored: StoredPlan,
+    client: Client,
+  ) {
+    const started = Date.now();
+    const emit = (event: NewEvent) => log.append(principal, run.id, event);
+    const controller = new AbortController();
+    active.set(run.id, controller);
+    try {
+      await emit({ type: "status", status: "running" });
+      const read = await readDeep(
+        { pool, ...options },
+        { principal, scope: stored.scope, emit, cancelled: () => cancelled(run.id) },
+      );
+      if (cancelled(run.id)) return;
+      const cited = new Set(read.findings.map((finding) => finding.document.versionId));
+      const documents = stored.scope.read.filter((d) => cited.has(d.versionId));
+      const note = `\n\n${coverageNote(read.coverage, read.unread)}`;
+      let reply: Answer;
+      if (read.findings.length === 0) {
+        const text = `None of the files read had anything relevant to this question.${note}`;
+        await emit({ type: "token", message_id: run.id, delta: text });
+        reply = { text, model: null, citations: [], ungrounded: [], coverage: read.coverage };
+      } else {
+        const answered = await answer(
+          {
+            principal,
+            documents,
+            sources: [],
+            history: [],
+            question: stored.scope.focus
+              ? `${stored.scope.question}\nFocus: ${stored.scope.focus}`
+              : stored.scope.question,
+            emit,
+            cancelled: () => cancelled(run.id),
+            signal: controller.signal,
+            prepared: { passages: read.passages, coverage: read.coverage },
+            shape: REPORT_SHAPE,
+          },
+          run.id,
+        );
+        if (answered === "CANCELLED" || cancelled(run.id)) return;
+        if (typeof answered === "string") {
+          await fail(
+            principal,
+            run.id,
+            answered,
+            RUN_MESSAGES[answered],
+            answered !== "MODEL_NOT_ALLOWED",
+          );
+          return;
+        }
+        // The coverage line is the run's own record, added after grounding so it is never flagged.
+        await emit({ type: "token", message_id: run.id, delta: note });
+        reply = { ...answered, text: `${answered.text}${note}`, coverage: read.coverage };
+      }
+      await emit({ type: "status", status: "verifying" });
+      let messageId: string;
+      try {
+        messageId = await asApp(pool, principal, (db) =>
+          save(db, principal, run, reply, documents, client, read.costUsd),
+        );
+      } catch (err) {
+        if (err instanceof RunStopped) return;
+        if (isRefusal(err)) {
+          await fail(
+            principal,
+            run.id,
+            "WALL_DENIED",
+            "You no longer have access to this thread.",
+            false,
+          );
+          return;
+        }
+        throw err;
+      }
+      const count = (status: CitationStatus) =>
+        reply.citations.filter((citation) => citation.status === status).length;
+      await emit({
+        type: "done",
+        message_id: messageId,
+        model: reply.model?.model ?? null,
+        response_mode: "answer",
+        usage: {
+          input_tokens: read.usage.input_tokens + (reply.model?.usage.input_tokens ?? 0),
+          output_tokens: read.usage.output_tokens + (reply.model?.usage.output_tokens ?? 0),
+        },
+        cost_usd: read.costUsd + (reply.model?.cost_usd ?? 0),
+        citations: {
+          total: reply.citations.length,
+          ok: count("ok"),
+          mismatch: count("mismatch"),
+          unresolved: count("unresolved"),
+          ungrounded_sentences: reply.ungrounded.length,
+        },
+        ungrounded: reply.ungrounded.map(([from, to]): [number, number] => [from, to]),
+        coverage: read.coverage,
+        duration_ms: Date.now() - started,
+      });
+    } catch (err) {
+      console.error(`run ${run.id} failed: ${err instanceof Error ? err.name : "unknown"}`);
+      await fail(
+        principal,
+        run.id,
+        "INTERNAL",
+        "Something went wrong in this analysis.",
+        true,
+      ).catch(() => {});
+    } finally {
+      active.delete(run.id);
+      log.release(run.id);
+    }
   }
 
   async function execute(
@@ -811,8 +979,15 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           if (!questionId) throw new Error("insert returned no message");
           const { rows: r } = await db.query<{ id: string }>(
             `insert into work.run (workspace_id, thread_id, owner_id, kind, status, question_id)
-             values ($1, $2, $3, 'thread', 'running', $4) returning id`,
-            [principal.workspaceId, threadId, principal.userId, questionId],
+             values ($1, $2, $3, $4, $5, $6) returning id`,
+            [
+              principal.workspaceId,
+              threadId,
+              principal.userId,
+              input.deepAnalysis ? "deep_analysis" : "thread",
+              input.deepAnalysis ? "planned" : "running",
+              questionId,
+            ],
           );
           const runId = r[0]?.id;
           if (!runId) throw new Error("insert returned no run");
@@ -827,16 +1002,19 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         role: message.role,
         content: message.content.slice(0, HISTORY_CHARS),
       }));
-      const finished = execute(
-        principal,
-        { id: created.runId, threadId: created.threadId },
-        inScope,
-        { question, history },
-        { ...input, scope: { ...input.scope, sources } },
-        client,
+      const run = { id: created.runId, threadId: created.threadId };
+      const finished = track(
+        input.deepAnalysis
+          ? plan(principal, run, inScope, question, null)
+          : execute(
+              principal,
+              run,
+              inScope,
+              { question, history },
+              { ...input, scope: { ...input.scope, sources } },
+              client,
+            ),
       );
-      inFlight.add(finished);
-      void finished.finally(() => inFlight.delete(finished));
       return { ok: true, ...created, finished };
     },
 
@@ -941,6 +1119,57 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         );
         return rows[0] ? toRun(rows[0]) : null;
       });
+    },
+
+    async approve(principal, runId, client) {
+      if (!UUID.test(runId)) return false;
+      const approved = await asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{ thread_id: string; plan: StoredPlan }>(
+          `update work.run set status = 'running', updated_at = now()
+            where id = $1 and kind = 'deep_analysis' and status = 'awaiting_approval'
+            returning thread_id, plan`,
+          [runId],
+        );
+        const row = rows[0];
+        if (row) {
+          await audit(db, principal, "run.approved", row.thread_id, { run_id: runId }, client);
+        }
+        return row ?? null;
+      });
+      if (!approved) return false;
+      track(
+        executeDeep(principal, { id: runId, threadId: approved.thread_id }, approved.plan, client),
+      );
+      return true;
+    },
+
+    async editPlan(principal, runId, instruction) {
+      if (!UUID.test(runId)) return false;
+      const current = await asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{ thread_id: string; plan: StoredPlan | null }>(
+          `select thread_id, plan from work.run
+            where id = $1 and kind = 'deep_analysis' and status = 'awaiting_approval'
+              and owner_id = $2`,
+          [runId, principal.userId],
+        );
+        return rows[0] ?? null;
+      });
+      if (!current?.plan) return false;
+      const { scope } = current.plan;
+      const documents = [...scope.read, ...scope.skipped.map((s) => s.document)].map((d) => ({
+        ...d,
+        emptyPageCount: 0,
+      }));
+      await track(
+        plan(
+          principal,
+          { id: runId, threadId: current.thread_id },
+          documents,
+          scope.question,
+          instruction,
+        ),
+      );
+      return true;
     },
 
     async cancel(principal, runId, client) {
