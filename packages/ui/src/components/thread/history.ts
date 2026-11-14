@@ -44,13 +44,19 @@ function weekStart(d: Date): string {
   return dayOf(copy);
 }
 
+export const UNKNOWN_DATE = "Unknown date";
+
+/** Milliseconds, or NaN for a missing or malformed timestamp. */
+export const activityTime = (row: HistoryRow) => Date.parse(row.lastActivityAt);
+
 function keyOf(row: HistoryRow, by: GroupBy, now: Date): string {
-  const at = new Date(row.lastActivityAt);
+  if (by === "none") return "All";
+  if (by === "type") return TYPE_LABELS[row.type];
+  const time = activityTime(row);
+  // A bad timestamp gets its own group instead of throwing from toISOString.
+  if (Number.isNaN(time)) return UNKNOWN_DATE;
+  const at = new Date(time);
   switch (by) {
-    case "none":
-      return "All";
-    case "type":
-      return TYPE_LABELS[row.type];
     case "day":
       return dayOf(at) === dayOf(now) ? "Today" : dayOf(at);
     case "week":
@@ -66,7 +72,12 @@ export function groupRows(
   by: GroupBy,
   now: Date,
 ): { key: string; rows: HistoryRow[] }[] {
-  const sorted = [...rows].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+  // Parsed, not compared as strings, so mixed offsets sort by real time; unknown dates go last.
+  const time = (row: HistoryRow) => {
+    const t = activityTime(row);
+    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+  };
+  const sorted = [...rows].sort((a, b) => time(b) - time(a));
   const groups = new Map<string, HistoryRow[]>();
   for (const row of sorted) {
     const key = keyOf(row, by, now);
@@ -110,7 +121,8 @@ export function filterRows(
       // A restricted title is hidden, so it mustn't be searchable either.
       (!q || (!row.restricted && row.title.toLowerCase().includes(q))) &&
       (filters.type === "any" || row.type === filters.type) &&
-      (since === null || new Date(row.lastActivityAt).getTime() >= since) &&
+      // An unknown date can't be shown to fall in a range, so a date filter drops it.
+      (since === null || activityTime(row) >= since) &&
       (filters.docs === "any" || docBucket(row.documentCount) === filters.docs) &&
       (!filters.favouritesOnly || row.favourite),
   );

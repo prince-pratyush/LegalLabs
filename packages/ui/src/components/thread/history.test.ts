@@ -52,6 +52,19 @@ describe("groupRows", () => {
     );
   });
 
+  it("sorts by real time across offsets", () => {
+    const mixed = [row("a", "2026-11-14T10:00:00+10:00"), row("b", "2026-11-14T01:00:00Z")];
+    // 10:00 +10:00 is 00:00 UTC, so b is newer although its string sorts lower.
+    expect(groupRows(mixed, "none", NOW)[0]?.rows.map((r) => r.id)).toEqual(["b", "a"]);
+  });
+
+  it("puts a bad date last in its own group instead of throwing", () => {
+    const rows2 = [row("bad", "not a date"), row("b", "2026-11-14T09:00:00Z")];
+    const groups = groupRows(rows2, "month", NOW);
+    expect(groups.map((g) => g.key)).toEqual(["2026-11", "Unknown date"]);
+    expect(groupRows(rows2, "none", NOW)[0]?.rows.at(-1)?.id).toBe("bad");
+  });
+
   it("groups by type", () => {
     const typed = [
       row("a", "2026-11-01T00:00:00Z", { type: "deep_analysis" }),
