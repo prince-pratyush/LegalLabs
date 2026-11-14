@@ -7,6 +7,7 @@ from .config import DEFAULT_SYSTEMS, load_config
 from .registry import SUITES, make_harness, make_suite
 from .runner import Runner
 from .schemas import NonRetryableError
+from .suites.coverage_vdr import DEFAULT_DOCS, DEFAULT_SEED, write_room
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,7 +23,16 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--suffix", default="")
     run.add_argument("--runs-dir", type=Path, default=Path("runs"))
     run.add_argument("--no-judge", action="store_true", help="skip paid judge criteria")
+    room = commands.add_parser("make-room", help="write a coverage-vdr data room to disk")
+    room.add_argument("--out", type=Path, required=True)
+    room.add_argument("--docs", type=int, default=DEFAULT_DOCS)
+    room.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args(argv)
+
+    if args.command == "make-room":
+        count = write_room(args.out, args.docs, args.seed)
+        print(f"wrote {count} contracts to {args.out}")
+        return 0
 
     config = load_config(args.systems)
     systems = config.get("systems", {})
