@@ -21,7 +21,7 @@ const OPTIONS: axe.RunOptions = {
 
 describe("every component has stories", () => {
   const components = Object.keys(import.meta.glob("./components/**/*.tsx")).filter(
-    (path) => !path.includes(".stories."),
+    (path) => !path.includes(".stories.") && !path.includes(".test."),
   );
   it.each(components)("%s", (path) => {
     expect(Object.keys(modules)).toContain(path.replace(".tsx", ".stories.tsx"));
