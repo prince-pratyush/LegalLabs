@@ -31,6 +31,8 @@ create table work.draft_version (
 create function work.draft_limit() returns trigger
 language plpgsql set search_path = '' as $$
 begin
+  -- Serialised per thread, so two drafts created at once can't both see 19.
+  perform pg_advisory_xact_lock(hashtextextended(new.thread_id::text, 0));
   if (select count(*) from work.draft d where d.thread_id = new.thread_id) >= 20 then
     raise exception 'LIMIT_DRAFTS' using errcode = 'check_violation';
   end if;
