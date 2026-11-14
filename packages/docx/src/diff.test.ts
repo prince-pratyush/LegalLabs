@@ -91,6 +91,27 @@ describe("diffKeys", () => {
   });
 });
 
+describe("diffKeys with awkward keys", () => {
+  it("never splits a key that holds a line break", () => {
+    expect(diffKeys(["a\nb", "c\n"], ["a\nb", "x\ny", "c\n"])).toEqual([
+      { op: "equal", count: 1 },
+      { op: "insert", count: 1 },
+      { op: "equal", count: 1 },
+    ]);
+  });
+
+  it("reports a huge changed middle as replaced, with exact counts", () => {
+    const before = ["head", ...Array.from({ length: 2500 }, (_, i) => `old ${i}\n`), "tail"];
+    const after = ["head", ...Array.from({ length: 2400 }, (_, i) => `new ${i}\n`), "tail"];
+    expect(diffKeys(before, after)).toEqual([
+      { op: "equal", count: 1 },
+      { op: "delete", count: 2500 },
+      { op: "insert", count: 2400 },
+      { op: "equal", count: 1 },
+    ]);
+  });
+});
+
 describe("summariseChanges", () => {
   it("counts changes and words", () => {
     expect(

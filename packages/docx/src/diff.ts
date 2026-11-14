@@ -1,7 +1,6 @@
 export type DiffOp = { op: "equal" | "insert" | "delete"; text: string };
 
-// Above this many token pairs the table costs too much memory, so the middle is
-// diffed by line instead, and replaced wholesale if that is still too big.
+// Above this many item pairs the comparison table costs too much memory.
 const MAX_CELLS = 4_000_000;
 
 const words = (text: string) => text.match(/\s+|[^\s]+/g) ?? [];
@@ -14,8 +13,10 @@ function push(ops: DiffOp[], op: DiffOp["op"], text: string) {
   else ops.push({ op, text });
 }
 
-/** Longest common subsequence over tokens; null when the table would be too big. */
-function lcs(a: readonly string[], b: readonly string[]): DiffOp[] | null {
+type Step = DiffOp["op"];
+
+/** Longest common subsequence as steps; null when the table would be too big. */
+function lcs(a: readonly string[], b: readonly string[]): Step[] | null {
   const n = a.length;
   const m = b.length;
   if (n * m > MAX_CELLS) return null;
@@ -28,27 +29,29 @@ function lcs(a: readonly string[], b: readonly string[]): DiffOp[] | null {
         a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
     }
   }
-  const ops: DiffOp[] = [];
+  const steps: Step[] = [];
   let i = 0;
   let j = 0;
   while (i < n && j < m) {
     if (a[i] === b[j]) {
-      push(ops, "equal", a[i] ?? "");
+      steps.push("equal");
       i++;
       j++;
     } else if (at(i + 1, j) >= at(i, j + 1)) {
-      push(ops, "delete", a[i++] ?? "");
+      steps.push("delete");
+      i++;
     } else {
-      push(ops, "insert", b[j++] ?? "");
+      steps.push("insert");
+      j++;
     }
   }
-  while (i < n) push(ops, "delete", a[i++] ?? "");
-  while (j < m) push(ops, "insert", b[j++] ?? "");
-  return ops;
+  while (i++ < n) steps.push("delete");
+  while (j++ < m) steps.push("insert");
+  return steps;
 }
 
-function tokenDiff(a: readonly string[], b: readonly string[]): DiffOp[] {
-  // Trimming the shared ends first keeps the table small for typical edits.
+/** How many items both sides share at the start and at the end. */
+function sharedEnds(a: readonly string[], b: readonly string[]) {
   let start = 0;
   while (start < a.length && start < b.length && a[start] === b[start]) start++;
   let end = 0;
@@ -59,37 +62,76 @@ function tokenDiff(a: readonly string[], b: readonly string[]): DiffOp[] {
   ) {
     end++;
   }
+  return { start, end };
+}
+
+function apply(ops: DiffOp[], steps: readonly Step[], a: readonly string[], b: readonly string[]) {
+  let i = 0;
+  let j = 0;
+  for (const step of steps) {
+    if (step === "equal") {
+      push(ops, step, a[i++] ?? "");
+      j++;
+    } else if (step === "delete") push(ops, step, a[i++] ?? "");
+    else push(ops, step, b[j++] ?? "");
+  }
+}
+
+/**
+ * Word-level diff: equal and delete texts rebuild `before`; equal and insert rebuild `after`.
+ * Past the size limit the changed middle is diffed by line, and past that again it is
+ * reported as one deletion and one insertion.
+ */
+export function diffWords(before: string, after: string): DiffOp[] {
+  const a = words(before);
+  const b = words(after);
+  // Trimming the shared ends first keeps the table small for typical edits.
+  const { start, end } = sharedEnds(a, b);
   const ops: DiffOp[] = [];
   push(ops, "equal", a.slice(0, start).join(""));
   const midA = a.slice(start, a.length - end);
   const midB = b.slice(start, b.length - end);
-  const middle = lcs(midA, midB) ?? lcs(lines(midA.join("")), lines(midB.join("")));
-  if (middle) {
-    for (const op of middle) push(ops, op.op, op.text);
-  } else {
-    push(ops, "delete", midA.join(""));
-    push(ops, "insert", midB.join(""));
+  const byWord = lcs(midA, midB);
+  if (byWord) apply(ops, byWord, midA, midB);
+  else {
+    const linesA = lines(midA.join(""));
+    const linesB = lines(midB.join(""));
+    const byLine = lcs(linesA, linesB);
+    if (byLine) apply(ops, byLine, linesA, linesB);
+    else {
+      push(ops, "delete", midA.join(""));
+      push(ops, "insert", midB.join(""));
+    }
   }
   push(ops, "equal", a.slice(a.length - end).join(""));
   return ops;
 }
 
-/** Word-level diff: equal and delete texts rebuild `before`; equal and insert rebuild `after`. */
-export function diffWords(before: string, after: string): DiffOp[] {
-  return tokenDiff(words(before), words(after));
-}
-
 export type KeyOp = { op: DiffOp["op"]; count: number };
 
-/** Diff over whole items, such as paragraphs, compared by key. */
+/**
+ * Diff over whole items, such as paragraphs, compared by key. Past the size limit
+ * the changed middle is reported as all deleted then all inserted, never split.
+ */
 export function diffKeys(before: readonly string[], after: readonly string[]): KeyOp[] {
-  // Each key ends in a character no paragraph holds, so merged runs can be counted back.
-  const end = "\u0000";
-  const ops = tokenDiff(
-    before.map((key) => key.replaceAll(end, "") + end),
-    after.map((key) => key.replaceAll(end, "") + end),
-  );
-  return ops.map((op) => ({ op: op.op, count: op.text.split(end).length - 1 }));
+  const { start, end } = sharedEnds(before, after);
+  const middleA = before.length - start - end;
+  const middleB = after.length - start - end;
+  const steps: Step[] = [
+    ...Array<Step>(start).fill("equal"),
+    ...(lcs(before.slice(start, start + middleA), after.slice(start, start + middleB)) ?? [
+      ...Array<Step>(middleA).fill("delete"),
+      ...Array<Step>(middleB).fill("insert"),
+    ]),
+    ...Array<Step>(end).fill("equal"),
+  ];
+  const ops: KeyOp[] = [];
+  for (const step of steps) {
+    const last = ops[ops.length - 1];
+    if (last?.op === step) last.count++;
+    else ops.push({ op: step, count: 1 });
+  }
+  return ops;
 }
 
 export interface ChangeSummary {
