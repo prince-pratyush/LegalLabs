@@ -42,6 +42,14 @@ def test_hung_parse_is_killed():
     assert time.monotonic() - started < 10
 
 
+def test_pdf_through_the_endpoint():
+    data = fixtures.pdf([["1. TERMS", "Rent is due monthly."]])
+    res = client.post("/parse", files={"file": ("a.pdf", data)}, data={"name": "a.pdf"})
+    body = res.json()
+    assert body["ok"] is True and body["mime"] == "application/pdf"
+    assert "Rent is due monthly." in body["pages"][0]["text"]
+
+
 def test_timeout_is_a_reason():
     # No child can start and answer within zero seconds.
     assert parse_isolated(fixtures.eml("x"), "m.eml", timeout=0) == {
