@@ -54,6 +54,21 @@ describe("gatewayOptionsFromEnv", () => {
     expect(gatewayOptionsFromEnv({ OLLAMA_CONTEXT_LENGTH: "lots" }).contextWindows).toBeUndefined();
   });
 
+  it("waits longer for a model when told to, within a cap", async () => {
+    const seen: number[] = [];
+    const mock = new MockLanguageModelV4({
+      doGenerate: async (options) => {
+        seen.push(options.abortSignal ? 1 : 0);
+        return generated(1, 1);
+      },
+    });
+    await aiSdkProvider(() => mock, 600_000).complete({ model: "any", messages, max_output: 5 });
+    expect(seen).toEqual([1]);
+    expect(
+      Object.keys(gatewayOptionsFromEnv({ LEGALLABS_MODEL_TIMEOUT_MS: "600000" }).providers),
+    ).toEqual([]);
+  });
+
   it("allows demo models only for the exact word true", () => {
     const allowed = (value: string) =>
       gatewayOptionsFromEnv({ LEGALLABS_ALLOW_DEMO_MODELS: value }).allowDemoModels;
