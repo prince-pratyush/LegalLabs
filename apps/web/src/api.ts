@@ -227,7 +227,8 @@ export const api = {
     send<{ user_id: string }>("POST", "/auth/login", { workspace, email, password }),
   logout: () => send<void>("POST", "/auth/logout"),
 
-  documents: async () => (await call<{ documents: DocumentSummary[] }>(`${V1}/documents`)).documents,
+  documents: async () =>
+    (await call<{ documents: DocumentSummary[] }>(`${V1}/documents`)).documents,
   document: async (id: string) =>
     (await call<{ document: DocumentSummary }>(`${V1}/documents/${enc(id)}`)).document,
   upload: async (file: File) => {

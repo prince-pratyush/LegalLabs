@@ -11,7 +11,7 @@ import { History, SquarePen } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
-import { navigate, paths, parseRoute, type Route, useHash } from "./router.js";
+import { navigate, parseRoute, paths, type Route, useHash } from "./router.js";
 import { Shell, ShellContext, type ShellProps } from "./shell.js";
 import { ThreadScreen } from "./thread/ThreadScreen.js";
 import { CitationViewer } from "./viewer/CitationViewer.js";
