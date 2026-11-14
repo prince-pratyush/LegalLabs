@@ -24,10 +24,10 @@ const asPrincipal = (m: Seeded): Principal => ({
   workspaceId: m.workspaceId,
 });
 
-function model(reply: (messages: readonly Message[]) => string): ModelProvider {
+function model(reply: (messages: readonly Message[]) => string | Promise<string>): ModelProvider {
   return {
     complete: async ({ messages }) => ({
-      text: reply(messages),
+      text: await reply(messages),
       usage: { input_tokens: 10, output_tokens: 10 },
     }),
   };
@@ -62,7 +62,7 @@ async function threadWithAnswer(m: Seeded) {
   return { principal, threadId: run.threadId, answerId: view?.messages.at(-1)?.id ?? "" };
 }
 
-const drafting = (reply: (messages: readonly Message[]) => string = () => "x") =>
+const drafting = (reply: (messages: readonly Message[]) => string | Promise<string> = () => "x") =>
   createDrafts(pool, {
     gateway: createGateway({ providers: { anthropic: model(reply) }, recordUsage: async () => {} }),
   });
@@ -105,7 +105,7 @@ describe("drafts", () => {
     const id = created.draft.id;
 
     const saved = await drafts.save(principal, id, "# Memo\n\nThe cap is six months of fees.");
-    const edited = await drafts.edit(principal, id, "Make the cap twelve months.");
+    const edited = await drafts.edit(principal, id, "Make the cap twelve months.", client);
     if (!edited.ok) throw new Error(edited.reason);
     expect(sent).toContain("The cap is six months of fees.");
     expect(sent).toContain("Instruction: Make the cap twelve months.");
@@ -132,6 +132,36 @@ describe("drafts", () => {
       body: "# Memo\n\nThe cap is six months of fees.",
     });
     expect(await drafts.body(principal, id, 3)).toBe("# Memo\n\nThe cap is twelve months of fees.");
+  });
+
+  it("refuses an edit the draft moved past, an empty reply, and parallel saves race-free", async () => {
+    const m = await seedMember(pool);
+    const { principal, threadId } = await threadWithAnswer(m);
+    let late: () => Promise<unknown> = async () => {};
+    const drafts = drafting(() => "");
+    const created = await drafts.create(principal, threadId, { kind: "editor" }, client);
+    if (!created.ok) throw new Error(created.reason);
+    const id = created.draft.id;
+    await drafts.save(principal, id, "Some text.");
+    expect(await drafts.edit(principal, id, "Shorten it.", client)).toEqual({
+      ok: false,
+      reason: "MODEL_UNAVAILABLE",
+    });
+
+    const racing = drafting(async () => {
+      await late();
+      return "Rewritten text.";
+    });
+    late = () => drafts.save(principal, id, "Saved meanwhile.");
+    const stale = await racing.edit(principal, id, "Rewrite.", client);
+    expect(stale.ok || stale.reason).toBe("STALE");
+
+    const saves = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => drafts.save(principal, id, `Parallel ${i}.`)),
+    );
+    expect(saves.every((saved) => saved.ok)).toBe(true);
+    const latest = await drafts.get(principal, id);
+    expect(latest?.versions.map((v) => v.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it("exports Word with the changes since a version as tracked changes", async () => {

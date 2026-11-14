@@ -6,10 +6,19 @@ import type { DraftFailure, DraftResult, Drafts, DraftView } from "./drafts.js";
 
 type Env = { Variables: { principal: Principal } };
 
-const FAILURES: Record<DraftFailure, { status: 403 | 404 | 409 | 503; message: string }> = {
+const FAILURES: Record<DraftFailure, { status: 403 | 404 | 409 | 413 | 503; message: string }> = {
   NOT_FOUND: { status: 404, message: "That draft or thread wasn't found." },
   FORBIDDEN: { status: 403, message: "You can't change this draft." },
-  LIMIT_DRAFTS: { status: 409, message: "A thread can hold 20 drafts. Remove one first." },
+  LIMIT_DRAFTS: {
+    status: 409,
+    message: "A thread can hold 20 drafts. Start a new thread for more.",
+  },
+  STALE: { status: 409, message: "The draft changed while the edit was made. Ask again." },
+  TOO_LONG_TO_EDIT: {
+    status: 409,
+    message: "This draft is too long for the assistant to rewrite in one go. Edit a shorter draft.",
+  },
+  TOO_LARGE: { status: 413, message: "A draft can hold up to 1,000,000 characters." },
   MODEL_UNAVAILABLE: { status: 503, message: "No model could edit just now. Try again shortly." },
 };
 
@@ -109,7 +118,12 @@ export function draftHttp(drafts: Drafts, clientOf: (c: Context) => Client) {
     if (!parsed.success) return invalid(c);
     return respond(
       c,
-      await drafts.edit(c.get("principal"), c.req.param("id"), parsed.data.instruction),
+      await drafts.edit(
+        c.get("principal"),
+        c.req.param("id"),
+        parsed.data.instruction,
+        clientOf(c),
+      ),
       201,
     );
   });
