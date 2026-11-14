@@ -1,5 +1,6 @@
 import type { IngestResult } from "@legallabs/ingest";
 import { createGateway } from "@legallabs/model-gateway";
+import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
@@ -12,13 +13,13 @@ afterAll(() => pool.end());
 
 const CLAUSE = "The supplier accepts liability for direct loss.";
 
-function harness(options: DocumentsOptions = {}) {
+function harness(options: Partial<DocumentsOptions> = {}) {
   const app = createApp({
     auth: createAuth(pool),
-    documents: createDocuments(pool, options),
+    documents: createDocuments(pool, { store: createMemoryStore(), ...options }),
     threads: createThreads(pool, {
       gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
-      documents: createDocuments(pool),
+      documents: createDocuments(pool, { store: createMemoryStore() }),
     }),
     clientIp: () => "203.0.113.9",
   });

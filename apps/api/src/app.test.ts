@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createGateway } from "@legallabs/model-gateway";
+import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
@@ -16,10 +17,10 @@ function harness(ip = "203.0.113.9", webRoot?: string) {
   let time = 1_000_000;
   const app = createApp({
     auth: createAuth(pool),
-    documents: createDocuments(pool),
+    documents: createDocuments(pool, { store: createMemoryStore() }),
     threads: createThreads(pool, {
       gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
-      documents: createDocuments(pool),
+      documents: createDocuments(pool, { store: createMemoryStore() }),
     }),
     clientIp: () => ip,
     now: () => time,

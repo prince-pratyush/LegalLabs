@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
+import { objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
@@ -27,7 +28,19 @@ try {
   process.exit(1);
 }
 
-const documents = createDocuments(pool);
+let store: ReturnType<typeof objectStoreFromEnv>;
+try {
+  store = objectStoreFromEnv(process.env);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+if (!store) {
+  console.error("S3_ENDPOINT is not set");
+  process.exit(1);
+}
+
+const documents = createDocuments(pool, { store });
 const gateway = createGateway({
   ...gatewayOptionsFromEnv(process.env),
   // A no-op: usage goes on the answer's message row, so it is saved or rolled back with it.

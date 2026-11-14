@@ -160,7 +160,7 @@ describe("what the app role can do", () => {
     });
   });
 
-  it("can store an original but not read one back", async () => {
+  it("can't store or read an original", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
       await tx.asOwner();
@@ -175,7 +175,7 @@ describe("what the app role can do", () => {
           "insert into content.document_blob (workspace_id, version_id, bytes) values ($1, $2, '\\x00')",
           [s.acme, versionId],
         ),
-      ).toBeUndefined();
+      ).toMatch(/permission/);
       expect(await tx.error("select bytes from content.document_blob")).toMatch(/permission/);
     });
   });

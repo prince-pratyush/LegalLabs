@@ -18,6 +18,7 @@
     "@legallabs/citations": "workspace:*",
     "@legallabs/db": "workspace:*",
     "@legallabs/ingest": "workspace:*",
+    "@legallabs/storage": "workspace:*",
     "@legallabs/model-gateway": "workspace:*",
     "@node-rs/argon2": "2.2.2",
     "hono": "4.13.17",

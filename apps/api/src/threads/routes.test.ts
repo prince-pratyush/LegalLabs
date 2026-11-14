@@ -1,4 +1,5 @@
 import { createGateway, type ModelProvider } from "@legallabs/model-gateway";
+import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
@@ -17,7 +18,7 @@ const answering = (text: string): ModelProvider => ({
 });
 
 function harness(provider: ModelProvider = answering(ANSWER)) {
-  const documents = createDocuments(pool);
+  const documents = createDocuments(pool, { store: createMemoryStore() });
   const gateway = createGateway({
     providers: { anthropic: provider },
     recordUsage: async () => {},
