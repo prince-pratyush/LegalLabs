@@ -4,6 +4,7 @@ from typing import Any
 from .harnesses.base import Harness
 from .harnesses.bm25 import Bm25Harness
 from .harnesses.cell import ReviewCellHarness
+from .harnesses.legallabs_review_table import LegalLabsReviewTableHarness
 from .harnesses.legallabs_search import LegalLabsSearchHarness
 from .harnesses.legallabs_thread import LegalLabsThreadHarness
 from .harnesses.model import NaiveRagHarness, PlainModelHarness
@@ -21,6 +22,7 @@ HARNESSES: dict[str, type[Harness]] = {
     "bm25": Bm25Harness,
     "legallabs-search": LegalLabsSearchHarness,
     "legallabs-thread": LegalLabsThreadHarness,
+    "legallabs-review-table": LegalLabsReviewTableHarness,
     "model": PlainModelHarness,
     "naive-rag": NaiveRagHarness,
     "review-cell": ReviewCellHarness,

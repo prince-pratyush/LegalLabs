@@ -49,6 +49,14 @@ harness = "naive-rag"
 vendor = "anthropic"
 params = { model = "claude-sonnet-5-5", max_tokens = 2048, top_k = 8 }
 
+# Review tables over HTTP: upload, create a table, add columns, run, read cells back.
+# Same env as above; more than 50 documents need a preloaded vault in LEGALLABS_VAULT_ID.
+[systems.legallabs-review-table]
+harness = "legallabs-review-table"
+vendor = "legallabs"
+vendors = ["legallabs", "ollama"]
+params = { poll_seconds = 2.0, table_timeout_seconds = 7200 }
+
 # The local model, free and offline (Ollama on localhost or OLLAMA_BASE_URL). The
 # window matches the gateway's 4k route, so the cell harness reads what the API would.
 [systems.qwen-plain]
