@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { capLocation, createCapLoader } from "./cap.js";
-import { createCourtListenerLoader } from "./courtlistener.js";
+import { courtListenerUrl, createCourtListenerLoader } from "./courtlistener.js";
 import { createEdgarLoader, pickFilings } from "./edgar.js";
 import { celexParts, createEurLexLoader, readMetadata } from "./eurlex.js";
 import { createHttp, type Http, NotFound, SourceUnavailable } from "./http.js";
@@ -83,7 +83,6 @@ describe("Caselaw Access Project loader", () => {
       citations: [
         { text: "500 U.S. 10", kind: "reporter" },
         { text: "99 S. Ct. 9", kind: "parallel" },
-        { text: "Doe v. Roe", kind: "alias" },
       ],
       chunks: [
         { sectionPath: "Syllabus", text: "Syllabus text." },
@@ -136,10 +135,18 @@ describe("CourtListener loader", () => {
       citations: [
         { text: "590 U.S. 1", kind: "reporter" },
         { text: "140 S. Ct. 1", kind: "parallel" },
-        { text: "Doe v. Roe", kind: "alias" },
       ],
       chunks: [{ sectionPath: "Opinion (majority)", text: "Synthetic opinion." }],
     });
+  });
+});
+
+describe("CourtListener links", () => {
+  it("stays on CourtListener whatever the API sends", () => {
+    expect(courtListenerUrl("/opinion/7/x/")).toBe("https://www.courtlistener.com/opinion/7/x/");
+    for (const odd of ["@evil.example/x", "//evil.example/x", "https://evil.example/"]) {
+      expect(() => courtListenerUrl(odd)).toThrow();
+    }
   });
 });
 
@@ -300,6 +307,43 @@ describe("createHttp", () => {
     await http.json("https://example.org/b");
     expect(agents).toEqual(["Operator ops@example.org", "Operator ops@example.org"]);
     expect(slept.some((ms) => ms > 900)).toBe(true);
+  });
+
+  it("follows a redirect on the same host and refuses one that leaves it", async () => {
+    const hop = (location: string) => new Response(null, { status: 303, headers: { location } });
+    const answers = [hop("/b"), new Response("ok"), hop("http://example.org/c")];
+    const http = createHttp({
+      perSecond: 1000,
+      fetch: async () => answers.shift() ?? response(500),
+    });
+    expect(await http.text("https://example.org/a")).toBe("ok");
+    await expect(http.text("https://example.org/a")).rejects.toBeInstanceOf(SourceUnavailable);
+    const away = createHttp({
+      perSecond: 1000,
+      fetch: async () => hop("https://elsewhere.example/"),
+    });
+    await expect(away.text("https://example.org/a")).rejects.toThrow(/redirected/);
+  });
+
+  it("stops EDGAR after the SEC refuses it", async () => {
+    let calls = 0;
+    const http: Http = {
+      text: async () => "",
+      json: async () => {
+        calls++;
+        throw new SourceUnavailable("data.sec.gov answered 403");
+      },
+    };
+    const loader = createEdgarLoader({
+      companies: [
+        { cik: "1", forms: ["10-K"], limit: 1 },
+        { cik: "2", forms: ["10-K"], limit: 1 },
+      ],
+      userAgent: "Operator ops@example.org",
+      http,
+    });
+    expect(await collect(loader)).toHaveLength(1);
+    expect(calls).toBe(1);
   });
 
   it("turns a 404 into NotFound and refuses bodies over the cap", async () => {

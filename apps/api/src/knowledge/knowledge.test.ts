@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DIMENSIONS, type Embedder } from "@legallabs/embed";
+import { DIMENSIONS, type Embedder, EmbedUnavailable } from "@legallabs/embed";
 import { type AuthorityRecord, createFileLoader, type SourceId, sync } from "@legallabs/knowledge";
 import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -42,10 +42,7 @@ const opinion = (n: number, more: Partial<AuthorityRecord> = {}): AuthorityRecor
   docType: "opinion",
   decidedOn: `20${String(10 + n).padStart(2, "0")}-01-15`,
   url: `https://static.case.law/us/${VOL + n}/cases/0001-01.json`,
-  citations: [
-    { text: cite(n), kind: "reporter" },
-    { text: `Doe ${tag} v. Roe ${n}`, kind: "alias" },
-  ],
+  citations: [{ text: cite(n), kind: "reporter" }],
   firstPage: 1,
   lastPage: 30,
   sections: [],
@@ -245,6 +242,24 @@ describe("writer", () => {
     const second = createKnowledge(pool, { embedder: embedder("m2") }).writer();
     expect(await second.upsert(record)).toBe("updated");
     expect(seen).toHaveLength(4);
+    // A run with no model, or a model that is down, keeps the vectors it found.
+    expect(await knowledge.writer().upsert(record)).toBe("unchanged");
+    const down: Embedder = {
+      model: "m3",
+      embed: async () => {
+        throw new EmbedUnavailable("down");
+      },
+    };
+    expect(await createKnowledge(pool, { embedder: down }).writer().upsert(record)).toBe(
+      "unchanged",
+    );
+    const { rows } = await pool.query<{ n: string }>(
+      `select count(*) as n from knowledge.authority_chunk c
+         join knowledge.authority a on a.id = c.authority_id
+        where a.ref = $1 and c.embedding_model = 'm2'`,
+      [record.ref],
+    );
+    expect(Number(rows[0]?.n)).toBe(2);
   });
 
   it("adds nothing when the same files are loaded twice", async () => {
@@ -262,6 +277,14 @@ describe("writer", () => {
     } finally {
       rmSync(folder, { recursive: true, force: true });
     }
+  });
+
+  it("keeps the loader role away from the API's login", async () => {
+    const { rows } = await pool.query<{ api: boolean; loader: boolean }>(
+      `select pg_has_role('legallabs_api', 'legallabs_knowledge', 'member') as api,
+              pg_has_role('legallabs_loader', 'legallabs_knowledge', 'member') as loader`,
+    );
+    expect(rows[0]).toEqual({ api: false, loader: true });
   });
 
   it("leaves tenants no way to write public law", async () => {
@@ -337,6 +360,13 @@ describe("search", () => {
     const sources = [{ sourceId: "us_caselaw" as const, filter: {} }];
     expect(await knowledge.search(asPrincipal(reader), `widgets ${tag}`, sources)).toBeNull();
     expect(await knowledge.resolve(asPrincipal(reader), { citation: cite(2) })).toBeNull();
+    expect(await knowledge.presets(asPrincipal(reader), "edgar")).toBeNull();
+    const created = await knowledge.createPreset(asPrincipal(reader), "edgar", {
+      name: "x",
+      filter: {},
+      isDefault: false,
+    });
+    expect(created).toEqual({ ok: false, reason: "FORBIDDEN" });
   });
 });
 

@@ -65,11 +65,11 @@ export function capRecord(found: CapCase, url: string): AuthorityRecord {
   }
   const first = page(found.first_page);
   const last = page(found.last_page);
-  const citations = found.citations.flatMap((c) => {
+  const citations: { text: string; kind: CitationKind }[] = found.citations.flatMap((c) => {
     const kind = KINDS[c.type];
     return kind === undefined ? [] : [{ text: c.cite, kind }];
   });
-  citations.push({ text: found.name_abbreviation.slice(0, 500), kind: "alias" });
+  // Case names are not indexed: a bare "Doe v. Roe" is too loose to verify and link.
   return {
     ref: `us_caselaw:cap:${found.id}`,
     title: found.name_abbreviation.slice(0, 1000),

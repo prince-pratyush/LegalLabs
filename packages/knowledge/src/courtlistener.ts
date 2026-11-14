@@ -34,6 +34,7 @@ export interface CourtListenerOptions {
   cites: readonly string[];
   /** The deployment's own free API token; CourtListener refuses anonymous API calls. */
   token: string;
+  userAgent?: string | undefined;
   http?: Http;
 }
 
@@ -42,7 +43,11 @@ export function createCourtListenerLoader(options: CourtListenerOptions): Loader
   // The free tier allows 5,000 requests an hour; one a second stays well inside it.
   const http =
     options.http ??
-    createHttp({ perSecond: 1, headers: { authorization: `Token ${options.token}` } });
+    createHttp({
+      perSecond: 1,
+      userAgent: options.userAgent,
+      headers: { authorization: `Token ${options.token}` },
+    });
   return {
     source: "us_caselaw",
     async *records() {
@@ -72,6 +77,12 @@ async function fetchCluster(http: Http, cite: string): Promise<AuthorityRecord> 
   return clusterRecord(found, chunks);
 }
 
+/** Only a path on CourtListener itself, so an odd API value can't send readers elsewhere. */
+export function courtListenerUrl(path: string): string {
+  if (!/^\/[\w\-/]*$/.test(path)) throw new Error("unexpected CourtListener URL");
+  return new URL(path, "https://www.courtlistener.com").href;
+}
+
 export function clusterRecord(found: Cluster, chunks: Chunk[]): AuthorityRecord {
   const [official, ...parallel] = found.citation;
   return {
@@ -83,11 +94,10 @@ export function clusterRecord(found: Cluster, chunks: Chunk[]): AuthorityRecord 
     ...(found.dateFiled && /^\d{4}-\d{2}-\d{2}$/.test(found.dateFiled)
       ? { decidedOn: found.dateFiled }
       : {}),
-    url: `https://www.courtlistener.com${found.absolute_url}`,
+    url: courtListenerUrl(found.absolute_url),
     citations: [
       ...(official ? [{ text: official, kind: "reporter" as const }] : []),
       ...parallel.map((text) => ({ text, kind: "parallel" as const })),
-      { text: found.caseName.slice(0, 500), kind: "alias" as const },
     ],
     sections: [],
     meta: {
