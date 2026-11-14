@@ -90,6 +90,8 @@ export function HistoryTable({
   onOpen,
   onFavourite,
   onStart,
+  filters: controlled,
+  onFiltersChange,
   loading = false,
   now = new Date(),
   className,
@@ -99,17 +101,29 @@ export function HistoryTable({
   onFavourite: (row: HistoryRow) => void;
   /** The empty state's action, so a new workspace isn't a dead end. */
   onStart: () => void;
+  /**
+   * Hand filtering to the caller, e.g. to search on the server. The rows are
+   * then shown as given, since the caller has already filtered them.
+   */
+  filters?: HistoryFilters;
+  onFiltersChange?: (filters: HistoryFilters) => void;
   loading?: boolean;
   now?: Date;
   className?: string;
 }) {
-  const [filters, setFilters] = useState<HistoryFilters>(NO_FILTERS);
+  const [own, setOwn] = useState<HistoryFilters>(NO_FILTERS);
+  const filters = controlled ?? own;
+  const setFilters = onFiltersChange ?? setOwn;
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const favouritesId = useId();
   const set = <K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]) =>
-    setFilters((current) => ({ ...current, [key]: value }));
+    setFilters({ ...filters, [key]: value });
 
-  const filtered = useMemo(() => filterRows(rows, filters, now), [rows, filters, now]);
+  const serverSide = onFiltersChange !== undefined;
+  const filtered = useMemo(
+    () => (serverSide ? [...rows] : filterRows(rows, filters, now)),
+    [serverSide, rows, filters, now],
+  );
   const groups = useMemo(() => groupRows(filtered, groupBy, now), [filtered, groupBy, now]);
   const filtering = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
 
