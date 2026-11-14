@@ -13,6 +13,8 @@ import { assertRestrictedRole } from "./database-role.js";
 import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createThreads } from "./threads/threads.js";
+import { createRetentionJob } from "./vaults/retention.js";
+import { createVaults } from "./vaults/vaults.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -62,9 +64,14 @@ const worker = createIngestWorker(pool, {
   log: (line) => console.log(line),
 });
 worker.start();
+const retention = createRetentionJob(pool, { store, log: (line) => console.log(line) });
+retention.start();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   // A job cut off mid-read is picked up again once its lease runs out.
-  process.once(signal, () => void worker.stop().finally(() => process.exit(0)));
+  process.once(
+    signal,
+    () => void Promise.all([worker.stop(), retention.stop()]).finally(() => process.exit(0)),
+  );
 }
 const gateway = createGateway({
   ...gatewayOptionsFromEnv(process.env),
@@ -79,6 +86,7 @@ const app = createApp({
   auth: createAuth(pool),
   documents,
   threads: createThreads(pool, { gateway, documents }),
+  vaults: createVaults(pool, { documents, store }),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
