@@ -4,6 +4,7 @@ import type { IngestResult } from "./process.js";
 export { boxesFor } from "./boxes.js";
 export type { Chunk } from "./chunk.js";
 export type { Block, Failure, Ingested, IngestResult, Page } from "./process.js";
+export { detectType } from "./process.js";
 
 const LIMITS = { timeoutMs: 60_000, maxMemoryMb: 256, maxGrowthMb: 1024 };
 
