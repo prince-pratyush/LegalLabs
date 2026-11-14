@@ -247,7 +247,9 @@ def test_maud_plain_and_cited(maud_file: Path, tmp_path: Path) -> None:
     }
     system = {"harness": "model", "vendor": "ollama", "params": {"model": "qwen3:4b-instruct"}}
     harness = PlainModelHarness("p", system, send=recorded([plain_replies[c] for c in order]))
-    summary = Runner("p", system, harness, suite, tmp_path / "a", retry_delay=0).run()
+    summary = Runner(
+        "p", system, harness, suite, tmp_path / "a", concurrency=1, retry_delay=0
+    ).run()
     assert summary["failed_as_zero"] == 0.5
     assert summary["report"]["valid_citation_rate"] == 0.5
 
@@ -260,7 +262,9 @@ def test_maud_plain_and_cited(maud_file: Path, tmp_path: Path) -> None:
         "params": {"model": "qwen3:4b-instruct"},
     }
     harness = ReviewCellHarness("c", system, send=recorded([cited[c] for c in order]))
-    summary = Runner("c", system, harness, suite, tmp_path / "b", retry_delay=0).run()
+    summary = Runner(
+        "c", system, harness, suite, tmp_path / "b", concurrency=1, retry_delay=0
+    ).run()
     assert summary["failed_as_zero"] == 1.0
     assert summary["report"]["valid_citation_rate"] == 1.0
     assert by_contract["c2"].answer == "All Stock"
