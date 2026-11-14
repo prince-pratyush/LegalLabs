@@ -14,6 +14,7 @@ import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
 import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
+import { createDrafts } from "./drafts/drafts.js";
 import { createRunLog } from "./runs/log.js";
 import { noKnowledge, noVaults } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
@@ -104,6 +105,7 @@ const app = createApp({
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
   viewer: createViewer(pool, store, documents),
+  drafts: createDrafts(pool, { gateway }),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });

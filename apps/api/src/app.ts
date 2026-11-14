@@ -10,6 +10,8 @@ import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
 import type { Viewer } from "./documents/viewer.js";
 import { viewerRoutes } from "./documents/viewer-routes.js";
+import type { Drafts } from "./drafts/drafts.js";
+import { draftHttp } from "./drafts/http.js";
 import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 
 const COOKIE = "sid";
@@ -39,6 +41,7 @@ export interface AppOptions {
   threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
   /** Pages and files for the document viewer. */
   viewer?: Viewer;
+  drafts: Drafts;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -51,6 +54,7 @@ export function createApp({
   documents,
   threads,
   viewer,
+  drafts,
   clientIp,
   now = Date.now,
   webRoot,
@@ -149,6 +153,7 @@ export function createApp({
   if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
+  app.route("/api/v1", draftHttp(drafts, clientOf));
   if (webRoot) {
     // A deep link to a document loads the app, which then opens the viewer.
     app.get("/documents/*", serveStatic({ root: webRoot, path: "index.html" }));

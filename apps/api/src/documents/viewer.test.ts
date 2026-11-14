@@ -1,8 +1,10 @@
 import { RenderManifest } from "@legallabs/contracts";
 import { makePdf } from "@legallabs/ingest/testing";
+import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
+import { createDrafts } from "../drafts/drafts.js";
 import {
   auditTrail,
   PASSWORD,
@@ -26,6 +28,9 @@ function harness() {
     auth: createAuth(pool),
     documents,
     threads: testThreads(pool, documents),
+    drafts: createDrafts(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+    }),
     viewer: createViewer(pool, documents.store, documents),
     clientIp: () => "203.0.113.9",
   });
