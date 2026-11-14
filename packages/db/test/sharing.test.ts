@@ -22,6 +22,9 @@ const grant = `insert into core.share_grant
   (workspace_id, object_type, object_id, principal_type, principal_id, level, granted_by, expires_at, suspended_reason)
   values ($1, 'thread', $2, $3, $4, $5, $6, $7, $8)`;
 
+// Threads are shared only through work.share_thread, so direct writes use a vault.
+const vaultGrant = grant.replace("'thread'", "'vault'");
+
 describe("has_access", () => {
   it("gives a group's members the level shared with the group, and no higher", async () => {
     await withTx(async (tx) => {
@@ -97,11 +100,11 @@ describe("share_grant under row-level security", () => {
       const s = await seed(tx);
       await tx.as(s.ben, s.acme);
       const t5 = (await tx.one<{ id: string }>("select core.uuid7() as id")).id;
-      expect(await tx.error(grant, [s.acme, t5, "user", s.cal, "view", s.ana, null, null])).toMatch(
-        /row-level security/,
-      );
       expect(
-        await tx.error(grant, [s.acme, t5, "user", s.cal, "view", s.ben, null, null]),
+        await tx.error(vaultGrant, [s.acme, t5, "user", s.cal, "view", s.ana, null, null]),
+      ).toMatch(/row-level security/);
+      expect(
+        await tx.error(vaultGrant, [s.acme, t5, "user", s.cal, "view", s.ben, null, null]),
       ).toBeUndefined();
     });
   });
