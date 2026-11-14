@@ -222,7 +222,7 @@ class Runner:
             "failed_excluded": round(total / completed, 6) if completed else 0.0,
             "metrics_failed_excluded": {k: round(v, 6) for k, v in metrics.items()},
             "metric_counts": counts,
-            "report": self.suite.report(results, selected),
+            "report": self.suite.report(results, tasks),
             "cost": ledger(self.run_dir),
             "finished_at": _now(),
         }
