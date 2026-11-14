@@ -39,6 +39,7 @@ export function AppShell({
     "mod+b": () => setSidebarOpen((open) => !open),
   };
   if (onTogglePanel) bindings["mod+/"] = onTogglePanel;
+  if (onTogglePanel && panel) bindings.escape = onTogglePanel;
   for (const command of commands) if (command.shortcut) bindings[command.shortcut] = command.run;
   useHotkeys(bindings, palette === null);
 
