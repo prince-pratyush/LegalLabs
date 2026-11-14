@@ -8,8 +8,7 @@ import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
-import { threadRoutes } from "./threads/routes.js";
-import type { Threads } from "./threads/threads.js";
+import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -35,7 +34,7 @@ const loginBody = z.object({
 export interface AppOptions {
   auth: Auth;
   documents: Documents;
-  threads: Threads;
+  threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -143,7 +142,7 @@ export function createApp({
   });
 
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
-  app.route("/api/v1/threads", threadRoutes(threads, clientOf, now));
+  app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
   if (webRoot) app.get("*", serveStatic({ root: webRoot }));
 
   return app;

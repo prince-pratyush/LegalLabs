@@ -12,6 +12,8 @@ import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
+import { createRunLog } from "./runs/log.js";
+import { noKnowledge, noVaults } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -75,10 +77,23 @@ const gateway = createGateway({
 // The web app's build, when present, so the demo runs from one server on one origin.
 const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
+const log = createRunLog(pool);
+// Stubs until the vault and knowledge work lands; both plug in through the same ports.
+const vaults = noVaults;
+const knowledge = noKnowledge;
+const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
+
 const app = createApp({
   auth: createAuth(pool),
   documents,
-  threads: createThreads(pool, { gateway, documents }),
+  threads: {
+    threads: createThreads(pool, { gateway, documents, log, vaults, knowledge }),
+    log,
+    gateway,
+    vaults,
+    knowledge,
+    ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
+  },
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
