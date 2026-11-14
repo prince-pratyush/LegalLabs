@@ -223,9 +223,14 @@ describe("the web page", () => {
 
   it("answers a document link with the app, which then opens the viewer", async () => {
     const h = harness("203.0.113.9", root);
-    const res = await h.app.request("/documents/01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f?page=2");
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain("<title>LegalLabs</title>");
+    for (const link of [
+      "/documents/01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f?page=2",
+      "/d/01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f/v/1?p=2",
+    ]) {
+      const res = await h.app.request(link);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("<title>LegalLabs</title>");
+    }
   });
 
   it("doesn't hand out files outside its folder", async () => {
