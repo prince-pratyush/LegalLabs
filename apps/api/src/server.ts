@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
+import { embedderFromEnv, rerankerFromEnv } from "@legallabs/embed";
 import { createIngest, type Scanner, scannerFromEnv } from "@legallabs/ingest";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
@@ -38,7 +39,13 @@ try {
   process.exit(1);
 }
 
-const documents = createDocuments(pool, { store });
+// Optional: without a model server, search is keywords only.
+const embedder = embedderFromEnv(process.env);
+const documents = createDocuments(pool, {
+  store,
+  embedder,
+  reranker: rerankerFromEnv(process.env),
+});
 let scanner: Scanner;
 try {
   scanner = scannerFromEnv(process.env);
@@ -50,6 +57,7 @@ try {
 const worker = createIngestWorker(pool, {
   store,
   scanner,
+  embedder,
   ingest: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
   log: (line) => console.log(line),
 });

@@ -30,6 +30,7 @@ const FAILURES: Record<string, string> = {
   FORBIDDEN: "You no longer have access to this file.",
   MALWARE_FOUND: "The file was blocked because it may be harmful.",
   SCAN_UNAVAILABLE: "The file couldn't be checked for malware. Try again later.",
+  EMBED_UNAVAILABLE: "The file couldn't be indexed for search. Try again later.",
 };
 
 /** What the list says about a file while, or after, it is read. */
