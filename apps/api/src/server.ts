@@ -15,8 +15,9 @@ import { createDocuments } from "./documents/documents.js";
 import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
+import { createKnowledge } from "./knowledge/knowledge.js";
+import { knowledgePort } from "./knowledge/port.js";
 import { createRunLog } from "./runs/log.js";
-import { noKnowledge } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
 import { createRetentionJob } from "./vaults/retention.js";
@@ -96,9 +97,9 @@ const orphaned = await asWorker(pool, async (db) => {
   return rows[0]?.n ?? 0;
 });
 if (orphaned > 0) console.log(`marked ${orphaned} unfinished runs as failed`);
-// Stubs until the vault and knowledge work lands; both plug in through the same ports.
 const vaults = createVaultPort(pool);
-const knowledge = noKnowledge;
+const knowledgeStore = createKnowledge(pool, { embedder });
+const knowledge = knowledgePort(knowledgeStore);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
 const app = createApp({
@@ -115,6 +116,7 @@ const app = createApp({
   },
   viewer: createViewer(pool, store, documents),
   drafts: createDrafts(pool, { gateway }),
+  knowledge: knowledgeStore,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });

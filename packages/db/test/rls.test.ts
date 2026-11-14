@@ -8,6 +8,9 @@ const appTables = `
    and n.nspname not in ('pg_catalog', 'information_schema', 'public', 'drizzle')
    and n.nspname not like 'pg_%'`;
 
+// Public law shared by all workspaces is marked, and is tested below as read-only instead.
+const notShared = "and coalesce(obj_description(c.oid, 'pg_class'), '') <> 'legallabs:shared'";
+
 // Every table in an application schema, so a new table is covered the moment it exists.
 async function tables(
   tx: Tx,
@@ -16,7 +19,7 @@ async function tables(
     `select n.nspname as schema, c.relname as table,
             case when (n.nspname, c.relname) = ('core', 'workspace') then 'id' else 'workspace_id' end as tenant,
             has_table_privilege('legallabs_app', c.oid, 'select') as readable
-     ${appTables} and not c.relispartition order by 1, 2`,
+     ${appTables} ${notShared} and not c.relispartition order by 1, 2`,
   );
 }
 
@@ -61,6 +64,27 @@ describe("row-level security coverage", () => {
         if (col.length === 0) missing.push(`${t.schema}.${t.table}`);
       }
       expect(missing).toEqual([]);
+    });
+  });
+
+  it("lets the app only read shared tables, and only as a member", async () => {
+    await withTx(async (tx) => {
+      const shared = await tx.rows<{ name: string; writable: boolean }>(
+        `select n.nspname || '.' || c.relname as name,
+                has_table_privilege('legallabs_app', c.oid, 'insert, update, delete, truncate')
+                  as writable
+           ${appTables} and obj_description(c.oid, 'pg_class') = 'legallabs:shared'
+          order by 1`,
+      );
+      expect(shared.length).toBeGreaterThan(0);
+      expect(shared.filter((t) => t.writable)).toEqual([]);
+      await tx.rows(
+        `insert into knowledge.authority (ref, source, title, content_hash)
+         values ('us_caselaw:cap:1', 'us_caselaw', 'A v. B', repeat('0', 64))`,
+      );
+      await tx.as(null, null);
+      const { count } = await tx.one<{ count: string }>("select count(*) from knowledge.authority");
+      expect(Number(count)).toBe(0);
     });
   });
 

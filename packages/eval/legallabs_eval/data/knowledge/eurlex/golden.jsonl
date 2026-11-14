@@ -1,0 +1,16 @@
+{"query": "lawful bases for processing personal data such as consent or legitimate interests", "relevant": [{"cite": "CELEX:32016R0679"}], "notes": "GDPR Art 6"}
+{"query": "right of a data subject to have personal data erased", "relevant": [{"cite": "CELEX:32016R0679"}, {"cite": "CELEX:62012CJ0131"}], "notes": "erasure"}
+{"query": "administrative fines of up to 4 percent of worldwide annual turnover", "relevant": [{"cite": "CELEX:32016R0679"}], "notes": "GDPR Art 83"}
+{"query": "search engine operator responsible for processing personal data on third-party web pages and delisting", "relevant": [{"cite": "CELEX:62012CJ0131"}], "notes": "right to be forgotten"}
+{"query": "validity of the Safe Harbour decision on transfers of personal data to the United States", "relevant": [{"cite": "CELEX:62014CJ0362"}], "notes": "Schrems I"}
+{"query": "standard contractual clauses and the EU-US Privacy Shield", "relevant": [{"cite": "CELEX:62018CJ0311"}], "notes": "Schrems II"}
+{"query": "storing information or gaining access to information in a user's terminal equipment, such as cookies", "relevant": [{"cite": "CELEX:32002L0058"}], "notes": "ePrivacy Art 5(3)"}
+{"query": "liability exemption for hosting services that store information provided by a recipient of the service", "relevant": [{"cite": "CELEX:32000L0031"}, {"cite": "CELEX:32022R2065"}], "notes": "hosting safe harbour"}
+{"query": "consumer right to withdraw from a distance contract within 14 days", "relevant": [{"cite": "CELEX:32011L0083"}], "notes": "withdrawal"}
+{"query": "exception for text and data mining for scientific research", "relevant": [{"cite": "CELEX:32019L0790"}], "notes": "TDM"}
+{"query": "online content-sharing service providers liable for copyright content uploaded by users", "relevant": [{"cite": "CELEX:32019L0790"}], "notes": "Art 17"}
+{"query": "law applicable to a contract where the parties have not chosen the law", "relevant": [{"cite": "CELEX:32008R0593"}], "notes": "Rome I Art 4"}
+{"query": "persons domiciled in a Member State shall be sued in the courts of that Member State", "relevant": [{"cite": "CELEX:32012R1215"}], "notes": "Brussels Ia Art 4"}
+{"query": "obligations of very large online platforms to assess systemic risks", "relevant": [{"cite": "CELEX:32022R2065"}], "notes": "DSA"}
+{"query": "designation of gatekeepers that provide core platform services", "relevant": [{"cite": "CELEX:32022R1925"}], "notes": "DMA"}
+{"query": "1995 directive on protection of individuals with regard to processing of personal data", "relevant": [{"cite": "CELEX:31995L0046"}], "notes": "old directive"}
