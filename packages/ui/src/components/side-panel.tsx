@@ -126,7 +126,7 @@ export function SidePanel({
       }}
       style={{ width: clampWidth(width) }}
       className={cn(
-        "relative flex h-full max-w-full flex-col border-l border-border bg-bg-subtle text-fg data-[motion=on]:animate-slide-in",
+        "relative flex h-full max-w-full flex-col border-l border-border bg-bg-subtle text-fg animate-slide-in",
         className,
       )}
     >
