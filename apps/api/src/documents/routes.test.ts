@@ -1,5 +1,4 @@
 import { ingestFile } from "@legallabs/ingest";
-import { createGateway } from "@legallabs/model-gateway";
 import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
@@ -11,8 +10,8 @@ import {
   seedMember,
   testDocuments,
   testPool,
+  testThreads,
 } from "../test-db.js";
-import { createThreads } from "../threads/threads.js";
 import type { IngestWorkerOptions } from "./worker.js";
 
 const pool = testPool();
@@ -25,10 +24,7 @@ function harness(options: Partial<IngestWorkerOptions> = {}) {
   const app = createApp({
     auth: createAuth(pool),
     documents,
-    threads: createThreads(pool, {
-      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
-      documents: testDocuments(pool),
-    }),
+    threads: testThreads(pool, testDocuments(pool)),
     clientIp: () => "203.0.113.9",
   });
   const signIn = async (m: Seeded) => {

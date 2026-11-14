@@ -242,7 +242,21 @@ export async function seed(tx: Tx) {
        values ($1, $2, 0, 22, $3, 1, 'accepts liability', 13, 30, 'ok')`,
       [ws, messageId, versionId],
     );
-    return { threadId, messageId };
+    const runId = await id(
+      `insert into work.run (workspace_id, thread_id, owner_id, kind, status, question_id, answer_id)
+       values ($1, $2, $3, 'thread', 'done', $4, $4) returning id`,
+      [ws, threadId, owner, messageId],
+    );
+    await tx.rows(
+      `insert into work.run_event (workspace_id, run_id, seq, type, data)
+       values ($1, $2, 1, 'status', '{"status":"done"}')`,
+      [ws, runId],
+    );
+    await tx.rows(
+      "insert into work.thread_favourite (workspace_id, thread_id, user_id) values ($1, $2, $3)",
+      [ws, threadId, owner],
+    );
+    return { threadId, messageId, runId };
   };
   const threads = {
     acme: await thread(acme, ana, documents.acme.versionId),
