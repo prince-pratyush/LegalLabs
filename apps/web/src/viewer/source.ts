@@ -20,6 +20,7 @@ const field = (body: unknown, name: string) => (body as Record<string, unknown> 
 /** The viewer's data for one version, checked against the contract as it arrives. */
 export function apiSource(documentId: string, versionId: string): ViewerSource {
   return {
+    file: viewerPaths.file(documentId, versionId),
     manifest: async () =>
       RenderManifest.parse(await getJson(viewerPaths.manifest(documentId, versionId))),
     pages: async (from, to) =>

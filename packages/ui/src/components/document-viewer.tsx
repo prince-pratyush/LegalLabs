@@ -32,6 +32,11 @@ export interface ViewerSource {
   manifest(): Promise<RenderManifest>;
   pages(from: number, to: number): Promise<PageLayout[]>;
   search(query: string): Promise<DocumentHit[]>;
+  /**
+   * The original file, when known before the manifest. The viewer starts opening it at
+   * once, in parallel with the manifest; if the document isn't a PDF the request just fails.
+   */
+  file?: string;
 }
 
 export interface ViewerTarget {
@@ -166,6 +171,31 @@ export function DocumentViewer({
     };
   }, [source]);
 
+  const manifestFile = load.state === "ready" ? load.manifest.file_url : null;
+  const fileUrl = source.file ?? manifestFile;
+  const [pdf, setPdf] = useState<{ doc: PdfDocument | null; failed: boolean }>({
+    doc: null,
+    failed: false,
+  });
+  useEffect(() => {
+    if (!fileUrl) return;
+    let doc: PdfDocument | null = null;
+    let live = true;
+    setPdf({ doc: null, failed: false });
+    loadPdf(fileUrl).then(
+      (loaded) => {
+        doc = loaded;
+        if (live) setPdf({ doc: loaded, failed: false });
+        else loaded.destroy();
+      },
+      () => live && setPdf({ doc: null, failed: true }),
+    );
+    return () => {
+      live = false;
+      doc?.destroy();
+    };
+  }, [fileUrl, loadPdf]);
+
   if (load.state === "loading") return <ViewerSkeleton />;
   if (load.state === "error") {
     return (
@@ -202,7 +232,8 @@ export function DocumentViewer({
       onClose={onClose}
       onOpenAttachment={onOpenAttachment}
       origin={origin}
-      loadPdf={loadPdf}
+      pdf={pdf.doc}
+      pdfFailed={pdf.failed}
     />
   );
 }
@@ -265,7 +296,8 @@ type LoadedProps = Omit<DocumentViewerProps, "anchors" | "index" | "loadPdf"> & 
   manifest: RenderManifest;
   anchors: readonly Anchor[];
   index: number;
-  loadPdf: PdfLoader;
+  pdf: PdfDocument | null;
+  pdfFailed: boolean;
 };
 
 function LoadedViewer({
@@ -278,7 +310,8 @@ function LoadedViewer({
   onClose,
   onOpenAttachment,
   origin,
-  loadPdf,
+  pdf,
+  pdfFailed,
 }: LoadedProps) {
   const count = manifest.pages.length;
   const kind = manifest.render;
@@ -300,8 +333,6 @@ function LoadedViewer({
   const [hits, setHits] = useState<readonly DocumentHit[]>([]);
   const [hitIndex, setHitIndex] = useState(-1);
   const [searching, setSearching] = useState(false);
-  const [pdf, setPdf] = useState<PdfDocument | null>(null);
-  const [pdfFailed, setPdfFailed] = useState(false);
 
   useLayoutEffect(() => {
     const element = scroller.current;
@@ -314,24 +345,6 @@ function LoadedViewer({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    if (kind !== "pdf" || !manifest.file_url) return;
-    let doc: PdfDocument | null = null;
-    let live = true;
-    loadPdf(manifest.file_url).then(
-      (loaded) => {
-        doc = loaded;
-        if (live) setPdf(loaded);
-        else loaded.destroy();
-      },
-      () => live && setPdfFailed(true),
-    );
-    return () => {
-      live = false;
-      doc?.destroy();
-    };
-  }, [kind, manifest.file_url, loadPdf]);
 
   // Fits the widest page to the pane until the user zooms.
   const widest = Math.max(1, ...manifest.pages.map((p) => p.width));
