@@ -9,6 +9,14 @@ export {
   type Run,
   type TextRun,
 } from "./markdown.js";
+export {
+  buildPdf,
+  DEFAULT_LOOK,
+  listLabel,
+  type PageLook,
+  type PdfInput,
+  pageLook,
+} from "./pdf.js";
 export { type SampleTemplateOptions, sampleFirmTemplate } from "./sample.js";
 export {
   CONTENT_MARK,
