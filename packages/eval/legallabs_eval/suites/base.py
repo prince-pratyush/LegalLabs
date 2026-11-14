@@ -29,6 +29,10 @@ class Suite:
     def make_grader(self, system_vendors: frozenset[str]) -> Grader:
         raise NotImplementedError
 
+    def report(self, results: list[dict[str, Any]], selected: int) -> dict[str, Any]:
+        """Suite-specific totals beyond the averages, such as rates with intervals and gates."""
+        return {}
+
 
 def limited(tasks: list[TaskDatum], limit: int | None) -> list[TaskDatum]:
     return tasks[:limit] if limit else tasks
