@@ -2,6 +2,7 @@ export { AuditAction, AuditActorType, auditActions } from "./audit.js";
 export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
 export { RetrievalScope } from "./retrieval.js";
+export * from "./review-table.js";
 export {
   CitationCounts,
   CitationEvent,

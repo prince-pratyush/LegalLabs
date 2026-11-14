@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CellUpdatedData, ColumnProgressData } from "./review-table.js";
 import { ResponseMode } from "./thread.js";
 
 export const RunStatus = z.enum([
@@ -13,7 +14,7 @@ export const RunStatus = z.enum([
 ]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
-export const RunKind = z.enum(["thread", "deep_analysis"]);
+export const RunKind = z.enum(["thread", "deep_analysis", "rt_column"]);
 export type RunKind = z.infer<typeof RunKind>;
 
 export const CitationVerdict = z.enum(["ok", "mismatch", "unresolved"]);
@@ -119,6 +120,9 @@ export const RunEvent = z.discriminatedUnion("type", [
     duration_ms: z.number().int(),
   }),
   event("error", { code: z.string(), message: z.string(), retryable: z.boolean() }),
+  // Review-table column runs report per cell, then per column.
+  event("cell.updated", CellUpdatedData.shape),
+  event("column.progress", ColumnProgressData.shape),
 ]);
 export type RunEvent = z.infer<typeof RunEvent>;
 export type RunEventType = RunEvent["type"];
