@@ -28,6 +28,8 @@ import {
   type ThreadSummary,
 } from "./api.js";
 import { documentStatus, segments } from "./text.js";
+import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
+import { anchorOf, openCitation, useLocation } from "./viewer/open-citation.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 
@@ -41,11 +43,19 @@ export function App() {
       () => setSignedIn(false),
     );
   }, []);
+  const location = useLocation();
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
-  return signedIn ? (
-    <Workspace onSignedOut={() => setSignedIn(false)} />
-  ) : (
-    <SignIn onSignedIn={() => setSignedIn(true)} />
+  if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
+  return (
+    <>
+      <Workspace onSignedOut={() => setSignedIn(false)} />
+      {/* Over the workspace, not instead of it, so closing returns to the same answer. */}
+      {isDocumentHref(location.href) ? (
+        <div className="fixed inset-0 z-40 bg-bg">
+          <DocumentPage href={location.href} state={location.state} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -529,6 +539,22 @@ function Sources({ message, onHide }: { message: Message | null; onHide: () => v
                     </span>
                   </p>
                   <q className="italic">{citation.quote ?? "No quote given"}</q>
+                  {anchorOf(citation) ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="justify-self-start"
+                      onClick={(event) => {
+                        const anchor = anchorOf(citation);
+                        const context = citations.map(anchorOf).filter((a) => a !== null);
+                        if (anchor) {
+                          openCitation(anchor, { context, newTab: event.metaKey || event.ctrlKey });
+                        }
+                      }}
+                    >
+                      Open in document
+                    </Button>
+                  ) : null}
                   <p>
                     <StatusText tone={ok ? "verified" : "flagged"}>{status.label}</StatusText>
                     <span className="text-fg-muted">{` ${status.detail}`}</span>
