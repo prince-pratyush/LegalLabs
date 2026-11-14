@@ -8,7 +8,7 @@ import {
   type Thread,
   type ThreadSummary,
 } from "./api.js";
-import { segments } from "./text.js";
+import { documentStatus, segments } from "./text.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 
@@ -128,6 +128,16 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
     refreshThreads();
   }, [refreshThreads]);
 
+  // Files are read in the background, so the list is refreshed until none are waiting.
+  const reading = documents.some((d) => d.status === "queued" || d.status === "parsing");
+  useEffect(() => {
+    if (!reading) return;
+    const timer = setInterval(() => {
+      api.documents().then(setDocuments, (err) => setError(messageOf(err)));
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [reading]);
+
   useEffect(() => {
     if (focus) document.getElementById(focus)?.focus();
   }, [focus]);
@@ -168,7 +178,6 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
     try {
       const added = await api.upload(file);
       setDocuments((current) => [added, ...current]);
-      setChosen((current) => new Set([...current, added.id]));
     } catch (err) {
       setError(messageOf(err));
     } finally {
@@ -239,12 +248,12 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
                     <input
                       type="checkbox"
                       checked={chosen.has(document.id)}
-                      disabled={thread !== null}
+                      disabled={thread !== null || document.status !== "indexed"}
                       onChange={() => toggle(document.id)}
                     />
                     <span className="name">{document.name}</span>
-                    <span className="muted">
-                      {document.page_count === 1 ? "1 page" : `${document.page_count} pages`}
+                    <span className={document.status === "failed" ? "warning" : "muted"}>
+                      {documentStatus(document)}
                     </span>
                     {document.empty_page_count > 0 && (
                       <span className="warning">
