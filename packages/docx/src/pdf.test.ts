@@ -11,7 +11,7 @@ const DATE = "2026-11-15T01:02:03Z";
 function drawnText(bytes: Uint8Array): string {
   const raw = strFromU8(bytes, true);
   const out: string[] = [];
-  for (const m of raw.matchAll(/\/Filter \/FlateDecode[^]*?stream\r?\n/g)) {
+  for (const m of raw.matchAll(/\/Filter \/FlateDecode[\s\S]*?stream\r?\n/g)) {
     const start = (m.index ?? 0) + m[0].length;
     const end = raw.indexOf("endstream", start);
     const body = Uint8Array.from(raw.slice(start, end), (c) => c.charCodeAt(0));
