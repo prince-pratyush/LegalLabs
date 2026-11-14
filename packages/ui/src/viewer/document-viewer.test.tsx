@@ -125,7 +125,7 @@ describe("DocumentViewer", () => {
     await screen.findByText(`Cited text: ${LIABILITY}`);
     await userEvent.type(screen.getByLabelText("Search in document"), "9.2 Limitation{Enter}");
     expect(await screen.findByText("1 of 1")).toBeTruthy();
-    expect(screen.getByText("1 matches")).toBeTruthy();
+    expect(screen.getByText("1 match")).toBeTruthy();
   });
 
   it("outlines a cited cell and shows its formula", async () => {

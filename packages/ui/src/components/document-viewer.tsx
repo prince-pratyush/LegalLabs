@@ -454,7 +454,9 @@ function LoadedViewer({
       const found = await source.search(q);
       setHits(found);
       setHitIndex(found.length ? 0 : -1);
-      setAnnounce(found.length ? `${found.length} matches` : "No matches");
+      setAnnounce(
+        found.length === 1 ? "1 match" : found.length ? `${found.length} matches` : "No matches",
+      );
       if (found[0]) goTo(found[0].page);
     } catch {
       setAnnounce("Search failed. Try again.");
