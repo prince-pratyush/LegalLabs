@@ -10,6 +10,8 @@ import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
 import { threadRoutes } from "./threads/routes.js";
 import type { Threads } from "./threads/threads.js";
+import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
+import type { Vaults } from "./vaults/vaults.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -36,6 +38,8 @@ export interface AppOptions {
   auth: Auth;
   documents: Documents;
   threads: Threads;
+  /** Optional, so harnesses that don't touch vaults needn't build one. */
+  vaults?: Vaults;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -47,6 +51,7 @@ export function createApp({
   auth,
   documents,
   threads,
+  vaults,
   clientIp,
   now = Date.now,
   webRoot,
@@ -144,6 +149,10 @@ export function createApp({
 
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   app.route("/api/v1/threads", threadRoutes(threads, clientOf, now));
+  if (vaults) {
+    app.route("/api/v1/vaults", vaultRoutes(vaults, clientOf));
+    app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
+  }
   if (webRoot) app.get("*", serveStatic({ root: webRoot }));
 
   return app;
