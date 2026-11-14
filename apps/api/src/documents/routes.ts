@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import {
   type Documents,
+  MAX_FILE_BYTES,
   MAX_PASSAGES,
   type Passage,
   type Summary,
@@ -11,7 +12,7 @@ import {
 } from "./documents.js";
 
 // A multipart body is a little larger than the file inside it.
-const MAX_BODY_BYTES = 25 * 1024 * 1024 + 64 * 1024;
+const MAX_BODY_BYTES = MAX_FILE_BYTES + 64 * 1024;
 // Each upload holds its file in memory and parses it in a worker.
 const MAX_CONCURRENT_UPLOADS = 2;
 
@@ -151,7 +152,7 @@ export function documentRoutes(documents: Documents, clientOf: (c: Context) => C
   app.post("/:id/retry", async (c) => {
     const principal = c.get("principal");
     const id = c.req.param("id");
-    if (!(await documents.retry(principal, id))) {
+    if (!(await documents.retry(principal, id, clientOf(c)))) {
       return c.json({ code: "NOT_FOUND", message: "No failed document with that id." }, 404);
     }
     const found = await documents.get(principal, id);

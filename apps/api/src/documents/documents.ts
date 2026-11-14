@@ -3,7 +3,7 @@ import { type Block, detectType, type Failure } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
-import { asApp } from "../db.js";
+import { asApp, RLS_REFUSED } from "../db.js";
 
 export type Status = "queued" | "parsing" | "indexed" | "failed";
 
@@ -68,7 +68,7 @@ export interface Documents {
   /** Null for anything the caller can't read. */
   get(principal: Principal, documentId: string): Promise<Summary | null>;
   /** Queues a failed file again. False if it isn't the caller's failed file. */
-  retry(principal: Principal, documentId: string): Promise<boolean>;
+  retry(principal: Principal, documentId: string, client: Client): Promise<boolean>;
   /** Best match first, limited to what the caller may read. */
   search(principal: Principal, query: string, options?: SearchOptions): Promise<Passage[]>;
   /** Null for anything the caller can't read. Safe to call with ids taken from model output. */
@@ -92,7 +92,6 @@ export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const DEFAULT_PASSAGES = 10;
 export const MAX_PASSAGES = 50;
 const MAX_INT = 2 ** 31 - 1;
-const RLS_REFUSED = "42501";
 
 // With "any", a negated word would turn into "or not that word" and match almost everything.
 const searchText = (query: string, match: "all" | "any") => {
@@ -213,7 +212,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       const mime = detectType(input.bytes, input.name);
       const refused =
         input.bytes.length > MAX_FILE_BYTES ? "FILE_TOO_LARGE" : mime ? null : "UNSUPPORTED_TYPE";
-      if (refused || !mime) {
+      if (refused !== null || mime === null) {
         await asApp(pool, principal, (db) =>
           db.query(
             "select admin.append_audit_event('document.ingest_failed', 'user', $1, null, null, $2, $3, $4)",
@@ -246,15 +245,26 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       });
     },
 
-    async retry(principal, documentId) {
+    async retry(principal, documentId, client) {
       if (!UUID.test(documentId)) return false;
       return asApp(pool, principal, async (db) => {
-        const { rows } = await db.query<{ ok: boolean }>(
-          `select content.retry_ingest_job(v.id) ok
-             from content.document_version v where v.document_id = $1`,
+        const { rows } = await db.query<{ id: string }>(
+          `select v.id from content.document_version v
+            where v.document_id = $1 and content.retry_ingest_job(v.id)`,
           [documentId],
         );
-        return rows.some((row) => row.ok);
+        if (rows.length === 0) return false;
+        await db.query(
+          "select admin.append_audit_event('document.ingest_retried', 'user', $1, 'document', $2, $3, $4, $5)",
+          [
+            principal.userId,
+            documentId,
+            JSON.stringify({ version_ids: rows.map((row) => row.id) }),
+            client.ip,
+            uaHash(client),
+          ],
+        );
+        return true;
       });
     },
 

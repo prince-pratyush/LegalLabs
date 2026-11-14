@@ -4,7 +4,14 @@ import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
-import { PASSWORD, type Seeded, seedMember, testDocuments, testPool } from "../test-db.js";
+import {
+  auditTrail,
+  PASSWORD,
+  type Seeded,
+  seedMember,
+  testDocuments,
+  testPool,
+} from "../test-db.js";
 import { createThreads } from "../threads/threads.js";
 import type { IngestWorkerOptions } from "./worker.js";
 
@@ -208,9 +215,18 @@ describe("documents API", () => {
     });
 
     reason = null;
+    // Past the pause the database puts between tries.
+    await pool.query(
+      "update content.ingest_job set updated_at = now() - interval '2 minutes' where status = 'failed' and workspace_id = $1",
+      [m.workspaceId],
+    );
     const retried = await h.post(cookie, `/${document.id}/retry`);
     expect(retried.status).toBe(202);
     expect(await retried.json()).toMatchObject({ document: { status: "queued" } });
+    expect((await auditTrail(pool, m.workspaceId)).at(-1)).toMatchObject({
+      action: "document.ingest_retried",
+      object_id: document.id,
+    });
     await h.drain(m);
     expect(await (await h.get(cookie, `/${document.id}`)).json()).toMatchObject({
       document: { status: "indexed", failure_reason: null, page_count: 1 },
