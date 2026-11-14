@@ -98,9 +98,6 @@ export const api = {
   logout: () => call<void>("/auth/logout", { method: "POST" }),
   documents: async () =>
     (await call<{ documents: DocumentSummary[] }>("/api/v1/documents")).documents,
-  document: async (id: string) =>
-    (await call<{ document: DocumentSummary }>(`/api/v1/documents/${encodeURIComponent(id)}`))
-      .document,
   upload: async (file: File) => {
     const form = new FormData();
     form.set("file", file);

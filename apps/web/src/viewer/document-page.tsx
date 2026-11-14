@@ -1,14 +1,7 @@
 import { type Anchor, type DocumentLocation, parseDocumentHref } from "@legallabs/contracts";
-import {
-  DocumentViewer,
-  preloadPdf,
-  StatusText,
-  setPdfWorker,
-  ViewerSkeleton,
-} from "@legallabs/ui";
+import { Button, DocumentViewer, preloadPdf, StatusText, setPdfWorker } from "@legallabs/ui";
 import PdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker";
-import { useEffect, useMemo, useState } from "react";
-import { api } from "../api.js";
+import { useMemo } from "react";
 import { navigate, openCitation, type ViewerState } from "./open-citation.js";
 import { apiSource } from "./source.js";
 
@@ -22,43 +15,33 @@ function startPdfWorker() {
 }
 
 // A version id, or a version number from a /d/ link; the API takes either.
-const pinned = (l: DocumentLocation | null) =>
+const versionKey = (l: DocumentLocation | null) =>
   l?.version_id ?? (l?.version_no ? String(l.version_no) : null);
 
-/** The viewer as a page of its own, at /documents/:id?v=&page=&span=. */
+/** The viewer as a page of its own, at /documents/:id?v=&page=&span= or /d/:id/v/:n. */
 export function DocumentPage({ href, state }: { href: string; state: ViewerState | null }) {
   const location = useMemo(() => parseDocumentHref(href), [href]);
-  const [versionId, setVersionId] = useState<string | null>(pinned(location));
-  const [failed, setFailed] = useState(false);
+  const version = versionKey(location);
   startPdfWorker();
 
-  // A link without a version opens the current one.
-  useEffect(() => {
-    setVersionId(pinned(location));
-    setFailed(false);
-    if (!location || pinned(location)) return;
-    api.document(location.document_id).then(
-      (document) => setVersionId(document.version_id),
-      () => setFailed(true),
-    );
-  }, [location]);
-
   const source = useMemo(
-    () => (location && versionId ? apiSource(location.document_id, versionId) : null),
-    [location, versionId],
+    () => (location && version ? apiSource(location.document_id, version) : null),
+    [location, version],
   );
 
   const close = () => (state ? window.history.back() : navigate("/"));
-  if (!location || failed) {
+  // A link must pin its version, so a newer upload can never change what it shows.
+  if (!location || !source) {
     return (
       <p role="alert" className="p-6">
         <StatusText tone="failed">
-          This document wasn't found, or you don't have access to it.
+          {location
+            ? "This link doesn't say which version to open."
+            : "This document wasn't found, or you don't have access to it."}
         </StatusText>
       </p>
     );
   }
-  if (!source) return <ViewerSkeleton />;
 
   const anchor = state?.anchor;
   const context = state?.context ?? [];
@@ -72,7 +55,7 @@ export function DocumentPage({ href, state }: { href: string; state: ViewerState
   return (
     <div className="h-dvh">
       <DocumentViewer
-        key={`${location.document_id}:${versionId}`}
+        key={`${location.document_id}:${version}`}
         source={source}
         target={target}
         anchors={context}
@@ -87,9 +70,9 @@ export function DocumentPage({ href, state }: { href: string; state: ViewerState
         }
         origin={
           state ? (
-            <button type="button" className="underline" onClick={close}>
+            <Button variant="quiet" size="sm" onClick={close}>
               Back to the answer
-            </button>
+            </Button>
           ) : null
         }
       />
