@@ -7,7 +7,7 @@ from typing import Any
 from ..config import sha256
 from ..schemas import Document, GraderResult, HarnessResult, TaskDatum
 from .base import Grader, Suite, limited
-from .thread_answers import ThreadAnswer, errors, has_any, holds, normalise
+from .thread_answers import ThreadAnswer, errors, has_any, holds, sentences
 
 # Bump when the generated text changes, so old runs are never compared with new rooms.
 GENERATOR_VERSION = 1
@@ -137,11 +137,14 @@ def generate_room(docs: int, seed: int) -> tuple[list[Document], list[dict[str, 
 
 
 def criterion_met(criterion: dict[str, Any], answer: ThreadAnswer) -> bool:
-    """Binary, like the LAB rubric: the contract is named or cited, and the issue is named."""
-    text = normalise(answer.content)
-    cited = {c.get("document_name") for c in answer.citations if c.get("status") == "ok"}
-    named = holds(text, criterion["number"]) or criterion["document"] in cited
-    return named and has_any(text, criterion["keywords"])
+    """Binary, like the LAB rubric: one sentence, line or bullet names the contract and the issue.
+
+    Both must sit together, so a list of numbers beside an unrelated issue earns nothing.
+    """
+    return any(
+        holds(s, criterion["number"]) and has_any(s, criterion["keywords"])
+        for s in sentences(answer.content)
+    )
 
 
 class VdrGrader(Grader):

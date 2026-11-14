@@ -156,10 +156,18 @@ def test_criterion_needs_the_contract_and_the_issue() -> None:
     }
     assert criterion_met(criterion, answer("Contract 0042 is governed by Esterra law.", []))
     assert not criterion_met(criterion, answer("One contract uses Esterra law.", []))
-    cited = [{**OK, "document_name": "contract-0042.md"}]
-    assert criterion_met(criterion, answer("One contract uses Esterra law.", cited))
+    assert criterion_met(criterion, answer("| contract-0042.md | Esterra law |", []))
+    # The number and the issue must share a sentence or line, not just the report.
+    spread = "Contracts reviewed: 0007, 0042.\nOne contract uses Esterra law."
+    assert not criterion_met(criterion, answer(spread, []))
     # A fee of 500,420 crowns must not read as contract 0042.
-    assert not criterion_met(criterion, answer("Fee 500,420; Esterra.", []))
+    assert not criterion_met(criterion, answer("Fee 500,420 under Esterra law.", []))
+
+
+def test_numbers_are_not_matched_inside_decimals() -> None:
+    assert not holds(normalise("a fee of 500.50 crowns"), "500")
+    assert not holds(normalise("version 2.500"), "500")
+    assert holds(normalise("500. Next sentence."), "500")
 
 
 # End to end over a fake API
