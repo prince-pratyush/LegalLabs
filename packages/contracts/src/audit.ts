@@ -60,6 +60,7 @@ export const auditActions: string[] = [
   ...family("document", [
     "uploaded",
     "ingest_failed",
+    "ingest_retried",
     "scanned_clean",
     "quarantined",
     "released",

@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { createMemoryStore } from "@legallabs/storage";
 import pg from "pg";
 import { inject } from "vitest";
 import { hashPassword } from "./auth/password.js";
+import { createDocuments, type Documents } from "./documents/documents.js";
+import { createIngestWorker, type IngestWorkerOptions } from "./documents/worker.js";
 
 export const testPool = () => new pg.Pool({ connectionString: inject("databaseUrl"), max: 3 });
 
@@ -51,4 +54,22 @@ export async function auditTrail(pool: pg.Pool, workspaceId: string) {
     [workspaceId],
   );
   return rows;
+}
+
+// Uploads, then reads the caller's queue as the worker would, so tests see an indexed file.
+export function testDocuments(pool: pg.Pool, options: Partial<IngestWorkerOptions> = {}) {
+  const store = options.store ?? createMemoryStore();
+  const raw = createDocuments(pool, { store });
+  const worker = createIngestWorker(pool, { maxAttempts: 1, ...options, store });
+  const documents: Documents = {
+    ...raw,
+    async upload(principal, input, client) {
+      const result = await raw.upload(principal, input, client);
+      if (!result.ok || !principal.workspaceId) return result;
+      await worker.drain(principal.workspaceId);
+      const document = await raw.get(principal, result.document.id);
+      return document ? { ok: true, document } : result;
+    },
+  };
+  return Object.assign(documents, { raw, worker, store });
 }

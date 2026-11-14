@@ -48,7 +48,9 @@ export interface DocumentSummary {
   name: string;
   mime: string;
   size: number;
-  page_count: number;
+  status: "queued" | "parsing" | "indexed" | "failed";
+  failure_reason: string | null;
+  page_count: number | null;
   empty_page_count: number;
   matter_id: string | null;
   created_at: string;

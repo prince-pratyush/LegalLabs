@@ -1,15 +1,11 @@
 import { createHash } from "node:crypto";
-import {
-  type Block,
-  type Failure,
-  type Ingested,
-  type IngestResult,
-  ingestFile,
-} from "@legallabs/ingest";
+import { type Block, detectType, type Failure } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
-import { asApp } from "../db.js";
+import { asApp, RLS_REFUSED } from "../db.js";
+
+export type Status = "queued" | "parsing" | "indexed" | "failed";
 
 export interface Summary {
   id: string;
@@ -17,7 +13,11 @@ export interface Summary {
   name: string;
   mime: string;
   size: number;
-  pageCount: number;
+  status: Status;
+  /** Set only when `status` is "failed". */
+  failureReason: string | null;
+  /** Null until the file is indexed. */
+  pageCount: number | null;
   emptyPageCount: number;
   matterId: string | null;
   createdAt: string;
@@ -31,7 +31,13 @@ export interface UploadInput {
 
 export type UploadResult =
   | { ok: true; document: Summary }
-  | { ok: false; reason: Failure | "FORBIDDEN" | "MATTER_NOT_FOUND" };
+  | {
+      ok: false;
+      reason:
+        | Extract<Failure, "UNSUPPORTED_TYPE" | "FILE_TOO_LARGE">
+        | "FORBIDDEN"
+        | "MATTER_NOT_FOUND";
+    };
 
 export interface Passage {
   chunkId: string;
@@ -55,9 +61,14 @@ export interface SearchOptions {
 }
 
 export interface Documents {
+  /** Stores the file and queues it; reading it happens in the ingest worker. */
   upload(principal: Principal, input: UploadInput, client: Client): Promise<UploadResult>;
   /** The caller's newest documents, up to a fixed page. */
   list(principal: Principal): Promise<Summary[]>;
+  /** Null for anything the caller can't read. */
+  get(principal: Principal, documentId: string): Promise<Summary | null>;
+  /** Queues a failed file again. False if it isn't the caller's failed file. */
+  retry(principal: Principal, documentId: string, client: Client): Promise<boolean>;
   /** Best match first, limited to what the caller may read. */
   search(principal: Principal, query: string, options?: SearchOptions): Promise<Passage[]>;
   /** Null for anything the caller can't read. Safe to call with ids taken from model output. */
@@ -74,15 +85,13 @@ export interface PageContent {
 
 export interface DocumentsOptions {
   store: ObjectStore;
-  ingest?: (bytes: Uint8Array, name: string) => Promise<IngestResult>;
 }
 
 const LIST_LIMIT = 100;
-const BATCH_SIZE = 200;
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const DEFAULT_PASSAGES = 10;
 export const MAX_PASSAGES = 50;
 const MAX_INT = 2 ** 31 - 1;
-const RLS_REFUSED = "42501";
 
 // With "any", a negated word would turn into "or not that word" and match almost everything.
 const searchText = (query: string, match: "all" | "any") => {
@@ -100,7 +109,9 @@ interface SummaryRow {
   name: string;
   mime: string;
   size: string;
-  page_count: number;
+  status: Status;
+  reason: string | null;
+  page_count: number | null;
   empty_page_count: number;
   matter_id: string | null;
   created_at: Date;
@@ -112,81 +123,49 @@ const toSummary = (row: SummaryRow): Summary => ({
   name: row.name,
   mime: row.mime,
   size: Number(row.size),
+  status: row.status,
+  failureReason: row.reason,
   pageCount: row.page_count,
   emptyPageCount: row.empty_page_count,
   matterId: row.matter_id,
   createdAt: row.created_at.toISOString(),
 });
 
-function batches<T>(items: readonly T[]): T[][] {
-  const groups: T[][] = [];
-  for (let i = 0; i < items.length; i += BATCH_SIZE) groups.push(items.slice(i, i + BATCH_SIZE));
-  return groups;
-}
+// Files stored before the queue existed have no job and were read at upload.
+const SUMMARY_SQL = `
+  select d.id, v.id version_id, d.name, d.mime, d.size,
+         coalesce(j.status, 'indexed') status, j.reason, v.page_count,
+         v.empty_page_count, d.matter_id, d.created_at
+    from content.document d
+    join content.document_version v on v.document_id = d.id
+    left join content.ingest_job j on j.version_id = v.id
+   where core.has_permission('threads.use')`;
 
 export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Documents {
-  const ingest = options.ingest ?? ingestFile;
-
-  async function save(
-    principal: Principal,
-    input: UploadInput,
-    parsed: Ingested,
-    client: Client,
-  ): Promise<Summary> {
+  async function save(principal: Principal, input: UploadInput, mime: string, client: Client) {
     const { userId, workspaceId } = principal;
     const sha256 = createHash("sha256").update(input.bytes).digest();
     // First, so a row never points at a missing object; a retry reuses an orphan.
     await options.store.putIfAbsent(contentKey(workspaceId, sha256.toString("hex")), input.bytes);
     return asApp(pool, principal, async (db) => {
-      const document = await db.query<
-        Omit<SummaryRow, "version_id" | "page_count" | "empty_page_count">
-      >(
+      const document = await db.query<{ id: string; created_at: Date }>(
         `insert into content.document (workspace_id, owner_id, matter_id, name, mime, size)
-         values ($1, $2, $3, $4, $5, $6)
-         returning id, name, mime, size, matter_id, created_at`,
-        [workspaceId, userId, input.matterId, input.name, parsed.mime, input.bytes.length],
+         values ($1, $2, $3, $4, $5, $6) returning id, created_at`,
+        [workspaceId, userId, input.matterId, input.name, mime, input.bytes.length],
       );
       const row = document.rows[0];
       if (!row) throw new Error("insert returned no document");
       const version = await db.query<{ id: string }>(
-        `insert into content.document_version
-           (workspace_id, document_id, sha256, page_count, empty_page_count, created_by)
-         values ($1, $2, $3, $4, $5, $6) returning id`,
-        [workspaceId, row.id, sha256, parsed.pages.length, parsed.emptyPageCount, userId],
+        `insert into content.document_version (workspace_id, document_id, sha256, created_by)
+         values ($1, $2, $3, $4) returning id`,
+        [workspaceId, row.id, sha256, userId],
       );
       const versionId = version.rows[0]?.id;
       if (!versionId) throw new Error("insert returned no version");
-
-      for (const group of batches(parsed.pages)) {
-        await db.query(
-          `insert into content.page (workspace_id, version_id, page_no, width, height, text, layout)
-           select $1, $2, * from unnest($3::int[], $4::real[], $5::real[], $6::text[], $7::jsonb[])`,
-          [
-            workspaceId,
-            versionId,
-            group.map((page) => page.pageNo),
-            group.map((page) => page.width),
-            group.map((page) => page.height),
-            group.map((page) => page.text),
-            group.map((page) => JSON.stringify({ blocks: page.blocks })),
-          ],
-        );
-      }
-      for (const group of batches(parsed.chunks)) {
-        await db.query(
-          `insert into content.chunk (workspace_id, version_id, page_no, ordinal, char_from, char_to, text)
-           select $1, $2, * from unnest($3::int[], $4::int[], $5::int[], $6::int[], $7::text[])`,
-          [
-            workspaceId,
-            versionId,
-            group.map((chunk) => chunk.pageNo),
-            group.map((chunk) => chunk.ordinal),
-            group.map((chunk) => chunk.from),
-            group.map((chunk) => chunk.to),
-            group.map((chunk) => chunk.text),
-          ],
-        );
-      }
+      await db.query("insert into content.ingest_job (workspace_id, version_id) values ($1, $2)", [
+        workspaceId,
+        versionId,
+      ]);
       // Last in the transaction: an audit failure must undo the upload it describes.
       await db.query(
         "select admin.append_audit_event('document.uploaded', 'user', $1, 'document', $2, $3, $4, $5)",
@@ -197,24 +176,29 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
             version_id: versionId,
             sha256: sha256.toString("hex"),
             size: input.bytes.length,
-            page_count: parsed.pages.length,
           }),
           client.ip,
           uaHash(client),
         ],
       );
       return toSummary({
-        ...row,
+        id: row.id,
         version_id: versionId,
-        page_count: parsed.pages.length,
-        empty_page_count: parsed.emptyPageCount,
+        name: input.name,
+        mime,
+        size: String(input.bytes.length),
+        status: "queued",
+        reason: null,
+        page_count: null,
+        empty_page_count: 0,
+        matter_id: input.matterId,
+        created_at: row.created_at,
       });
     });
   }
 
   return {
     async upload(principal, input, client) {
-      // Checked first and closed again, so slow parsing never holds a connection.
       const access = await asApp(pool, principal, async (db) => {
         const { rows } = await db.query<{ allowed: boolean; reachable: boolean }>(
           `select core.has_permission('threads.use') allowed,
@@ -225,31 +209,63 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       });
       if (!access?.allowed) return { ok: false, reason: "FORBIDDEN" };
       if (!access.reachable) return { ok: false, reason: "MATTER_NOT_FOUND" };
-
-      const parsed = await ingest(input.bytes, input.name);
-      if (!parsed.ok) {
+      const mime = detectType(input.bytes, input.name);
+      const refused =
+        input.bytes.length > MAX_FILE_BYTES ? "FILE_TOO_LARGE" : mime ? null : "UNSUPPORTED_TYPE";
+      if (refused !== null || mime === null) {
         await asApp(pool, principal, (db) =>
           db.query(
             "select admin.append_audit_event('document.ingest_failed', 'user', $1, null, null, $2, $3, $4)",
             [
               principal.userId,
-              JSON.stringify({ failure_reason: parsed.reason, size: input.bytes.length }),
+              JSON.stringify({ failure_reason: refused, size: input.bytes.length }),
               client.ip,
               uaHash(client),
             ],
           ),
         );
-        return { ok: false, reason: parsed.reason };
+        return { ok: false, reason: refused ?? "UNSUPPORTED_TYPE" };
       }
       try {
-        return { ok: true, document: await save(principal, input, parsed, client) };
+        return { ok: true, document: await save(principal, input, mime, client) };
       } catch (err) {
-        // A wall or permission can change during the parse, after the check above.
+        // A wall or permission can change between the check and the insert.
         if ((err as { code?: string }).code === RLS_REFUSED) {
           return { ok: false, reason: "FORBIDDEN" };
         }
         throw err;
       }
+    },
+
+    async get(principal, documentId) {
+      if (!UUID.test(documentId)) return null;
+      return asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<SummaryRow>(`${SUMMARY_SQL} and d.id = $1`, [documentId]);
+        return rows[0] ? toSummary(rows[0]) : null;
+      });
+    },
+
+    async retry(principal, documentId, client) {
+      if (!UUID.test(documentId)) return false;
+      return asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{ id: string }>(
+          `select v.id from content.document_version v
+            where v.document_id = $1 and content.retry_ingest_job(v.id)`,
+          [documentId],
+        );
+        if (rows.length === 0) return false;
+        await db.query(
+          "select admin.append_audit_event('document.ingest_retried', 'user', $1, 'document', $2, $3, $4, $5)",
+          [
+            principal.userId,
+            documentId,
+            JSON.stringify({ version_ids: rows.map((row) => row.id) }),
+            client.ip,
+            uaHash(client),
+          ],
+        );
+        return true;
+      });
     },
 
     async search(
@@ -327,16 +343,9 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
 
     async list(principal) {
       return asApp(pool, principal, async (db) => {
-        const { rows } = await db.query<SummaryRow>(
-          `select d.id, v.id version_id, d.name, d.mime, d.size, v.page_count,
-                  v.empty_page_count, d.matter_id, d.created_at
-             from content.document d
-             join content.document_version v on v.document_id = d.id
-            where core.has_permission('threads.use')
-            order by d.id desc
-            limit $1`,
-          [LIST_LIMIT],
-        );
+        const { rows } = await db.query<SummaryRow>(`${SUMMARY_SQL} order by d.id desc limit $1`, [
+          LIST_LIMIT,
+        ]);
         return rows.map(toSummary);
       });
     },

@@ -194,6 +194,10 @@ export async function seed(tx: Tx) {
       "insert into content.document_blob (workspace_id, version_id, bytes) values ($1, $2, '\\x00')",
       [ws, versionId],
     );
+    await tx.rows(
+      "insert into content.ingest_job (workspace_id, version_id, status) values ($1, $2, 'indexed')",
+      [ws, versionId],
+    );
     return { documentId, versionId };
   };
   const documents = { acme: await document(acme, ana), beta: await document(beta, bob) };

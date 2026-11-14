@@ -9,6 +9,8 @@ const DOCUMENT: DocumentSummary = {
   name: "msa.pdf",
   mime: "application/pdf",
   size: 1000,
+  status: "indexed",
+  failure_reason: null,
   page_count: 10,
   empty_page_count: 2,
   matter_id: null,

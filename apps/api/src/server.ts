@@ -9,6 +9,7 @@ import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { createDocuments } from "./documents/documents.js";
+import { createIngestWorker } from "./documents/worker.js";
 import { createThreads } from "./threads/threads.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -37,6 +38,12 @@ try {
 }
 
 const documents = createDocuments(pool, { store });
+const worker = createIngestWorker(pool, { store, log: (line) => console.log(line) });
+worker.start();
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  // A job cut off mid-read is picked up again once its lease runs out.
+  process.once(signal, () => void worker.stop().finally(() => process.exit(0)));
+}
 const gateway = createGateway({
   ...gatewayOptionsFromEnv(process.env),
   // A no-op: usage goes on the answer's message row, so it is saved or rolled back with it.

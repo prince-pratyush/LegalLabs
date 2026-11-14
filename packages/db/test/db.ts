@@ -25,6 +25,14 @@ export class Tx {
     );
   }
 
+  // The ingest worker: no identity, and the only role that may claim jobs.
+  async asWorker(): Promise<void> {
+    await this.client.query("set local role legallabs_worker");
+    await this.client.query(
+      "select set_config('app.user_id', '', true), set_config('app.workspace_id', '', true)",
+    );
+  }
+
   async asOwner(): Promise<void> {
     await this.client.query("reset role");
   }

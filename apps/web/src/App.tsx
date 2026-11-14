@@ -27,7 +27,7 @@ import {
   type Thread,
   type ThreadSummary,
 } from "./api.js";
-import { segments } from "./text.js";
+import { documentStatus, segments } from "./text.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 
@@ -155,6 +155,16 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
     refreshThreads();
   }, [refreshThreads]);
 
+  // Files are read in the background, so the list is refreshed until none are waiting.
+  const reading = documents.some((d) => d.status === "queued" || d.status === "parsing");
+  useEffect(() => {
+    if (!reading) return;
+    const timer = setInterval(() => {
+      api.documents().then(setDocuments, (err) => setError(messageOf(err)));
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [reading]);
+
   useEffect(() => {
     if (focus) document.getElementById(focus)?.focus();
   }, [focus]);
@@ -195,7 +205,6 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
     try {
       const added = await api.upload(file);
       setDocuments((current) => [added, ...current]);
-      setChosen((current) => new Set([...current, added.id]));
     } catch (err) {
       setError(messageOf(err));
     } finally {
@@ -315,13 +324,15 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
                     <Checkbox
                       id={`document-${document.id}`}
                       checked={chosen.has(document.id)}
-                      disabled={thread !== null}
+                      disabled={thread !== null || document.status !== "indexed"}
                       onCheckedChange={() => toggle(document.id)}
                     />
                     <label htmlFor={`document-${document.id}`} className="grid min-w-0 pt-0.5">
                       <span className="truncate font-medium">{document.name}</span>
-                      <span className="text-caption text-fg-muted">
-                        {document.page_count === 1 ? "1 page" : `${document.page_count} pages`}
+                      <span
+                        className={`text-caption ${document.status === "failed" ? "text-warning" : "text-fg-muted"}`}
+                      >
+                        {documentStatus(document)}
                       </span>
                       {document.empty_page_count > 0 && (
                         <span className="text-caption text-warning">

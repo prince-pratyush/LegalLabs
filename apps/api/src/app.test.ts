@@ -2,12 +2,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createGateway } from "@legallabs/model-gateway";
-import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
-import { createDocuments } from "./documents/documents.js";
-import { PASSWORD, seedMember, testPool } from "./test-db.js";
+import { PASSWORD, seedMember, testDocuments, testPool } from "./test-db.js";
 import { createThreads } from "./threads/threads.js";
 
 const pool = testPool();
@@ -17,10 +15,10 @@ function harness(ip = "203.0.113.9", webRoot?: string) {
   let time = 1_000_000;
   const app = createApp({
     auth: createAuth(pool),
-    documents: createDocuments(pool, { store: createMemoryStore() }),
+    documents: testDocuments(pool),
     threads: createThreads(pool, {
       gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
-      documents: createDocuments(pool, { store: createMemoryStore() }),
+      documents: testDocuments(pool),
     }),
     clientIp: () => ip,
     now: () => time,

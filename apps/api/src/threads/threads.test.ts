@@ -1,10 +1,8 @@
 import { makePdf } from "@legallabs/ingest/testing";
 import { createGateway, type Message, type ModelProvider } from "@legallabs/model-gateway";
-import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Principal } from "../auth/auth.js";
-import { createDocuments } from "../documents/documents.js";
-import { auditTrail, type Seeded, seedMember, testPool } from "../test-db.js";
+import { auditTrail, type Seeded, seedMember, testDocuments, testPool } from "../test-db.js";
 import { type AskResult, createThreads, NOT_FOUND_ANSWER, type ThreadView } from "./threads.js";
 
 const pool = testPool();
@@ -37,7 +35,7 @@ const failingModel: ModelProvider = {
 };
 
 function harness(provider: ModelProvider) {
-  const documents = createDocuments(pool, { store: createMemoryStore() });
+  const documents = testDocuments(pool);
   const gateway = createGateway({
     providers: { anthropic: provider },
     recordUsage: async () => {},
@@ -46,7 +44,7 @@ function harness(provider: ModelProvider) {
 }
 
 async function upload(m: Seeded, text = CLAUSE, name = "msa.txt", matterId: string | null = null) {
-  const result = await createDocuments(pool, { store: createMemoryStore() }).upload(
+  const result = await testDocuments(pool).upload(
     asPrincipal(m),
     { name, bytes: new TextEncoder().encode(text), matterId },
     client,
@@ -189,7 +187,7 @@ describe("asking a question", () => {
       ["Recitals and definitions."],
       ["The supplier accepts liability for loss."],
     ]);
-    const result = await createDocuments(pool, { store: createMemoryStore() }).upload(
+    const result = await testDocuments(pool).upload(
       asPrincipal(m),
       { name: "msa.pdf", bytes: pdf, matterId: null },
       client,

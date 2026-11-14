@@ -1,10 +1,8 @@
 import { createGateway, type ModelProvider } from "@legallabs/model-gateway";
-import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
-import { createDocuments } from "../documents/documents.js";
-import { PASSWORD, type Seeded, seedMember, testPool } from "../test-db.js";
+import { PASSWORD, type Seeded, seedMember, testDocuments, testPool } from "../test-db.js";
 import { createThreads } from "./threads.js";
 
 const pool = testPool();
@@ -18,7 +16,7 @@ const answering = (text: string): ModelProvider => ({
 });
 
 function harness(provider: ModelProvider = answering(ANSWER)) {
-  const documents = createDocuments(pool, { store: createMemoryStore() });
+  const documents = testDocuments(pool);
   const gateway = createGateway({
     providers: { anthropic: provider },
     recordUsage: async () => {},

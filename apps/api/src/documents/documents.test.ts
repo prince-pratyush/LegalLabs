@@ -4,7 +4,7 @@ import { makePdf } from "@legallabs/ingest/testing";
 import { contentKey, createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Principal } from "../auth/auth.js";
-import { auditTrail, type Seeded, seedMember, testPool } from "../test-db.js";
+import { auditTrail, type Seeded, seedMember, testDocuments, testPool } from "../test-db.js";
 import { createDocuments, type Summary, type UploadResult } from "./documents.js";
 
 const pool = testPool();
@@ -37,7 +37,7 @@ async function addMatter(m: Seeded, wallMode = "open") {
 describe("upload", () => {
   it("stores a file and lists it for its owner", async () => {
     const m = await seedMember(pool);
-    const documents = createDocuments(pool, { store: createMemoryStore() });
+    const documents = testDocuments(pool);
     const result = stored(
       await documents.upload(
         asPrincipal(m),
@@ -106,7 +106,7 @@ describe("upload", () => {
   it("records the upload without the name or any text", async () => {
     const m = await seedMember(pool);
     const document = stored(
-      await createDocuments(pool, { store: createMemoryStore() }).upload(
+      await testDocuments(pool).upload(
         asPrincipal(m),
         { name: "secret-deal.txt", bytes: encode(CLAUSE), matterId: null },
         client,
@@ -142,7 +142,7 @@ describe("upload", () => {
     }));
     const long: Ingested = { ok: true, mime: "text/plain", pages, chunks, emptyPageCount: 0 };
     const document = stored(
-      await createDocuments(pool, { store: createMemoryStore(), ingest: async () => long }).upload(
+      await testDocuments(pool, { ingest: async () => long }).upload(
         asPrincipal(m),
         { name: "long.txt", bytes: encode("x"), matterId: null },
         client,
@@ -158,7 +158,7 @@ describe("upload", () => {
 
   it("saves nothing from a file it can't read, and says why", async () => {
     const m = await seedMember(pool);
-    const documents = createDocuments(pool, { store: createMemoryStore() });
+    const documents = testDocuments(pool);
     const result = await documents.upload(
       asPrincipal(m),
       { name: "contract.docx", bytes: encode("PK"), matterId: null },
@@ -177,7 +177,7 @@ describe("upload", () => {
   it("refuses someone without the permission before parsing anything", async () => {
     const m = await seedMember(pool, { permissions: [] });
     const ingest = vi.fn<() => Promise<IngestResult>>();
-    const result = await createDocuments(pool, { store: createMemoryStore(), ingest }).upload(
+    const result = await testDocuments(pool, { ingest }).upload(
       asPrincipal(m),
       { name: "a.txt", bytes: encode(CLAUSE), matterId: null },
       client,
@@ -186,27 +186,35 @@ describe("upload", () => {
     expect(ingest).not.toHaveBeenCalled();
   });
 
-  it("refuses cleanly if the permission goes while the file is parsing", async () => {
+  it("stops reading a file whose uploader lost the permission", async () => {
     const m = await seedMember(pool);
-    const ingest = async (): Promise<IngestResult> => {
-      await pool.query("update core.role set permissions = '{}' where workspace_id = $1", [
-        m.workspaceId,
-      ]);
-      return { ok: true, mime: "text/plain", pages: [], chunks: [], emptyPageCount: 0 };
-    };
-    const result = await createDocuments(pool, { store: createMemoryStore(), ingest }).upload(
-      asPrincipal(m),
-      { name: "a.txt", bytes: encode(CLAUSE), matterId: null },
-      client,
+    const ingest = vi.fn<() => Promise<IngestResult>>();
+    const documents = testDocuments(pool, { ingest });
+    const queued = stored(
+      await documents.raw.upload(
+        asPrincipal(m),
+        { name: "a.txt", bytes: encode(CLAUSE), matterId: null },
+        client,
+      ),
     );
-    expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
+    expect(queued).toMatchObject({ status: "queued", pageCount: null });
+    await pool.query("update core.role set permissions = '{}' where workspace_id = $1", [
+      m.workspaceId,
+    ]);
+    await documents.worker.drain(m.workspaceId);
+    expect(ingest).not.toHaveBeenCalled();
+    const { rows } = await pool.query(
+      "select status, reason from content.ingest_job where version_id = $1",
+      [queued.versionId],
+    );
+    expect(rows[0]).toEqual({ status: "failed", reason: "FORBIDDEN" });
   });
 
   it("files a document on a matter the owner can reach", async () => {
     const m = await seedMember(pool);
     const matterId = await addMatter(m);
     const document = stored(
-      await createDocuments(pool, { store: createMemoryStore() }).upload(
+      await testDocuments(pool).upload(
         asPrincipal(m),
         { name: "a.txt", bytes: encode(CLAUSE), matterId },
         client,
@@ -218,7 +226,7 @@ describe("upload", () => {
   it("answers the same for a walled matter and one that doesn't exist", async () => {
     const m = await seedMember(pool);
     const walled = await addMatter(m, "allow_list");
-    const documents = createDocuments(pool, { store: createMemoryStore() });
+    const documents = testDocuments(pool);
     const upload = (matterId: string) =>
       documents.upload(asPrincipal(m), { name: "a.txt", bytes: encode(CLAUSE), matterId }, client);
     const missing = "00000000-0000-7000-8000-000000000001";
@@ -230,13 +238,13 @@ describe("upload", () => {
 describe("search", () => {
   const add = async (m: Seeded, text: string, matterId: string | null = null) =>
     stored(
-      await createDocuments(pool, { store: createMemoryStore() }).upload(
+      await testDocuments(pool).upload(
         asPrincipal(m),
         { name: "a.txt", bytes: encode(text), matterId },
         client,
       ),
     );
-  const search = createDocuments(pool, { store: createMemoryStore() }).search;
+  const search = testDocuments(pool).search;
 
   it("returns the passage, where it is, and which document it came from", async () => {
     const m = await seedMember(pool);
@@ -357,7 +365,7 @@ describe("search", () => {
 describe("page", () => {
   it("gives the verifier the text a search passage came from", async () => {
     const m = await seedMember(pool);
-    const documents = createDocuments(pool, { store: createMemoryStore() });
+    const documents = testDocuments(pool);
     const principal = asPrincipal(m);
     const bytes = makePdf([
       ["Cover page of the agreement."],
@@ -397,7 +405,7 @@ describe("page", () => {
   it("gives nothing for another person's page", async () => {
     const m = await seedMember(pool);
     const other = await seedMember(pool);
-    const documents = createDocuments(pool, { store: createMemoryStore() });
+    const documents = testDocuments(pool);
     const document = stored(
       await documents.upload(
         asPrincipal(other),
@@ -419,7 +427,7 @@ describe("page", () => {
     ["a page past the end", null, 2],
   ])("gives nothing for %s", async (_, id, pageNo) => {
     const m = await seedMember(pool);
-    const documents = createDocuments(pool, { store: createMemoryStore() });
+    const documents = testDocuments(pool);
     const document = stored(
       await documents.upload(
         asPrincipal(m),
@@ -435,7 +443,7 @@ describe("list", () => {
   it("shows the newest first, and only your own", async () => {
     const m = await seedMember(pool);
     const other = await seedMember(pool);
-    const documents = createDocuments(pool, { store: createMemoryStore() });
+    const documents = testDocuments(pool);
     const add = (who: Seeded, name: string) =>
       documents.upload(asPrincipal(who), { name, bytes: encode(CLAUSE), matterId: null }, client);
     await add(m, "first.txt");
