@@ -55,3 +55,15 @@ describe("useHotkeys", () => {
     field.remove();
   });
 });
+
+describe("useHotkeys under a modal", () => {
+  it("does nothing, so a second modal can't open on top", () => {
+    const palette = vi.fn();
+    renderHook(() => useHotkeys({ "mod+k": palette }));
+    const modal = document.body.appendChild(document.createElement("div"));
+    modal.setAttribute("aria-modal", "true");
+    press("k", { metaKey: true });
+    expect(palette).not.toHaveBeenCalled();
+    modal.remove();
+  });
+});

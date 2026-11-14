@@ -77,6 +77,8 @@ export function useHotkeys(bindings: Record<string, () => void>, enabled = true)
     if (!enabled) return;
     let pending: { key: string; at: number } | null = null;
     const onKeyDown = (event: KeyboardEvent) => {
+      // A confirmation or the palette owns the keyboard while it is open.
+      if (event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       const typing = editable(event.target);
       for (const [keys, run] of Object.entries(latest.current)) {
         const chords = keys.split(" ");
