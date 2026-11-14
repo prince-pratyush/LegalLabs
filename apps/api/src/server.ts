@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { createIngest } from "@legallabs/ingest";
+import { createIngest, type Scanner, scannerFromEnv } from "@legallabs/ingest";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
@@ -39,8 +39,17 @@ try {
 }
 
 const documents = createDocuments(pool, { store });
+let scanner: Scanner;
+try {
+  scanner = scannerFromEnv(process.env);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+
 const worker = createIngestWorker(pool, {
   store,
+  scanner,
   ingest: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
   log: (line) => console.log(line),
 });

@@ -6,6 +6,9 @@ import {
   type Ingested,
   type IngestResult,
   ingestFile,
+  type Scanner,
+  ScannerRefused,
+  ScannerUnavailable,
 } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
@@ -14,6 +17,8 @@ import { asApp, asWorker, RLS_REFUSED } from "../db.js";
 export interface IngestWorkerOptions {
   store: ObjectStore;
   ingest?: (bytes: Uint8Array, name: string) => Promise<IngestResult>;
+  /** Runs before any parser sees the bytes. */
+  scanner: Scanner;
   /** Files read at once. Each holds its bytes in memory and a parser worker. */
   concurrency?: number;
   pollMs?: number;
@@ -52,7 +57,12 @@ const safeName = (name: string) =>
     .slice(0, 255)
     .trim() || "attachment";
 
-export type IngestReason = Failure | "FORBIDDEN" | "MISSING_ORIGINAL";
+export type IngestReason =
+  | Failure
+  | "FORBIDDEN"
+  | "MISSING_ORIGINAL"
+  | "MALWARE_FOUND"
+  | "SCAN_UNAVAILABLE";
 
 const BATCH_SIZE = 200;
 // A mailbox holds messages, a message holds attachments, and that is as deep as it goes.
@@ -61,7 +71,12 @@ const MAX_DEPTH = 2;
 const MAX_CHILDREN = [5000, 50];
 
 // Worth another try: the same bytes may well succeed on a quieter machine.
-const TRANSIENT = new Set<IngestReason>(["INTERNAL", "PARSE_TIMEOUT", "TOO_COMPLEX"]);
+const TRANSIENT = new Set<IngestReason>([
+  "INTERNAL",
+  "PARSE_TIMEOUT",
+  "TOO_COMPLEX",
+  "SCAN_UNAVAILABLE",
+]);
 
 function batches<T>(items: readonly T[]): T[][] {
   const groups: T[][] = [];
@@ -151,7 +166,7 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
     if (settled) log(`ingest ${job.version_id} failed: ${reason}`);
   }
 
-  async function read(job: Claim): Promise<IngestReason | null> {
+  async function read(job: Claim): Promise<IngestReason | "indexed" | "quarantined"> {
     const source = await asUploader(job, async (db) => {
       const { rows } = await db.query<{ name: string; matter_id: string | null; depth: number }>(
         `with recursive up as (
@@ -175,6 +190,30 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
     if (!bytes || createHash("sha256").update(bytes).digest("hex") !== hex) {
       return "MISSING_ORIGINAL";
     }
+    let verdict: Awaited<ReturnType<Scanner["scan"]>>;
+    try {
+      verdict = await options.scanner.scan(bytes);
+    } catch (err) {
+      if (err instanceof ScannerUnavailable) return "SCAN_UNAVAILABLE";
+      if (err instanceof ScannerRefused) return "FILE_TOO_LARGE";
+      throw err;
+    }
+    if (!verdict.clean) {
+      const settled = await asUploader(job, async (db) => {
+        if (!(await finish(db, job, "failed", { reason: "MALWARE_FOUND" }))) return false;
+        await db.query(
+          "select admin.append_audit_event('document.quarantined', 'system', null, 'document', $1, $2)",
+          [
+            job.document_id,
+            JSON.stringify({ version_id: job.version_id, signature: verdict.signature }),
+          ],
+        );
+        return true;
+      });
+      if (settled) log(`ingest ${job.version_id} quarantined`);
+      return "quarantined";
+    }
+
     const parsed = await ingest(bytes, name);
     if (!parsed.ok) return parsed.reason;
 
@@ -220,7 +259,7 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
       // Thrown, not returned, so the pages just written roll back with it.
       if (!(await finish(db, job, "indexed"))) throw new LostLease();
     });
-    return null;
+    return "indexed";
   }
 
   async function runOnce(onlyWorkspace?: string): Promise<boolean> {
@@ -247,9 +286,9 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
       (leaseSeconds * 1000) / 3,
     );
     try {
-      const reason = await read(job);
-      if (reason) await fail(job, reason);
-      else log(`ingest ${job.version_id} indexed`);
+      const outcome = await read(job);
+      if (outcome === "indexed") log(`ingest ${job.version_id} indexed`);
+      else if (outcome !== "quarantined") await fail(job, outcome);
     } catch (err) {
       if (err instanceof LostLease) return true;
       const code = (err as { code?: string }).code;

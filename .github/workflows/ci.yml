@@ -27,10 +27,13 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
       TEST_S3_ENDPOINT: http://127.0.0.1:8333
+      TEST_CLAMD_HOST: 127.0.0.1
     steps:
       - uses: actions/checkout@v7
       # A service container can't take arguments, and SeaweedFS needs `server -s3`.
       - run: docker run -d -p 8333:8333 chrislusf/seaweedfs:4.53 server -s3 -dir=/data
+      # Started early: ClamAV loads its signatures while dependencies install.
+      - run: docker run -d -p 3310:3310 clamav/clamav:1.4
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -40,6 +43,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: timeout 60 sh -c 'until curl -s -o /dev/null http://127.0.0.1:8333; do sleep 1; done'
+      - run: timeout 300 sh -c 'until printf "zPING\0" | nc -w 2 127.0.0.1 3310 | grep -q PONG; do sleep 5; done'
       - run: pnpm test
       - run: pnpm build
       - run: pnpm --filter @legallabs/ui build-storybook

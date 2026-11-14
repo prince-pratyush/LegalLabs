@@ -1,4 +1,4 @@
-import type { IngestResult } from "@legallabs/ingest";
+import { type IngestResult, ScannerUnavailable } from "@legallabs/ingest";
 import { createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Principal } from "../auth/auth.js";
@@ -193,5 +193,42 @@ describe("ingest worker", () => {
       [result.document.versionId],
     );
     expect(rows).toEqual([{ section: "1. Scope", ocr: true }]);
+  });
+
+  it("quarantines a file the scanner flags, before any parser reads it", async () => {
+    const m = await seedMember(pool);
+    let parsed = false;
+    const { documents, document } = await queue(m, {
+      scanner: { scan: async () => ({ clean: false, signature: "Test.Signature" }) },
+      ingest: async () => {
+        parsed = true;
+        return { ok: false, reason: "INTERNAL" };
+      },
+    });
+    await documents.worker.drain(m.workspaceId);
+    expect(parsed).toBe(false);
+    expect(await job(document.versionId)).toMatchObject({
+      status: "failed",
+      reason: "MALWARE_FOUND",
+    });
+    expect((await auditTrail(pool, m.workspaceId)).at(-1)).toMatchObject({
+      action: "document.quarantined",
+      actor_type: "system",
+      details: { signature: "Test.Signature" },
+    });
+  });
+
+  it("waits for the scanner rather than skip it", async () => {
+    const m = await seedMember(pool);
+    const { documents, document } = await queue(m, {
+      scanner: {
+        scan: async () => {
+          throw new ScannerUnavailable("clamd timed out");
+        },
+      },
+      maxAttempts: 2,
+    });
+    await documents.worker.drain(m.workspaceId);
+    expect(await job(document.versionId)).toMatchObject({ status: "queued", attempts: 1 });
   });
 });
