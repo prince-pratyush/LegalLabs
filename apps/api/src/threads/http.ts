@@ -76,7 +76,17 @@ const askBody = z.object({
   matter_id: z.uuid().nullable().optional(),
   model: z.string().min(1).max(200).optional(),
   response_mode: ResponseMode.optional(),
+  deep_analysis: z.boolean().optional(),
 });
+
+const planEditBody = z.object({ instruction: z.string().trim().min(1).max(4000).refine(noNul) });
+
+// The stored plan keeps the file list for approval after a restart; callers see only the plan.
+const shownPlan = (plan: unknown) => {
+  if (!plan || typeof plan !== "object") return null;
+  const { scope: _scope, ...shown } = plan as Record<string, unknown>;
+  return shown;
+};
 
 const shareBody = z.object({
   user_ids: z.array(z.uuid()).max(50).default([]),
@@ -150,7 +160,7 @@ const runJson = (run: RunView) => ({
   question_id: run.questionId,
   message_id: run.answerId,
   coverage: run.coverage,
-  plan: run.plan,
+  plan: shownPlan(run.plan),
   model: run.model,
   cost_usd: run.costUsd,
 });
@@ -230,6 +240,7 @@ export function threadHttp(options: ThreadHttpOptions) {
         ...(body.matter_id !== undefined ? { matterId: body.matter_id } : {}),
         ...(body.model ? { model: body.model } : {}),
         ...(body.response_mode ? { responseMode: body.response_mode } : {}),
+        ...(body.deep_analysis ? { deepAnalysis: true } : {}),
       },
       clientOf(c),
     );
@@ -345,6 +356,26 @@ export function threadHttp(options: ThreadHttpOptions) {
   app.get("/runs/:id", async (c) => {
     const run = await threads.run(c.get("principal"), c.req.param("id"));
     return run ? c.json({ run: runJson(run) }) : notFound(c);
+  });
+
+  app.post("/runs/:id/approve", async (c) =>
+    (await threads.approve(c.get("principal"), c.req.param("id"), clientOf(c)))
+      ? c.body(null, 202)
+      : c.json(
+          { code: "NOT_AWAITING_APPROVAL", message: "That plan isn't waiting for approval." },
+          409,
+        ),
+  );
+
+  app.post("/runs/:id/plan/edit", limitBody, async (c) => {
+    const parsed = planEditBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return invalid(c);
+    return (await threads.editPlan(c.get("principal"), c.req.param("id"), parsed.data.instruction))
+      ? c.body(null, 202)
+      : c.json(
+          { code: "NOT_AWAITING_APPROVAL", message: "That plan isn't waiting for approval." },
+          409,
+        );
   });
 
   app.post("/runs/:id/cancel", async (c) =>
