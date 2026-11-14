@@ -416,3 +416,24 @@ async function verifyAuthorityOnly(
   const result = await verifyCitation(citation, inIndex(index));
   return result as AuthorityVerification;
 }
+
+describe("named section pins", () => {
+  const gdpr: Authority = { id: "eurlex:celex:32016R0679", sections: ["Article 6", "Article 17"] };
+  const index = { "regulation (eu) 2016/679": [gdpr] };
+
+  it.each(["Article 6", "art. 6", "ARTICLE 17"])("finds %s among the sections", async (pin) => {
+    const result = await verifyCitation(
+      { kind: "authority", reference: "Regulation (EU) 2016/679", pin },
+      inIndex(index),
+    );
+    expect(result).toEqual({ status: "ok", authorityId: gdpr.id });
+  });
+
+  it("flags an article the act does not have", async () => {
+    const result = await verifyCitation(
+      { kind: "authority", reference: "Regulation (EU) 2016/679", pin: "Article 99" },
+      inIndex(index),
+    );
+    expect(result).toMatchObject({ status: "mismatch", reason: "pin_not_found" });
+  });
+});

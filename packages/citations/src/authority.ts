@@ -153,7 +153,9 @@ export function authorityHref(result: AuthorityVerification): string | null {
 
 // A pin we cannot confirm is flagged, including forms the grammar does not read yet.
 function pinExists(pin: string, authority: Authority): boolean {
-  const normalized = normalizeCitation(pin);
+  const normalized = normalizeCitation(pin).replace(/^art /, "article ");
+  // Named parts such as "Article 6" or "Item 1A" match the authority's own section names.
+  if (authority.sections?.some((s) => normalizeCitation(s) === normalized)) return true;
   if (normalized.startsWith("§")) {
     return authority.sections?.some((s) => normalizeCitation(s) === normalized) ?? false;
   }
