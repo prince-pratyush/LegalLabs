@@ -13,8 +13,10 @@ export {
   createStubScanner,
   EICAR,
   type Scanner,
+  ScannerRefused,
   ScannerUnavailable,
   type ScanResult,
+  scannerFromEnv,
 } from "./scan.js";
 
 const LIMITS = { timeoutMs: 60_000, maxMemoryMb: 256, maxGrowthMb: 1024 };

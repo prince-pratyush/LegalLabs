@@ -5,7 +5,9 @@ import {
   createStubScanner,
   EICAR,
   type Scanner,
+  ScannerRefused,
   ScannerUnavailable,
+  scannerFromEnv,
 } from "./scan.js";
 
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -63,7 +65,17 @@ describe("clamd scanner", () => {
   });
 
   it("treats an error reply as no verdict", async () => {
+    const scanner = await viaFake(() => "Some error. ERROR");
+    await expect(scanner.scan(encode("x"))).rejects.toBeInstanceOf(ScannerUnavailable);
+  });
+
+  it("says when a file is too big to scan, which no retry will fix", async () => {
     const scanner = await viaFake(() => "INSTREAM size limit exceeded. ERROR");
+    await expect(scanner.scan(encode("x"))).rejects.toBeInstanceOf(ScannerRefused);
+  });
+
+  it("stops reading a reply that is far too long", async () => {
+    const scanner = await viaFake(() => "x".repeat(5000));
     await expect(scanner.scan(encode("x"))).rejects.toBeInstanceOf(ScannerUnavailable);
   });
 
@@ -90,5 +102,15 @@ describe("stub scanner", () => {
     const stub = createStubScanner();
     expect(await stub.scan(encode(`prefix ${EICAR}`))).toMatchObject({ clean: false });
     expect(await stub.scan(encode("contract text"))).toEqual({ clean: true });
+  });
+});
+
+describe("scannerFromEnv", () => {
+  it("needs a scanner, and never the stub in production", () => {
+    expect(() => scannerFromEnv({})).toThrow(/CLAMAV_HOST/);
+    expect(() => scannerFromEnv({ LEGALLABS_SCANNER: "stub", NODE_ENV: "production" })).toThrow();
+    expect(() => scannerFromEnv({ CLAMAV_HOST: "clamav", CLAMAV_PORT: "nope" })).toThrow(/PORT/);
+    expect(scannerFromEnv({ LEGALLABS_SCANNER: "stub" })).toBeTruthy();
+    expect(scannerFromEnv({ CLAMAV_HOST: "clamav" })).toBeTruthy();
   });
 });
