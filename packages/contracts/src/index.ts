@@ -3,6 +3,7 @@ export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
 export { RetrievalScope } from "./retrieval.js";
 export * from "./review-table.js";
+export * from "./review-table-values.js";
 export {
   CitationCounts,
   CitationEvent,
