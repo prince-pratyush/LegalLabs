@@ -1,7 +1,9 @@
+from typing import Any
+
 from ..models import ModelClient, Send
 from ..schemas import Document, HarnessRequest, HarnessResult, NonRetryableError
 from .base import Harness
-from .bm25 import Bm25Harness
+from .bm25 import Bm25Index, chunk
 
 SYSTEM = "You are a careful legal analyst. Answer only from the document provided."
 
@@ -11,7 +13,7 @@ class PlainModelHarness(Harness):
 
     kinds = frozenset({"answer"})
 
-    def __init__(self, system_name: str, system: dict, send: Send | None = None) -> None:
+    def __init__(self, system_name: str, system: dict[str, Any], send: Send | None = None) -> None:
         super().__init__(system_name, system)
         params = system.get("params", {})
         if not self.vendor or "model" not in params:
@@ -41,20 +43,14 @@ class PlainModelHarness(Harness):
 class NaiveRagHarness(PlainModelHarness):
     """Baseline: only the top chunks by BM25 for the question, not the whole document."""
 
-    def __init__(self, system_name: str, system: dict, send: Send | None = None) -> None:
+    def __init__(self, system_name: str, system: dict[str, Any], send: Send | None = None) -> None:
         super().__init__(system_name, system, send)
         params = system.get("params", {})
         self.top_k = int(params.get("top_k", 8))
         self.chunk_size = int(params.get("chunk_size", 1000))
 
     def context(self, request: HarnessRequest) -> str:
-        index = Bm25Harness("bm25", {"harness": "bm25", "params": {"chunk_size": self.chunk_size}})
-        index.prepare([Document(request.task.id, request.task.context or "")])
-        found = index.run(
-            HarnessRequest(
-                request.task, request.suite, "", request.attempt_dir, request.run_dir, self.top_k
-            )
-        )
+        doc = Document(request.task.id, request.task.context or "")
+        hits = Bm25Index(chunk(doc, self.chunk_size)).search(request.task.problem, self.top_k)
         # Back in document order, so clauses read as they were written.
-        hits = sorted(found.hits, key=lambda h: h.char_from or 0)
-        return "\n...\n".join(h.text for h in hits)
+        return "\n...\n".join(h.text for h in sorted(hits, key=lambda h: h.char_from or 0))

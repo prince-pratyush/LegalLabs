@@ -50,12 +50,12 @@ def recall_at(hits: Sequence[Hit], relevant: Sequence[Relevant], budget: int) ->
     return sum(_found(hits[:budget], relevant)) / len(relevant)
 
 
-def _tokens(text: str) -> list[str]:
+def tokens(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower())
 
 
 def token_f1(predicted: str, gold: str) -> float:
-    p, g = _tokens(predicted), _tokens(gold)
+    p, g = tokens(predicted), tokens(gold)
     if not p and not g:
         return 1.0
     if not p or not g:
