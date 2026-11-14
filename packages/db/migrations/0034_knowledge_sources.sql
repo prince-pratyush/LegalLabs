@@ -9,8 +9,16 @@ begin
   end if;
 end
 $$;
--- The API's login can load sources, but only after switching to this role on purpose.
-grant legallabs_knowledge to legallabs_api;
+-- Not granted to the API's login: a compromised request handler must not be able to
+-- rewrite the law every workspace trusts. The sync command logs in as a member of this role.
+do $$
+begin
+  if not exists (select from pg_roles where rolname = 'legallabs_loader') then
+    create role legallabs_loader nologin noinherit;
+  end if;
+end
+$$;
+grant legallabs_knowledge to legallabs_loader;
 grant usage on schema knowledge to legallabs_knowledge;
 -- Ids come from core.uuid7, and vectors need pgvector's casts, which live in public.
 grant usage on schema core to legallabs_knowledge;
@@ -68,6 +76,8 @@ create index citation_index_authority_idx on knowledge.citation_index (authority
 
 create table knowledge.source_state (
   source text primary key check (source ~ '^[a-z][a-z0-9_]{0,39}$'),
+  -- The last run's counts and failures until a source syncs by delta and needs a real cursor.
+  -- It holds upstream error text, so no endpoint returns it.
   cursor jsonb not null default '{}',
   doc_count bigint not null default 0 check (doc_count >= 0),
   last_refresh_at timestamptz,

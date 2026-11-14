@@ -21,7 +21,9 @@ const USAGE = `usage:
   legallabs-knowledge load <us_caselaw|eurlex|edgar> <folder of record .json files>
 
 env: DATABASE_URL (required); TEI_URL or OLLAMA_EMBED_URL (optional, adds embeddings);
-     COURTLISTENER_TOKEN (optional); SEC_USER_AGENT (required for an edgar sync)`;
+     COURTLISTENER_TOKEN (optional); SEC_USER_AGENT (required for an edgar sync);
+     KNOWLEDGE_USER_AGENT (optional, replaces the generic User-Agent elsewhere)
+connect as a login that is a member of legallabs_knowledge, never as the API's login`;
 
 export interface KnowledgeIo {
   env: LoaderEnv & { DATABASE_URL?: string | undefined };
