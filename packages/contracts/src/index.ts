@@ -4,7 +4,6 @@ export { Id } from "./id.js";
 export {
   Action,
   Alternate,
-  Anchor,
   ApplyAllRequest,
   ApplyAllResult,
   ApplyRequest,
@@ -35,6 +34,7 @@ export {
   paraHash,
   RedlineRequest,
   Review,
+  ReviewAnchor,
   ReviewError,
   ReviewEvent,
   ReviewMode,
