@@ -751,16 +751,30 @@ function createWriter(pool: pg.Pool, embedder: Embedder | null): Writer {
       // Embedded before the write, so a slow model never holds a transaction open.
       let vectors: (string | null)[] = record.chunks.map(() => null);
       if (embedder) {
+        // Text that already has a vector from this model keeps it, so a metadata fix is cheap.
+        const known = await asKnowledgeLoader(pool, async (db) => {
+          const { rows } = await db.query<{ text: string; embedding: string }>(
+            `select c.text, c.embedding::text as embedding
+               from knowledge.authority_chunk c join knowledge.authority a on a.id = c.authority_id
+              where a.ref = $1 and c.embedding_model = $2`,
+            [record.ref, embedder.model],
+          );
+          return new Map(rows.map((row) => [row.text, row.embedding]));
+        });
         try {
-          const out: string[] = [];
-          for (let i = 0; i < record.chunks.length; i += EMBED_BATCH) {
-            const batch = record.chunks.slice(i, i + EMBED_BATCH).map((c) => c.text);
+          const missing = [...new Set(record.chunks.map((c) => c.text))].filter(
+            (t) => !known.has(t),
+          );
+          for (let i = 0; i < missing.length; i += EMBED_BATCH) {
+            const batch = missing.slice(i, i + EMBED_BATCH);
             const embedded = await embedder.embed(batch);
-            // One vector per chunk, or every later vector would sit on the wrong text.
+            // One vector per text, or every later vector would sit on the wrong text.
             if (embedded.length !== batch.length) throw new EmbedUnavailable("vector count");
-            for (const vector of embedded) out.push(`[${vector.join(",")}]`);
+            for (const [j, vector] of embedded.entries()) {
+              known.set(batch[j] as string, `[${vector.join(",")}]`);
+            }
           }
-          vectors = out;
+          vectors = record.chunks.map((c) => known.get(c.text) ?? null);
         } catch (err) {
           if (!(err instanceof EmbedUnavailable)) throw err;
           // Same text: keep the vectors it has rather than wiping them.

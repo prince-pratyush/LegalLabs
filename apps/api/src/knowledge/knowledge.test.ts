@@ -239,6 +239,10 @@ describe("writer", () => {
     expect(await first.upsert(record)).toBe("added");
     expect(await first.upsert(record)).toBe("unchanged");
     expect(seen).toHaveLength(2);
+    // A change that leaves the text alone embeds nothing new.
+    expect(await first.upsert({ ...record, title: `${record.title} (renamed)` })).toBe("updated");
+    expect(seen).toHaveLength(2);
+    await first.upsert(record);
     const second = createKnowledge(pool, { embedder: embedder("m2") }).writer();
     expect(await second.upsert(record)).toBe("updated");
     expect(seen).toHaveLength(4);
