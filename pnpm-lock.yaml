@@ -236,6 +236,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@legallabs/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@legallabs/ui':
         specifier: workspace:*
         version: link:../../packages/ui

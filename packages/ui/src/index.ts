@@ -1,5 +1,6 @@
 export { cn } from "./cn.js";
 export { AppShell } from "./components/app-shell.js";
+export { Breadcrumbs, type Crumb } from "./components/breadcrumbs.js";
 export { Button, type ButtonProps, buttonStyles } from "./components/button.js";
 export { Checkbox } from "./components/checkbox.js";
 export { CommandPalette, type PaletteCommand } from "./components/command-palette.js";
@@ -13,6 +14,7 @@ export {
   type EvidenceStatus,
 } from "./components/evidence.js";
 export { Field, type FieldControlProps, Input, Label, Textarea } from "./components/field.js";
+export { FolderTree, type TreeFolder } from "./components/folder-tree.js";
 export {
   Menu,
   MenuContent,
@@ -115,6 +117,12 @@ export {
 } from "./components/thread/sources-list.js";
 export { Toaster, toast } from "./components/toast.js";
 export { Kbd, Tooltip, TooltipProvider } from "./components/tooltip.js";
+export {
+  FileStateText,
+  type UploadItem,
+  type UploadState,
+  UploadTray,
+} from "./components/upload-tray.js";
 export { formatKeys, KEYMAP, matchesChord, useHotkeys } from "./shortcuts.js";
 export {
   applyTheme,
