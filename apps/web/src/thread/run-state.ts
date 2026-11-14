@@ -1,5 +1,5 @@
-import type { CitationEvent, RunEvent, RunStatus } from "@legallabs/contracts";
-import type { AnswerCitation, RunCoverage, RunStep } from "@legallabs/ui";
+import { type CitationEvent, FINISHED, type RunEvent, type RunStatus } from "@legallabs/contracts";
+import type { AnswerCitation, Range, RunCoverage, RunStep } from "@legallabs/ui";
 
 export interface LiveCitation extends AnswerCitation {
   /** A deep link or an authority URL, only for a verified citation. */
@@ -13,6 +13,8 @@ export interface LiveRun {
   citations: LiveCitation[];
   steps: RunStep[];
   coverage: RunCoverage | null;
+  /** Sentences the verifier found no source for, sent with `done`. */
+  ungrounded: Range[];
   error: { code: string; message: string; retryable: boolean } | null;
   /** Set by `done`: the saved answer can now be fetched. */
   messageId: string | null;
@@ -26,12 +28,11 @@ export const startRun = (runId: string): LiveRun => ({
   citations: [],
   steps: [],
   coverage: null,
+  ungrounded: [],
   error: null,
   messageId: null,
   finished: false,
 });
-
-const ENDED: readonly RunStatus[] = ["done", "failed", "cancelled"];
 
 function citationOf(event: CitationEvent, at: number): LiveCitation {
   return {
@@ -52,7 +53,11 @@ const STEP_STATUS = { started: "running", finished: "done", failed: "failed" } a
 export function reduceRun(run: LiveRun, event: RunEvent): LiveRun {
   switch (event.type) {
     case "status":
-      return { ...run, status: event.status, finished: run.finished || ENDED.includes(event.status) };
+      return {
+        ...run,
+        status: event.status,
+        finished: run.finished || FINISHED.includes(event.status),
+      };
     case "token":
       return { ...run, text: run.text + event.delta };
     case "citation": {
@@ -84,7 +89,13 @@ export function reduceRun(run: LiveRun, event: RunEvent): LiveRun {
         },
       };
     case "done":
-      return { ...run, status: "done", messageId: event.message_id, finished: true };
+      return {
+        ...run,
+        status: "done",
+        messageId: event.message_id,
+        ungrounded: event.ungrounded ?? [],
+        finished: true,
+      };
     case "error":
       return {
         ...run,

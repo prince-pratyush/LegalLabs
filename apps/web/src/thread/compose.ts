@@ -3,7 +3,7 @@ import type { Mentionable } from "@legallabs/ui";
 import type { Citation } from "../api.js";
 import type { LiveCitation } from "./run-state.js";
 
-const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * Turns the typed question into content blocks, so each `@Label` the user
@@ -14,7 +14,7 @@ export function toBlocks(text: string, mentions: readonly Mentionable[]): string
   const byLabel = new Map(mentions.map((m) => [m.label, m]));
   if (byLabel.size === 0) return text;
   // Longest first, so "@Lease 2" isn't read as "@Lease".
-  const labels = [...byLabel.keys()].sort((a, b) => b.length - a.length).map(escape);
+  const labels = [...byLabel.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp);
   const pattern = new RegExp(`@(${labels.join("|")})`, "g");
   const blocks: ContentBlock[] = [];
   let last = 0;

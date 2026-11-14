@@ -1,7 +1,14 @@
 import type { SourceSelection } from "@legallabs/contracts";
 import { type Attachment, Composer, type Mentionable, type ModelOption } from "@legallabs/ui";
 import { useEffect, useMemo, useState } from "react";
-import { type AskInput, api, type DocumentSummary, messageOf, type ScopeOptions, type Thread } from "../api.js";
+import {
+  type AskInput,
+  api,
+  type DocumentSummary,
+  messageOf,
+  type ScopeOptions,
+  type Thread,
+} from "../api.js";
 import { documentStatus } from "../text.js";
 import { toBlocks } from "./compose.js";
 
@@ -42,7 +49,6 @@ export function ThreadComposer({
   // Files are read in the background, so their chips are refreshed until each settles.
   const pending = uploads.filter(reading).map((d) => d.id);
   const pendingKey = pending.join(",");
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pendingKey stands for pending
   useEffect(() => {
     if (!pendingKey) return;
     const timer = setInterval(() => {
@@ -87,7 +93,9 @@ export function ThreadComposer({
   ];
 
   const mentionables: Mentionable[] = [
-    ...files.filter((f) => f.status === "ready").map((f) => ({ type: "document" as const, id: f.id, label: f.label })),
+    ...files
+      .filter((f) => f.status === "ready")
+      .map((f) => ({ type: "document" as const, id: f.id, label: f.label })),
     ...(options?.vaults ?? []).map((v) => ({ type: "vault" as const, id: v.id, label: v.name })),
     ...(options?.sources ?? []).map((s) => ({ type: "source" as const, id: s.id, label: s.name })),
   ];
@@ -156,7 +164,11 @@ export function ThreadComposer({
         attachments={attachments}
         onRemove={remove}
         onAttachFiles={attach}
-        vaults={(options?.vaults ?? []).map((v) => ({ id: v.id, name: v.name, fileCount: v.file_count }))}
+        vaults={(options?.vaults ?? []).map((v) => ({
+          id: v.id,
+          name: v.name,
+          fileCount: v.file_count,
+        }))}
         selectedVaultIds={vaultIds}
         onToggleVault={(id) =>
           setVaultIds((ids) => (ids.includes(id) ? ids.filter((v) => v !== id) : [...ids, id]))
@@ -180,7 +192,9 @@ export function ThreadComposer({
         deepAnalysis={false}
         onDeepAnalysis={() => setNotice("Deep analysis is coming soon.")}
         mentionables={mentionables}
-        onMention={(item) => setMentions((list) => [...list.filter((m) => m.label !== item.label), item])}
+        onMention={(item) =>
+          setMentions((list) => [...list.filter((m) => m.label !== item.label), item])
+        }
       />
       {failures.map((line) => (
         <p key={line} role="status" className="px-1 text-caption text-destructive">

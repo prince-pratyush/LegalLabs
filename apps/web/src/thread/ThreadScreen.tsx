@@ -1,4 +1,4 @@
-import { parseCitationPath } from "@legallabs/contracts";
+import { FINISHED, isTerminal, parseCitationPath } from "@legallabs/contracts";
 import {
   AnswerText,
   AnswerTextSkeleton,
@@ -19,7 +19,6 @@ import {
   api,
   type Message,
   messageOf,
-  type Run,
   type ScopeOptions,
   streamRun,
   type Thread,
@@ -31,8 +30,6 @@ import { openCitation } from "../viewer/open-citation.js";
 import { toAnswerCitation } from "./compose.js";
 import { type LiveCitation, type LiveRun, reduceRun, startRun } from "./run-state.js";
 import { ThreadComposer } from "./ThreadComposer.js";
-
-const ENDED: readonly Run["status"][] = ["done", "failed", "cancelled"];
 
 /** Verified citations open the viewer (or the authority); flagged ones never link. */
 function follow(citation: LiveCitation) {
@@ -86,13 +83,11 @@ export function ThreadScreen({
   }, [load, attempt]);
 
   useEffect(() => {
-    api.scopeOptions().then(setOptions, () =>
-      setOptions({ vaults: [], sources: [], models: [] }),
-    );
+    api.scopeOptions().then(setOptions, () => setOptions({ vaults: [], sources: [], models: [] }));
   }, []);
 
   // Follow whichever run is still going; a reload picks it up again from the start.
-  const active = thread?.runs.find((run) => !ENDED.includes(run.status)) ?? null;
+  const active = thread?.runs.find((run) => !FINISHED.includes(run.status)) ?? null;
   const activeId = active?.id ?? null;
   useEffect(() => {
     if (!activeId || following.current === activeId) return;
@@ -103,11 +98,7 @@ export function ThreadScreen({
       activeId,
       (event) => {
         setLive((run) => (run && run.runId === activeId ? reduceRun(run, event) : run));
-        const ended =
-          event.type === "done" ||
-          (event.type === "status" && ENDED.includes(event.status)) ||
-          (event.type === "error" && !event.retryable);
-        if (ended && !settled) {
+        if (isTerminal(event) && !settled) {
           settled = true;
           // The saved message replaces the streamed text, with its final citations.
           load().then(
@@ -199,7 +190,12 @@ export function ThreadScreen({
     panel?.kind === "share" && thread ? (
       <SharePanel threadId={thread.id} onClose={() => setPanel(null)} />
     ) : panel?.kind === "sources" ? (
-      <SidePanel title="Sources" onClose={() => setPanel(null)} width={width} onWidthChange={setWidth}>
+      <SidePanel
+        title="Sources"
+        onClose={() => setPanel(null)}
+        width={width}
+        onWidthChange={setWidth}
+      >
         <SourcesList
           citations={answerCitations(panel.answerId)}
           {...(panel.n !== undefined ? { activeN: panel.n } : {})}
@@ -220,7 +216,9 @@ export function ThreadScreen({
       <Shell>
         <EmptyState
           title={missing ? "Thread not found" : "This thread couldn't be opened"}
-          description={missing ? "It may have been deleted, or you no longer have access." : loadError.message}
+          description={
+            missing ? "It may have been deleted, or you no longer have access." : loadError.message
+          }
           action={
             missing
               ? { label: "Start a new thread", onClick: () => navigate(paths.new) }
@@ -310,9 +308,7 @@ export function ThreadScreen({
               role="note"
               className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-bg-subtle p-3"
             >
-              <p className="text-ui">
-                This thread was shared with you, so it's read-only.
-              </p>
+              <p className="text-ui">This thread was shared with you, so it's read-only.</p>
               <Button onClick={duplicate}>Duplicate to continue</Button>
             </div>
           ) : (
@@ -398,6 +394,7 @@ function LiveAnswer({
         <AnswerText
           text={run.text}
           citations={run.citations}
+          ungrounded={run.ungrounded}
           onOpen={onCite}
           streaming={!run.finished}
         />
