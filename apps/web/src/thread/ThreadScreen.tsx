@@ -8,7 +8,7 @@ import {
   ModelBadge,
   RunProgress,
 } from "@legallabs/ui";
-import { Share2 } from "lucide-react";
+import { FilePen, Share2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -20,6 +20,7 @@ import {
   streamRun,
   type Thread,
 } from "../api.js";
+import { DraftsPanel } from "../drafts/DraftsPanel.js";
 import { navigate, paths } from "../router.js";
 import { SharePanel } from "../share/SharePanel.js";
 import { Shell } from "../shell.js";
@@ -45,7 +46,11 @@ function follow(citation: LiveCitation) {
   return false;
 }
 
-type Panel = { kind: "sources"; answerId: string; n?: number } | { kind: "share" } | null;
+type Panel =
+  | { kind: "sources"; answerId: string; n?: number }
+  | { kind: "share" }
+  | { kind: "drafts"; draftId?: string }
+  | null;
 
 export function ThreadScreen({
   threadId,
@@ -150,6 +155,17 @@ export function ThreadScreen({
     });
   };
 
+  const draftFrom = async (messageId: string) => {
+    if (!thread) return;
+    setSendError(null);
+    try {
+      const draft = await api.createDraft(thread.id, messageId);
+      setPanel({ kind: "drafts", draftId: draft.id });
+    } catch (err) {
+      setSendError(messageOf(err));
+    }
+  };
+
   const stop = () => {
     if (live && !live.finished) api.cancel(live.runId).catch(() => undefined);
   };
@@ -184,7 +200,14 @@ export function ThreadScreen({
   };
 
   const panelNode =
-    panel?.kind === "share" && thread ? (
+    panel?.kind === "drafts" && thread ? (
+      <DraftsPanel
+        key={panel.draftId ?? "drafts"}
+        threadId={thread.id}
+        {...(panel.draftId ? { draftId: panel.draftId } : {})}
+        onClose={() => setPanel(null)}
+      />
+    ) : panel?.kind === "share" && thread ? (
       <SharePanel threadId={thread.id} onClose={() => setPanel(null)} />
     ) : panel?.kind === "sources" ? (
       <SourcesPanel
@@ -240,12 +263,18 @@ export function ThreadScreen({
         {thread ? (
           <header className="flex items-start justify-between gap-4">
             <h1 className="text-title font-semibold">{thread.title}</h1>
-            {!thread.read_only && (
-              <Button variant="secondary" size="sm" onClick={() => setPanel({ kind: "share" })}>
-                <Share2 aria-hidden />
-                Share
+            <div className="flex shrink-0 gap-2">
+              <Button variant="quiet" size="sm" onClick={() => setPanel({ kind: "drafts" })}>
+                <FilePen aria-hidden />
+                Drafts
               </Button>
-            )}
+              {!thread.read_only && (
+                <Button variant="secondary" size="sm" onClick={() => setPanel({ kind: "share" })}>
+                  <Share2 aria-hidden />
+                  Share
+                </Button>
+              )}
+            </div>
           </header>
         ) : (
           <header className="grid gap-1">
@@ -269,6 +298,7 @@ export function ThreadScreen({
                     selected={panel?.kind === "sources" && panel.answerId === message.id}
                     onCite={(n) => cite(message.id, message.citations.map(toAnswerCitation), n)}
                     onSources={() => setPanel({ kind: "sources", answerId: message.id })}
+                    {...(thread.read_only ? {} : { onDraft: () => void draftFrom(message.id) })}
                   />
                 )}
                 {live && message.id === liveQuestion && (
@@ -332,11 +362,14 @@ function SavedAnswer({
   selected,
   onCite,
   onSources,
+  onDraft,
 }: {
   message: Message;
   selected: boolean;
   onCite: (n: number) => void;
   onSources: () => void;
+  /** Absent on a read-only thread. */
+  onDraft?: () => void;
 }) {
   const fallbackFrom =
     message.requested_model && message.requested_model !== message.model
@@ -369,6 +402,12 @@ function SavedAnswer({
         {message.citations.length > 0 && (
           <Button variant="quiet" size="sm" aria-pressed={selected} onClick={onSources}>
             Sources ({message.citations.length})
+          </Button>
+        )}
+        {onDraft && (
+          <Button variant="quiet" size="sm" onClick={onDraft}>
+            <FilePen aria-hidden />
+            Draft from this answer
           </Button>
         )}
       </div>
