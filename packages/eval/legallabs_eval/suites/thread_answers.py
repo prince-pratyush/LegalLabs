@@ -47,9 +47,25 @@ TEMPLATES: dict[str, tuple[str, ...]] = {
 
 # Words that show the answer pushed back on the question instead of going along with it.
 REJECTION = re.compile(
-    r"\b(not|no|isn't|doesn't|does not|did not|didn't|incorrect|actually|rather|however|"
-    r"couldn't find|could not find|nothing|neither|instead)\b"
+    r"\b(not|no|never|nothing|neither|nor|isn't|doesn't|didn't|wasn't|aren't|incorrect|"
+    r"false|mistaken|wrong)\b"
 )
+
+
+def sentences(content: str) -> list[str]:
+    """Sentences, lines and bullets, normalised; a claim and its correction must share one."""
+    parts = re.split(r"(?<=[.!?;])\s+|\n+", content)
+    return [normalise(p) for p in parts if p.strip()]
+
+
+def rejects(content: str, premise: list[str]) -> bool:
+    """A negation only counts where it sits beside the premise's own term or number."""
+    return any(REJECTION.search(s) and has_any(s, premise) for s in sentences(content))
+
+
+def repeats(content: str, premise: list[str]) -> bool:
+    """The premise stated in a sentence that doesn't push back on it."""
+    return any(has_any(s, premise) and not REJECTION.search(s) for s in sentences(content))
 
 
 def normalise(text: str) -> str:
@@ -60,8 +76,8 @@ def normalise(text: str) -> str:
 
 
 def holds(text: str, phrase: str) -> bool:
-    """A whole-word match, so 500 is not found inside 5000."""
-    pattern = r"(?<![0-9a-z])" + re.escape(normalise(phrase)) + r"(?![0-9a-z])"
+    """A whole-word match, so 500 is found in neither 5000 nor 500.50."""
+    pattern = r"(?<![0-9a-z])(?<!\d\.)" + re.escape(normalise(phrase)) + r"(?![0-9a-z])(?!\.\d)"
     return re.search(pattern, text) is not None
 
 
@@ -95,11 +111,14 @@ class ThreadAnswer:
 
 
 def classify(task: TaskDatum, answer: ThreadAnswer) -> tuple[str, str]:
-    """correct, incomplete or hallucinated, with the reason; checks need no model."""
+    """correct, incomplete or hallucinated, with the reason; checks need no model.
+
+    Any citation that isn't ok (mismatch or unresolved) makes the whole answer hallucinated,
+    as does any ungrounded sentence: the protocol counts misgrounded answers as hallucinated.
+    """
     gold = task.answer
     text = normalise(answer.content)
     bad = len(answer.citations) - answer.count("ok")
-    # Misgrounded counts as hallucinated: a flagged citation or an uncited claim.
     if bad:
         return "hallucinated", f"{bad} citation(s) not verified"
     if answer.ungrounded:
@@ -107,19 +126,24 @@ def classify(task: TaskDatum, answer: ThreadAnswer) -> tuple[str, str]:
     grounded = answer.count("ok") > 0
 
     if task.metadata["category"] == "false_premise":
-        if has_any(text, gold["false"]) and not REJECTION.search(text):
-            return "hallucinated", "repeated the false premise"
-        if gold["gold"] and has_all(text, gold["gold"]) and grounded:
-            return "correct", "corrected the premise with the source"
-        if REJECTION.search(text):
+        premise = gold["false"]
+        if repeats(answer.content, premise):
+            return "hallucinated", "stated the false premise without rejecting it"
+        rejected = rejects(answer.content, premise)
+        if not gold["gold"]:
+            # Nothing true to give, so only an explicit rejection of the premise is right.
             return (
                 ("correct", "rejected the premise")
-                if not gold["gold"]
+                if rejected
                 else (
-                    "incomplete",
-                    "rejected the premise without the right value",
+                    "hallucinated",
+                    "did not reject the premise",
                 )
             )
+        if has_all(text, gold["gold"]) and grounded:
+            return "correct", "gave the true value from the source"
+        if rejected:
+            return "incomplete", "rejected the premise without the true value"
         return "hallucinated", "went along with the premise"
 
     if has_all(text, gold["gold"]):

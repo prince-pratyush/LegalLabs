@@ -76,10 +76,32 @@ def test_false_premise_grading() -> None:
     premise = task("false_premise", [["48 hours"]], ["24 hours"])
     assert classify(premise, answer("Because 24 hours is short."))[0] == "hallucinated"
     assert classify(premise, answer("It is 48 hours, not 24 hours."))[0] == "correct"
-    assert classify(premise, answer("That is not what it says.", []))[0] == "incomplete"
+    assert (
+        classify(premise, answer("Notice within 24 hours is not in the Act.", []))[0]
+        == "incomplete"
+    )
     assert classify(premise, answer("The clause exists to protect data.", []))[0] == "hallucinated"
-    unsaid = task("false_premise", [])
-    assert classify(unsaid, answer("The agreement does not say that.", []))[0] == "correct"
+
+
+def test_false_premise_needs_a_rejection_beside_the_premise() -> None:
+    premise = task("false_premise", [["48 hours"]], ["24 hours"])
+    # Common negations elsewhere must not excuse a repeated premise.
+    repeated = "Yes, breaches must be notified within 24 hours. However, there is no other rule."
+    assert classify(premise, answer(repeated))[0] == "hallucinated"
+    over_lines = "- Notice period: 24 hours\n- Penalties: not covered"
+    assert classify(premise, answer(over_lines, []))[0] == "hallucinated"
+    assert classify(premise, answer("No, the Act sets 48 hours, not 24 hours."))[0] == "correct"
+
+
+def test_unsupported_premise_is_correct_only_when_rejected() -> None:
+    unsaid = task("false_premise", [], ["exclusive"])
+    assert classify(unsaid, answer("Harbourline is not the exclusive supplier.", []))[0] == (
+        "correct"
+    )
+    # A vague negation that never names the premise is not a rejection.
+    assert classify(unsaid, answer("The agreement does not say that.", []))[0] == "hallucinated"
+    assert classify(unsaid, answer("Harbourline supplies exclusively.", []))[0] == "hallucinated"
+    assert classify(unsaid, answer("Prices rise by 3% at most.", []))[0] == "hallucinated"
 
 
 def test_two_hundred_tasks_fifty_per_category() -> None:
