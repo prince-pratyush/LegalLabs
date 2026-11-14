@@ -232,6 +232,13 @@
       "when": 1794009640000,
       "tag": "0040_work_review_tables",
       "breakpoints": false
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794009641000,
+      "tag": "0041_work_review_table_cells",
+      "breakpoints": false
     }
   ]
 }
