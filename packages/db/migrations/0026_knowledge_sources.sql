@@ -12,6 +12,10 @@ $$;
 -- The API's login can load sources, but only after switching to this role on purpose.
 grant legallabs_knowledge to legallabs_api;
 grant usage on schema knowledge to legallabs_knowledge;
+-- Ids come from core.uuid7, and vectors need pgvector's casts, which live in public.
+grant usage on schema core to legallabs_knowledge;
+grant execute on function core.uuid7() to legallabs_knowledge;
+grant execute on all functions in schema public to legallabs_knowledge;
 
 create table knowledge.authority (
   id uuid primary key default core.uuid7(),
