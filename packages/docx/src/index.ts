@@ -9,4 +9,13 @@ export {
   type Run,
   type TextRun,
 } from "./markdown.js";
+export { type SampleTemplateOptions, sampleFirmTemplate } from "./sample.js";
+export {
+  CONTENT_MARK,
+  openTemplate,
+  placeholders,
+  TemplateError,
+  type TemplateProblem,
+  TITLE_MARK,
+} from "./template.js";
 export { buildTrackedDocx, type TrackedInput } from "./tracked.js";
