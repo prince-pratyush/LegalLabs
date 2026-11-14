@@ -22,6 +22,11 @@ describe("mentionQuery", () => {
     expect(mentionQuery("@abc def", 3)).toEqual({ query: "ab", start: 0 });
   });
 
+  it("ignores an @ followed by a space", () => {
+    expect(mentionQuery("meet @ 5pm", 10)).toBeNull();
+    expect(mentionQuery("meet @ ", 7)).toBeNull();
+  });
+
   it("returns null with no @", () => {
     expect(mentionQuery("hello", 5)).toBeNull();
   });

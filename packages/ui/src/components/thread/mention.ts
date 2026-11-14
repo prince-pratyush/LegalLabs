@@ -13,6 +13,8 @@ export function mentionQuery(text: string, caret: number): { query: string; star
   const prev = before[at - 1];
   if (prev !== undefined && !/\s/.test(prev)) return null;
   const query = before.slice(at + 1);
+  // "meet @ 5pm" is an at sign, not a mention.
+  if (/^\s/.test(query)) return null;
   // Labels can hold spaces, but a line break or a long run means the mention is over.
   if (query.includes("\n") || query.length > 60) return null;
   return { query, start: at };
