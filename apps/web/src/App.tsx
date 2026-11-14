@@ -7,13 +7,16 @@ import {
   cn,
   type Evidence,
   Field,
+  formatKeys,
   Input,
   type PaletteCommand,
   ResizeHandle,
   StatusText,
   setThemeSetting,
   Textarea,
+  Tooltip,
 } from "@legallabs/ui";
+import { X } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -141,6 +144,7 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
   const [active, setActive] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const [sourcesOpen, setSourcesOpen] = useState(true);
 
   const refreshThreads = useCallback(() => {
     api.threads().then(setThreads, (err) => setError(messageOf(err)));
@@ -221,6 +225,7 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
   };
 
   const cite = (message: Message, citation: Citation) => {
+    setSourcesOpen(true);
     setActive(message.id);
     setFocus(`source-${message.id}-${citation.n}`);
   };
@@ -275,7 +280,8 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       brand="LegalLabs"
       sidebarLabel="Documents and threads"
       commands={commands}
-      panel={<Sources message={shown} />}
+      panel={sourcesOpen && <Sources message={shown} onHide={() => setSourcesOpen(false)} />}
+      onTogglePanel={() => setSourcesOpen((open) => !open)}
       sidebar={
         <div className="grid min-w-0 gap-6">
           <section className="grid gap-2">
@@ -464,7 +470,7 @@ const STATUS: Record<Citation["status"], { label: string; detail: string }> = {
   unresolved: { label: "Not verified", detail: "This citation couldn't be checked." },
 };
 
-function Sources({ message }: { message: Message | null }) {
+function Sources({ message, onHide }: { message: Message | null; onHide: () => void }) {
   const citations = message?.citations ?? [];
   const [width, setWidth] = useState(360);
   return (
@@ -474,12 +480,16 @@ function Sources({ message }: { message: Message | null }) {
       className="relative flex h-full flex-col border-l border-border bg-bg-subtle"
     >
       <ResizeHandle value={width} onChange={setWidth} label="Resize sources" />
-      <h2
-        id="sources-heading"
-        className="flex h-12 shrink-0 items-center border-b border-border px-4 text-section font-semibold"
-      >
-        Sources
-      </h2>
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+        <h2 id="sources-heading" className="text-section font-semibold">
+          Sources
+        </h2>
+        <Tooltip content="Hide sources" shortcut={formatKeys("mod+/")}>
+          <Button variant="quiet" size="icon" aria-label="Hide sources" onClick={onHide}>
+            <X aria-hidden />
+          </Button>
+        </Tooltip>
+      </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {citations.length === 0 ? (
           <p className="text-fg-muted">No sources to show.</p>
