@@ -8,6 +8,8 @@ import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
+import type { Drafts } from "./drafts/drafts.js";
+import { draftHttp } from "./drafts/http.js";
 import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
@@ -37,6 +39,7 @@ export interface AppOptions {
   auth: Auth;
   documents: Documents;
   threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
+  drafts: Drafts;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
   /** The socket address only: forwarded headers can be forged by the caller. */
@@ -50,6 +53,7 @@ export function createApp({
   auth,
   documents,
   threads,
+  drafts,
   vaults,
   clientIp,
   now = Date.now,
@@ -148,6 +152,7 @@ export function createApp({
 
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
+  app.route("/api/v1", draftHttp(drafts, clientOf));
   if (vaults) {
     app.route("/api/v1/vaults", vaultRoutes(vaults, clientOf));
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));

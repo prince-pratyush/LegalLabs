@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { createGateway } from "@legallabs/model-gateway";
 import { contentKey, createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
 import { hashPassword } from "../auth/password.js";
+import { createDrafts } from "../drafts/drafts.js";
 import {
   auditTrail,
   PASSWORD,
@@ -32,6 +34,9 @@ function harness() {
     auth: createAuth(pool),
     documents,
     threads: testThreads(pool, documents),
+    drafts: createDrafts(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+    }),
     vaults,
     clientIp: () => "203.0.113.9",
   });

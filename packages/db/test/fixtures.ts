@@ -256,7 +256,17 @@ export async function seed(tx: Tx) {
       "insert into work.thread_favourite (workspace_id, thread_id, user_id) values ($1, $2, $3)",
       [ws, threadId, owner],
     );
-    return { threadId, messageId, runId };
+    const draftId = await id(
+      `insert into work.draft (workspace_id, thread_id, owner_id, kind, title)
+       values ($1, $2, $3, 'editor', 'Memo') returning id`,
+      [ws, threadId, owner],
+    );
+    await tx.rows(
+      `insert into work.draft_version (workspace_id, draft_id, no, body, author, created_by)
+       values ($1, $2, 1, 'Draft text.', 'user', $3)`,
+      [ws, draftId, owner],
+    );
+    return { threadId, messageId, runId, draftId };
   };
   const threads = {
     acme: await thread(acme, ana, documents.acme.versionId),
