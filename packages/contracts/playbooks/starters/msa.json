@@ -1,0 +1,360 @@
+{
+  "name": "Starter MSA playbook",
+  "contract_type": "Master services agreement",
+  "guidance": "Orientation: this playbook is written for an in-house legal team acting for the customer under a master services or SaaS agreement, usually reviewing the supplier's draft (their paper). Standard positions are customer-favourable first-turn asks. Fallbacks are balanced market positions that can be accepted without escalation, most preferred first. Anything matching the unacceptable line should be marked not acceptable and escalated to the playbook owner. Flagged rules (liability, indemnities, data protection, security) need a reviewer's eyes even when the clause looks acceptable.\n\nPaper defaults: on their paper, expect supplier-favourable drafting on liability, auto-renewal, price increases, unilateral changes to online terms and suspension rights; check order forms and incorporated policies as well as the main terms. On our paper, findings usually mean the supplier has edited our standard text; treat each edit as a gap.\n\nScale positions to the deal. A low-value, low-risk subscription may justify accepting fallbacks across the board; a critical outsourcing or a supplier that processes regulated data justifies holding standard positions.\n\nJurisdictions: positions cover agreements governed by US (state), EU member state, UK (England and Wales) or Australian law. Rules with a jurisdiction condition apply only when the review records that governing law. Points to remember: UK and Australian courts read 'consequential loss' narrowly, so define it; limitation clauses in UK standard terms must pass the Unfair Contract Terms Act 1977 reasonableness test; Australia's unfair contract terms regime (Australian Consumer Law, strengthened from November 2023 with civil penalties) can void one-sided terms in standard form contracts with a small business, which matters when we contract on our own paper with a small supplier; fixed sums payable on breach may be unenforceable penalties in the UK and Australia. For any other governing law, review with local counsel.",
+  "rules": [
+    {
+      "title": "Limitation of Liability Cap",
+      "standard_position": "Each party's total liability is capped at the greater of a fixed amount agreed for the deal and two times the fees paid or payable in the 12 months before the claim. The cap applies mutually and resets annually or is set per claim.",
+      "fallbacks": [
+        "Mutual cap at the greater of a fixed floor and 1.5 times the annual fees.",
+        "Mutual cap at the fees paid or payable in the 12 months before the claim, with a fixed minimum floor so the cap is meaningful early in the term.",
+        "Mutual cap at 12 months' fees with no floor, only for low-value, low-risk services approved by the business owner."
+      ],
+      "unacceptable": "Caps that apply only to the supplier's benefit; a cap tied to fees paid in a short period (for example, the previous one to three months) or to fees for the specific service that caused the loss; a cap equal to service credits; the supplier excluding all liability; our payment obligations counted against the supplier's cap.",
+      "guidance": "The cap is the single most important commercial risk term. A floor matters for usage-based or early-term deals where fees paid are low. In the UK, a limitation clause in written standard terms must be reasonable under the Unfair Contract Terms Act 1977 (s 3 and s 11), considering resources, insurance and bargaining power, and liability for death or personal injury from negligence cannot be excluded (s 2(1)). In Australia, a one-sided cap in a standard form small business contract may be void as an unfair term, and statutory consumer guarantees cannot be excluded where they apply. In the US, caps are generally enforced between commercial parties but not for gross negligence or wilful misconduct in many states.",
+      "flag": true,
+      "actions": [
+        {
+          "scenario": "The supplier's cap is below 12 months' fees or has no floor on a usage-based deal.",
+          "instruction": "Counter with the standard position; if the business accepts a lower cap, record the approver in a comment."
+        }
+      ],
+      "sample_language": "Subject to the exclusions below, each party's total liability arising out of or in connection with this agreement in any contract year is limited to the greater of [fixed amount] and twice the fees paid or payable under this agreement in the 12 months before the event giving rise to the claim."
+    },
+    {
+      "title": "Exclusions from the Liability Cap",
+      "standard_position": "Uncapped: death or personal injury caused by negligence; fraud; wilful misconduct or abandonment; breach of confidentiality; breach of data protection or security obligations; the supplier's IP indemnity; and any liability that cannot be limited by law. Data, confidentiality and security breaches are uncapped or carry a separate super-cap of at least three times annual fees.",
+      "fallbacks": [
+        "Data protection, security and confidentiality breaches subject to a super-cap of the greater of a fixed amount and three times annual fees, with the IP indemnity uncapped.",
+        "Super-cap of two times annual fees covering data protection, security, confidentiality and the IP indemnity, with fraud, wilful misconduct and non-excludable liability uncapped."
+      ],
+      "unacceptable": "No exclusions other than those required by law; data breach losses capped within the general cap; the IP indemnity capped at the general cap; the customer's liability for fees uncapped while the supplier's data liability is capped; regulatory fines and breach response costs excluded as consequential loss.",
+      "guidance": "A data breach can cost far more than annual fees, so the super-cap is the usual compromise. Make the super-cap separate from and additional to the general cap, not part of it. State expressly that breach notification costs, credit monitoring, forensic investigation and regulatory fines (to the extent the law allows them to be recovered) are direct losses.",
+      "flag": true,
+      "actions": [
+        {
+          "scenario": "The supplier will host or process personal data or regulated data.",
+          "instruction": "Do not accept a data liability super-cap below two times annual fees without escalation."
+        }
+      ],
+      "sample_language": "The limitation in the previous clause does not apply to liability for death or personal injury caused by negligence, fraud, wilful misconduct, the supplier's indemnity for infringement of intellectual property, or any liability that cannot be limited by law. Each party's total liability for breach of its confidentiality, data protection or security obligations is limited to the greater of [fixed amount] and three times the fees paid or payable in the 12 months before the claim, which is in addition to the general limitation."
+    },
+    {
+      "title": "Consequential Loss",
+      "standard_position": "Neither party is liable for indirect or consequential loss, defined narrowly as loss that does not arise naturally from the breach, and the following are expressly recoverable as direct loss: costs of replacement services, remediation and data restoration, breach response costs, regulatory fines where recoverable by law, and wasted expenditure.",
+      "fallbacks": [
+        "Mutual exclusion of loss of profits, revenue and goodwill and of indirect loss, with the recoverable list limited to data restoration, breach response costs and the extra cost of replacement services.",
+        "Mutual exclusion of indirect and consequential loss without a recoverable list, provided lost profits are not excluded as a separate category for the customer's direct savings and costs."
+      ],
+      "unacceptable": "Exclusion of 'all loss of data', 'any loss of profits, whether direct or indirect' in a way that removes our main heads of loss; exclusion of the very losses that arise from the services failing; a definition of consequential loss that covers any loss beyond the fees paid.",
+      "guidance": "In England and Wales, 'consequential loss' has traditionally been read to mean loss in the second limb of Hadley v Baxendale (loss not arising naturally), and Australian courts have read it in context with a narrower or broader meaning depending on drafting, so state what is recoverable rather than relying on the label. US courts distinguish direct, incidental and consequential damages, and lost profits can be direct; an express list avoids disputes everywhere.",
+      "flag": true,
+      "actions": [],
+      "sample_language": "Neither party is liable for any indirect or consequential loss, meaning loss that does not arise naturally from the breach. The following losses are direct losses recoverable by the customer: the reasonable cost of procuring replacement services, of restoring or recreating lost or corrupted data, of investigating and notifying a data breach, and any fines or penalties that may lawfully be recovered."
+    },
+    {
+      "title": "IP Ownership of Deliverables",
+      "standard_position": "The customer owns all deliverables created specifically for it, and all customer data and outputs, on creation. The supplier keeps its pre-existing IP and generic tools and grants the customer a perpetual, irrevocable, royalty-free licence to use any supplier IP embedded in the deliverables.",
+      "fallbacks": [
+        "The supplier owns its platform and generic improvements; the customer owns its data and any bespoke deliverables on payment; the supplier licenses embedded IP perpetually for the customer's business purposes.",
+        "The supplier owns all deliverables but grants the customer a perpetual, irrevocable, worldwide, royalty-free and transferable licence for its business, with exclusivity for deliverables that contain customer confidential information."
+      ],
+      "unacceptable": "Supplier ownership of customer data, outputs generated from customer data, or deliverables containing our confidential information; a licence to us that ends on termination; rights for the supplier to reuse our bespoke work for competitors.",
+      "guidance": "For SaaS the issue is mostly data and outputs; for professional services it is the bespoke work product. Make sure moral rights consents are obtained where relevant (UK and Australian copyright law recognise moral rights of individual authors).",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The customer owns all intellectual property rights in the deliverables created specifically for it and in all customer data and outputs, from creation. The supplier retains its pre-existing materials and grants the customer a perpetual, irrevocable, worldwide, royalty-free licence to use any of them that are included in a deliverable."
+    },
+    {
+      "title": "IP Indemnity",
+      "standard_position": "The supplier defends and indemnifies the customer against any third-party claim that the services, software or deliverables infringe intellectual property rights, uncapped, with the supplier's remedies (modify, procure a licence, or replace) in addition to, not instead of, the indemnity, and a refund of prepaid fees if none works.",
+      "fallbacks": [
+        "IP indemnity subject to a super-cap of at least three times annual fees, with standard exclusions for customer modifications, combinations not supplied or specified by the supplier, and customer-supplied materials.",
+        "IP indemnity within the super-cap, with the supplier having the option to terminate and refund unused prepaid fees after trying to modify or procure a licence."
+      ],
+      "unacceptable": "No IP indemnity; an indemnity limited to patents in one country; termination and refund as the customer's only remedy for infringement; exclusions so wide that any use with other software defeats the indemnity; the customer giving the supplier a matching broad indemnity for use of the services.",
+      "guidance": "Pair the indemnity with fair conduct of claims: prompt notice (failure to notify only reduces the indemnity to the extent the supplier is prejudiced), supplier control of the defence, and no settlement admitting fault for the customer without consent. For generative AI services, ask for the indemnity to cover outputs used as permitted.",
+      "flag": true,
+      "actions": [
+        {
+          "scenario": "The services include generative AI outputs.",
+          "instruction": "Ask that the IP indemnity expressly cover claims arising from outputs used in accordance with the documentation."
+        }
+      ],
+      "sample_language": "The supplier must defend the customer against any third-party claim that the services or deliverables infringe that party's intellectual property rights, and must pay any damages, costs and settlement amounts awarded or agreed, provided the customer notifies the supplier promptly, gives it control of the defence and provides reasonable assistance at the supplier's cost."
+    },
+    {
+      "title": "Warranties",
+      "standard_position": "The supplier warrants that the services will be performed with reasonable skill and care by suitably qualified people, will conform materially to the documentation and specifications for the whole term, will comply with law, and will not contain malicious code. Breach entitles the customer to re-performance, a refund and its other remedies.",
+      "fallbacks": [
+        "Conformity with documentation and reasonable skill and care warranties for the whole term, with re-performance, then refund of fees for the non-conforming service, as the first remedies.",
+        "Conformity warranty for 90 days for one-off deliverables, plus ongoing skill and care and malicious code warranties for services."
+      ],
+      "unacceptable": "Services provided 'as is'; disclaimers of all implied terms with no express warranties in their place; documentation that the supplier may change unilaterally to reduce functionality; re-performance as the sole and exclusive remedy with no refund.",
+      "guidance": "Implied terms differ: US Uniform Commercial Code warranties of merchantability and fitness are often disclaimed; UK statutory implied terms of reasonable care and skill (Supply of Goods and Services Act 1982) can be limited only where reasonable under UCTA; Australian consumer guarantees cannot be excluded where the customer is a consumer under the Australian Consumer Law (including some business purchases under the monetary threshold). Ask for express warranties so the disclaimer of implied terms does no harm.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The supplier warrants that it will perform the services with reasonable skill and care using suitably qualified personnel, that the services will conform in all material respects to the documentation throughout the term, and that it will not introduce any malicious code into the customer's systems."
+    },
+    {
+      "title": "Service Levels and Service Credits",
+      "standard_position": "Availability of at least 99.9% measured monthly, with response and resolution times by severity, monthly reporting, service credits applied automatically, and credits that are not the customer's sole remedy. Repeated or serious failures give a termination right.",
+      "fallbacks": [
+        "Availability of 99.5% with credits as the sole financial remedy for availability failures that do not reach the termination threshold, keeping termination rights for chronic failure (for example, three failures in six months).",
+        "Supplier's standard SLA, if credits are meaningful (at least 10% of monthly fees for serious failures) and claimed on request within a reasonable period."
+      ],
+      "unacceptable": "No SLA for a business-critical service; credits as the sole and exclusive remedy for all performance failures; exclusions broad enough to cover most outages (for example, any third-party hosting failure); credits only claimable within a few days or capped at a trivial percentage.",
+      "guidance": "Frame credits as a price adjustment reflecting reduced service value, not as compensation for loss, which helps keep them outside the penalty doctrine in the UK and Australia (Cavendish v Makdessi; Andrews v ANZ and Paciocco v ANZ); a credit that is out of all proportion to the customer's legitimate interest risks being struck down. In the US, liquidated damages must be a reasonable estimate of harm. Planned maintenance should be outside business hours and notified in advance.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The supplier must make the services available at least 99.9% of the time in each calendar month, excluding scheduled maintenance notified at least five business days in advance. If it fails to do so, the customer will receive the service credits in the schedule as a reduction in the price reflecting the reduced service, without prejudice to its other rights."
+    },
+    {
+      "title": "Payment Terms",
+      "standard_position": "Fees are payable 45 days after receipt of a valid, undisputed invoice. The customer may withhold disputed amounts in good faith while the dispute is resolved, and the supplier may not suspend services for disputed amounts.",
+      "fallbacks": [
+        "Payment within 30 days of a valid invoice, with disputed amounts withheld in good faith and notified with reasons.",
+        "Annual payment in advance for subscriptions, with a pro-rata refund of prepaid fees on termination for the supplier's breach or for convenience where allowed."
+      ],
+      "unacceptable": "Payment on less than 30 days; suspension for late payment without at least 30 days' written notice; late interest above statutory rates; acceleration of all future fees on any breach; no right to dispute invoices.",
+      "guidance": "Statutory late-payment interest applies in some jurisdictions (for example, the UK Late Payment of Commercial Debts (Interest) Act 1998 and EU Late Payment Directive 2011/7/EU implementations) and sets a benchmark for contractual interest. Some EU member states cap B2B payment terms at 60 days unless expressly agreed and not grossly unfair. Australian large businesses may have payment-time reporting duties.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The customer must pay each valid and undisputed invoice within 45 days after receiving it. If the customer disputes an invoice in good faith, it must notify the supplier with reasons, may withhold the disputed amount until the dispute is resolved, and the supplier may not suspend the services because of that amount."
+    },
+    {
+      "title": "Price Increases",
+      "standard_position": "Fees are fixed for the initial term. Any increase on renewal requires at least 90 days' written notice before the renewal date and is capped at the lower of 3% and the change in a published consumer price index.",
+      "fallbacks": [
+        "Annual increases on renewal capped at the published consumer price index change plus 2%, with 60 days' notice.",
+        "Annual increases capped at 5%, with 60 days' notice and a right not to renew without penalty."
+      ],
+      "unacceptable": "Increases at the supplier's discretion; increases during the initial term; increases notified by updating a website; uncapped increases on renewal combined with auto-renewal and short notice windows.",
+      "guidance": "Price caps and auto-renewal must be read together: an uncapped increase plus a long auto-renewal is a trap. Use the consumer price index of the governing jurisdiction (for example US CPI-U, UK CPI, Eurostat HICP or the Australian Bureau of Statistics CPI).",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The fees are fixed for the initial term. The supplier may increase the fees for a renewal term by giving at least 90 days' written notice before the renewal date, but any increase must not exceed the lesser of 3% and the percentage increase in [index] over the previous 12 months."
+    },
+    {
+      "title": "Term and Renewal",
+      "standard_position": "A fixed initial term with renewal only by written agreement or, if automatic, for one year at a time with the customer able to opt out by notice at any time up to 30 days before renewal, and the supplier sending a reminder at least 60 days before renewal.",
+      "fallbacks": [
+        "Automatic renewal for successive one-year terms unless either party gives 60 days' notice, with a supplier reminder.",
+        "Automatic renewal for terms no longer than the initial term with 90 days' notice, if price increases are capped."
+      ],
+      "unacceptable": "Auto-renewal for terms longer than one year without our agreement; non-renewal notice windows over 90 days; renewal at the supplier's then-current list prices without a cap; no right to reduce volumes on renewal.",
+      "guidance": "Some US states regulate automatic renewal in business contracts (for example, New York General Obligations Law s 5-903 requires reminder notices for certain service contracts) and consumer-focused rules elsewhere are stricter, so reminder clauses help enforceability as well as diary management.",
+      "flag": false,
+      "actions": [
+        {
+          "scenario": "The agreement auto-renews with a notice window over 60 days.",
+          "instruction": "Propose the standard position and add the renewal date to the contract record for a reminder."
+        }
+      ],
+      "sample_language": "This agreement continues for the initial term and then renews for successive periods of 12 months unless the customer gives notice of non-renewal at least 30 days before the end of the current term. The supplier must remind the customer in writing of the renewal date at least 60 days before it."
+    },
+    {
+      "title": "Termination for Convenience",
+      "standard_position": "The customer may terminate the agreement or any order for convenience on 30 days' written notice, paying only for services delivered up to termination and receiving a refund of prepaid fees for the remaining period. The supplier has no right to terminate for convenience.",
+      "fallbacks": [
+        "Customer termination for convenience on 90 days' notice, with a pro-rata refund of prepaid fees.",
+        "Customer termination for convenience after the first year, paying a reasonable early termination fee capped at three months' fees or the supplier's documented unrecoverable costs."
+      ],
+      "unacceptable": "Supplier termination for convenience on short notice for a critical service; no customer exit during a multi-year term; early termination fees equal to all remaining fees for the term; forfeiture of prepaid fees.",
+      "guidance": "Early termination fees that are disproportionate to the supplier's legitimate interest may be challenged as penalties in the UK and Australia, but the safer course is to agree a modest fee. If the supplier can terminate for convenience, require at least 12 months' notice and transition assistance.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The customer may terminate this agreement or any order at any time on 30 days' written notice. The customer must pay for services properly provided up to the termination date, and the supplier must refund any fees prepaid for the period after it."
+    },
+    {
+      "title": "Termination for Cause",
+      "standard_position": "Either party may terminate for material breach not remedied within 30 days of notice, or immediately on insolvency where the law allows. The customer may also terminate on chronic SLA failure, a serious data or security breach, change of control of the supplier to a competitor, or a regulatory direction.",
+      "fallbacks": [
+        "Mutual termination for unremedied material breach on 30 days' notice and for insolvency, plus customer termination for chronic SLA failure.",
+        "Mutual termination for unremedied material breach and insolvency only, if the SLA includes a separate termination right."
+      ],
+      "unacceptable": "Supplier suspension or termination for any breach without notice; supplier termination for our non-payment of disputed amounts; cure periods for the supplier longer than 60 days; no customer right to terminate for a data breach.",
+      "guidance": "Ipso facto rules restrict termination on insolvency events: Australia's Corporations Act 2001 stays enforcement of such rights during certain restructuring processes, and UK law (Insolvency Act 1986 s 233B, from the Corporate Insolvency and Governance Act 2020) prevents suppliers terminating supply contracts because the customer enters insolvency; the US Bankruptcy Code also limits ipso facto clauses. Draft insolvency triggers 'to the extent permitted by law'.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "Either party may terminate this agreement by written notice if the other commits a material breach that is not remedied within 30 days after notice describing it, or, to the extent permitted by law, if the other becomes insolvent. The customer may also terminate by written notice if the supplier suffers a security incident materially affecting customer data or fails the service levels in any three months within a six-month period."
+    },
+    {
+      "title": "Transition Assistance",
+      "standard_position": "On expiry or termination for any reason, the supplier provides reasonable transition assistance for up to 12 months at the then-current rates, continues the services during transition on the same terms, and returns all customer data in a usable, standard format without charge.",
+      "fallbacks": [
+        "Transition assistance for up to six months at agreed rates, with data export in a standard format at no charge within 30 days of termination.",
+        "Data export in a standard format at no charge for 30 to 60 days after termination, with any further assistance by separate statement of work."
+      ],
+      "unacceptable": "No data return; data deleted immediately on termination; data export only in a proprietary format or for an extra fee; transition assistance conditional on payment of disputed amounts.",
+      "guidance": "For critical services, transition planning should be agreed early. The EU Data Act (applicable from September 2025) gives customers of data processing services, including cloud and SaaS, rights to switch providers and port data within set timeframes, with switching charges being phased out, which supports this position for EU-governed deals.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "On expiry or termination, the supplier must, at the customer's request, continue to provide the services and give reasonable assistance to transfer them to the customer or a replacement supplier for up to 12 months, and must return all customer data in a commonly used machine-readable format at no charge."
+    },
+    {
+      "title": "Data Protection",
+      "standard_position": "The supplier processes customer personal data only on the customer's documented instructions and for the services, under a data processing agreement that meets applicable law, with no sale or secondary use (including model training), approved subprocessors only, breach notice within 48 hours, assistance with data subject requests and regulators, and return or deletion at the end.",
+      "fallbacks": [
+        "The supplier's standard data processing agreement, if it meets the legal minimum in the governing jurisdiction, notifies breaches without undue delay, and prohibits secondary use of customer data.",
+        "Aggregated and de-identified usage data may be used to improve the services, if it cannot identify the customer or any individual and contains no customer content."
+      ],
+      "unacceptable": "Supplier acting as an independent controller or business of our personal data; use of customer data to train models or for analytics sold to others; no breach notification commitment; transfers outside approved regions without a lawful mechanism; the supplier's privacy policy incorporated instead of binding terms.",
+      "guidance": "Apply the jurisdiction-specific rules (EU/UK processor terms and AU Privacy Act) where they apply. In the US there is no single federal processor regime: state laws such as California's CCPA/CPRA, Colorado, Virginia and others require written contracts with service providers or processors that limit use to the business purpose, prohibit selling or sharing, and allow the business to take steps to stop unauthorised use. Sector rules (HIPAA business associate agreements, GLBA) may also apply.",
+      "flag": true,
+      "actions": [
+        {
+          "scenario": "The supplier proposes using customer data to train or improve AI models.",
+          "instruction": "Strike it; at most accept the de-identified usage data fallback with no customer content."
+        }
+      ],
+      "sample_language": "The supplier must process customer personal data only on the customer's documented instructions and only to provide the services, in accordance with the data processing terms in the schedule and applicable data protection law. It must not sell or share customer personal data or use it for any other purpose, including training or improving machine learning models."
+    },
+    {
+      "title": "Processor Terms (EU/UK GDPR)",
+      "standard_position": "A data processing agreement that contains every element required by GDPR or UK GDPR Article 28(3): processing only on documented instructions, confidentiality of personnel, Article 32 security, subprocessor controls with prior authorisation and flow-down, assistance with data subject rights and Articles 32 to 36, deletion or return at the end, and audit and information rights. International transfers rely on adequacy, the EU Standard Contractual Clauses or the UK International Data Transfer Agreement or Addendum, with a transfer risk assessment.",
+      "fallbacks": [
+        "Supplier's standard DPA if it includes all Article 28(3) elements, general written authorisation of subprocessors with 30 days' notice and a right to object, and an approved transfer mechanism.",
+        "Audits satisfied by independent certifications (such as ISO/IEC 27001 or SOC 2 Type II) with on-site audit only after a breach or where a regulator requires it."
+      ],
+      "unacceptable": "Any DPA missing an Article 28(3) element; the supplier able to add subprocessors without notice; transfers to third countries with no lawful mechanism; the supplier able to process for its own purposes; audit rights removed entirely.",
+      "guidance": "Article 28 is a legal minimum for controller-processor relationships, not a negotiable term; the ICO and EDPB guidance explain each element. Check whether the supplier is really a processor or a controller for parts of the processing (such as its own analytics) and document that. Breach notice must reach us in time for our 72-hour regulator notification under Article 33.",
+      "flag": true,
+      "condition": { "kind": "jurisdiction", "in": ["EU", "UK"] },
+      "actions": [],
+      "sample_language": "The supplier processes personal data as processor for the customer. It must: process only on the customer's documented instructions; ensure its personnel are bound by confidentiality; implement appropriate technical and organisational security measures; engage subprocessors only with the customer's authorisation and on equivalent written terms; assist the customer with data subject requests, security, breach notification and impact assessments; delete or return the data at the end of the services; and make available the information needed to demonstrate compliance, including allowing audits."
+    },
+    {
+      "title": "Privacy Act Compliance (AU)",
+      "standard_position": "The supplier must comply with the Australian Privacy Principles as if it were an APP entity when handling customer personal information, use it only for the services, not disclose it overseas without the customer's consent and appropriate safeguards (APP 8), notify suspected eligible data breaches within 48 hours so the customer can assess and notify under the Notifiable Data Breaches scheme, and return or destroy it at the end.",
+      "fallbacks": [
+        "APP compliance and breach notice without undue delay (and in any case within 72 hours), with overseas disclosure only to listed locations.",
+        "APP compliance limited to APPs 6, 8, 11 and 12 obligations relevant to the services, with breach notice without undue delay."
+      ],
+      "unacceptable": "No restriction on offshore storage or access; no breach notification; the supplier relying on the small business exemption to avoid privacy obligations; use of personal information for direct marketing.",
+      "guidance": "Under APP 8 and s 16C of the Privacy Act 1988 (Cth), the customer generally remains accountable for acts of overseas recipients, so contractual controls are essential. The OAIC APP guidelines explain reasonable steps. Reforms from the Privacy and Other Legislation Amendment Act 2024 add a statutory tort for serious invasions of privacy and higher penalties; check for any later changes before relying on these positions.",
+      "flag": true,
+      "condition": { "kind": "jurisdiction", "in": ["AU"] },
+      "actions": [],
+      "sample_language": "In handling customer personal information, the supplier must comply with the Australian Privacy Principles as if it were an APP entity, must not disclose or allow access to it outside Australia except as approved in writing by the customer, and must notify the customer within 48 hours after becoming aware of any actual or suspected unauthorised access to or loss of it."
+    },
+    {
+      "title": "Information Security",
+      "standard_position": "The supplier maintains a written security programme meeting a recognised standard (ISO/IEC 27001 or SOC 2 Type II), encrypts customer data in transit and at rest, applies least-privilege access and multi-factor authentication, performs annual penetration tests and shares summaries, notifies security incidents within 48 hours, and does not reduce security during the term.",
+      "fallbacks": [
+        "Security measures as described in the supplier's security schedule, if they map to a recognised standard, include encryption and incident notice without undue delay, and cannot be materially reduced.",
+        "Current certification maintained throughout the term with annual reports supplied on request, in place of detailed security obligations."
+      ],
+      "unacceptable": "Security measures that the supplier may change at will; 'commercially reasonable' security with no specifics; no incident notification; the customer responsible for all security of data in the supplier's systems.",
+      "guidance": "Regulated customers may need specific terms: EU financial entities under DORA (Regulation (EU) 2022/2554) must include prescribed contractual provisions for ICT services; Australian APRA-regulated entities must meet CPS 234 and CPS 230; UK financial firms follow PRA and FCA outsourcing rules. Identify the customer's sector before accepting fallbacks.",
+      "flag": true,
+      "actions": [],
+      "sample_language": "The supplier must maintain and comply with a written information security programme meeting ISO/IEC 27001 or an equivalent standard, encrypt customer data in transit and at rest, and notify the customer within 48 hours after becoming aware of any security incident affecting customer data. The supplier must not materially reduce the security of the services during the term."
+    },
+    {
+      "title": "Audit Rights",
+      "standard_position": "The customer and its regulators may audit the supplier's compliance with the agreement, including security and data protection, on reasonable notice once a year and at any time after an incident or regulatory request, with the supplier bearing its own costs and remedying non-compliance at its cost.",
+      "fallbacks": [
+        "Annual audit on 30 days' notice, limited to records and systems relevant to the services, with independent certifications satisfying routine audits.",
+        "Audit by an independent auditor bound by confidentiality, with regulator access always preserved."
+      ],
+      "unacceptable": "No audit rights at all; audit rights excluded for regulators; audits only at the customer's cost including the supplier's internal time; certifications as the only evidence even after a breach.",
+      "guidance": "Regulator access cannot be traded away for regulated customers (for example, DORA, APRA CPS 230 and UK outsourcing rules). For GDPR or UK GDPR processors, Article 28(3)(h) requires the processor to allow and contribute to audits.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The supplier must allow the customer, its auditors and any regulator with authority over the customer to audit the supplier's compliance with this agreement on reasonable notice, once in any 12-month period and additionally after any security incident or at a regulator's request."
+    },
+    {
+      "title": "Subcontracting",
+      "standard_position": "The supplier may subcontract only with the customer's prior written consent, remains fully responsible for its subcontractors, and flows down all relevant obligations including confidentiality, security and data protection.",
+      "fallbacks": [
+        "Subcontracting permitted to listed subcontractors, with notice of new material subcontractors and a right to object on reasonable grounds and, if unresolved, terminate the affected services without penalty.",
+        "Free subcontracting of non-material services, with the supplier fully responsible and consent required for subcontractors that access customer data."
+      ],
+      "unacceptable": "Unrestricted subcontracting with no responsibility for subcontractors; the supplier disclaiming liability for its hosting or cloud providers; subcontractors not bound by equivalent obligations.",
+      "guidance": "Subcontracting of personal data processing triggers subprocessor rules under GDPR and UK GDPR Article 28(2) and (4). Fourth-party risk is also a focus of DORA and APRA CPS 230.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The supplier must not subcontract any of its obligations without the customer's prior written consent. The supplier remains responsible for the acts and omissions of its subcontractors as if they were its own and must bind each subcontractor to obligations no less protective than this agreement."
+    },
+    {
+      "title": "Insurance",
+      "standard_position": "The supplier maintains, for the term and for a reasonable run-off period, professional indemnity or technology errors and omissions, cyber, public and product liability, and statutory workers' compensation insurance, each with limits appropriate to the deal and with reputable insurers, and provides certificates on request.",
+      "fallbacks": [
+        "Professional indemnity and cyber cover with limits at least equal to the liability cap and super-cap, certificates on request.",
+        "The supplier's existing insurance programme, if it includes cyber cover and certificates are provided."
+      ],
+      "unacceptable": "No insurance obligation for a supplier processing customer data; insurance limits referenced as a cap on liability; a right to cancel cover without notice.",
+      "guidance": "Insurance limits should support the liability positions; under UCTA s 11(4) the availability of insurance is relevant to whether a limitation is reasonable. Do not let 'liability limited to insurance proceeds' replace the agreed cap.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The supplier must maintain with reputable insurers, during the term and for three years after it ends, professional indemnity and cyber insurance each of at least [amount] per claim, and public liability and workers' compensation insurance as required by law, and must give the customer certificates of currency on request."
+    },
+    {
+      "title": "Confidentiality and Publicity",
+      "standard_position": "Mutual confidentiality obligations covering all non-public information for the term and five years after, with trade secrets and personal data protected indefinitely. Neither party may use the other's name or logo or announce the relationship without prior written consent.",
+      "fallbacks": [
+        "Mutual confidentiality for the term and three years after, with trade secrets and personal data protected indefinitely; the supplier may list the customer's name in a client list after written consent, which may be withdrawn.",
+        "Mutual confidentiality for the term and three years after, with standard exclusions and a backup retention carve-out."
+      ],
+      "unacceptable": "One-way confidentiality protecting only the supplier; confidentiality obligations ending at termination; a residuals clause; a right for the supplier to publicise the relationship, use our logo or issue case studies without consent.",
+      "guidance": "Apply the NDA starter's positions on definitions, exclusions, compelled disclosure and residuals; if an NDA already exists, make sure the MSA either supersedes it clearly or incorporates it so there is no gap. Publicity matters to brand and sometimes securities disclosure.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "Each party must keep the other's Confidential Information confidential and use it only to perform or receive the services, during the term and for five years after it ends, and indefinitely for trade secrets and personal data. Neither party may use the other's name, trade marks or logos or make any public statement about this agreement without the other's prior written consent."
+    },
+    {
+      "title": "Governing Law and Jurisdiction",
+      "standard_position": "The customer's home law governs and its courts have exclusive jurisdiction, with a staged dispute process (escalation to executives, then optional mediation) before litigation, without preventing urgent injunctive relief.",
+      "fallbacks": [
+        "A neutral, well-developed law (England and Wales, New York or New South Wales) with that forum's courts.",
+        "Arbitration under recognised institutional rules (ICC, LCIA, SIAC or ACICA) seated in a neutral place, where enforcement abroad matters."
+      ],
+      "unacceptable": "The supplier's home law and exclusive jurisdiction where that is outside the jurisdictions this playbook covers; a contractual limitation period shorter than one year; waiver of the right to seek injunctive relief.",
+      "guidance": "Record the governing law when starting a review so the jurisdiction-specific rules apply. Mandatory local rules often apply regardless of chosen law (for example, GDPR, the Australian Consumer Law and UK insolvency rules), so a foreign governing law does not remove them.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "This agreement is governed by the laws of [customer's jurisdiction]. The parties must first try to resolve any dispute by escalation to senior executives for 20 business days, after which either party may start proceedings in the courts of [customer's jurisdiction], which have exclusive jurisdiction. Nothing prevents a party seeking urgent injunctive relief."
+    },
+    {
+      "title": "Assignment and Change of Control",
+      "standard_position": "The supplier may not assign, novate or transfer the agreement without the customer's prior written consent. The customer may assign to an affiliate or a successor on notice. A change of control of the supplier, especially to a competitor of the customer, gives the customer a right to terminate without penalty.",
+      "fallbacks": [
+        "Mutual right to assign to a successor of the whole business on notice, with a customer termination right if the successor is a competitor or cannot meet the security obligations.",
+        "No assignment by either party without consent, not to be unreasonably withheld, plus the customer termination right on supplier change of control."
+      ],
+      "unacceptable": "Supplier free to assign to anyone; customer barred from assigning in a group restructure; no right to exit where the supplier is acquired by a competitor.",
+      "guidance": "Change of control usually does not involve an assignment, so a separate termination right is needed. Under English and Australian law, a party can generally assign the benefit of a contract but transferring obligations needs a novation with consent.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "The supplier must not assign, novate or otherwise transfer any of its rights or obligations without the customer's prior written consent. The customer may assign this agreement to an affiliate or a successor to its business on written notice. The customer may terminate this agreement without penalty by notice within six months after a change of control of the supplier."
+    },
+    {
+      "title": "Force Majeure",
+      "standard_position": "Relief applies only to events beyond the affected party's reasonable control that could not have been prevented by reasonable precautions, including compliance with its business continuity and disaster recovery plans. The affected party must notify promptly and mitigate; fees are suspended for affected services; and the customer may terminate if the event lasts more than 30 days.",
+      "fallbacks": [
+        "Mutual force majeure with a termination right after 60 days and fee relief for services not provided.",
+        "Supplier's standard clause, if cyber attacks, subcontractor failures and labour disputes within its control are excluded and business continuity obligations still apply."
+      ],
+      "unacceptable": "Force majeure covering the supplier's own subcontractors, cyber attacks that reasonable security would have prevented, or the supplier's labour disputes; no termination right for prolonged events; payment obligations continuing for services not provided; relief from the supplier's business continuity duties.",
+      "guidance": "Force majeure is a contractual concept in common law jurisdictions and is construed by its words; the English doctrine of frustration and the US doctrines of impracticability and frustration apply only narrowly. Civil law systems may imply force majeure by statute (for example, French Civil Code art 1218), but the express clause still governs allocation.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "Neither party is liable for delay or failure caused by an event beyond its reasonable control that it could not have prevented by reasonable precautions, including by implementing its business continuity plan, provided it promptly notifies the other party and uses reasonable efforts to mitigate. Fees for services not provided are suspended, and the customer may terminate the affected services if the event continues for more than 30 days."
+    },
+    {
+      "title": "Non-Solicitation",
+      "standard_position": "No non-solicitation or no-hire restriction on the customer.",
+      "fallbacks": [
+        "A mutual restriction for the term and six months after on actively soliciting personnel directly involved in the services, excluding general advertisements and unsolicited approaches.",
+        "A restriction on the customer limited to supplier personnel who worked on the services in the previous six months, for up to 12 months, with no fee."
+      ],
+      "unacceptable": "A one-way no-hire on the customer covering all supplier staff; restrictions longer than 12 months after the term; a placement fee above a modest percentage of first-year salary; restrictions on hiring people who apply on their own initiative.",
+      "guidance": "Restraints of this kind are tested for reasonableness and may be unenforceable: California Business and Professions Code s 16600 voids most restraints on engaging in a lawful profession; Australian law voids restraints that go further than reasonably necessary to protect a legitimate interest (with NSW courts able to read them down under the Restraints of Trade Act 1976); UK courts apply a similar reasonableness test. Competition regulators have also scrutinised no-poach agreements between businesses.",
+      "flag": false,
+      "actions": [],
+      "sample_language": "During the term and for six months after it ends, neither party may actively solicit for employment any employee of the other who was directly involved in the services, but this does not restrict general recruitment advertising or hiring a person who responds to it or approaches a party on their own initiative."
+    }
+  ]
+}
