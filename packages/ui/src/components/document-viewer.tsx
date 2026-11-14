@@ -1,4 +1,10 @@
-import type { Anchor, DocumentHit, PageLayout, RenderManifest } from "@legallabs/contracts";
+import {
+  type Anchor,
+  type DocumentHit,
+  MAX_LAYOUT_PAGES,
+  type PageLayout,
+  type RenderManifest,
+} from "@legallabs/contracts";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, Search, X } from "lucide-react";
 import {
@@ -11,19 +17,19 @@ import {
   useRef,
   useState,
 } from "react";
-import { cn } from "../cn.js";
 import { locateQuote, rectsFor } from "../viewer/highlight.js";
+import { PageStrip, PdfPage, SheetTabs } from "../viewer/parts.js";
 import { loadPdf as defaultLoadPdf, type PdfDocument, type PdfLoader } from "../viewer/pdf.js";
 import {
   EmailPage,
   isTranscript,
-  MARK_STYLES,
   type Mark,
   SheetPage,
   TextPage,
   TranscriptPage,
 } from "../viewer/views.js";
 import { Button } from "./button.js";
+import { Input } from "./field.js";
 import { Skeleton, StatusText } from "./status.js";
 import { Tooltip } from "./tooltip.js";
 
@@ -63,7 +69,7 @@ export interface DocumentViewerProps {
   loadPdf?: PdfLoader;
 }
 
-const CHUNK = 20;
+const CHUNK = MAX_LAYOUT_PAGES;
 const GAP = 16;
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const TEXT_PAGE = 900;
@@ -334,6 +340,11 @@ function LoadedViewer({
   const [hitIndex, setHitIndex] = useState(-1);
   const [searching, setSearching] = useState(false);
 
+  // Focus starts in the pages, so j, k and the other keys work at once.
+  useEffect(() => {
+    scroller.current?.focus({ preventScroll: true });
+  }, []);
+
   useLayoutEffect(() => {
     const element = scroller.current;
     if (!element) return;
@@ -582,18 +593,19 @@ function LoadedViewer({
           scroller.current?.focus();
         }}
       >
-        <label className="flex items-center gap-1 text-fg-muted">
-          <span>{sheet ? "Sheet" : "Page"}</span>
-          <input
+        {/* The input names itself, so this wrapper is only visual. */}
+        <span className="flex items-center gap-1 text-fg-muted">
+          <span aria-hidden>{sheet ? "Sheet" : "Page"}</span>
+          <Input
             ref={pageInput}
             key={shownPage}
             defaultValue={shownPage}
             inputMode="numeric"
             aria-label={`Go to ${sheet ? "sheet" : "page"}, ${count} in all`}
-            className="h-7 w-12 rounded-md border border-border bg-bg px-1 text-center text-fg tabular-nums"
+            className="h-7 w-12 px-1 text-center tabular-nums"
           />
-          <span className="tabular-nums">{`of ${count}`}</span>
-        </label>
+          <span className="tabular-nums" aria-hidden>{`of ${count}`}</span>
+        </span>
       </form>
       <search>
         <form
@@ -605,7 +617,7 @@ function LoadedViewer({
           }}
         >
           <Search aria-hidden className="size-4 text-fg-muted" />
-          <input
+          <Input
             ref={searchInput}
             type="search"
             value={query}
@@ -622,7 +634,7 @@ function LoadedViewer({
             }}
             placeholder="Search in document"
             aria-label="Search in document"
-            className="h-7 w-44 rounded-md border border-border bg-bg px-2 text-fg"
+            className="h-7 w-44"
           />
           <span className="min-w-16 text-caption text-fg-muted tabular-nums" aria-hidden>
             {searching ? "Searching…" : hits.length ? `${hitIndex + 1} of ${hits.length}` : ""}
@@ -689,9 +701,6 @@ function LoadedViewer({
             Text view, layout unavailable.
           </p>
         ) : null}
-        {sheet ? (
-          <SheetTabs manifest={manifest} layouts={layouts} page={sheetPage} onPage={setSheetPage} />
-        ) : null}
         <div className="flex min-h-0 flex-1">
           {strip && !sheet ? (
             <PageStrip
@@ -710,13 +719,18 @@ function LoadedViewer({
             className="relative min-h-0 flex-1 overflow-auto focus-visible:outline-2 focus-visible:outline-accent"
           >
             {sheet ? (
-              <div className="p-4">
+              <SheetTabs
+                manifest={manifest}
+                layouts={layouts}
+                page={sheetPage}
+                onPage={setSheetPage}
+              >
                 {sheetLayout ? (
                   <SheetPage page={sheetLayout} marks={marksFor(sheetLayout, target, hits).marks} />
                 ) : (
                   <Skeleton className="h-64 w-full" />
                 )}
-              </div>
+              </SheetTabs>
             ) : (
               <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
                 {items.map((item) => (
@@ -754,176 +768,6 @@ function LoadedViewer({
           {announce}
         </p>
       </ViewerFrame>
-    </div>
-  );
-}
-
-function PdfPage({
-  pdf,
-  pageNo,
-  width,
-  height,
-  scale,
-  layout,
-  marks,
-}: {
-  pdf: PdfDocument | null;
-  pageNo: number;
-  width: number;
-  height: number;
-  scale: number;
-  layout: PageLayout | undefined;
-  marks: readonly Mark[];
-}) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const [painted, setPainted] = useState(false);
-  useEffect(() => {
-    const element = canvas.current;
-    if (!pdf || !element) return;
-    const controller = new AbortController();
-    setPainted(false);
-    pdf.renderPage(pageNo, element, scale, controller.signal).then(
-      () => controller.signal.aborted || setPainted(true),
-      () => {},
-    );
-    return () => controller.abort();
-  }, [pdf, pageNo, scale]);
-  return (
-    <div
-      className="relative mx-auto bg-white shadow-sm"
-      style={{ width, height }}
-      data-painted={painted || undefined}
-    >
-      <canvas ref={canvas} aria-hidden className="absolute inset-0 h-full w-full" />
-      {painted ? null : <Skeleton className="absolute inset-0 rounded-none opacity-40" />}
-      {layout
-        ? marks.flatMap((mark) =>
-            rectsFor(layout.lines, mark.from, mark.to).map((rect, i) => (
-              <mark
-                key={`${mark.kind}-${mark.from}-${rect.y}`}
-                data-mark={mark.kind}
-                aria-hidden={i === 0 ? undefined : true}
-                className={cn(
-                  "absolute rounded-xs text-transparent",
-                  MARK_STYLES[mark.kind],
-                  mark.kind === "cite" && "animate-pop-in",
-                )}
-                style={{
-                  left: rect.x * scale,
-                  top: rect.y * scale,
-                  width: rect.width * scale,
-                  height: rect.height * scale,
-                }}
-              >
-                {i === 0 ? <span className="sr-only">{mark.label}</span> : null}
-              </mark>
-            )),
-          )
-        : null}
-    </div>
-  );
-}
-
-const STRIP_ITEM = 36;
-
-function PageStrip({
-  count,
-  current,
-  cited,
-  hits,
-  onPick,
-}: {
-  count: number;
-  current: number;
-  cited: ReadonlySet<number>;
-  hits: ReadonlySet<number>;
-  onPick: (page: number) => void;
-}) {
-  const parent = useRef<HTMLDivElement>(null);
-  // Only the visible slice is in the DOM, however long the document.
-  const strip = useVirtualizer({
-    count,
-    getScrollElement: () => parent.current,
-    estimateSize: () => STRIP_ITEM,
-    overscan: 4,
-  });
-  return (
-    <nav aria-label="Page list" className="w-24 shrink-0 border-r border-border bg-bg">
-      <div ref={parent} className="h-full overflow-auto">
-        <ol style={{ height: strip.getTotalSize(), position: "relative" }}>
-          {strip.getVirtualItems().map((item) => {
-            const page = item.index + 1;
-            const notes = [cited.has(page) && "cited", hits.has(page) && "search match"]
-              .filter(Boolean)
-              .join(", ");
-            return (
-              <li
-                key={item.key}
-                className="absolute left-0 w-full px-2"
-                style={{ top: item.start, height: STRIP_ITEM }}
-              >
-                <button
-                  type="button"
-                  aria-current={page === current ? "page" : undefined}
-                  aria-label={notes ? `Page ${page}, ${notes}` : `Page ${page}`}
-                  onClick={() => onPick(page)}
-                  className={cn(
-                    "flex h-8 w-full items-center justify-between rounded-md px-2 tabular-nums hover:tint-hover focus-visible:outline-2 focus-visible:outline-accent",
-                    page === current && "outline-2 outline-accent",
-                  )}
-                >
-                  {page}
-                  <span className="flex gap-0.5" aria-hidden>
-                    {cited.has(page) ? <span className="size-2 rounded-full bg-citation" /> : null}
-                    {hits.has(page) ? <span className="size-2 rounded-full bg-accent" /> : null}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-    </nav>
-  );
-}
-
-function SheetTabs({
-  manifest,
-  layouts,
-  page,
-  onPage,
-}: {
-  manifest: RenderManifest;
-  layouts: ReadonlyMap<number, PageLayout>;
-  page: number;
-  onPage: (page: number) => void;
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label="Sheets"
-      className="flex gap-1 overflow-x-auto border-b border-border bg-bg px-3"
-    >
-      {manifest.pages.map((p) => {
-        const name = layouts.get(p.page_no)?.text.split("\n", 1)[0]?.trim() || `Sheet ${p.page_no}`;
-        return (
-          <button
-            key={p.page_no}
-            type="button"
-            role="tab"
-            aria-selected={p.page_no === page}
-            onClick={() => onPage(p.page_no)}
-            className={cn(
-              "h-9 border-b-2 px-3 focus-visible:outline-2 focus-visible:outline-accent",
-              p.page_no === page
-                ? "border-accent font-semibold"
-                : "border-transparent text-fg-muted",
-            )}
-          >
-            {name}
-          </button>
-        );
-      })}
     </div>
   );
 }
