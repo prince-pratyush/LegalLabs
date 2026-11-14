@@ -169,6 +169,13 @@
       "when": 1794009623000,
       "tag": "0024_content_structure",
       "breakpoints": false
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794009624000,
+      "tag": "0025_content_embeddings",
+      "breakpoints": false
     }
   ]
 }

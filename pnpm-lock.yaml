@@ -190,6 +190,9 @@ importers:
       '@legallabs/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@legallabs/embed':
+        specifier: workspace:*
+        version: link:../../packages/embed
       '@legallabs/ingest':
         specifier: workspace:*
         version: link:../../packages/ingest

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { contextual, type Embedder, EmbedUnavailable } from "@legallabs/embed";
 import {
   type Child,
   detectType,
@@ -19,6 +20,8 @@ export interface IngestWorkerOptions {
   ingest?: (bytes: Uint8Array, name: string) => Promise<IngestResult>;
   /** Runs before any parser sees the bytes. */
   scanner: Scanner;
+  /** Without one, chunks are stored for keyword search only. */
+  embedder?: Embedder | null;
   /** Files read at once. Each holds its bytes in memory and a parser worker. */
   concurrency?: number;
   pollMs?: number;
@@ -62,7 +65,8 @@ export type IngestReason =
   | "FORBIDDEN"
   | "MISSING_ORIGINAL"
   | "MALWARE_FOUND"
-  | "SCAN_UNAVAILABLE";
+  | "SCAN_UNAVAILABLE"
+  | "EMBED_UNAVAILABLE";
 
 const BATCH_SIZE = 200;
 // A mailbox holds messages, a message holds attachments, and that is as deep as it goes.
@@ -76,7 +80,9 @@ const TRANSIENT = new Set<IngestReason>([
   "PARSE_TIMEOUT",
   "TOO_COMPLEX",
   "SCAN_UNAVAILABLE",
+  "EMBED_UNAVAILABLE",
 ]);
+const EMBED_BATCH = 32;
 
 function batches<T>(items: readonly T[]): T[][] {
   const groups: T[][] = [];
@@ -84,7 +90,17 @@ function batches<T>(items: readonly T[]): T[][] {
   return groups;
 }
 
-async function savePages(db: pg.PoolClient, job: Claim, parsed: Ingested) {
+interface Vectors {
+  model: string;
+  vectors: number[][];
+}
+
+async function savePages(
+  db: pg.PoolClient,
+  job: Claim,
+  parsed: Ingested,
+  embedded: Vectors | null,
+) {
   const ocr = new Set(parsed.ocrPages ?? []);
   for (const group of batches(parsed.pages)) {
     await db.query(
@@ -102,11 +118,14 @@ async function savePages(db: pg.PoolClient, job: Claim, parsed: Ingested) {
       ],
     );
   }
-  for (const group of batches(parsed.chunks)) {
+  for (const [index, group] of batches(parsed.chunks).entries()) {
+    const vectors = embedded?.vectors.slice(index * BATCH_SIZE, (index + 1) * BATCH_SIZE);
     await db.query(
-      `insert into content.chunk
-         (workspace_id, version_id, page_no, ordinal, char_from, char_to, text, section)
-       select $1, $2, * from unnest($3::int[], $4::int[], $5::int[], $6::int[], $7::text[], $8::text[])`,
+      `insert into content.chunk (workspace_id, version_id, page_no, ordinal, char_from, char_to,
+                                  text, section, embedding, embedding_model)
+       select $1, $2, p, o, f, t, x, s, e::vector, case when e is null then null else $10 end
+         from unnest($3::int[], $4::int[], $5::int[], $6::int[], $7::text[], $8::text[], $9::text[])
+           as u(p, o, f, t, x, s, e)`,
       [
         job.workspace_id,
         job.version_id,
@@ -116,6 +135,8 @@ async function savePages(db: pg.PoolClient, job: Claim, parsed: Ingested) {
         group.map((chunk) => chunk.to),
         group.map((chunk) => chunk.text),
         group.map((chunk) => chunk.section),
+        group.map((_, i) => (vectors?.[i] ? `[${vectors[i].join(",")}]` : null)),
+        embedded?.model ?? null,
       ],
     );
   }
@@ -217,6 +238,21 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
     const parsed = await ingest(bytes, name);
     if (!parsed.ok) return parsed.reason;
 
+    let embedded: Vectors | null = null;
+    if (options.embedder) {
+      const texts = parsed.chunks.map((chunk) => contextual(chunk.text, chunk.section));
+      const vectors: number[][] = [];
+      try {
+        for (let i = 0; i < texts.length; i += EMBED_BATCH) {
+          vectors.push(...(await options.embedder.embed(texts.slice(i, i + EMBED_BATCH))));
+        }
+      } catch (err) {
+        if (err instanceof EmbedUnavailable) return "EMBED_UNAVAILABLE";
+        throw err;
+      }
+      embedded = { model: options.embedder.model, vectors };
+    }
+
     const children = (parsed.children ?? []).slice(0, MAX_CHILDREN[source.depth] ?? 0);
     const stored: (Child & { sha256: Buffer })[] = [];
     for (const child of children) {
@@ -229,7 +265,7 @@ export function createIngestWorker(pool: pg.Pool, options: IngestWorkerOptions):
     }
 
     await asUploader(job, async (db) => {
-      await savePages(db, job, parsed);
+      await savePages(db, job, parsed, embedded);
       // One statement each: a policy can't see a row inserted earlier in the same statement.
       for (const child of stored) {
         const document = await db.query<{ id: string }>(
