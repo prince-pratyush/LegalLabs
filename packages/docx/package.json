@@ -19,10 +19,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@legallabs/contracts": "workspace:*",
+    "@xmldom/xmldom": "0.9.12",
     "fflate": "0.8.3"
   },
   "devDependencies": {
-    "@xmldom/xmldom": "0.9.12",
     "vitest": "5.1.0"
   }
 }

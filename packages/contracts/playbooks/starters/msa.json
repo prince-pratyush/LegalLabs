@@ -1,11 +1,11 @@
 {
   "name": "Starter MSA playbook",
   "contract_type": "Master services agreement",
-  "guidance": "Orientation: this playbook is written for an in-house legal team acting for the customer under a master services or SaaS agreement, usually reviewing the supplier's draft (their paper). Standard positions are customer-favourable first-turn asks. Fallbacks are balanced market positions that can be accepted without escalation, most preferred first. Anything matching the unacceptable line should be marked not acceptable and escalated to the playbook owner. Flagged rules (liability, indemnities, data protection, security) need a reviewer's eyes even when the clause looks acceptable.\n\nPaper defaults: on their paper, expect supplier-favourable drafting on liability, auto-renewal, price increases, unilateral changes to online terms and suspension rights; check order forms and incorporated policies as well as the main terms. On our paper, findings usually mean the supplier has edited our standard text; treat each edit as a gap.\n\nScale positions to the deal. A low-value, low-risk subscription may justify accepting fallbacks across the board; a critical outsourcing or a supplier that processes regulated data justifies holding standard positions.\n\nJurisdictions: positions cover agreements governed by US (state), EU member state, UK (England and Wales) or Australian law. Rules with a jurisdiction condition apply only when the review records that governing law. Points to remember: UK and Australian courts read 'consequential loss' narrowly, so define it; limitation clauses in UK standard terms must pass the Unfair Contract Terms Act 1977 reasonableness test; Australia's unfair contract terms regime (Australian Consumer Law, strengthened from November 2023 with civil penalties) can void one-sided terms in standard form contracts with a small business, which matters when we contract on our own paper with a small supplier; fixed sums payable on breach may be unenforceable penalties in the UK and Australia. For any other governing law, review with local counsel.",
+  "guidance": "Orientation: this playbook is written for an in-house legal team acting for the customer under a master services or SaaS agreement, usually reviewing the supplier's draft (their paper). Standard positions are customer-favourable first-turn asks. Fallbacks are balanced market positions that can be accepted without escalation, most preferred first. Anything matching the unacceptable line should be marked not acceptable and escalated to the playbook owner. Flagged rules (liability, indemnities, data protection, security) need a reviewer's eyes even when the clause looks acceptable.\n\nPaper defaults: on their paper, expect supplier-favourable drafting on liability, auto-renewal, price increases, unilateral changes to online terms and suspension rights; check order forms and incorporated policies as well as the main terms. On our paper, findings usually mean the supplier has edited our standard text; treat each edit as a gap.\n\nScale positions to the deal. A low-value, low-risk subscription may justify accepting fallbacks across the board; a critical outsourcing or a supplier that processes regulated data justifies holding standard positions.\n\nJurisdictions: positions cover agreements governed by US (state), EU member state, UK (England and Wales) or Australian law. Data protection rules apply according to where the customer and the people whose data is processed are, not the governing law of the contract. Points to remember: 'consequential loss' is read narrowly in England and Wales but may be read more broadly in Australia (Environmental Systems v Peerless Holdings), so state what is recoverable rather than relying on the label; limitation clauses in UK standard terms must pass the Unfair Contract Terms Act 1977 reasonableness test; Australia's unfair contract terms regime (Australian Consumer Law, strengthened from November 2023 with civil penalties) can void one-sided terms in standard form contracts with a small business, which matters when we contract on our own paper with a small supplier; fixed sums payable on breach may be unenforceable penalties in the UK and Australia. For any other governing law, review with local counsel.",
   "rules": [
     {
       "title": "Limitation of Liability Cap",
-      "standard_position": "Each party's total liability is capped at the greater of a fixed amount agreed for the deal and two times the fees paid or payable in the 12 months before the claim. The cap applies mutually and resets annually or is set per claim.",
+      "standard_position": "Each party's total liability is capped at the greater of a fixed amount agreed for the deal and two times the fees paid or payable in the 12 months before the claim. The cap applies mutually as an aggregate for each contract year.",
       "fallbacks": [
         "Mutual cap at the greater of a fixed floor and 1.5 times the annual fees.",
         "Mutual cap at the fees paid or payable in the 12 months before the claim, with a fixed minimum floor so the cap is meaningful early in the term.",
@@ -20,7 +20,7 @@
           "instruction": "Counter with the standard position; if the business accepts a lower cap, record the approver in a comment."
         }
       ],
-      "sample_language": "Subject to the exclusions below, each party's total liability arising out of or in connection with this agreement in any contract year is limited to the greater of [fixed amount] and twice the fees paid or payable under this agreement in the 12 months before the event giving rise to the claim."
+      "sample_language": "Subject to the exclusions below, each party's total liability arising out of or in connection with this agreement in any contract year is limited to the greater of [Amount] and twice the fees paid or payable under this agreement in the 12 months before the event giving rise to the claim."
     },
     {
       "title": "Exclusions from the Liability Cap",
@@ -38,17 +38,17 @@
           "instruction": "Do not accept a data liability super-cap below two times annual fees without escalation."
         }
       ],
-      "sample_language": "The limitation in the previous clause does not apply to liability for death or personal injury caused by negligence, fraud, wilful misconduct, the supplier's indemnity for infringement of intellectual property, or any liability that cannot be limited by law. Each party's total liability for breach of its confidentiality, data protection or security obligations is limited to the greater of [fixed amount] and three times the fees paid or payable in the 12 months before the claim, which is in addition to the general limitation."
+      "sample_language": "The limitation in the previous clause does not apply to liability for death or personal injury caused by negligence, fraud, wilful misconduct, the supplier's indemnity for infringement of intellectual property, or any liability that cannot be limited by law. Each party's total liability for breach of its confidentiality, data protection or security obligations is limited to the greater of [Amount] and three times the fees paid or payable in the 12 months before the claim, which is in addition to the general limitation."
     },
     {
       "title": "Consequential Loss",
       "standard_position": "Neither party is liable for indirect or consequential loss, defined narrowly as loss that does not arise naturally from the breach, and the following are expressly recoverable as direct loss: costs of replacement services, remediation and data restoration, breach response costs, regulatory fines where recoverable by law, and wasted expenditure.",
       "fallbacks": [
         "Mutual exclusion of loss of profits, revenue and goodwill and of indirect loss, with the recoverable list limited to data restoration, breach response costs and the extra cost of replacement services.",
-        "Mutual exclusion of indirect and consequential loss without a recoverable list, provided lost profits are not excluded as a separate category for the customer's direct savings and costs."
+        "Mutual exclusion of indirect and consequential loss with no list of recoverable losses, provided lost profits and savings are not excluded as a separate category, so the customer's direct losses such as extra costs and wasted spend stay recoverable."
       ],
       "unacceptable": "Exclusion of 'all loss of data', 'any loss of profits, whether direct or indirect' in a way that removes our main heads of loss; exclusion of the very losses that arise from the services failing; a definition of consequential loss that covers any loss beyond the fees paid.",
-      "guidance": "In England and Wales, 'consequential loss' has traditionally been read to mean loss in the second limb of Hadley v Baxendale (loss not arising naturally), and Australian courts have read it in context with a narrower or broader meaning depending on drafting, so state what is recoverable rather than relying on the label. US courts distinguish direct, incidental and consequential damages, and lost profits can be direct; an express list avoids disputes everywhere.",
+      "guidance": "In England and Wales, 'consequential loss' has traditionally been read to mean loss in the second limb of Hadley v Baxendale (loss not arising naturally), while in Australia Environmental Systems v Peerless Holdings read it more broadly as loss beyond what every claimant would suffer from the breach, and later courts read it in context, so state what is recoverable rather than relying on the label. US courts distinguish direct, incidental and consequential damages, and lost profits can be direct; an express list avoids disputes everywhere.",
       "flag": true,
       "actions": [],
       "sample_language": "Neither party is liable for any indirect or consequential loss, meaning loss that does not arise naturally from the breach. The following losses are direct losses recoverable by the customer: the reasonable cost of procuring replacement services, of restoring or recreating lost or corrupted data, of investigating and notifying a data breach, and any fines or penalties that may lawfully be recovered."
@@ -82,7 +82,7 @@
           "instruction": "Ask that the IP indemnity expressly cover claims arising from outputs used in accordance with the documentation."
         }
       ],
-      "sample_language": "The supplier must defend the customer against any third-party claim that the services or deliverables infringe that party's intellectual property rights, and must pay any damages, costs and settlement amounts awarded or agreed, provided the customer notifies the supplier promptly, gives it control of the defence and provides reasonable assistance at the supplier's cost."
+      "sample_language": "The supplier must defend the customer against any third-party claim that the services or deliverables infringe that party's intellectual property rights, and must pay any damages, costs and settlement amounts awarded or agreed, provided the customer notifies the supplier promptly, gives it control of the defence and provides reasonable assistance at the supplier's cost. A delay in notice reduces the supplier's obligations only to the extent the delay prejudices its defence."
     },
     {
       "title": "Warranties",
@@ -105,7 +105,7 @@
         "Supplier's standard SLA, if credits are meaningful (at least 10% of monthly fees for serious failures) and claimed on request within a reasonable period."
       ],
       "unacceptable": "No SLA for a business-critical service; credits as the sole and exclusive remedy for all performance failures; exclusions broad enough to cover most outages (for example, any third-party hosting failure); credits only claimable within a few days or capped at a trivial percentage.",
-      "guidance": "Frame credits as a price adjustment reflecting reduced service value, not as compensation for loss, which helps keep them outside the penalty doctrine in the UK and Australia (Cavendish v Makdessi; Andrews v ANZ and Paciocco v ANZ); a credit that is out of all proportion to the customer's legitimate interest risks being struck down. In the US, liquidated damages must be a reasonable estimate of harm. Planned maintenance should be outside business hours and notified in advance.",
+      "guidance": "In the UK, framing credits as a price adjustment for reduced service, rather than a sum payable on breach, helps keep them outside the penalty rule, which applies only to secondary obligations triggered by breach (Cavendish v Makdessi). In Australia the penalty test is wider: it can catch a sum that secures a primary obligation even without a breach (Andrews v ANZ; Paciocco v ANZ), so labelling credits a price adjustment is not enough there; keep them proportionate to the customer's legitimate interest in performance. In the US, liquidated damages must be a reasonable estimate of harm. Planned maintenance should be outside business hours and notified in advance.",
       "flag": false,
       "actions": [],
       "sample_language": "The supplier must make the services available at least 99.9% of the time in each calendar month, excluding scheduled maintenance notified at least five business days in advance. If it fails to do so, the customer will receive the service credits in the schedule as a reduction in the price reflecting the reduced service, without prejudice to its other rights."
@@ -118,7 +118,7 @@
         "Annual payment in advance for subscriptions, with a pro-rata refund of prepaid fees on termination for the supplier's breach or for convenience where allowed."
       ],
       "unacceptable": "Payment on less than 30 days; suspension for late payment without at least 30 days' written notice; late interest above statutory rates; acceleration of all future fees on any breach; no right to dispute invoices.",
-      "guidance": "Statutory late-payment interest applies in some jurisdictions (for example, the UK Late Payment of Commercial Debts (Interest) Act 1998 and EU Late Payment Directive 2011/7/EU implementations) and sets a benchmark for contractual interest. Some EU member states cap B2B payment terms at 60 days unless expressly agreed and not grossly unfair. Australian large businesses may have payment-time reporting duties.",
+      "guidance": "Statutory late-payment interest applies in some jurisdictions (for example, the UK Late Payment of Commercial Debts (Interest) Act 1998 and EU Late Payment Directive 2011/7/EU implementations) and sets a benchmark for contractual interest. Under the EU Late Payment Directive, 60 days is the default maximum B2B payment period, which the parties may extend only by express agreement that is not grossly unfair to the creditor; some member states go further. Australian large businesses may have payment-time reporting duties.",
       "flag": false,
       "actions": [],
       "sample_language": "The customer must pay each valid and undisputed invoice within 45 days after receiving it. If the customer disputes an invoice in good faith, it must notify the supplier with reasons, may withhold the disputed amount until the dispute is resolved, and the supplier may not suspend the services because of that amount."
@@ -134,14 +134,14 @@
       "guidance": "Price caps and auto-renewal must be read together: an uncapped increase plus a long auto-renewal is a trap. Use the consumer price index of the governing jurisdiction (for example US CPI-U, UK CPI, Eurostat HICP or the Australian Bureau of Statistics CPI).",
       "flag": false,
       "actions": [],
-      "sample_language": "The fees are fixed for the initial term. The supplier may increase the fees for a renewal term by giving at least 90 days' written notice before the renewal date, but any increase must not exceed the lesser of 3% and the percentage increase in [index] over the previous 12 months."
+      "sample_language": "The fees are fixed for the initial term. The supplier may increase the fees for a renewal term by giving at least 90 days' written notice before the renewal date, but any increase must not exceed the lesser of 3% and the percentage increase in [Index] over the previous 12 months."
     },
     {
       "title": "Term and Renewal",
       "standard_position": "A fixed initial term with renewal only by written agreement or, if automatic, for one year at a time with the customer able to opt out by notice at any time up to 30 days before renewal, and the supplier sending a reminder at least 60 days before renewal.",
       "fallbacks": [
         "Automatic renewal for successive one-year terms unless either party gives 60 days' notice, with a supplier reminder.",
-        "Automatic renewal for terms no longer than the initial term with 90 days' notice, if price increases are capped."
+        "Automatic renewal for one-year terms with up to 90 days' non-renewal notice, if price increases are capped."
       ],
       "unacceptable": "Auto-renewal for terms longer than one year without our agreement; non-renewal notice windows over 90 days; renewal at the supplier's then-current list prices without a cap; no right to reduce volumes on renewal.",
       "guidance": "Some US states regulate automatic renewal in business contracts (for example, New York General Obligations Law s 5-903 requires reminder notices for certain service contracts) and consumer-focused rules elsewhere are stricter, so reminder clauses help enforceability as well as diary management.",
@@ -201,7 +201,7 @@
         "Aggregated and de-identified usage data may be used to improve the services, if it cannot identify the customer or any individual and contains no customer content."
       ],
       "unacceptable": "Supplier acting as an independent controller or business of our personal data; use of customer data to train models or for analytics sold to others; no breach notification commitment; transfers outside approved regions without a lawful mechanism; the supplier's privacy policy incorporated instead of binding terms.",
-      "guidance": "Apply the jurisdiction-specific rules (EU/UK processor terms and AU Privacy Act) where they apply. In the US there is no single federal processor regime: state laws such as California's CCPA/CPRA, Colorado, Virginia and others require written contracts with service providers or processors that limit use to the business purpose, prohibit selling or sharing, and allow the business to take steps to stop unauthorised use. Sector rules (HIPAA business associate agreements, GLBA) may also apply.",
+      "guidance": "The EU/UK processor terms and AU Privacy Act rules apply according to where the customer and the data are, not the governing law. In the US there is no single federal processor regime: state laws such as California's CCPA/CPRA, Colorado, Virginia and others require written contracts with service providers or processors that limit use to the business purpose, prohibit selling or sharing, and allow the business to take steps to stop unauthorised use. Sector rules (HIPAA business associate agreements, GLBA) may also apply.",
       "flag": true,
       "actions": [
         {
@@ -216,12 +216,11 @@
       "standard_position": "A data processing agreement that contains every element required by GDPR or UK GDPR Article 28(3): processing only on documented instructions, confidentiality of personnel, Article 32 security, subprocessor controls with prior authorisation and flow-down, assistance with data subject rights and Articles 32 to 36, deletion or return at the end, and audit and information rights. International transfers rely on adequacy, the EU Standard Contractual Clauses or the UK International Data Transfer Agreement or Addendum, with a transfer risk assessment.",
       "fallbacks": [
         "Supplier's standard DPA if it includes all Article 28(3) elements, general written authorisation of subprocessors with 30 days' notice and a right to object, and an approved transfer mechanism.",
-        "Audits satisfied by independent certifications (such as ISO/IEC 27001 or SOC 2 Type II) with on-site audit only after a breach or where a regulator requires it."
+        "Independent certifications (such as ISO/IEC 27001 or SOC 2 Type II) accepted as evidence in routine years, while the customer keeps its Article 28(3)(h) right to audit, including on site on reasonable notice, where the certifications do not answer its questions, after a breach, or where a regulator requires it."
       ],
       "unacceptable": "Any DPA missing an Article 28(3) element; the supplier able to add subprocessors without notice; transfers to third countries with no lawful mechanism; the supplier able to process for its own purposes; audit rights removed entirely.",
-      "guidance": "Article 28 is a legal minimum for controller-processor relationships, not a negotiable term; the ICO and EDPB guidance explain each element. Check whether the supplier is really a processor or a controller for parts of the processing (such as its own analytics) and document that. Breach notice must reach us in time for our 72-hour regulator notification under Article 33.",
+      "guidance": "Apply this rule where the customer is subject to GDPR or UK GDPR (for example, established in the EU or UK, or offering services to or monitoring people there), whatever law governs the contract; otherwise mark it not_found. Article 28 is a legal minimum for controller-processor relationships, not a negotiable term; the ICO and EDPB guidance explain each element. Check whether the supplier is really a processor or a controller for parts of the processing (such as its own analytics) and document that. Breach notice must reach us in time for our 72-hour regulator notification under Article 33.",
       "flag": true,
-      "condition": { "kind": "jurisdiction", "in": ["EU", "UK"] },
       "actions": [],
       "sample_language": "The supplier processes personal data as processor for the customer. It must: process only on the customer's documented instructions; ensure its personnel are bound by confidentiality; implement appropriate technical and organisational security measures; engage subprocessors only with the customer's authorisation and on equivalent written terms; assist the customer with data subject requests, security, breach notification and impact assessments; delete or return the data at the end of the services; and make available the information needed to demonstrate compliance, including allowing audits."
     },
@@ -233,9 +232,8 @@
         "APP compliance limited to APPs 6, 8, 11 and 12 obligations relevant to the services, with breach notice without undue delay."
       ],
       "unacceptable": "No restriction on offshore storage or access; no breach notification; the supplier relying on the small business exemption to avoid privacy obligations; use of personal information for direct marketing.",
-      "guidance": "Under APP 8 and s 16C of the Privacy Act 1988 (Cth), the customer generally remains accountable for acts of overseas recipients, so contractual controls are essential. The OAIC APP guidelines explain reasonable steps. Reforms from the Privacy and Other Legislation Amendment Act 2024 add a statutory tort for serious invasions of privacy and higher penalties; check for any later changes before relying on these positions.",
+      "guidance": "Apply this rule where the customer is subject to the Privacy Act 1988 (Cth) (for example, an APP entity or an organisation with an Australian link handling personal information), whatever law governs the contract; otherwise mark it not_found. Under APP 8 and s 16C of the Privacy Act 1988 (Cth), the customer generally remains accountable for acts of overseas recipients, so contractual controls are essential. The OAIC APP guidelines explain reasonable steps. Reforms from the Privacy and Other Legislation Amendment Act 2024 add a statutory tort for serious invasions of privacy and higher penalties; check for any later changes before relying on these positions.",
       "flag": true,
-      "condition": { "kind": "jurisdiction", "in": ["AU"] },
       "actions": [],
       "sample_language": "In handling customer personal information, the supplier must comply with the Australian Privacy Principles as if it were an APP entity, must not disclose or allow access to it outside Australia except as approved in writing by the customer, and must notify the customer within 48 hours after becoming aware of any actual or suspected unauthorised access to or loss of it."
     },
@@ -289,14 +287,14 @@
       "guidance": "Insurance limits should support the liability positions; under UCTA s 11(4) the availability of insurance is relevant to whether a limitation is reasonable. Do not let 'liability limited to insurance proceeds' replace the agreed cap.",
       "flag": false,
       "actions": [],
-      "sample_language": "The supplier must maintain with reputable insurers, during the term and for three years after it ends, professional indemnity and cyber insurance each of at least [amount] per claim, and public liability and workers' compensation insurance as required by law, and must give the customer certificates of currency on request."
+      "sample_language": "The supplier must maintain with reputable insurers, during the term and for three years after it ends, professional indemnity and cyber insurance each of at least [Amount] per claim, and public liability and workers' compensation insurance as required by law, and must give the customer certificates of currency on request."
     },
     {
       "title": "Confidentiality and Publicity",
       "standard_position": "Mutual confidentiality obligations covering all non-public information for the term and five years after, with trade secrets and personal data protected indefinitely. Neither party may use the other's name or logo or announce the relationship without prior written consent.",
       "fallbacks": [
         "Mutual confidentiality for the term and three years after, with trade secrets and personal data protected indefinitely; the supplier may list the customer's name in a client list after written consent, which may be withdrawn.",
-        "Mutual confidentiality for the term and three years after, with standard exclusions and a backup retention carve-out."
+        "Mutual confidentiality for the term and three years after, with trade secrets and personal data protected indefinitely, standard exclusions and a backup retention carve-out."
       ],
       "unacceptable": "One-way confidentiality protecting only the supplier; confidentiality obligations ending at termination; a residuals clause; a right for the supplier to publicise the relationship, use our logo or issue case studies without consent.",
       "guidance": "Apply the NDA starter's positions on definitions, exclusions, compelled disclosure and residuals; if an NDA already exists, make sure the MSA either supersedes it clearly or incorporates it so there is no gap. Publicity matters to brand and sometimes securities disclosure.",
@@ -315,7 +313,7 @@
       "guidance": "Record the governing law when starting a review so the jurisdiction-specific rules apply. Mandatory local rules often apply regardless of chosen law (for example, GDPR, the Australian Consumer Law and UK insolvency rules), so a foreign governing law does not remove them.",
       "flag": false,
       "actions": [],
-      "sample_language": "This agreement is governed by the laws of [customer's jurisdiction]. The parties must first try to resolve any dispute by escalation to senior executives for 20 business days, after which either party may start proceedings in the courts of [customer's jurisdiction], which have exclusive jurisdiction. Nothing prevents a party seeking urgent injunctive relief."
+      "sample_language": "This agreement is governed by the laws of [Jurisdiction]. The parties must first try to resolve any dispute by escalation to senior executives for 20 business days, after which either party may start proceedings in the courts of [Jurisdiction], which have exclusive jurisdiction. Nothing prevents a party seeking urgent injunctive relief."
     },
     {
       "title": "Assignment and Change of Control",
@@ -350,7 +348,7 @@
         "A mutual restriction for the term and six months after on actively soliciting personnel directly involved in the services, excluding general advertisements and unsolicited approaches.",
         "A restriction on the customer limited to supplier personnel who worked on the services in the previous six months, for up to 12 months, with no fee."
       ],
-      "unacceptable": "A one-way no-hire on the customer covering all supplier staff; restrictions longer than 12 months after the term; a placement fee above a modest percentage of first-year salary; restrictions on hiring people who apply on their own initiative.",
+      "unacceptable": "A one-way no-hire on the customer covering all supplier staff; restrictions longer than 12 months after the term; a placement fee above 15% of first-year salary; restrictions on hiring people who apply on their own initiative.",
       "guidance": "Restraints of this kind are tested for reasonableness and may be unenforceable: California Business and Professions Code s 16600 voids most restraints on engaging in a lawful profession; Australian law voids restraints that go further than reasonably necessary to protect a legitimate interest (with NSW courts able to read them down under the Restraints of Trade Act 1976); UK courts apply a similar reasonableness test. Competition regulators have also scrutinised no-poach agreements between businesses.",
       "flag": false,
       "actions": [],

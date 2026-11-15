@@ -102,6 +102,19 @@ describe("buildDocx", () => {
     expect(files["docProps/core.xml"]).toContain("2026-11-14T03:04:05Z");
   });
 
+  it("writes a newline in a run as w:br and a tab as w:tab", () => {
+    const files = parts(
+      buildDocx({
+        blocks: [{ kind: "paragraph", runs: [{ text: "one\ntwo\tthree" }] }],
+        author: "Ana",
+        date: DATE,
+      }),
+    );
+    expect(files["word/document.xml"]).toContain(
+      '<w:r><w:t xml:space="preserve">one</w:t><w:br/><w:t xml:space="preserve">two</w:t><w:tab/><w:t xml:space="preserve">three</w:t></w:r>',
+    );
+  });
+
   it("gives each list its own numbering", () => {
     const files = parts(buildDocx({ blocks, author: "Ana", date: DATE }));
     expect(files["word/numbering.xml"]).toContain('w:numId="2"');

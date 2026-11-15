@@ -3,6 +3,9 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
+import { createCodeStore } from "./addins/codes.js";
+import type { Language } from "./addins/language.js";
+import { addinAuthRoutes, addinRoutes } from "./addins/routes.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
@@ -26,6 +29,16 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // Nothing inline and nothing from elsewhere, so injected text can't run as script.
 const CONTENT_POLICY =
   "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'";
+// The Word pane loads Office's script from Microsoft and runs framed inside Word on the web.
+const ADDIN_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' https://appsforoffice.microsoft.com",
+  "base-uri 'none'",
+  "object-src 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com https://*.office365.com https://*.sharepoint.com https://*.microsoft365.com https://*.cloud.microsoft",
+].join("; ");
+const BEARER = /^Bearer ([\w-]{20,100})$/;
 
 // Capped so nobody can make the server hash a huge password.
 const lookupText = (min: number, max: number) =>
@@ -59,6 +72,12 @@ export interface AppOptions {
   now?: () => number;
   /** The built web app, served on the same origin so the session cookie needs no CORS. */
   webRoot?: string;
+  /** The Word add-in: its tools, its audit hook and, when built, its pane under /addin/. */
+  addin?: {
+    language: Language;
+    recordSignIn: (principal: Principal, client: Client) => Promise<void>;
+    root?: string;
+  };
 }
 
 export function createApp({
@@ -73,6 +92,7 @@ export function createApp({
   clientIp,
   now = Date.now,
   webRoot,
+  addin,
 }: AppOptions) {
   const perIp = createLimiter({ limit: 10, windowMs: 60_000, now });
   const perAccount = createLimiter({ limit: 5, windowMs: 60_000, now });
@@ -83,9 +103,19 @@ export function createApp({
     userAgent: c.req.header("user-agent") ?? null,
   });
 
+  // The pane can't share the web cookie inside Word on the web, so it sends the token instead.
+  const tokenOf = (c: Context) =>
+    BEARER.exec(c.req.header("authorization") ?? "")?.[1] ??
+    getCookie(c, COOKIE, COOKIE_PREFIX) ??
+    null;
+
   app.use(async (c, next) => {
     await next();
-    c.header("Content-Security-Policy", CONTENT_POLICY);
+    // Only the pane is framed by Word; the sign-in dialog is a window of its own, never framed.
+    const pane =
+      (c.req.path === "/addin" || c.req.path.startsWith("/addin/")) &&
+      c.req.path !== "/addin/auth.html";
+    c.header("Content-Security-Policy", pane ? ADDIN_POLICY : CONTENT_POLICY);
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "no-referrer");
   });
@@ -143,21 +173,35 @@ export function createApp({
   });
 
   app.post("/auth/logout", async (c) => {
-    const token = getCookie(c, COOKIE, COOKIE_PREFIX);
+    const token = tokenOf(c);
     if (token) await auth.logout(token, clientOf(c));
     deleteCookie(c, COOKIE, { prefix: COOKIE_PREFIX, secure: true, path: "/" });
     return c.body(null, 204);
   });
 
   app.get("/auth/session", async (c) => {
-    const token = getCookie(c, COOKIE, COOKIE_PREFIX);
+    const token = tokenOf(c);
     const principal = token ? await auth.resolve(token) : null;
     if (!principal) return c.json({ error: "unauthenticated" }, 401);
     return c.json({ user_id: principal.userId, workspace_id: principal.workspaceId });
   });
 
+  if (addin) {
+    app.route(
+      "/auth/addin",
+      addinAuthRoutes({
+        auth,
+        codes: createCodeStore(now),
+        tokenOf,
+        clientOf,
+        recordSignIn: addin.recordSignIn,
+        now,
+      }),
+    );
+  }
+
   app.use("/api/v1/*", async (c, next) => {
-    const token = getCookie(c, COOKIE, COOKIE_PREFIX);
+    const token = tokenOf(c);
     const principal = token ? await auth.resolve(token) : null;
     if (!principal) return c.json({ code: "UNAUTHENTICATED", message: "Sign in first." }, 401);
     c.set("principal", principal);
@@ -174,6 +218,10 @@ export function createApp({
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
   }
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf));
+  if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
+  if (addin?.root) {
+    app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));
+  }
   if (knowledge) app.route("/api/v1/knowledge", knowledgeRoutes(knowledge));
   if (webRoot) {
     // A deep link to a document loads the app, which then opens the viewer.

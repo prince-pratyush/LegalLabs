@@ -42,7 +42,7 @@ export const playbookApi = {
     const params = new URLSearchParams();
     if (filter.status) params.set("filter[status]", filter.status);
     if (filter.q) params.set("q", filter.q);
-    return (await call<{ items: PlaybookSummary[] }>(`/playbooks?${params}`)).items;
+    return (await call<{ playbooks: PlaybookSummary[] }>(`/playbooks?${params}`)).playbooks;
   },
   get: async (id: string) => (await call<{ playbook: Playbook }>(p(id))).playbook,
   create: async (input: PlaybookCreate) =>
@@ -55,7 +55,7 @@ export const playbookApi = {
     (await send<{ playbook: Playbook }>("POST", `${p(id)}/unpublish`)).playbook,
   remove: (id: string) => call<void>(p(id), { method: "DELETE" }),
   versions: async (id: string) =>
-    (await call<{ items: PlaybookVersion[] }>(`${p(id)}/versions`)).items,
+    (await call<{ versions: PlaybookVersion[] }>(`${p(id)}/versions`)).versions,
   version: async (id: string, no: number) =>
     (await call<{ playbook: Playbook }>(`${p(id)}/versions/${no}`)).playbook,
   grants: async (id: string) => (await call<{ grants: PlaybookGrant[] }>(`${p(id)}/grants`)).grants,

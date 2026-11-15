@@ -7,11 +7,10 @@
       "title": "Mutuality",
       "standard_position": "Obligations are mutual: each party is both a disclosing and a receiving party, and every protection, exclusion and remedy applies equally to both.",
       "fallbacks": [
-        "One-way in favour of the counterparty only where we will genuinely disclose nothing confidential, and the agreement says so expressly.",
         "Mutual core obligations with a small number of asymmetric terms that reflect a real difference in what each side discloses (for example, extra security measures for our personal data)."
       ],
       "unacceptable": "A document titled or described as mutual whose operative clauses protect only the counterparty's information; obligations that bind only us; exclusions or remedies available only to the counterparty.",
-      "guidance": "Counterparty paper is often one-way in their favour even when both sides will share material. Check the definitions of disclosing and receiving party and trace each obligation to see who it binds. A one-way NDA is fine if we disclose nothing, but in most evaluations we share at least pricing, requirements or system details.",
+      "guidance": "Counterparty paper is often one-way in their favour even when both sides will share material. Check the definitions of disclosing and receiving party and trace each obligation to see who it binds. A one-way NDA is fine if we disclose nothing, but in most evaluations we share at least pricing, requirements or system details. If we will genuinely disclose nothing confidential, a one-way NDA in the counterparty's favour is acceptable, provided the agreement says so expressly; mark the rule acceptable rather than treating it as a fallback.",
       "flag": false,
       "actions": [
         {
@@ -63,7 +62,7 @@
           "instruction": "Strike it and replace with use only for the defined purpose; escalate if the counterparty insists."
         }
       ],
-      "sample_language": "The Recipient must use the Discloser's Confidential Information only for the Purpose, and may disclose it only to its and its affiliates' employees, officers and professional advisers who need to know it for the Purpose and are bound by duties of confidence no less protective than this agreement. The Recipient is responsible for any act or omission of those persons as if it were its own."
+      "sample_language": "The Recipient must use the Discloser's Confidential Information only for the Purpose, and may disclose it only to its employees, officers and professional advisers who need to know it for the Purpose and are bound by duties of confidence no less protective than this agreement. The Recipient is responsible for any act or omission of those persons as if it were its own."
     },
     {
       "title": "Compelled Disclosure",
@@ -115,7 +114,7 @@
       "guidance": "Backup and legal-hold exceptions are market standard; accept them only if the retained copies remain confidential for as long as they exist. Where personal data is involved, deletion should align with data protection storage limitation duties.",
       "flag": false,
       "actions": [],
-      "sample_language": "Within 15 days after the Discloser's request or the end of the Purpose, the Recipient must return or destroy the Discloser's Confidential Information and confirm this in writing. The Recipient may keep copies that are held in automatic backups or that it must keep by law, but those copies remain subject to this agreement for as long as they are kept."
+      "sample_language": "Within 15 days after the Discloser's request or the end of the Purpose, the Recipient must return or destroy the Discloser's Confidential Information and confirm this in writing."
     },
     {
       "title": "No Licence or Transfer of IP",
@@ -222,7 +221,7 @@
       "guidance": "For confidentiality breaches speed matters, so preserve access to injunctive relief wherever the breach happens. Record the governing law of the paper when starting a review so jurisdiction-specific guidance applies.",
       "flag": false,
       "actions": [],
-      "sample_language": "This agreement is governed by the laws of [our jurisdiction], and the parties submit to the non-exclusive jurisdiction of its courts. Either party may seek urgent injunctive relief in any court of competent jurisdiction."
+      "sample_language": "This agreement is governed by the laws of [Jurisdiction], and the parties submit to the non-exclusive jurisdiction of its courts. Either party may seek urgent injunctive relief in any court of competent jurisdiction."
     },
     {
       "title": "Assignment",
@@ -235,7 +234,7 @@
       "guidance": "Free assignment can send our information to an unknown party. Where the counterparty insists on a successor carve-out, require written notice so we can stop disclosing if the successor is a competitor.",
       "flag": false,
       "actions": [],
-      "sample_language": "Neither party may assign or transfer its rights or obligations under this agreement without the other party's prior written consent, except to an affiliate or to a successor to all or substantially all of the business to which this agreement relates, on written notice."
+      "sample_language": "Neither party may assign or transfer its rights or obligations under this agreement without the other party's prior written consent, except that [Customer] may assign this agreement to an affiliate or to a successor to all or substantially all of its business."
     }
   ]
 }

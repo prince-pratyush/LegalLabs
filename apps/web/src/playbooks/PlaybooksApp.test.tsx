@@ -125,7 +125,7 @@ describe("playbook routes", () => {
 describe("PlaybookList", () => {
   it("lists playbooks with their status, rule count and version, filtered by status", async () => {
     const sent = serve({
-      "GET /api/v1/playbooks": () => [200, { items: [summary(playbook())] }],
+      "GET /api/v1/playbooks": () => [200, { playbooks: [summary(playbook())] }],
     });
     render(<PlaybookList onChanged={vi.fn()} />);
     const row = await screen.findByText(/SaaS MSA/);
@@ -138,7 +138,7 @@ describe("PlaybookList", () => {
 
   it("creates a playbook from a template and opens it", async () => {
     const sent = serve({
-      "GET /api/v1/playbooks": () => [200, { items: [] }],
+      "GET /api/v1/playbooks": () => [200, { playbooks: [] }],
       "GET /api/v1/documents": () => [200, { documents: [] }],
       "POST /api/v1/playbooks": () => [201, { playbook: playbook({ id: ID }) }],
     });
@@ -165,7 +165,7 @@ describe("PlaybookPage", () => {
   it("saves edits as a new version, keeping rule ids", async () => {
     const sent = serve({
       [`GET /api/v1/playbooks/${ID}`]: () => [200, { playbook: playbook() }],
-      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { items: versions }],
+      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { versions }],
       [`PATCH /api/v1/playbooks/${ID}`]: () => [
         200,
         { playbook: playbook({ name: "SaaS MSA v3", version_no: 3 }) },
@@ -190,7 +190,7 @@ describe("PlaybookPage", () => {
   it("publishes for an approver and shows the API's refusal", async () => {
     serve({
       [`GET /api/v1/playbooks/${ID}`]: () => [200, { playbook: playbook() }],
-      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { items: versions }],
+      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { versions }],
       [`POST /api/v1/playbooks/${ID}/publish`]: () => [
         403,
         { code: "FORBIDDEN", message: "You don't have access to do that with this playbook." },
@@ -208,7 +208,7 @@ describe("PlaybookPage", () => {
   it("shows a past version read-only", async () => {
     serve({
       [`GET /api/v1/playbooks/${ID}`]: () => [200, { playbook: playbook() }],
-      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { items: versions }],
+      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { versions }],
       [`GET /api/v1/playbooks/${ID}/versions/1`]: () => [
         200,
         { playbook: playbook({ version_no: 1, rules: [], name: "First draft" }) },

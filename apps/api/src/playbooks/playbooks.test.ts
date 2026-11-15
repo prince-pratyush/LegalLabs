@@ -112,7 +112,7 @@ describe("playbooks API", () => {
     expect(renamed.body.playbook).toMatchObject({ name: "NDA v2", version_no: 3 });
 
     const versions = await h.call(ana, "GET", `/playbooks/${pb.id}/versions`);
-    expect(versions.body.items.map((v: { no: number }) => v.no)).toEqual([3, 2, 1]);
+    expect(versions.body.versions.map((v: { no: number }) => v.no)).toEqual([3, 2, 1]);
     const first = await h.call(ana, "GET", `/playbooks/${pb.id}/versions/1`);
     expect(first.body.playbook).toMatchObject({ name: "NDA positions", version_no: 1 });
     expect(first.body.playbook.rules).toHaveLength(1);
@@ -143,13 +143,17 @@ describe("playbooks API", () => {
     const ben = await h.signIn(await colleague(m, "ben", ["playbooks.use"]));
     const pb = (await h.call(ana, "POST", "/playbooks", scratch())).body.playbook;
 
-    expect((await h.call(ben, "GET", "/playbooks")).body.items).toEqual([]);
+    expect((await h.call(ben, "GET", "/playbooks")).body.playbooks).toEqual([]);
     expect((await h.call(ben, "GET", `/playbooks/${pb.id}`)).status).toBe(404);
 
     const published = await h.call(ana, "POST", `/playbooks/${pb.id}/publish`);
     expect(published.body.playbook.status).toBe("published");
     const seen = await h.call(ben, "GET", "/playbooks?filter[status]=published");
-    expect(seen.body.items).toMatchObject([{ id: pb.id, access: "view", rule_count: 1 }]);
+    expect(seen.body.playbooks).toMatchObject([{ id: pb.id, access: "view", rule_count: 1 }]);
+    const byType = (type: string) =>
+      h.call(ben, "GET", `/playbooks?filter[status]=published&filter[contract_type]=${type}`);
+    expect((await byType("nda")).body.playbooks).toHaveLength(1);
+    expect((await byType("MSA")).body.playbooks).toEqual([]);
     expect((await h.call(ben, "PATCH", `/playbooks/${pb.id}`, { name: "x" })).status).toBe(403);
     const trail = await auditTrail(pool, m.workspaceId);
     expect(trail.map((e) => e.action)).toContain("playbook.published");

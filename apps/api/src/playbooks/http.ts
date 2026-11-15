@@ -91,8 +91,8 @@ export function playbookHttp(playbooks: Playbooks, clientOf: (c: Context) => Cli
     if (!query.success) {
       return c.json({ code: "INVALID_REQUEST", message: "Check the filters." }, 400);
     }
-    const items = await playbooks.list(c.get("principal"), query.data);
-    return c.json({ items });
+    const found = await playbooks.list(c.get("principal"), query.data);
+    return c.json({ playbooks: found });
   });
 
   app.post("/playbooks", limitBody, async (c) => {
@@ -147,8 +147,8 @@ export function playbookHttp(playbooks: Playbooks, clientOf: (c: Context) => Cli
   }
 
   app.get("/playbooks/:id/versions", async (c) => {
-    const items = await playbooks.versions(c.get("principal"), c.req.param("id"));
-    return items ? c.json({ items }) : fail(c, "NOT_FOUND");
+    const versions = await playbooks.versions(c.get("principal"), c.req.param("id"));
+    return versions ? c.json({ versions }) : fail(c, "NOT_FOUND");
   });
 
   app.get("/playbooks/:id/versions/:no", async (c) => {
