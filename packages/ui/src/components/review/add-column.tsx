@@ -122,7 +122,7 @@ export function AddColumnPopover({
           Column
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-96">
+      <PopoverContent align="start" aria-label="New column" className="w-96">
         <AddColumnForm {...props} />
       </PopoverContent>
     </Popover>
