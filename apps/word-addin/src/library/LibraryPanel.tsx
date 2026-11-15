@@ -12,7 +12,7 @@ import {
 } from "@legallabs/ui";
 import { ArrowLeft, BookCheck, Languages, SpellCheck } from "lucide-react";
 import { useId, useState } from "react";
-import { type Api, ApiError } from "../api.js";
+import { type Api, messageOf } from "../api.js";
 import { CardList } from "../cards/CardList.js";
 import type { Card, CardState } from "../cards/card.js";
 import type { Scope, WordHost } from "../office/host.js";
@@ -33,9 +33,6 @@ export const LANGUAGES = [
   "Arabic",
   "Hindi",
 ] as const;
-
-const messageOf = (err: unknown) =>
-  err instanceof ApiError ? err.message : "Something went wrong. Try again.";
 
 const scopeWord = (scope: Scope) => (scope === "selection" ? "selection" : "document");
 

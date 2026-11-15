@@ -10,6 +10,10 @@ export class ApiError extends Error {
   }
 }
 
+/** Words for the user: the API's own message when there is one. */
+export const messageOf = (err: unknown) =>
+  err instanceof ApiError ? err.message : "Something went wrong. Try again.";
+
 export interface Api {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body?: unknown): Promise<T>;
@@ -37,7 +41,7 @@ async function failure(res: Response): Promise<ApiError> {
  */
 export function createApi(
   token: () => string | null,
-  onUnauthorized: () => void,
+  onUnauthorized: () => void = () => {},
   fetchImpl: Fetch = (input, init) => fetch(input, init),
 ): Api {
   const send = async <T>(path: string, init: RequestInit): Promise<T> => {

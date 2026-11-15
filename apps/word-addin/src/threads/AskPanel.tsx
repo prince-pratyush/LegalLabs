@@ -1,8 +1,8 @@
 import { AnswerText, Button, SourcesList, StatusText, Textarea } from "@legallabs/ui";
 import { type FormEvent, useState } from "react";
-import { type Api, ApiError } from "../api.js";
+import { type Api, messageOf } from "../api.js";
 import type { Scope, WordHost } from "../office/host.js";
-import { type Answer, type AskContext, type AskStep, ask } from "./ask.js";
+import { type Answer, type AskContext, type AskStep, ask, safeUrl } from "./ask.js";
 
 const STEP: Record<AskStep, string> = {
   uploading: "Sending the text…",
@@ -36,17 +36,17 @@ export function AskPanel({
     const q = question.trim();
     if (!q) return;
     setError(null);
-    const { text } = await host.read(scope);
-    if (!text.trim()) {
-      setError(
-        scope === "selection"
-          ? "Select some text first, or ask about the whole document."
-          : "The document is empty.",
-      );
-      return;
-    }
     setStep("uploading");
     try {
+      const { text } = await host.read(scope);
+      if (!text.trim()) {
+        setError(
+          scope === "selection"
+            ? "Select some text first, or ask about the whole document."
+            : "The document is empty.",
+        );
+        return;
+      }
       const result = await ask(
         api,
         { question: q, text, scope, title: host.title(), previous: context },
@@ -56,7 +56,7 @@ export function AskPanel({
       setContext(result.context);
       setQuestion("");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      setError(messageOf(err));
     } finally {
       setStep(null);
     }
@@ -68,13 +68,15 @@ export function AskPanel({
   const showInWord = async (n: number) => {
     const c = citation(n);
     if (!c?.quote) return;
-    setMissing((await host.select(c.quote)) ? null : n);
+    const found = await host.select(c.quote).catch(() => false);
+    setMissing(found ? null : n);
   };
 
   const openInViewer = (n: number) => {
     const c = citation(n);
     if (!c?.openUrl) return;
-    host.openInBrowser(c.openUrl.startsWith("/") ? `${origin}${c.openUrl}` : c.openUrl);
+    const url = safeUrl(c.openUrl, origin);
+    if (url) host.openInBrowser(url);
   };
 
   const onMarker = (n: number) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Api } from "../api.js";
-import { ask } from "./ask.js";
+import { ask, safeUrl } from "./ask.js";
 
 function fakeApi() {
   const calls: string[] = [];
@@ -99,5 +99,16 @@ describe("ask", () => {
     await ask(api, { ...input, question: "And then?", previous: first.context }, () => {}, noWait);
     expect(calls.some((c) => c.startsWith("upload"))).toBe(false);
     expect(calls.some((c) => c.startsWith("post /api/v1/threads/t1/messages"))).toBe(true);
+  });
+});
+
+describe("safeUrl", () => {
+  it("opens LegalLabs paths and https links only", () => {
+    const origin = "https://legal.test";
+    expect(safeUrl("/documents/1?page=2", origin)).toBe("https://legal.test/documents/1?page=2");
+    expect(safeUrl("https://law.example/act", origin)).toBe("https://law.example/act");
+    expect(safeUrl("//evil.example/x", origin)).toBeNull();
+    expect(safeUrl("javascript:alert(1)", origin)).toBeNull();
+    expect(safeUrl("http://plain.example", origin)).toBeNull();
   });
 });
