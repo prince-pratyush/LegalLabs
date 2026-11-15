@@ -35,7 +35,7 @@ export const ReviewError = z.enum([
 export type ReviewError = z.infer<typeof ReviewError>;
 
 // Postgres refuses NUL, and control characters have no place in clause text.
-const Text = (max: number) =>
+export const Text = (max: number) =>
   z
     .string()
     .max(max)
@@ -140,6 +140,13 @@ export const Playbook = z.object({
   rules: z.array(Rule).max(PLAYBOOK_LIMITS.rules),
   /** The caller's level on this playbook. */
   access: PlaybookLevel,
+  /**
+   * What readers and reviews get. Below edit level, version_id and rules are this
+   * version; editors see the latest draft and has_unpublished_changes.
+   */
+  published_version_id: Id.nullable().optional(),
+  published_version_no: z.number().int().min(1).nullable().optional(),
+  has_unpublished_changes: z.boolean().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
