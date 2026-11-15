@@ -36,6 +36,8 @@ import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
 import { ReviewsApp } from "./reviews/ReviewsApp.js";
 import { parseReviewRoute } from "./reviews/route.js";
+import { goTables, parseTableRoute } from "./tables/route.js";
+import { TablesApp } from "./tables/TablesApp.js";
 import { documentStatus, segments } from "./text.js";
 import { go, parseRoute, useHash } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
@@ -62,7 +64,13 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseReviewRoute(hash) ? (
+        {parseTableRoute(hash) ? (
+          <TablesApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parseReviewRoute(hash) ? (
           <ReviewsApp
             onLeave={() => {
               window.location.hash = "";
@@ -320,6 +328,13 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       run: () => goPlaybooks({ page: "list" }),
     },
     {
+      id: "tables",
+      kind: "action",
+      group: "Go to",
+      label: "Review tables",
+      run: () => goTables({ page: "list", threadId: null }),
+    },
+    {
       id: "library",
       kind: "action",
       group: "Go to",
@@ -461,6 +476,14 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
             >
               Playbooks
             </Button>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => goTables({ page: "list", threadId: null })}
+            >
+              Review tables
+            </Button>
           </section>
 
           <Button variant="quiet" size="sm" className="justify-start" onClick={signOut}>
@@ -472,7 +495,16 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       <div className="mx-auto grid max-w-[880px] gap-4 px-8 py-6">
         {thread ? (
           <>
-            <h2 className="text-title font-semibold">{thread.title}</h2>
+            <div className="flex items-start gap-2">
+              <h2 className="flex-1 text-title font-semibold">{thread.title}</h2>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => goTables({ page: "list", threadId: thread.id })}
+              >
+                Review table from these files
+              </Button>
+            </div>
             <p className="text-fg-muted">
               Asking about {thread.documents.map((document) => document.name).join(", ")}
             </p>
