@@ -1,3 +1,5 @@
+// biome-ignore-all lint/a11y/useSemanticElements: the grid stand-in mirrors the real ARIA grid roles
+// biome-ignore-all lint/a11y/useFocusableInteractive: the stand-in only needs to be found, not focused
 import type { Cell, Column, ReviewTable, Row } from "@legallabs/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
