@@ -334,11 +334,17 @@ describe("playbook reviews", () => {
     expect(steps.rows.filter((r) => r.input_ref?.startsWith("rule:"))).toHaveLength(3);
     expect(steps.rows.every((r) => r.model === "fake/model")).toBe(true);
 
-    const events = await h.log.replay(
-      { sessionId: "s", userId: s.m.userId, workspaceId: s.m.workspaceId },
-      run_id,
-      0,
-    );
+    // The results are saved before the closing event, so readers never see "done" early.
+    let events: Awaited<ReturnType<typeof h.log.replay>> = [];
+    for (let i = 0; i < 100; i++) {
+      events = await h.log.replay(
+        { sessionId: "s", userId: s.m.userId, workspaceId: s.m.workspaceId },
+        run_id,
+        0,
+      );
+      if (events.at(-1)?.type === "status" && events.length > 1) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
     const types = events.map((e) => e.type as string);
     expect(types[0]).toBe("status");
     expect(types).toContain("review.planned");
