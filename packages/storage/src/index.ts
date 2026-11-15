@@ -4,6 +4,10 @@ export interface ObjectStore {
   /** False if the key was taken, which for a content key means the same bytes. */
   putIfAbsent(key: string, bytes: Uint8Array): Promise<boolean>;
   get(key: string): Promise<Uint8Array | null>;
+  /** Bytes `start` to `end`, both included, so a viewer reads one page without the whole file. */
+  getRange(key: string, start: number, end: number): Promise<Uint8Array | null>;
+  /** The whole object as a stream, so serving a large file never holds it all in memory. */
+  stream(key: string): Promise<ReadableStream<Uint8Array> | null>;
   /** Removes a key; a missing key is not an error, so a purge can be run again. */
   delete(key: string): Promise<void>;
 }
@@ -27,6 +31,13 @@ export function createMemoryStore(): ObjectStore {
     },
     async get(key) {
       return objects.get(key)?.slice() ?? null;
+    },
+    async getRange(key, start, end) {
+      return objects.get(key)?.slice(start, end + 1) ?? null;
+    },
+    async stream(key) {
+      const bytes = objects.get(key);
+      return bytes ? new Blob([bytes.slice()]).stream() : null;
     },
     async delete(key) {
       objects.delete(key);
@@ -56,12 +67,18 @@ export function createS3Store(config: S3Config): ObjectStore {
   const base = `${config.endpoint.replace(/\/+$/, "")}/${encodeURIComponent(config.bucket)}`;
   const url = (key: string) => `${base}/${key.split("/").map(encodeURIComponent).join("/")}`;
 
-  async function request(method: string, key: string, body?: Uint8Array): Promise<Response> {
+  async function request(
+    method: string,
+    key: string,
+    body?: Uint8Array,
+    headers?: Record<string, string>,
+  ): Promise<Response> {
     const signed = await client.sign(url(key), {
       method,
       // A stalled store would otherwise hold an upload open forever.
       signal: AbortSignal.timeout(config.timeoutMs ?? 30_000),
       ...(body ? { body, headers: { "content-type": "application/octet-stream" } } : {}),
+      ...(headers ? { headers } : {}),
     });
     const response = await send(signed);
     if (!response.ok && response.status !== 404) {
@@ -83,6 +100,18 @@ export function createS3Store(config: S3Config): ObjectStore {
       const response = await request("GET", key);
       if (response.status === 404) return null;
       return new Uint8Array(await response.arrayBuffer());
+    },
+    async getRange(key, start, end) {
+      const response = await request("GET", key, undefined, { range: `bytes=${start}-${end}` });
+      if (response.status === 404) return null;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      // A store that ignores Range sends the whole object with a 200.
+      return response.status === 206 ? bytes : bytes.slice(start, end + 1);
+    },
+    async stream(key) {
+      const response = await request("GET", key);
+      if (response.status === 404) return null;
+      return response.body;
     },
     async delete(key) {
       await (await request("DELETE", key)).body?.cancel();
