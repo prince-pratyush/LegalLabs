@@ -27,6 +27,8 @@ import {
   type Thread,
   type ThreadSummary,
 } from "./api.js";
+import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
+import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
 import { documentStatus, segments } from "./text.js";
 import { go, parseRoute, useHash } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
@@ -55,7 +57,13 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseRoute(hash) ? (
+        {parsePlaybookRoute(hash) ? (
+          <PlaybooksApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parseRoute(hash) ? (
           <VaultsApp
             onLeave={() => {
               window.location.hash = "";
@@ -287,6 +295,13 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       run: () => go({ page: "list" }),
     },
     {
+      id: "playbooks",
+      kind: "action",
+      group: "Go to",
+      label: "Playbooks",
+      run: () => goPlaybooks({ page: "list" }),
+    },
+    {
       id: "upload",
       kind: "action",
       group: "Actions",
@@ -399,6 +414,26 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="grid gap-1">
+            <h2 className="text-caption font-semibold text-fg-muted uppercase">Go to</h2>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => go({ page: "list" })}
+            >
+              Vaults
+            </Button>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => goPlaybooks({ page: "list" })}
+            >
+              Playbooks
+            </Button>
           </section>
 
           <Button variant="quiet" size="sm" className="justify-start" onClick={signOut}>
