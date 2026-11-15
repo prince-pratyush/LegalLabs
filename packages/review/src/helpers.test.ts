@@ -1,10 +1,77 @@
 import { Id, type Rule } from "@legallabs/contracts";
 import { describe, expect, it } from "vitest";
+import { isConfident } from "./clause-map.js";
 import { evaluateCondition } from "./condition.js";
 import { uuidv7 } from "./id.js";
 import { parseJsonObject } from "./json.js";
 import { lexicalMap } from "./lexical.js";
+import { CallTimeout, emptyUsage, MAX_REPLY_CHARS, makeCaller } from "./model.js";
 import { verifyQuote } from "./verify.js";
+
+describe("verifyQuote on a large paragraph", () => {
+  it("maps a 1M-character paragraph once and reuses the map", () => {
+    const big = `${"Lorem ipsum  dolor sit amet. ".repeat(33_000)}The fee is capped.`;
+    const t0 = performance.now();
+    expect(verifyQuote(big, "the fee is capped").ok).toBe(true);
+    const first = performance.now() - t0;
+    const t1 = performance.now();
+    expect(verifyQuote(big, "dolor sit amet").ok).toBe(true);
+    const second = performance.now() - t1;
+    expect(second).toBeLessThan(Math.max(first / 4, 50));
+  });
+});
+
+describe("makeCaller", () => {
+  const ok = (text: string) => async () => ({
+    text,
+    model: "m",
+    usage: { input_tokens: 1, output_tokens: 1 },
+    cost_usd: 0,
+  });
+  const req = { task: "draft" as const, system: "", prompt: "", maxTokens: 1 };
+
+  it("cuts oversized replies before anyone parses them", async () => {
+    const call = makeCaller(ok("x".repeat(MAX_REPLY_CHARS * 2)), 1, undefined);
+    const usage = emptyUsage();
+    const res = await call(req, { usage });
+    expect(res.text).toHaveLength(MAX_REPLY_CHARS);
+    expect(usage.calls).toBe(1);
+  });
+
+  it("charges only time inside the call and refuses once the budget is spent", async () => {
+    let t = 1000; // time before the call, e.g. queueing, is not charged
+    const call = makeCaller(ok("{}"), 1, undefined, () => t);
+    const budget = { limitMs: 100, spentMs: 0 };
+    await call(req, { usage: emptyUsage(), budget });
+    expect(budget.spentMs).toBe(0);
+    t = 2000;
+    budget.spentMs = 100;
+    await expect(call(req, { usage: emptyUsage(), budget })).rejects.toBeInstanceOf(CallTimeout);
+  });
+});
+
+describe("isConfident", () => {
+  it("needs a strong best paragraph with a clear margin", () => {
+    expect(
+      isConfident(
+        new Map([
+          [0, 8],
+          [1, 3],
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      isConfident(
+        new Map([
+          [0, 8],
+          [1, 5],
+        ]),
+      ),
+    ).toBe(false);
+    expect(isConfident(new Map([[0, 4]]))).toBe(false);
+    expect(isConfident(undefined)).toBe(false);
+  });
+});
 
 describe("verifyQuote", () => {
   it("returns raw offsets past collapsed spaces and invisible characters", () => {

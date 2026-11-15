@@ -57,9 +57,12 @@ export type ReviewDeps = {
   /** uuid v7 */
   newId?: () => string;
   now?: () => Date;
-  /** Concurrent model calls; capped at 8. */
-  concurrency?: number;
-  /** Per-rule budget; 60 s unless a test shortens it. */
+  /**
+   * Model calls in flight at once, capped at 8. Defaults to 2, what a local provider serves
+   * without queueing; set it to the provider's real capacity, since queued time is wasted.
+   */
+  parallelism?: number;
+  /** Time a rule may spend inside model calls (not waiting for a slot); 60 s by default. */
   ruleTimeoutMs?: number;
 };
 
@@ -70,6 +73,9 @@ export type ReviewUsage = {
   models: string[];
 };
 
+/** Model usage of one phase, for a run_step row. */
+export type PhaseUsage = ReviewUsage & { calls: number };
+
 export type ReviewOutcome = {
   clause_map: Record<string, number[]>;
   uncovered: number[];
@@ -77,6 +83,8 @@ export type ReviewOutcome = {
   gaps: Gap[];
   summary: ReviewSummary;
   usage: ReviewUsage;
+  /** plan = clause map, rules = per-rule subagents by rule id, verify = gap pass. */
+  phases: { plan: PhaseUsage; rules: Record<string, PhaseUsage>; verify: PhaseUsage };
   coverage: { paragraphs: number; read: number };
   warnings: ("over_100_pages" | "existing_tracked_changes" | "partial_coverage")[];
   /** True when the signal fired; results hold only rules that finished. */
