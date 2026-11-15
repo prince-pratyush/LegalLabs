@@ -216,3 +216,55 @@ def test_registered_with_systems():
     names = [n for n, s in systems.items() if s["harness"] == "playbook-node"]
     assert {"playbook-fake", "playbook-ollama", "playbook-gpt"} <= set(names)
     assert all(systems[n]["harness"] in HARNESSES for n in names)
+
+
+def test_a_different_answering_model_fails_for_good(tmp_path):
+    system = {"harness": "playbook-node", "params": {"client": "openai", "model": "gpt-5.5"}}
+    harness = PlaybookNodeHarness("p", system, run=lambda args, t, err: 3)
+    task = TaskDatum("x", "p", {}, {"path": "x.docx", "template": "nda"})
+    with pytest.raises(NonRetryableError, match="other than gpt-5.5"):
+        harness.run(HarnessRequest(task, "playbook-review", "", tmp_path, tmp_path))
+
+
+def test_answered_model_is_priced(tmp_path):
+    system = {"harness": "playbook-node", "params": {"client": "anthropic"}}
+    harness = PlaybookNodeHarness("p", system, run=player([]))
+    task = suite().load_tasks()[0]
+    run = recorded("nda")
+    run["answered_models"] = ["claude-sonnet-5-5"]
+    harness._run = lambda args, t, err: (
+        Path(args[args.index("--out") + 1]).parent.mkdir(parents=True, exist_ok=True)
+        or Path(args[args.index("--out") + 1]).write_text(json.dumps(run))
+        and 0
+    )
+    result = harness.run(HarnessRequest(task, "playbook-review", "", tmp_path, tmp_path))
+    assert result.model == "claude-sonnet-5-5"
+    assert result.cost.usd == pytest.approx((20_000 * 2 + 1_500 * 10) / 1e6)
+
+
+def test_gateway_needs_the_key_of_its_provider(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    params = {"client": "gateway", "model": "anthropic/claude-haiku-5-5"}
+    harness = PlaybookNodeHarness(
+        "g", {"harness": "playbook-node", "params": params}, run=player([])
+    )
+    with pytest.raises(NonRetryableError, match="ANTHROPIC_API_KEY"):
+        harness.prepare([])
+
+
+def test_cli_can_fail_on_task_errors(monkeypatch, capsys):
+    from legallabs_eval import cli
+
+    class Failing:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run(self, limit):
+            return {"total_failed": 1}
+
+    monkeypatch.setattr(cli, "Runner", Failing)
+    monkeypatch.setattr(cli, "make_suite", lambda *a: None)
+    monkeypatch.setattr(cli, "make_harness", lambda *a: None)
+    argv = ["run", "--system", "bm25-local", "--suite", "retrieval-golden"]
+    assert cli.main(argv) == 0
+    assert cli.main([*argv, "--fail-on-task-errors"]) == 1

@@ -76,7 +76,7 @@ jobs:
       # The offline baseline needs no keys, so every PR proves a run still ends in summary.json.
       - run: uv run legallabs-eval run --system bm25-local --suite retrieval-golden
       # Canned replies: proves generation, review, scoring and OOXML checks run; scores mean nothing.
-      - run: uv run legallabs-eval run --system playbook-fake --suite playbook-review
+      - run: uv run legallabs-eval run --system playbook-fake --suite playbook-review --fail-on-task-errors
 
   docproc:
     runs-on: ubuntu-latest

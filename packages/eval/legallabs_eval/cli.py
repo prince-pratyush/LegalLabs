@@ -23,6 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--suffix", default="")
     run.add_argument("--runs-dir", type=Path, default=Path("runs"))
     run.add_argument("--no-judge", action="store_true", help="skip paid judge criteria")
+    run.add_argument(
+        "--fail-on-task-errors",
+        action="store_true",
+        help="exit 1 when any task ends without a graded result",
+    )
     room = commands.add_parser("make-room", help="write a coverage-vdr data room to disk")
     room.add_argument("--out", type=Path, required=True)
     room.add_argument("--docs", type=int, default=DEFAULT_DOCS)
@@ -64,4 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"failed: {err}", file=sys.stderr)
         return 1
     print(json.dumps(summary, indent=2))
+    if args.fail_on_task_errors and summary["total_failed"]:
+        print(f"failed: {summary['total_failed']} task(s) had no result", file=sys.stderr)
+        return 1
     return 0
