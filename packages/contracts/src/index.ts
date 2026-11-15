@@ -66,6 +66,7 @@ export {
   RunKind,
   RunStatus,
 } from "./run.js";
+export { STARTERS, StarterPlaybook, starterPlaybook } from "./starters.js";
 export {
   type AuthorityPassage,
   type Caller,

@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@legallabs/contracts": "workspace:*",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
+    "aws4fetch": "1.0.20",
     "fflate": "0.8.3",
     "vitest": "5.1.0"
   }

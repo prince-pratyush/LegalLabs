@@ -1,6 +1,7 @@
 import { APICallError, registerTelemetry } from "ai";
 import { convertArrayToReadableStream, MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
+import { modelTimeout } from "./ai-sdk.js";
 import { aiSdkProvider, gatewayOptionsFromEnv, type Message } from "./index.js";
 
 const messages: Message[] = [
@@ -52,6 +53,13 @@ describe("gatewayOptionsFromEnv", () => {
       ollama: 16_384,
     });
     expect(gatewayOptionsFromEnv({ OLLAMA_CONTEXT_LENGTH: "lots" }).contextWindows).toBeUndefined();
+  });
+
+  it("reads the model timeout, ignoring nonsense and capping it", () => {
+    expect(modelTimeout(undefined)).toBe(120_000);
+    for (const bad of ["abc", "0", "-5", "1.5"]) expect(modelTimeout(bad)).toBe(120_000);
+    expect(modelTimeout("600000")).toBe(600_000);
+    expect(modelTimeout("99999999")).toBe(30 * 60_000);
   });
 
   it("allows demo models only for the exact word true", () => {
