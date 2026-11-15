@@ -422,6 +422,15 @@ describe("playbook edits and limits", () => {
     expect(chain.status).toBe(200);
   });
 
+  it("caps a request body at 4 MB, as drafts do", async () => {
+    const h = harness();
+    const ana = await h.signIn(await seedMember(pool));
+    const pb = (await h.call(ana, "POST", "/playbooks", scratch())).body.playbook;
+    const huge = { base_version_no: 1, guidance: "x".repeat(4 * 1024 * 1024) };
+    const res = await h.call(ana, "PATCH", `/playbooks/${pb.id}`, huge);
+    expect(res).toMatchObject({ status: 413, body: { code: "TOO_LARGE" } });
+  });
+
   it("refuses filters with control characters as a bad request", async () => {
     const h = harness();
     const ana = await h.signIn(await seedMember(pool));
