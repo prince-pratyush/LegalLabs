@@ -24,7 +24,7 @@ const MAX_UNPACKED = 100 * 1024 * 1024;
 export const CONTENT_MARK = "{{content}}";
 export const TITLE_MARK = "{{title}}";
 
-export type TemplateProblem = "NOT_DOCX" | "MACROS" | "STRICT" | "TOO_LARGE";
+export type TemplateProblem = "NOT_DOCX" | "MACROS" | "ACTIVE_CONTENT" | "STRICT" | "TOO_LARGE";
 
 export class TemplateError extends Error {
   constructor(readonly problem: TemplateProblem) {
@@ -73,6 +73,15 @@ export function openTemplate(bytes: Uint8Array): TemplateParts {
   if (/macroEnabled/i.test(types) || Object.keys(files).some((n) => /vbaProject/i.test(n))) {
     throw new TemplateError("MACROS");
   }
+  // Every export inherits the template, so nothing in it may reach out or run: an external
+  // link could leak the reader's network login. Plain hyperlinks are fine.
+  const activeParts = Object.keys(files).some((n) => /(^|\/)(activeX|embeddings)\//i.test(n));
+  const reachesOut = Object.keys(files)
+    .filter((n) => n.endsWith(".rels"))
+    .some((n) =>
+      relsOf(partText(files, n)).some((r) => r.external && !r.type.endsWith("/hyperlink")),
+    );
+  if (activeParts || reachesOut) throw new TemplateError("ACTIVE_CONTENT");
   const target = relsOf(rels).find((r) => r.type === OFFICE_DOC);
   const main = target?.target.replace(/^\//, "");
   if (!main || !files[main]) throw new TemplateError("NOT_DOCX");
@@ -89,6 +98,7 @@ export interface Rel {
   id: string;
   type: string;
   target: string;
+  external: boolean;
 }
 
 export const relsOf = (xml: string | null): Rel[] =>
@@ -97,6 +107,7 @@ export const relsOf = (xml: string | null): Rel[] =>
         id: attr(m[0], "Id") ?? "",
         type: attr(m[0], "Type") ?? "",
         target: attr(m[0], "Target") ?? "",
+        external: attr(m[0], "TargetMode") === "External",
       }))
     : [];
 
@@ -115,7 +126,48 @@ const unescapeXml = (s: string) =>
     .replaceAll("&apos;", "'")
     .replaceAll("&amp;", "&");
 
-const PARAGRAPH = /<w:p\b[^>]*?(?:\/>|>[\s\S]*?<\/w:p>)/g;
+/**
+ * Each `<tag …>…</tag>` (or `<tag/>`) in order, found in one pass. A lazy regex here
+ * rescans to the end for every unclosed tag, which a hostile file can make take minutes.
+ * Elements nested in the same tag (a paragraph in a text box) end the outer one early.
+ */
+export function elements(xml: string, tag: string): { start: number; end: number }[] {
+  const open = `<${tag}`;
+  const close = `</${tag}>`;
+  const found: { start: number; end: number }[] = [];
+  let at = xml.indexOf(open);
+  while (at !== -1) {
+    const next = xml[at + open.length];
+    if (next === " " || next === ">" || next === "/") {
+      const tagEnd = xml.indexOf(">", at);
+      if (tagEnd === -1) break;
+      if (xml[tagEnd - 1] === "/") {
+        found.push({ start: at, end: tagEnd + 1 });
+        at = xml.indexOf(open, tagEnd + 1);
+        continue;
+      }
+      const end = xml.indexOf(close, tagEnd);
+      // No close anywhere after: nothing later can close either.
+      if (end === -1) break;
+      found.push({ start: at, end: end + close.length });
+      at = xml.indexOf(open, end + close.length);
+    } else {
+      at = xml.indexOf(open, at + open.length);
+    }
+  }
+  return found;
+}
+
+/** Calls `swap` on each element and splices in what it returns. */
+export function replaceElements(xml: string, tag: string, swap: (el: string) => string): string {
+  let out = "";
+  let last = 0;
+  for (const { start, end } of elements(xml, tag)) {
+    out += xml.slice(last, start) + swap(xml.slice(start, end));
+    last = end;
+  }
+  return out + xml.slice(last);
+}
 
 /** The plain text of one paragraph's runs. */
 export const paragraphText = (para: string) =>
@@ -125,7 +177,7 @@ export const paragraphText = (para: string) =>
 
 /** The text of each paragraph in a part. */
 export const paragraphTexts = (xml: string): string[] =>
-  [...xml.matchAll(PARAGRAPH)].map((m) => paragraphText(m[0]));
+  elements(xml, "w:p").map((e) => paragraphText(xml.slice(e.start, e.end)));
 
 const PLACEHOLDER = /\{\{[^{}\n]{1,60}\}\}|\[INSERT[^\]\n]{0,80}\]|\[●\]|\[_{2,}\]/gi;
 
@@ -157,13 +209,14 @@ export interface StyleInfo {
 }
 
 export const stylesOf = (xml: string): StyleInfo[] =>
-  [...xml.matchAll(/<w:style\b[^>]*>[\s\S]*?<\/w:style>/g)].map((m) => {
-    const open = /<w:style\b[^>]*>/.exec(m[0])?.[0] ?? "";
+  elements(xml, "w:style").map(({ start, end }) => {
+    const el = xml.slice(start, end);
+    const open = el.slice(0, el.indexOf(">") + 1);
     return {
       id: attr(open, "w:styleId") ?? "",
       type: attr(open, "w:type") ?? "",
-      name: (/<w:name w:val="([^"]*)"/.exec(m[0])?.[1] ?? "").toLowerCase(),
-      xml: m[0],
+      name: (/<w:name w:val="([^"]*)"/.exec(el)?.[1] ?? "").toLowerCase(),
+      xml: el,
     };
   });
 
@@ -325,7 +378,8 @@ export function packIntoTemplate(bytes: Uint8Array, input: PackageInput): Uint8A
       const notes = [...ours.matchAll(/<w:footnote w:id="(\d+)">[\s\S]*?<\/w:footnote>/g)]
         .map((m) => m[0].replace(/w:id="(\d+)"/, (_, id) => `w:id="${Number(id) + noteOffset}"`))
         .join("");
-      files[footnotesPath] = firmNotes.replace("</w:footnotes>", `${notes}</w:footnotes>`);
+      // A function, so a `$` in a note isn't read as a replacement pattern.
+      files[footnotesPath] = firmNotes.replace("</w:footnotes>", () => `${notes}</w:footnotes>`);
     } else {
       addPart("footnotes.xml", "footnotes", "wordprocessingml.footnotes+xml", ours);
     }
@@ -369,7 +423,7 @@ export function packIntoTemplate(bytes: Uint8Array, input: PackageInput): Uint8A
   let titled = false;
   let placed = false;
   const SLOT = "\u0000DRAFT\u0000";
-  const kept = (sectAt === -1 ? body : body.slice(0, sectAt)).replace(PARAGRAPH, (para) => {
+  const kept = replaceElements(sectAt === -1 ? body : body.slice(0, sectAt), "w:p", (para) => {
     const words = paragraphText(para).trim();
     if (words === CONTENT_MARK && !placed) {
       placed = true;

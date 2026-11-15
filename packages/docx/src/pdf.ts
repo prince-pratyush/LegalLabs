@@ -1,6 +1,7 @@
 import { PDFDocument, type PDFFont, type PDFPage, StandardFonts } from "pdf-lib";
 import type { Block, BlockKind } from "./markdown.js";
 import {
+  elements,
   openTemplate,
   paragraphText,
   partText,
@@ -176,7 +177,7 @@ function band(t: TemplateParts, sect: string, kind: "header" | "footer"): Band |
   const path = rel.target.startsWith("/") ? rel.target.slice(1) : `${t.dir}${rel.target}`;
   const xml = partText(t.files, path);
   if (!xml) return null;
-  const paras = [...xml.matchAll(/<w:p\b[^>]*?(?:\/>|>[\s\S]*?<\/w:p>)/g)].map((m) => m[0]);
+  const paras = elements(xml, "w:p").map((e) => xml.slice(e.start, e.end));
   const page = /\bPAGE\b/.test(xml);
   // A page field's cached digit is dropped; the real number is drawn on each page.
   const text = paras

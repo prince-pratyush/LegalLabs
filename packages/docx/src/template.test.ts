@@ -213,3 +213,71 @@ describe("other template shapes", () => {
     expect(problem(zipSync(noBody))).toBe("NOT_DOCX");
   });
 });
+
+describe("hostile templates", () => {
+  const withParts = (extra: Record<string, string>) =>
+    zipSync({
+      ...unzipSync(sampleFirmTemplate()),
+      ...Object.fromEntries(Object.entries(extra).map(([n, x]) => [n, strToU8(x)])),
+    });
+  const problemOf = (bytes: Uint8Array) => {
+    try {
+      openTemplate(bytes);
+      return null;
+    } catch (err) {
+      return err instanceof TemplateError ? err.problem : "other";
+    }
+  };
+
+  it("reads a body of unclosed paragraphs in linear time", () => {
+    const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const doc = `<w:document xmlns:w="${W}"><w:body>${"<w:p><w:r><w:t>x</w:t></w:r>".repeat(60_000)}</w:body></w:document>`;
+    const bytes = withParts({ "word/document.xml": doc });
+    const started = performance.now();
+    expect(placeholders(bytes)).toEqual([]);
+    // The old lazy regex took minutes on this; a linear scan takes milliseconds.
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("refuses links that reach out and embedded objects, but keeps hyperlinks", () => {
+    const rels = (type: string, target: string) =>
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${target}" TargetMode="External"/></Relationships>`;
+    expect(
+      problemOf(
+        withParts({
+          "word/_rels/settings.xml.rels": rels("attachedTemplate", "file://host/share/t.dotm"),
+        }),
+      ),
+    ).toBe("ACTIVE_CONTENT");
+    expect(problemOf(withParts({ "word/embeddings/oleObject1.bin": "x" }))).toBe("ACTIVE_CONTENT");
+    expect(problemOf(withParts({ "word/activeX/activeX1.xml": "<x/>" }))).toBe("ACTIVE_CONTENT");
+    expect(
+      problemOf(
+        withParts({ "word/_rels/footer1.xml.rels": rels("hyperlink", "https://example.test") }),
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps a `$` in footnote text as text", () => {
+    const notes = `<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:footnote w:id="1"><w:p/></w:footnote></w:footnotes>`;
+    const firm = unzipSync(sampleFirmTemplate());
+    firm["word/footnotes.xml"] = strToU8(notes);
+    firm["word/_rels/document.xml.rels"] = strToU8(
+      strFromU8(firm["word/_rels/document.xml.rels"] as Uint8Array).replace(
+        "</Relationships>",
+        '<Relationship Id="rId20" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>',
+      ),
+    );
+    const out = parts(
+      buildDocx({
+        blocks: [{ kind: "paragraph", runs: [{ text: "Fee" }, { footnote: 1 }] }],
+        author: "A",
+        date: DATE,
+        footnotes: ["Costs $` and $& apply"],
+        template: zipSync(firm),
+      }),
+    );
+    expect(out["word/footnotes.xml"]).toContain("Costs $` and $&amp; apply");
+    expect(out["word/document.xml"]).toContain('<w:footnoteReference w:id="2"/>');
+  });
+});
