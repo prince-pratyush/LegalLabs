@@ -550,7 +550,11 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         const [field, value, action] = ((): [string, string, string] => {
           switch (body.op) {
             case "verify":
-              return ["verified", "verified_by = $3, verified_at = now()", "table.cell.verify"];
+              return [
+                "verified",
+                "verified_by = p.actor, verified_at = now()",
+                "table.cell.verify",
+              ];
             case "unverify":
               return ["verified", "verified_by = null, verified_at = null", "table.cell.unverify"];
             case "lock":
@@ -558,15 +562,17 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             case "unlock":
               return ["locked", "locked = false", "table.cell.unlock"];
             case "flag":
-              return ["flag", "flag_color = $4", "table.cell.flag"];
+              return ["flag", "flag_color = p.flag", "table.cell.flag"];
             default:
               return ["flag", "flag_color = null", "table.cell.flag"];
           }
         })();
         // Lock and unlock always apply; anything else skips locked cells.
         const { rows } = await db.query<{ id: string }>(
-          `update work.rt_cell c set ${value}, updated_at = now()
-             from work.rt_row r
+          // Every parameter is typed here, as some ops don't use them all.
+          `with p as (select $3::uuid actor, $4::text flag)
+           update work.rt_cell c set ${value}, updated_at = now()
+             from work.rt_row r, p
             where c.id = any($1::uuid[]) and c.table_id = $2 and r.id = c.row_id and r.deleted_at is null
               and not ${RESTRICTED_SQL}
               and ($5 or not c.locked)
