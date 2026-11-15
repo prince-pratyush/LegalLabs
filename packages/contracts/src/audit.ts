@@ -71,6 +71,9 @@ export const auditActions: string[] = [
   ]),
 
   ...family("playbook", ["published", "unpublished", "grant_changed", "generated"]),
+  ...family("playbook_review", ["started", "finished", "cancelled"]),
+  ...family("suggestion", ["applied", "dismissed", "revised", "alternates_requested"]),
+  ...family("review", ["exported", "redline_downloaded"]),
 
   ...family("share", [
     "granted",
