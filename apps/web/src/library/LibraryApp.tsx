@@ -286,16 +286,12 @@ export function LibraryApp({ onLeave }: { onLeave: () => void }) {
             )}
           </TabsContent>
           <TabsContent value="playbooks">
+            {/* The playbooks page isn't merged yet; this tab will open it once it is. */}
             <EmptyState
               icon={BookOpen}
-              title="Playbooks have their own page"
-              description="Your negotiation playbooks, and reviews run against them, live in Playbooks."
-              action={{
-                label: "Open Playbooks",
-                onClick: () => {
-                  window.location.hash = "#/playbooks";
-                },
-              }}
+              title="Playbooks are on their way"
+              description="Your negotiation playbooks, and reviews run against them, will open from here once Playbooks ships."
+              action={{ label: "Go to prompts", onClick: () => setTab("prompts") }}
             />
           </TabsContent>
           <TabsContent value="workflows">
