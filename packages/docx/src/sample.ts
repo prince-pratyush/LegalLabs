@@ -1,9 +1,7 @@
 import { strToU8, type ZipOptions, zipSync } from "fflate";
+import { PKG_REL, R, W } from "./parts.js";
 import { XML_HEAD } from "./xml.js";
 
-const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships";
 const CT = "application/vnd.openxmlformats-officedocument.wordprocessingml";
 
 export interface SampleTemplateOptions {

@@ -17,7 +17,6 @@ export {
   type PdfInput,
   pageLook,
 } from "./pdf.js";
-export { type SampleTemplateOptions, sampleFirmTemplate } from "./sample.js";
 export {
   CONTENT_MARK,
   openTemplate,

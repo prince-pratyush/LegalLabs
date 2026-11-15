@@ -1,18 +1,18 @@
 import { strFromU8, strToU8, type Unzipped, unzipSync, type ZipOptions, zipSync } from "fflate";
+import type { PackageInput } from "./docx.js";
 import {
   abstractNumXml,
   coreXml,
   footnotesXml,
   numXml,
-  type PackageInput,
+  PKG_REL,
+  R,
   STYLE_DEFS,
   titleXml,
-} from "./docx.js";
+  W,
+} from "./parts.js";
 import { isoSeconds, XML_HEAD, xmlText } from "./xml.js";
 
-const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships";
 const OFFICE_DOC = `${R}/officeDocument`;
 const MAIN_DOC = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
 const MAIN_TEMPLATE =
@@ -168,16 +168,12 @@ export const stylesOf = (xml: string): StyleInfo[] =>
   });
 
 // Built-in names are fixed; the ids differ by the language Word was set to.
-export const BUILT_IN_NAMES: Record<string, string> = {
-  Normal: "normal",
-  Title: "title",
-  Heading1: "heading 1",
-  Heading2: "heading 2",
-  Heading3: "heading 3",
-  ListParagraph: "list paragraph",
-  FootnoteText: "footnote text",
-  FootnoteReference: "footnote reference",
-};
+export const BUILT_IN_NAMES: Record<string, string> = Object.fromEntries(
+  Object.entries(STYLE_DEFS).map(([id, xml]) => [
+    id,
+    (/<w:name w:val="([^"]+)"/.exec(xml)?.[1] ?? id).toLowerCase(),
+  ]),
+);
 
 /** Inserts `piece` before the first of `successors` found, keeping the schema's order. */
 function insertBefore(xml: string, successors: readonly string[], close: string, piece: string) {
