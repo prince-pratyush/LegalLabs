@@ -24,7 +24,12 @@
         ]
       },
       { "rule_title": "Assignment", "status": "not_found", "verification": "ok", "evidence": [] },
-      { "rule_title": "Term and Survival", "status": "acceptable", "verification": "ok", "evidence": [] }
+      {
+        "rule_title": "Term and Survival",
+        "status": "acceptable",
+        "verification": "ok",
+        "evidence": []
+      }
     ],
     "gaps": [
       {
@@ -46,7 +51,12 @@
         "evidence": [{ "paragraph_index": 34, "verified": "ok" }]
       }
     ],
-    "usage": { "input_tokens": 20000, "output_tokens": 1500, "cost_usd": 0, "models": ["qwen3:4b-instruct"] },
+    "usage": {
+      "input_tokens": 20000,
+      "output_tokens": 1500,
+      "cost_usd": 0,
+      "models": ["qwen3:4b-instruct"]
+    },
     "phases": {
       "plan": { "calls": 2 },
       "verify": { "calls": 1 },
