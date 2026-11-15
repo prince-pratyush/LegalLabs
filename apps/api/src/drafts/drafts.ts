@@ -449,8 +449,8 @@ export function createDrafts(
       // A PDF can't hold tracked changes.
       if (format === "pdf" && trackedFrom !== undefined) return null;
       // Found before the draft's transaction, so one export holds one connection at a time.
-      const firm = templates ? await templates.resolve(principal, template) : null;
-      if (!firm && template !== "default" && template !== "none") return null;
+      const firmTemplate = templates ? await templates.resolve(principal, template) : null;
+      if (!firmTemplate && template !== "default" && template !== "none") return null;
       return asApp(pool, principal, async (db) => {
         const draft = await load(db, principal, draftId);
         if (!draft) return null;
@@ -460,7 +460,7 @@ export function createDrafts(
         );
         const who = author[0]?.name || author[0]?.email || "LegalLabs";
         const date = new Date().toISOString().replace(/\.\d+Z$/, "Z");
-        const look = firm ? { template: firm.bytes } : {};
+        const inTemplate = firmTemplate ? { template: firmTemplate.bytes } : {};
         let bytes: Uint8Array;
         if (trackedFrom !== undefined) {
           const { rows } = await db.query<{ body: string }>(
@@ -474,7 +474,7 @@ export function createDrafts(
             author: who,
             date,
             title: draft.title,
-            ...look,
+            ...inTemplate,
           });
         } else {
           const input = {
@@ -482,7 +482,7 @@ export function createDrafts(
             blocks: markdownBlocks(draft.latest.body),
             author: who,
             date,
-            ...look,
+            ...inTemplate,
           };
           bytes = format === "pdf" ? await buildPdf(input) : buildDocx(input);
         }
@@ -495,7 +495,7 @@ export function createDrafts(
               format,
               tracked: trackedFrom !== undefined,
               version: draft.latest.no,
-              template_version_id: firm?.versionId ?? null,
+              template_version_id: firmTemplate?.versionId ?? null,
             }),
             client.ip,
             uaHash(client),
