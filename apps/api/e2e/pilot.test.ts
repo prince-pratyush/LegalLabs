@@ -1,16 +1,7 @@
 import { parseCitationPath } from "@legallabs/contracts";
 import { strFromU8, unzipSync } from "fflate";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-// @ts-expect-error: a plain script, shared with `node e2e/stack.mjs`.
-import { startStack } from "./stack.mjs";
-
-interface Stack {
-  url: string;
-  workspace: string;
-  email: string;
-  password: string;
-  stop: () => Promise<void>;
-}
+import { describe, expect, it } from "vitest";
+import { until, useStack } from "./session.js";
 
 const CONTRACT = `MASTER SERVICES AGREEMENT
 
@@ -22,84 +13,7 @@ const CONTRACT = `MASTER SERVICES AGREEMENT
 13.1 Either party may terminate this agreement on ninety days written notice.
 `;
 
-let stack: Stack;
-let cookie = "";
-
-const call = async (path: string, init: RequestInit = {}) => {
-  const res = await fetch(`${stack.url}${path}`, {
-    ...init,
-    headers: {
-      cookie,
-      ...(typeof init.body === "string" ? { "content-type": "application/json" } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
-  return res;
-};
-const json = async <T>(path: string, init: RequestInit = {}, status = 200): Promise<T> => {
-  const res = await call(path, init);
-  if (res.status !== status) throw new Error(`${path}: ${res.status} ${await res.text()}`);
-  return (await res.json()) as T;
-};
-const post = <T>(path: string, body: unknown, status = 200) =>
-  json<T>(path, { method: "POST", body: JSON.stringify(body) }, status);
-
-type Event = { event: string; id: number; data: Record<string, unknown> };
-
-// Reads the run's event stream to its end, as the browser does.
-async function events(runId: string): Promise<Event[]> {
-  const res = await call(`/api/v1/runs/${runId}/events`);
-  expect(res.headers.get("content-type")).toContain("text/event-stream");
-  const text = await res.text();
-  return text
-    .split("\n\n")
-    .filter((block) => block.includes("event:"))
-    .map((block) => {
-      const field = (name: string) =>
-        block
-          .split("\n")
-          .find((line) => line.startsWith(`${name}:`))
-          ?.slice(name.length + 1)
-          .trim() ?? "";
-      return {
-        event: field("event"),
-        id: Number(field("id")),
-        data: JSON.parse(field("data") || "{}"),
-      };
-    });
-}
-
-async function until<T>(read: () => Promise<T>, done: (value: T) => boolean, what: string) {
-  const deadline = Date.now() + 8 * 60_000;
-  for (;;) {
-    const value = await read();
-    if (done(value)) return value;
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-}
-
-beforeAll(async () => {
-  stack = await startStack();
-  const res = await fetch(`${stack.url}/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      workspace: stack.workspace,
-      email: stack.email,
-      password: stack.password,
-    }),
-  });
-  expect(res.status).toBe(200);
-  cookie = (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-}, 180_000);
-
-afterAll(() => stack?.stop());
-
-// A signal skips afterAll, which would leave the stack running.
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.once(signal, () => void stack?.stop().finally(() => process.exit(1)));
-}
+const { call, json, post, events } = useStack();
 
 describe("pilot acceptance 1", () => {
   it(
