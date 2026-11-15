@@ -36,9 +36,10 @@ export interface ExportFile {
   bytes: Uint8Array;
 }
 
-/** A value a spreadsheet would run as a formula is prefixed so it stays text. */
+/** A field a spreadsheet could run as a formula gets a leading quote, unless it's a plain number. */
 export function csvSafe(text: string): string {
-  return /^[=+@\t\r]/.test(text) || /^-[^\d$£€¥.]/.test(text) ? `'${text}` : text;
+  if (/^-?[\d,]+(\.\d+)?$/.test(text)) return text;
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
 }
 
 const csvField = (text: string) => {

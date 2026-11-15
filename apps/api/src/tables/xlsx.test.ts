@@ -29,11 +29,17 @@ describe("buildXlsx", () => {
 });
 
 describe("csvSafe", () => {
-  it("keeps formulas inert but leaves negative amounts alone", () => {
+  it("keeps formulas inert, including ones that start with a minus and a digit", () => {
     expect(csvSafe("=HYPERLINK(1)")).toBe("'=HYPERLINK(1)");
     expect(csvSafe("@cmd")).toBe("'@cmd");
+    expect(csvSafe("-1+cmd|' /C calc'!A0")).toBe("'-1+cmd|' /C calc'!A0");
+    expect(csvSafe("-$5.00")).toBe("'-$5.00");
+    expect(csvSafe("\tx")).toBe("'\tx");
+  });
+
+  it("leaves plain numbers alone", () => {
     expect(csvSafe("-1200.00")).toBe("-1200.00");
-    expect(csvSafe("-$5.00")).toBe("-$5.00");
-    expect(csvSafe("-x")).toBe("'-x");
+    expect(csvSafe("1,500,000.00")).toBe("1,500,000.00");
+    expect(csvSafe("USD 1,500.00")).toBe("USD 1,500.00");
   });
 });
