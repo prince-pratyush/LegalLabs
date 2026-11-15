@@ -93,6 +93,9 @@ create table work.review_suggestion (
   superseded_by uuid,
   -- Set when the user applied one of the alternates instead of the main text.
   alternate_id uuid,
+  -- Set when a re-run read another document (Word uploads a fresh one each time): only
+  -- the review's owner who can read that document sees it, and redlines leave it out.
+  source_document_version_id uuid,
   alternates jsonb not null default '[]' check (jsonb_typeof(alternates) = 'array'
                                                 and jsonb_array_length(alternates) <= 3),
   created_at timestamptz not null default now(),
@@ -101,9 +104,30 @@ create table work.review_suggestion (
   check ((decided_by is null) = (decided_at is null)),
   foreign key (workspace_id, review_id) references work.playbook_review (workspace_id, id)
     on delete cascade,
-  foreign key (workspace_id, decided_by) references core."user" (workspace_id, id)
+  foreign key (workspace_id, decided_by) references core."user" (workspace_id, id),
+  foreign key (workspace_id, source_document_version_id)
+    references content.document_version (workspace_id, id) on delete cascade
 );
 create index review_suggestion_status_idx on work.review_suggestion (review_id, status);
+
+-- A rule re-run against another document's version. Kept apart from the review's results so
+-- readers of the review who can't read that document never see its text.
+create table work.review_rerun (
+  id uuid primary key default core.uuid7(),
+  workspace_id uuid not null,
+  review_id uuid not null,
+  rule_id uuid not null,
+  run_id uuid not null,
+  source_document_version_id uuid not null,
+  finding jsonb not null check (jsonb_typeof(finding) = 'object'),
+  created_at timestamptz not null default now(),
+  foreign key (workspace_id, review_id) references work.playbook_review (workspace_id, id)
+    on delete cascade,
+  foreign key (workspace_id, run_id) references work.run (workspace_id, id) on delete cascade,
+  foreign key (workspace_id, source_document_version_id)
+    references content.document_version (workspace_id, id) on delete cascade
+);
+create index review_rerun_rule_idx on work.review_rerun (review_id, rule_id, created_at desc);
 
 alter table work.run_step enable row level security;
 alter table work.run_step force row level security;
@@ -111,6 +135,8 @@ alter table work.playbook_review enable row level security;
 alter table work.playbook_review force row level security;
 alter table work.review_suggestion enable row level security;
 alter table work.review_suggestion force row level security;
+alter table work.review_rerun enable row level security;
+alter table work.review_rerun force row level security;
 
 -- Seen by whoever can read the document (vault access and walls included) and either the
 -- playbook or, as the one who ran it, their own review. Driven only by the one who ran it.
@@ -132,7 +158,12 @@ create policy playbook_review_insert on work.playbook_review for insert to legal
                              and pv.playbook_id = playbook_review.playbook_id)
               and exists (select 1 from content.document_version v
                            where v.id = playbook_review.document_version_id
-                             and v.document_id = playbook_review.document_id));
+                             and v.document_id = playbook_review.document_id)
+              -- A review started from a thread belongs to that thread's owner (spec §7).
+              and (thread_id is null or exists (
+                select 1 from work.thread t
+                 where t.id = playbook_review.thread_id
+                   and t.owner_id = core.current_user_id())));
 create policy playbook_review_update on work.playbook_review for update to legallabs_app
   using (core.in_tenant(workspace_id) and owner_id = core.current_user_id()
          and core.has_permission('playbooks.use')
@@ -145,16 +176,63 @@ grant update (status, applied_with_comment, surface, decided_by, decided_at, sup
   on work.review_suggestion to legallabs_app;
 create policy review_suggestion_read on work.review_suggestion for select to legallabs_app
   using (core.in_tenant(workspace_id)
-         and exists (select 1 from work.playbook_review r where r.id = review_id));
+         and exists (select 1 from work.playbook_review r
+                      where r.id = review_id
+                        and (source_document_version_id is null
+                             or r.owner_id = core.current_user_id()))
+         and (source_document_version_id is null
+              or exists (select 1 from content.document_version v
+                          where v.id = source_document_version_id)));
 create policy review_suggestion_insert on work.review_suggestion for insert to legallabs_app
   with check (core.in_tenant(workspace_id) and exists (
     select 1 from work.playbook_review r
-     where r.id = review_id and r.owner_id = core.current_user_id()));
+     where r.id = review_id and r.owner_id = core.current_user_id())
+              and (source_document_version_id is null or exists (
+                select 1 from content.document_version v
+                 where v.id = source_document_version_id)));
 create policy review_suggestion_update on work.review_suggestion for update to legallabs_app
   using (core.in_tenant(workspace_id) and exists (
     select 1 from work.playbook_review r
      where r.id = review_id and r.owner_id = core.current_user_id()))
   with check (core.in_tenant(workspace_id));
+
+grant select, insert on work.review_rerun to legallabs_app;
+create policy review_rerun_read on work.review_rerun for select to legallabs_app
+  using (core.in_tenant(workspace_id)
+         and exists (select 1 from work.playbook_review r
+                      where r.id = review_id and r.owner_id = core.current_user_id())
+         and exists (select 1 from content.document_version v
+                      where v.id = source_document_version_id));
+create policy review_rerun_insert on work.review_rerun for insert to legallabs_app
+  with check (core.in_tenant(workspace_id)
+              and exists (select 1 from work.playbook_review r
+                           where r.id = review_id and r.owner_id = core.current_user_id())
+              and exists (select 1 from content.document_version v
+                           where v.id = source_document_version_id));
+
+-- The thread policies must not reach review runs: a thread owner could otherwise start a
+-- review run on their thread without playbooks.use.
+drop policy run_insert on work.run;
+create policy run_insert on work.run for insert to legallabs_app
+  with check (core.in_tenant(workspace_id)
+              and kind <> 'playbook_review'
+              and owner_id = core.current_user_id()
+              and core.has_permission('threads.use')
+              and exists (select 1 from work.thread t
+                           where t.id = thread_id and t.owner_id = core.current_user_id()));
+drop policy run_update on work.run;
+create policy run_update on work.run for update to legallabs_app
+  using (core.in_tenant(workspace_id) and kind <> 'playbook_review'
+         and owner_id = core.current_user_id()
+         and core.has_permission('threads.use')
+         and exists (select 1 from work.thread t where t.id = thread_id))
+  with check (core.in_tenant(workspace_id) and owner_id = core.current_user_id());
+drop policy run_event_insert on work.run_event;
+create policy run_event_insert on work.run_event for insert to legallabs_app
+  with check (core.in_tenant(workspace_id) and core.has_permission('threads.use') and exists (
+    select 1 from work.run r
+     where r.id = run_id and r.kind <> 'playbook_review'
+       and r.owner_id = core.current_user_id()));
 
 -- A review's run carries no clause text, so its owner sees it even before the review row.
 create policy run_review_read on work.run for select to legallabs_app

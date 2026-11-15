@@ -93,4 +93,85 @@ describe("playbook reviews", () => {
       ).toMatch(/run_thread_check|row-level security/);
     });
   });
+
+  it("keep thread owners without playbooks.use from starting review runs", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ben, s.acme);
+      const { id: threadId } = await tx.one<{ id: string }>(
+        `insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Mine')
+         returning id`,
+        [s.acme, s.ben],
+      );
+      const { id: questionId } = await tx.one<{ id: string }>(
+        `insert into work.message (workspace_id, thread_id, role, content)
+         values ($1, $2, 'user', 'Q') returning id`,
+        [s.acme, threadId],
+      );
+      expect(
+        await tx.error(
+          `insert into work.run (workspace_id, owner_id, kind, status, thread_id, question_id)
+           values ($1, $2, 'playbook_review', 'planned', $3, $4)`,
+          [s.acme, s.ben, threadId, questionId],
+        ),
+      ).toMatch(/row-level security/);
+      // A thread run is still fine.
+      expect(
+        await tx.error(
+          `insert into work.run (workspace_id, owner_id, kind, status, thread_id, question_id)
+           values ($1, $2, 'thread', 'planned', $3, $4)`,
+          [s.acme, s.ben, threadId, questionId],
+        ),
+      ).toBeUndefined();
+    });
+  });
+
+  it("start from a thread only when the caller owns it", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      const { id: runId } = await tx.one<{ id: string }>(
+        `insert into work.run (workspace_id, owner_id, kind, status)
+         values ($1, $2, 'playbook_review', 'planned') returning id`,
+        [s.acme, s.ana],
+      );
+      const insert = (threadId: string) =>
+        tx.error(
+          `insert into work.playbook_review (workspace_id, run_id, owner_id, playbook_id,
+             playbook_version_id, playbook_name, rules, document_id, document_version_id,
+             surface, customisation, thread_id)
+           values ($1, $2, $3, $4, $5, 'x', '[]', $6, $7, 'web', '{}', $8)`,
+          [
+            s.acme,
+            runId,
+            s.ana,
+            s.playbooks.acme.playbookId,
+            s.playbooks.acme.versionId,
+            s.documents.acme.documentId,
+            s.documents.acme.versionId,
+            threadId,
+          ],
+        );
+      await tx.as(s.ben, s.acme);
+      const { id: bens } = await tx.one<{ id: string }>(
+        `insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Ben')
+         returning id`,
+        [s.acme, s.ben],
+      );
+      await tx.as(s.ana, s.acme);
+      expect(await insert(bens)).toMatch(/row-level security/);
+      expect(await insert(s.threads.acme.threadId)).toBeUndefined();
+    });
+  });
+
+  it("show a re-run of another document only to its owner while they can read it", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(await count(tx, "work.review_rerun")).toBe(1);
+      await allow(tx, s.ben, ["playbooks.use"]);
+      await tx.as(s.ben, s.acme);
+      expect(await count(tx, "work.review_rerun")).toBe(0);
+    });
+  });
 });

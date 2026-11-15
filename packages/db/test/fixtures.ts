@@ -350,6 +350,13 @@ export async function seed(tx: Tx) {
                'The', 'This', 'Fixture.')`,
       [ws, reviewId],
     );
+    // A re-run of one rule; reads the same version here, which is enough for coverage.
+    await tx.rows(
+      `insert into work.review_rerun (workspace_id, review_id, rule_id, run_id,
+         source_document_version_id, finding)
+       values ($1, $2, core.uuid7(), $3, $4, '{}')`,
+      [ws, reviewId, runId, doc.versionId],
+    );
     return { runId, reviewId };
   };
   const reviews = {
