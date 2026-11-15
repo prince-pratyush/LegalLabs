@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import type { ExportFormat, TemplateChoice, TemplatePort } from "@legallabs/contracts";
 import {
   buildDocx,
+  buildPdf,
   buildTrackedDocx,
   type ChangeSummary,
   type DiffOp,
@@ -70,13 +72,16 @@ export interface Drafts {
     from: number,
     to: number,
   ): Promise<{ ops: DiffOp[]; summary: ChangeSummary } | null>;
-  /** A .docx; with `trackedFrom`, the changes since that version are Word tracked changes. */
+  /**
+   * A .docx or .pdf, poured into the firm's template (the workspace default unless one is
+   * chosen). With `trackedFrom`, a .docx shows the changes since that version as tracked.
+   */
   export(
     principal: Principal,
     draftId: string,
-    options: { trackedFrom?: number },
+    options: { trackedFrom?: number; format?: ExportFormat; template?: TemplateChoice },
     client: Client,
-  ): Promise<{ bytes: Uint8Array; filename: string } | null>;
+  ): Promise<{ bytes: Uint8Array; filename: string; format: ExportFormat } | null>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -229,7 +234,10 @@ async function fromMessage(db: Db, messageId: string, threadId: string): Promise
   return `${text}\n\n## Sources\n\n${sources.join("\n")}`;
 }
 
-export function createDrafts(pool: pg.Pool, { gateway }: { gateway: Gateway }): Drafts {
+export function createDrafts(
+  pool: pg.Pool,
+  { gateway, templates }: { gateway: Gateway; templates?: TemplatePort },
+): Drafts {
   const owned = async (db: Db, principal: Principal, draftId: string) => {
     const draft = await load(db, principal, draftId);
     return draft?.mine ? draft : null;
@@ -431,8 +439,18 @@ export function createDrafts(pool: pg.Pool, { gateway }: { gateway: Gateway }): 
       });
     },
 
-    async export(principal, draftId, { trackedFrom }, client) {
+    async export(
+      principal,
+      draftId,
+      { trackedFrom, format = "docx", template = "default" },
+      client,
+    ) {
       if (!UUID.test(draftId)) return null;
+      // A PDF can't hold tracked changes.
+      if (format === "pdf" && trackedFrom !== undefined) return null;
+      // Found before the draft's transaction, so one export holds one connection at a time.
+      const firmTemplate = templates ? await templates.resolve(principal, template) : null;
+      if (!firmTemplate && template !== "default" && template !== "none") return null;
       return asApp(pool, principal, async (db) => {
         const draft = await load(db, principal, draftId);
         if (!draft) return null;
@@ -442,6 +460,7 @@ export function createDrafts(pool: pg.Pool, { gateway }: { gateway: Gateway }): 
         );
         const who = author[0]?.name || author[0]?.email || "LegalLabs";
         const date = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+        const inTemplate = firmTemplate ? { template: firmTemplate.bytes } : {};
         let bytes: Uint8Array;
         if (trackedFrom !== undefined) {
           const { rows } = await db.query<{ body: string }>(
@@ -455,14 +474,17 @@ export function createDrafts(pool: pg.Pool, { gateway }: { gateway: Gateway }): 
             author: who,
             date,
             title: draft.title,
+            ...inTemplate,
           });
         } else {
-          bytes = buildDocx({
+          const input = {
             title: draft.title,
             blocks: markdownBlocks(draft.latest.body),
             author: who,
             date,
-          });
+            ...inTemplate,
+          };
+          bytes = format === "pdf" ? await buildPdf(input) : buildDocx(input);
         }
         await db.query(
           "select admin.append_audit_event('draft.exported', 'user', $1, 'draft', $2, $3, $4, $5)",
@@ -470,9 +492,10 @@ export function createDrafts(pool: pg.Pool, { gateway }: { gateway: Gateway }): 
             principal.userId,
             draftId,
             JSON.stringify({
-              format: "docx",
+              format,
               tracked: trackedFrom !== undefined,
               version: draft.latest.no,
+              template_version_id: firmTemplate?.versionId ?? null,
             }),
             client.ip,
             uaHash(client),
@@ -484,7 +507,7 @@ export function createDrafts(pool: pg.Pool, { gateway }: { gateway: Gateway }): 
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 80) || "draft";
-        return { bytes, filename: `${safe}.docx` };
+        return { bytes, filename: `${safe}.${format}`, format };
       });
     },
   };

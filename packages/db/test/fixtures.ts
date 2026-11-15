@@ -282,10 +282,33 @@ export async function seed(tx: Tx) {
   await preset(acme, ana);
   await preset(beta, bob);
 
+  // Seeded as the table owner, as the earlier objects are.
+  const library = async (ws: string, owner: string) => {
+    const promptId = await id(
+      `insert into library.prompt (workspace_id, owner_id, name, body)
+       values ($1, $2, 'Summarise', 'Summarise {{document}}') returning id`,
+      [ws, owner],
+    );
+    const templateId = await id(
+      `insert into library.template (workspace_id, owner_id, name) values ($1, $2, 'Letterhead')
+       returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into library.template_version
+         (workspace_id, template_id, no, file_name, bytes, sha256, created_by)
+       values ($1, $2, 1, 'firm.docx', '\\x504b', repeat('a', 64), $3)`,
+      [ws, templateId, owner],
+    );
+    return { promptId, templateId };
+  };
+  const libraryItems = { acme: await library(acme, ana), beta: await library(beta, bob) };
+
   return {
     documents,
     vaults,
     threads,
+    library: libraryItems,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,
     objects: { t1, tb },

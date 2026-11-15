@@ -17,6 +17,8 @@ import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
 import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
+import type { Library } from "./library/library.js";
+import { libraryRoutes } from "./library/routes.js";
 import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
@@ -61,6 +63,8 @@ export interface AppOptions {
   drafts: Drafts;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
+  /** Optional, like vaults. */
+  library?: Library;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** The socket address only: forwarded headers can be forged by the caller. */
@@ -83,6 +87,7 @@ export function createApp({
   viewer,
   drafts,
   vaults,
+  library,
   knowledge,
   clientIp,
   now = Date.now,
@@ -212,6 +217,7 @@ export function createApp({
     app.route("/api/v1/vaults", vaultRoutes(vaults, clientOf));
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
   }
+  if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));

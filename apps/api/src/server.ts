@@ -19,6 +19,8 @@ import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
+import { createLibrary } from "./library/library.js";
+import { createTemplatePort } from "./library/port.js";
 import { createRunLog } from "./runs/log.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
@@ -119,8 +121,9 @@ const app = createApp({
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
   viewer: createViewer(pool, store, documents),
-  drafts: createDrafts(pool, { gateway }),
+  drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
+  library: createLibrary(pool),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {

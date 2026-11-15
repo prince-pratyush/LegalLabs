@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "files": [
@@ -21,7 +25,8 @@
   "dependencies": {
     "@legallabs/contracts": "workspace:*",
     "@xmldom/xmldom": "0.9.12",
-    "fflate": "0.8.3"
+    "fflate": "0.8.3",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "vitest": "5.1.0"
