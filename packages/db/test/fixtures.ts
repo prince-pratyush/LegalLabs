@@ -282,10 +282,45 @@ export async function seed(tx: Tx) {
   await preset(acme, ana);
   await preset(beta, bob);
 
+  // Unpublished, with one rule and an edit grant to the owner's team.
+  const playbook = async (ws: string, owner: string, team: string) => {
+    const playbookId = await id("select core.uuid7() as id", []);
+    const versionId = await id("select core.uuid7() as id", []);
+    await tx.rows(
+      `insert into work.playbook (id, workspace_id, owner_id, name, contract_type, version_id)
+       values ($1, $2, $3, 'NDA positions', 'NDA', $4)`,
+      [playbookId, ws, owner, versionId],
+    );
+    await tx.rows(
+      `insert into work.playbook_version
+         (id, workspace_id, playbook_id, no, name, contract_type, rules, created_by)
+       values ($1, $2, $3, 1, 'NDA positions', 'NDA', $4, $5)`,
+      [
+        versionId,
+        ws,
+        playbookId,
+        JSON.stringify([{ title: "Term", standard_position: "Two years." }]),
+        owner,
+      ],
+    );
+    await tx.rows(
+      `insert into work.playbook_grant
+         (workspace_id, playbook_id, principal_type, principal_id, level, granted_by)
+       values ($1, $2, 'group', $3, 'edit', $4)`,
+      [ws, playbookId, team, owner],
+    );
+    return { playbookId, versionId };
+  };
+  const playbooks = {
+    acme: await playbook(acme, ana, corpTeam),
+    beta: await playbook(beta, bob, betaTeam),
+  };
+
   return {
     documents,
     vaults,
     threads,
+    playbooks,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,
     objects: { t1, tb },
