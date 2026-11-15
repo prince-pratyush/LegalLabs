@@ -1,7 +1,8 @@
 // Runs one review against a local Ollama model; not part of CI.
 // Usage: pnpm build && node scripts/smoke.mjs [model]
 import { paraHash } from "@legallabs/contracts";
-import { runReview, uuidv7 } from "../dist/index.js";
+import { uuidv7 } from "../dist/id.js";
+import { runReview } from "../dist/index.js";
 
 const model = process.argv[2] ?? "qwen3:4b-instruct";
 const url = "http://localhost:11434/api/chat";
@@ -81,7 +82,7 @@ const outcome = await runReview(
     complete,
     // A slow machine can raise the 60 s per-rule budget: RULE_TIMEOUT_MS=600000.
     ruleTimeoutMs: Number(process.env.RULE_TIMEOUT_MS ?? 60_000),
-    concurrency: Number(process.env.CONCURRENCY ?? 8),
+    parallelism: Number(process.env.PARALLELISM ?? 2),
     onEvent: (e) =>
       console.error(`${((performance.now() - started) / 1000).toFixed(1)}s ${e.type}`),
   },
