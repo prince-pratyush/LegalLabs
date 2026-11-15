@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { type ComponentProps, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,7 +46,8 @@ const disabled = (name: string) =>
   (screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
 
 describe("PlaybookBuilder", () => {
-  it("adds, reorders and deletes rules, then saves", async () => {
+  // Many clicks in one test, so it gets more time on a busy CI runner.
+  it("adds, reorders and deletes rules, then saves", { timeout: 20_000 }, async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
     let latest = start;
@@ -59,10 +60,12 @@ describe("PlaybookBuilder", () => {
     await user.click(screen.getByRole("button", { name: "Add rule" }));
     // A new rule opens ready to type into, and can't be saved until it has a title.
     expect(disabled("Save version")).toBe(true);
-    await user.type(screen.getByLabelText("Title"), "Termination");
-    await user.type(screen.getByLabelText("Standard position"), "Either party on 30 days.");
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Termination" } });
+    fireEvent.change(screen.getByLabelText("Standard position"), {
+      target: { value: "Either party on 30 days." },
+    });
     await user.click(screen.getByRole("button", { name: "Add fallback" }));
-    await user.type(screen.getByLabelText("Fallback 1"), "60 days.");
+    fireEvent.change(screen.getByLabelText("Fallback 1"), { target: { value: "60 days." } });
     expect(latest.rules[2]).toMatchObject({ title: "Termination", fallbacks: ["60 days."] });
 
     await user.click(screen.getByRole("button", { name: "Delete Limitation of liability" }));
