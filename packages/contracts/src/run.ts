@@ -13,7 +13,7 @@ export const RunStatus = z.enum([
 ]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
-export const RunKind = z.enum(["thread", "deep_analysis"]);
+export const RunKind = z.enum(["thread", "deep_analysis", "playbook_review"]);
 export type RunKind = z.infer<typeof RunKind>;
 
 export const CitationVerdict = z.enum(["ok", "mismatch", "unresolved"]);
