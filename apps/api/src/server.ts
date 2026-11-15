@@ -14,6 +14,8 @@ import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
+import { createLibrary } from "./library/library.js";
+import { createTemplatePort } from "./library/port.js";
 import { createRunLog } from "./runs/log.js";
 import { noKnowledge } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
@@ -112,7 +114,8 @@ const app = createApp({
     knowledge,
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
-  drafts: createDrafts(pool, { gateway }),
+  drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
+  library: createLibrary(pool),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
