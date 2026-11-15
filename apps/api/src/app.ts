@@ -106,7 +106,10 @@ export function createApp({
 
   app.use(async (c, next) => {
     await next();
-    const pane = c.req.path === "/addin" || c.req.path.startsWith("/addin/");
+    // Only the pane is framed by Word; the sign-in dialog is a window of its own, never framed.
+    const pane =
+      (c.req.path === "/addin" || c.req.path.startsWith("/addin/")) &&
+      c.req.path !== "/addin/auth.html";
     c.header("Content-Security-Policy", pane ? ADDIN_POLICY : CONTENT_POLICY);
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "no-referrer");
