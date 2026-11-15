@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import {
@@ -72,6 +72,37 @@ describe("a run's stream", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
     await waitFor(() => expect(FakeSource.all).toHaveLength(5));
     expect(latest().open).toBe(true);
+  });
+
+  it("retries loading the finished answer, then shows the failure with Retry", async () => {
+    let gets = 0;
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => {
+        gets += 1;
+        if (gets === 1) return [200, { thread: running() }];
+        if (gets <= 3) return [503, { code: "UNAVAILABLE", message: "Try again shortly." }];
+        return [200, { thread: thread() }];
+      },
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    await waitFor(() => expect(FakeSource.all).toHaveLength(1));
+    latest().emit("done", 1, {
+      message_id: "m2",
+      model: "m",
+      response_mode: "answer",
+      usage: { input_tokens: 1, output_tokens: 1 },
+      cost_usd: 0,
+      citations: { total: 0, ok: 0, mismatch: 0, unresolved: 0, ungrounded_sentences: 0 },
+      duration_ms: 5,
+    });
+    const card = await screen.findByText(/The finished answer couldn't be loaded/);
+    expect(gets).toBe(3);
+    fireEvent.click(
+      within(card.parentElement as HTMLElement).getByRole("button", { name: "Retry" }),
+    );
+    expect(await screen.findByTestId("answer-m2")).toBeTruthy();
   });
 
   it("closes the stream when the thread changes or the page goes away", async () => {

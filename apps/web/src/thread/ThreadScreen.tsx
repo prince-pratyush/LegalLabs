@@ -72,6 +72,7 @@ export function ThreadScreen({
   const [panel, setPanel] = useState<Panel>(null);
   const [attempt, setAttempt] = useState(0);
   const [planBusy, setPlanBusy] = useState(false);
+  const [reloadError, setReloadError] = useState<string | null>(null);
 
   // Only the newest request may set the thread, so a slow older one can't roll it back.
   const fetchThread = useMemo(() => latestOnly(api.thread), []);
@@ -95,16 +96,24 @@ export function ThreadScreen({
 
   // Follow whichever run is still going; a reload picks it up again from the start.
   const active = thread?.runs.find((run) => !FINISHED.includes(run.status)) ?? null;
-  const { live, setLive, lost, resume, reconnect } = useRunStream(active, (runId) =>
-    afterRun(runId),
+  const { live, setLive, lost, resume, reconnect } = useRunStream(
+    active,
+    (runId) => void afterRun(runId),
   );
 
   // The saved message replaces the streamed text, with its final citations.
-  const afterRun = (runId: string) => {
-    load().then(
-      () => setLive((run) => (run?.runId === runId && !run.error ? null : run)),
-      () => undefined,
-    );
+  // Tried twice, then the failure is shown: the streamed text alone isn't the checked answer.
+  const afterRun = async (runId: string) => {
+    setReloadError(null);
+    for (const last of [false, true]) {
+      try {
+        await load();
+        setLive((run) => (run?.runId === runId && !run.error ? null : run));
+        return;
+      } catch (err) {
+        if (last) setReloadError(messageOf(err));
+      }
+    }
   };
 
   const ask = async (input: AskInput) => {
@@ -317,6 +326,12 @@ export function ThreadScreen({
                     lost={lost}
                     onReconnect={reconnect}
                     onCancelPlan={() => decide(() => api.cancel(live.runId))}
+                  />
+                )}
+                {live && message.id === liveQuestion && reloadError && (
+                  <ErrorCard
+                    message={`The finished answer couldn't be loaded. ${reloadError}`}
+                    onRetry={() => void afterRun(live.runId)}
                   />
                 )}
                 {message.id === failed && (
