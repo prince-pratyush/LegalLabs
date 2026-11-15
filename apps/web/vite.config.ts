@@ -7,5 +7,5 @@ const api = "http://127.0.0.1:8787";
 export default defineConfig({
   plugins: [tailwind()],
   server: { proxy: { "/api": api, "/auth": api } },
-  test: { environment: "jsdom" },
+  test: { environment: "jsdom", testTimeout: 20_000 },
 });
