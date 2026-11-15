@@ -10,6 +10,8 @@ import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
 import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
+import { tableHttp } from "./tables/http.js";
+import type { ReviewTables } from "./tables/module.js";
 import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
@@ -42,6 +44,8 @@ export interface AppOptions {
   drafts: Drafts;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
+  /** Optional in the same way as vaults. */
+  tables?: ReviewTables;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -55,6 +59,7 @@ export function createApp({
   threads,
   drafts,
   vaults,
+  tables,
   clientIp,
   now = Date.now,
   webRoot,
@@ -151,6 +156,8 @@ export function createApp({
   });
 
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
+  // Before threads, so a table run's cancel is handled here and a thread run's falls through.
+  if (tables) app.route("/api/v1", tableHttp({ ...tables, clientOf }));
   app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
   app.route("/api/v1", draftHttp(drafts, clientOf));
   if (vaults) {

@@ -15,6 +15,7 @@ import { createDocuments } from "./documents/documents.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
 import { createRunLog } from "./runs/log.js";
+import { createReviewTables } from "./tables/module.js";
 import { noKnowledge } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
@@ -95,6 +96,9 @@ const orphaned = await asWorker(pool, async (db) => {
   return rows[0]?.n ?? 0;
 });
 if (orphaned > 0) console.log(`marked ${orphaned} unfinished runs as failed`);
+// Cells those runs left queued or running go back to waiting.
+await asWorker(pool, (db) => db.query("select work.rt_reset_orphaned_cells()"));
+const cellsInFlight = Number(process.env.LEGALLABS_TABLE_CELLS_IN_FLIGHT);
 // Stubs until the vault and knowledge work lands; both plug in through the same ports.
 const vaults = createVaultPort(pool);
 const knowledge = noKnowledge;
@@ -113,6 +117,12 @@ const app = createApp({
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
   drafts: createDrafts(pool, { gateway }),
+  tables: createReviewTables(pool, {
+    gateway,
+    documents,
+    log,
+    ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+  }),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
