@@ -90,7 +90,7 @@ export function ReviewGrid({
   firstColumnWidth = 280,
   columnWidth = 220,
   rowHeight = 36,
-  headerHeight = 40,
+  headerHeight = 56,
   className,
 }: {
   label: string;
