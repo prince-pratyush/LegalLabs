@@ -69,7 +69,7 @@ class Runner:
         self.suite = suite
         self.concurrency = concurrency
         self.retry_delay = retry_delay
-        self.manifest = make_manifest(system_name, system, suite, suffix)
+        self.manifest = make_manifest(system_name, system, suite, suffix, harness.fingerprint())
         self.run_dir = run_dir_for(runs_root, self.manifest)
 
     def run(self, limit: int | None = None) -> dict[str, Any]:
@@ -224,5 +224,6 @@ class Runner:
             "metric_counts": counts,
             "report": self.suite.report(results, tasks),
             "cost": ledger(self.run_dir),
+            "environment": self.harness.environment(),
             "finished_at": _now(),
         }

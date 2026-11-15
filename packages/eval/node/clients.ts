@@ -13,6 +13,8 @@ export type ClientOptions = {
   ollamaUrl?: string;
   /** Ollama context window; the default 4k cuts the longest prompts. */
   numCtx?: number;
+  /** Ollama sampling seed, fixed so a rerun at temperature 0 is reproducible. */
+  seed?: number;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
 };
@@ -112,6 +114,7 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
         model,
         complete: async ({ system, prompt, maxTokens, signal }) => {
           const body: {
+            model?: string;
             message?: { content?: string };
             prompt_eval_count?: number;
             eval_count?: number;
@@ -122,7 +125,12 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
               model,
               stream: false,
               format: "json",
-              options: { num_ctx: opts.numCtx ?? 8192, num_predict: maxTokens, temperature: 0 },
+              options: {
+                num_ctx: opts.numCtx ?? 8192,
+                num_predict: maxTokens,
+                temperature: 0,
+                seed: opts.seed ?? 0,
+              },
               messages: [
                 { role: "system", content: system },
                 { role: "user", content: prompt },
@@ -132,7 +140,8 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
           );
           return {
             text: body.message?.content ?? "",
-            model,
+            // The model that answered, which run.ts checks against the pinned one.
+            model: body.model ?? "",
             usage: {
               input_tokens: body.prompt_eval_count ?? 0,
               output_tokens: body.eval_count ?? 0,
@@ -183,6 +192,7 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
         model,
         complete: async ({ system, prompt, maxTokens, signal }) => {
           const body: {
+            model?: string;
             content?: { text?: string }[];
             usage?: { input_tokens?: number; output_tokens?: number };
           } = await post(
@@ -199,7 +209,7 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
           );
           return {
             text: (body.content ?? []).map((b) => b.text ?? "").join(""),
-            model,
+            model: body.model ?? "",
             usage: {
               input_tokens: body.usage?.input_tokens ?? 0,
               output_tokens: body.usage?.output_tokens ?? 0,
@@ -218,6 +228,7 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
         model,
         complete: async ({ system, prompt, maxTokens, signal }) => {
           const body: {
+            model?: string;
             choices?: { message?: { content?: string | null } }[];
             usage?: { prompt_tokens?: number; completion_tokens?: number };
           } = await post(
@@ -237,7 +248,7 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
           );
           return {
             text: body.choices?.[0]?.message?.content ?? "",
-            model,
+            model: body.model ?? "",
             usage: {
               input_tokens: body.usage?.prompt_tokens ?? 0,
               output_tokens: body.usage?.completion_tokens ?? 0,
@@ -248,4 +259,18 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
       };
     }
   }
+}
+
+/**
+ * True when the answering model is the pinned one: the gateway's "provider/" prefix and a
+ * provider's dated snapshot suffix (claude-x-20261101, gpt-x-2026-11-01) are allowed.
+ */
+export function sameModel(pinned: string, answered: string): boolean {
+  const base = (m: string) => m.split("/").at(-1) ?? m;
+  const p = base(pinned);
+  const a = base(answered);
+  return (
+    a === p ||
+    new RegExp(`^${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d{4}-?\\d{2}-?\\d{2}$`).test(a)
+  );
 }

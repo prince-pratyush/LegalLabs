@@ -16,6 +16,14 @@ class Harness:
         # Every vendor whose models this system calls; none of them may judge it.
         self.vendors = frozenset(system.get("vendors", [self.vendor]))
 
+    def fingerprint(self) -> str:
+        """Code outside the system config that changes results, such as a built engine."""
+        return ""
+
+    def environment(self) -> dict[str, Any]:
+        """Facts recorded in the summary but not hashed, such as the git commit."""
+        return {}
+
     def prepare(self, corpus: list[Document]) -> None:
         """Called once per run with the suite's corpus, if it has one."""
 

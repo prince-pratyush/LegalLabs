@@ -1,13 +1,14 @@
 // Reviews one contract with a starter playbook and writes the outcome as JSON.
 // Usage: node node/run.ts --contract <file.docx> --template nda|msa --client fake|ollama|...
 //   [--model M] [--parallelism 1] [--rule-timeout-ms 60000] [--call-timeout-ms 300000]
-//   [--num-ctx 8192] [--out outcome.json]
+//   [--num-ctx 8192] [--seed 0] [--out outcome.json]
 // SOFFICE_TEST=1 also converts the fully patched contract to PDF with LibreOffice.
+// Exits 3 when a model other than the pinned one answered (the outcome is still written).
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -19,7 +20,7 @@ import {
 import { type PatchEdit, type PatchFailureCode, patchDocx, readDocx } from "@legallabs/docx";
 import { type ReviewOutcome, runReview } from "@legallabs/review";
 import { PARTIES, type Template } from "./clauses.ts";
-import { CLIENTS, type ClientName, type Complete, makeClient } from "./clients.ts";
+import { CLIENTS, type ClientName, type Complete, makeClient, sameModel } from "./clients.ts";
 
 export type RunOptions = {
   template: Template;
@@ -41,9 +42,20 @@ export type OoxmlCheck = {
   combined: { applied: number; reread_ok: boolean; soffice_ok: boolean | null };
 };
 
+export type RunEnv = {
+  node: string;
+  /** Hash of the built engine, the starter playbooks and this runner (engineHash). */
+  engine_sha256: string;
+  seed?: number;
+  ollama?: { version: string | null; digest: string | null };
+};
+
 export type RunResult = {
   template: Template;
+  /** The pinned model; `answered_models` lists every model that actually replied. */
   model: string;
+  answered_models: string[];
+  env?: RunEnv;
   wall_ms: number;
   chars: number;
   pages: number;
@@ -52,6 +64,59 @@ export type RunResult = {
   outcome: ReviewOutcome;
   ooxml: OoxmlCheck;
 };
+
+const PACKAGES = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+function files(dir: string, keep: (name: string) => boolean): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((e) => e.isFile() && keep(e.name))
+    .map((e) => join(e.parentPath, e.name));
+}
+
+/**
+ * Everything that decides a review besides the model: built engine code, starter
+ * playbooks and this runner. legallabs_eval's harness computes the same hash.
+ */
+export function engineHash(root = PACKAGES): string {
+  const js = (n: string) => n.endsWith(".js");
+  const all = [
+    ...files(join(root, "review", "dist"), js),
+    ...files(join(root, "contracts", "dist"), js),
+    ...files(join(root, "docx", "dist"), js),
+    ...files(join(root, "contracts", "playbooks", "starters"), (n) => n.endsWith(".json")),
+    ...files(join(root, "eval", "node"), (n) => n.endsWith(".ts") && !n.endsWith(".test.ts")),
+  ];
+  const lines = all
+    .map(
+      (f) => `${relative(root, f)}\0${createHash("sha256").update(readFileSync(f)).digest("hex")}`,
+    )
+    .sort();
+  return createHash("sha256").update(lines.join("\n")).digest("hex");
+}
+
+/** Stable per template and title, so two runs of the same playbook share rule ids. */
+export function ruleId(template: string, title: string): string {
+  const h = createHash("sha256").update(`${template}\0${title}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-8${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+async function ollamaFacts(model: string, base: string) {
+  const get = async (path: string) => {
+    try {
+      const res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(10_000) });
+      return res.ok ? ((await res.json()) as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  };
+  const version = (await get("/api/version"))?.version;
+  const models = ((await get("/api/tags"))?.models ?? []) as { name: string; digest: string }[];
+  return {
+    version: typeof version === "string" ? version : null,
+    digest: models.find((m) => m.name === model)?.digest ?? null,
+  };
+}
 
 const AUTHOR = "LegalLabs";
 const DATE = "2026-11-15T00:00:00Z";
@@ -154,7 +219,7 @@ export async function reviewContract(bytes: Uint8Array, opts: RunOptions): Promi
   const playbook = starterPlaybook(opts.template);
   const rules: Rule[] = (playbook.rules ?? []).map((r, ordinal) => ({
     ...r,
-    id: randomUUID(),
+    id: ruleId(opts.template, r.title),
     ordinal,
     fallbacks: r.fallbacks ?? [],
     flag: r.flag ?? false,
@@ -196,6 +261,7 @@ export async function reviewContract(bytes: Uint8Array, opts: RunOptions): Promi
   return {
     template: opts.template,
     model: opts.model,
+    answered_models: outcome.usage.models,
     wall_ms,
     chars: read.charCount,
     pages: estimatePages(read.charCount),
@@ -226,6 +292,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       "rule-timeout-ms": { type: "string", default: "60000" },
       "call-timeout-ms": { type: "string", default: "300000" },
       "num-ctx": { type: "string", default: "8192" },
+      seed: { type: "string", default: "0" },
       out: { type: "string" },
     },
   });
@@ -242,6 +309,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     model: values.model,
     callTimeoutMs: Number(values["call-timeout-ms"]),
     numCtx: Number(values["num-ctx"]),
+    seed: Number(values.seed),
   });
   const result = await reviewContract(readFileSync(values.contract), {
     template,
@@ -252,7 +320,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     soffice: findSoffice(),
     log: (line) => console.error(line),
   });
+  const ollama = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+  result.env = {
+    node: process.version,
+    engine_sha256: engineHash(),
+    ...(client === "ollama"
+      ? { seed: Number(values.seed), ollama: await ollamaFacts(model, ollama) }
+      : {}),
+  };
   const json = `${JSON.stringify(result)}\n`;
   if (values.out) writeFileSync(values.out, json);
   else process.stdout.write(json);
+  const strays = result.answered_models.filter((m) => !sameModel(model, m));
+  if (strays.length) {
+    console.error(`pinned ${model}, but ${strays.join(", ")} answered`);
+    process.exit(3);
+  }
 }

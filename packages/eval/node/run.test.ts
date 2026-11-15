@@ -1,8 +1,8 @@
 import type { CompleteCall } from "@legallabs/review";
 import { describe, expect, it } from "vitest";
-import { fakeComplete, makeClient } from "./clients.ts";
+import { fakeComplete, makeClient, sameModel } from "./clients.ts";
 import { buildContract } from "./generate.ts";
-import { checkOoxml, reviewContract } from "./run.ts";
+import { checkOoxml, engineHash, reviewContract, ruleId } from "./run.ts";
 
 const call = (task: CompleteCall["task"], prompt: string): CompleteCall => ({
   task,
@@ -87,5 +87,29 @@ describe("reviewContract", () => {
     };
     const check = checkOoxml(bytes, bad);
     expect(check).toMatchObject({ suggestions: 1, applied: 0, failed: { ANCHOR_FAILED: 1 } });
+  });
+});
+
+describe("reproducibility", () => {
+  it("accepts only the pinned model, its gateway id or a dated snapshot", () => {
+    expect(sameModel("claude-sonnet-5-5", "claude-sonnet-5-5")).toBe(true);
+    expect(sameModel("anthropic/claude-haiku-5-5", "anthropic/claude-haiku-5-5")).toBe(true);
+    expect(sameModel("gpt-5.5", "gpt-5.5-2026-10-01")).toBe(true);
+    expect(sameModel("claude-sonnet-5-5", "claude-sonnet-5")).toBe(false);
+    expect(sameModel("gpt-5.5", "gpt-5.5-mini")).toBe(false);
+    expect(sameModel("anthropic/claude-haiku-5-5", "google/gemini-3.6-flash")).toBe(false);
+  });
+
+  it("derives rule ids from the template and title, and hashes the engine", async () => {
+    expect(ruleId("nda", "Residuals")).toBe(ruleId("nda", "Residuals"));
+    expect(ruleId("nda", "Residuals")).not.toBe(ruleId("msa", "Residuals"));
+    expect(ruleId("nda", "Residuals")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(engineHash()).toMatch(/^[0-9a-f]{64}$/);
+    const { bytes } = buildContract("nda", 3, 2, "t");
+    const { complete, model } = makeClient({ client: "fake" });
+    const r = await reviewContract(bytes, { template: "nda", complete, model });
+    expect(r.answered_models).toEqual(["fake"]);
   });
 });
