@@ -24,6 +24,7 @@ import {
   type Citation,
   type DocumentSummary,
   type Message,
+  messageOf,
   type Thread,
   type ThreadSummary,
 } from "./api.js";
@@ -40,8 +41,6 @@ import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
 import { anchorOf, openCitation, useLocation, useReturnFocus } from "./viewer/open-citation.js";
 
 const FALLBACK = "Something went wrong. Try again.";
-
-const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
 
 export function App() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);

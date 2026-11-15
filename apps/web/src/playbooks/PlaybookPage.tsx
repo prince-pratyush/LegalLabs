@@ -9,7 +9,7 @@ import {
   VersionListSkeleton,
 } from "@legallabs/ui";
 import { useCallback, useEffect, useState } from "react";
-import { messageOf } from "../vaults/shared.js";
+import { messageOf } from "../api.js";
 import { playbookApi } from "./api.js";
 import { goPlaybooks } from "./route.js";
 

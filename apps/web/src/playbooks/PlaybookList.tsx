@@ -11,8 +11,7 @@ import {
 } from "@legallabs/ui";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../api.js";
-import { messageOf } from "../vaults/shared.js";
+import { api, messageOf } from "../api.js";
 import { type ListFilter, playbookApi } from "./api.js";
 import { goPlaybooks } from "./route.js";
 
