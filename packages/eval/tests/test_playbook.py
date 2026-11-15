@@ -118,13 +118,13 @@ def test_paid_clients_are_priced_and_need_their_key(tmp_path, monkeypatch):
     with pytest.raises(NonRetryableError, match="ANTHROPIC_API_KEY"):
         harness.prepare([])
     cost = harness.cost("claude-sonnet-5-5", {"input_tokens": 1_000_000, "output_tokens": 0})
-    assert (cost.usd, cost.cost_known) == (3.0, True)
+    assert (cost.usd, cost.cost_known) == (2.0, True)
     gateway = PlaybookNodeHarness(
         "g", {"harness": "playbook-node", "params": {"client": "gateway"}}, run=player([])
     )
     assert (
         gateway.cost("anthropic/claude-haiku-5-5", {"input_tokens": 0, "output_tokens": 10**6}).usd
-        == 5.0
+        == 0.5
     )
     assert harness._args("c.docx", "msa", Path("o.json"))[-2:] == ["--parallelism", "8"]
 

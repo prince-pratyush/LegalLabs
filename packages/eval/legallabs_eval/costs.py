@@ -5,9 +5,12 @@ from .io import read_json, write_json
 from .schemas import Cost
 
 # USD per million tokens. A model missing here is priced as unknown, never as free.
+# Claude rates are Anthropic's list prices, and must match the gateway's route table
+# (packages/model-gateway/src/routes.ts); test_costs.py checks they agree.
 PRICES: dict[str, tuple[float, float]] = {
-    "claude-sonnet-5-5": (3.0, 15.0),
-    "claude-haiku-5-5": (1.0, 5.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
+    # Prompts up to 100K tokens; longer ones cost $0.50/$2.50, which no eval prompt reaches.
+    "claude-haiku-5-5": (0.10, 0.50),
     "gpt-5.5": (1.25, 10.0),
     "gpt-5.5-mini": (0.25, 2.0),
     "gemini-2.5-pro": (1.25, 10.0),
