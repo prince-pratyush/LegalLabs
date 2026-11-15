@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +22,10 @@ const NUMBERED_PPR =
 const textBox = (text: string) =>
   `<w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="914400" cy="457200"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapSquare wrapText="bothSides"/><wp:docPr id="1" name="Text Box 1"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:cNvSpPr txBox="1"/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape style="width:72pt;height:36pt"><v:textbox><w:txbxContent><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r>`;
 
+// A drawn rectangle with no text, in both DrawingML and VML; one shape.
+const SHAPE =
+  '<w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="457200" cy="457200"/><wp:docPr id="2" name="Rectangle 2"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:rect style="width:36pt;height:36pt"/></w:pict></mc:Fallback></mc:AlternateContent></w:r>';
+
 const BODY = [
   // 0-1: a TOC field spanning two paragraphs.
   '<w:p><w:pPr><w:pStyle w:val="TOC1"/></w:pPr><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>Definitions</w:t></w:r><w:r><w:tab/><w:t>1</w:t></w:r></w:p>',
@@ -30,7 +35,7 @@ const BODY = [
   // 3: a numbered clause with mixed formatting and a footnote reference.
   `<w:p w14:paraId="1A2B3C4D">${NUMBERED_PPR}<w:bookmarkStart w:id="0" w:name="clause"/><w:r w:rsidR="00AB12CD"><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">The Supplier </w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">shall deliver the Goods within thirty (30) days</w:t></w:r><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="1"/></w:r><w:bookmarkEnd w:id="0"/><w:r><w:t xml:space="preserve"> of the order &amp; acceptance.</w:t></w:r></w:p>`,
   // 4: a paragraph anchoring a text box.
-  `<w:p><w:r><w:t xml:space="preserve">Anchor text </w:t></w:r>${textBox("Boxed text")}<w:r><w:t>after the box.</w:t></w:r></w:p>`,
+  `<w:p><w:r><w:t xml:space="preserve">Anchor text </w:t></w:r>${textBox("Boxed text")}${SHAPE}<w:r><w:t>after the box.</w:t></w:r></w:p>`,
   // 5-6: a table.
   '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>Cell A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Cell B</w:t></w:r></w:p></w:tc></w:tr></w:tbl>',
   // 7: someone else's tracked changes.
@@ -160,6 +165,7 @@ describe("readDocx", () => {
       endnote: 0,
       toc: 1,
       text_box: 1,
+      shape: 1,
       content_control: 1,
       field: 1,
     });
@@ -170,10 +176,11 @@ describe("readDocx", () => {
     expect(clause?.style).toBe("ListParagraph");
     expect(clause?.section_path).toBe("1 > 1.1");
     expect(read.paragraphs[2]?.section_path).toBe("1");
+    const hash = (text: string) => createHash("sha256").update(text).digest("hex");
     expect(clause?.runs).toEqual([
-      { run_index: 0, char_from: 0, char_to: 13 },
-      { run_index: 1, char_from: 13, char_to: 60 },
-      { run_index: 2, char_from: 60, char_to: 87 },
+      { run_index: 0, char_from: 0, char_to: 13, rPr_hash: hash("<w:rPr><w:b/></w:rPr>") },
+      { run_index: 1, char_from: 13, char_to: 60, rPr_hash: hash("<w:rPr><w:i/></w:rPr>") },
+      { run_index: 2, char_from: 60, char_to: 87, rPr_hash: hash("") },
     ]);
   });
 

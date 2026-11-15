@@ -6,6 +6,7 @@ import {
   descendants,
   elements,
   parseXml,
+  sourceOf,
   textContent,
   type XmlElement,
   type XmlNode,
@@ -18,6 +19,8 @@ export interface BodyRun {
   run_index: number;
   char_from: number;
   char_to: number;
+  /** sha256 hex of the run's w:rPr as written (of "" when it has none), to spot reformatting. */
+  rPr_hash: string;
 }
 
 export interface BodyParagraph {
@@ -49,6 +52,7 @@ export type ExcludedKind =
   | "endnote"
   | "toc"
   | "text_box"
+  | "shape"
   | "content_control"
   | "field";
 
@@ -248,8 +252,9 @@ function editOf(el: XmlElement, kind: "ins" | "del", text: string) {
   return { kind, text, author: el.attrs["w:author"] ?? "", ...(date ? { date } : {}) };
 }
 
-export const paraHashSync = (text: string) =>
-  createHash("sha256").update(normaliseParagraph(text), "utf8").digest("hex");
+const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+export const paraHashSync = (text: string) => sha256(normaliseParagraph(text));
 
 export interface Package {
   files: Record<string, Uint8Array>;
@@ -422,6 +427,7 @@ const emptyRegions = (): Record<ExcludedKind, number> => ({
   endnote: 0,
   toc: 0,
   text_box: 0,
+  shape: 0,
   content_control: 0,
   field: 0,
 });
@@ -473,7 +479,12 @@ function loadUnchecked(bytes: Uint8Array): DocModel {
       ...(section ? { section_path: section } : {}),
       ...(style ? { style } : {}),
       para_hash: paraHashSync(model.text),
-      runs: model.runs.map((run, i) => ({ run_index: i, char_from: run.from, char_to: run.to })),
+      runs: model.runs.map((run, i) => ({
+        run_index: i,
+        char_from: run.from,
+        char_to: run.to,
+        rPr_hash: sha256(run.rPr ? sourceOf(run.rPr, src) : ""),
+      })),
       excluded: isExcluded,
     };
     for (const edit of model.edits) existingEdits.push({ paragraph_index: index, ...edit });
@@ -496,12 +507,19 @@ function loadUnchecked(bytes: Uint8Array): DocModel {
   };
   walkBlocks(body, false, false);
 
-  // A text box is written twice (DrawingML and a VML fallback); count the first only.
+  // Drawings are written twice (DrawingML and a VML fallback); count the first only.
+  // A shape is a drawn shape without a text box; pictures are not counted.
+  const isShape = (el: XmlElement) => {
+    if (el.name === "wps:wsp") return !child(el, "wps:txbx");
+    if (el.name !== "w:pict") return false;
+    return ![...descendants(el)].some((inner) => inner.name === "v:textbox" || inner.name === "v:imagedata");
+  };
   for (const el of descendants(
     body,
     (el) => el.name === "mc:Fallback" || el.name === "w:txbxContent",
   )) {
     if (el.name === "w:txbxContent") regions.text_box++;
+    else if (isShape(el)) regions.shape++;
   }
 
   const rels = relationships(text(pkg, pkg.relsPath));
