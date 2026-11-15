@@ -142,6 +142,16 @@ describe("readDocx", () => {
     expect(read.charCount).toBe(read.paragraphs.reduce((n, p) => n + p.text.length + 1, 0));
   });
 
+  it("indexes block content in mc:AlternateContent once, from the choice", () => {
+    const alt =
+      '<w:p><w:r><w:t>Before</w:t></w:r></w:p><mc:AlternateContent><mc:Choice Requires="w14"><w:p><w:r><w:t>Choice</w:t></w:r></w:p></mc:Choice><mc:Fallback><w:p><w:r><w:t>Fallback</w:t></w:r></w:p></mc:Fallback></mc:AlternateContent><w:p><w:r><w:t>After</w:t></w:r></w:p>';
+    expect(readDocx(fixture({ body: alt })).paragraphs.map((p) => p.text)).toEqual([
+      "Before",
+      "Choice",
+      "After",
+    ]);
+  });
+
   it("counts the regions it will not edit", () => {
     expect(read.excludedRegions).toEqual({
       header: 1,

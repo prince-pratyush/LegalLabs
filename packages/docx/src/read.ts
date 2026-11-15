@@ -488,7 +488,10 @@ function loadUnchecked(bytes: Uint8Array): DocModel {
         regions[toc ? "toc" : "content_control"]++;
         const content = child(node, "w:sdtContent");
         if (content) walkBlocks(content, true, tocSdt || toc);
-      } else if (node.name !== "w:sectPr") walkBlocks(node, excluded, tocSdt);
+      } else if (node.name !== "w:sectPr" && node.name !== "mc:Fallback") {
+        // mc:Choice and mc:Fallback hold the same content twice; Word shows the choice.
+        walkBlocks(node, excluded, tocSdt);
+      }
     }
   };
   walkBlocks(body, false, false);
