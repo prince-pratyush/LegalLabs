@@ -100,7 +100,9 @@ export function createApp({
 
   // The pane can't share the web cookie inside Word on the web, so it sends the token instead.
   const tokenOf = (c: Context) =>
-    BEARER.exec(c.req.header("authorization") ?? "")?.[1] ?? getCookie(c, COOKIE, COOKIE_PREFIX) ?? null;
+    BEARER.exec(c.req.header("authorization") ?? "")?.[1] ??
+    getCookie(c, COOKIE, COOKIE_PREFIX) ??
+    null;
 
   app.use(async (c, next) => {
     await next();
