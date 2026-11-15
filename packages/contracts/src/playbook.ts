@@ -235,7 +235,7 @@ export type Evidence = z.infer<typeof Evidence>;
 
 const Hash = z.string().regex(/^[0-9a-f]{64}$/);
 
-export const Anchor = z
+export const ReviewAnchor = z
   .object({
     paragraph_index: z.number().int().min(0),
     run_index: z.number().int().optional(),
@@ -244,7 +244,7 @@ export const Anchor = z
     para_hash: Hash,
   })
   .refine(ordered);
-export type Anchor = z.infer<typeof Anchor>;
+export type ReviewAnchor = z.infer<typeof ReviewAnchor>;
 
 export const SuggestionStatus = z.enum([
   "pending",
@@ -261,7 +261,7 @@ export const Suggestion = z.object({
   id: Id,
   rule_id: Id.nullable(),
   gap_id: Id.nullable().optional(),
-  anchor: Anchor,
+  anchor: ReviewAnchor,
   /** "replace" swaps before for after; "insert_after" adds a paragraph after the anchor. */
   kind: z.enum(["replace", "insert_after"]),
   before: z.string(),
@@ -385,7 +385,7 @@ export const ApplyResult = z.object({
   status: z.enum(["applied", "anchor_failed"]),
   /** Fragment for insertOoxml in Word: one w:p with w:del/w:ins runs. */
   ooxml: z.string().optional(),
-  anchor: Anchor,
+  anchor: ReviewAnchor,
   comment_text: z.string().optional(),
   search_text: z.string().optional(),
   replace_mode: z.enum(["paragraph", "range", "insert_after"]),
