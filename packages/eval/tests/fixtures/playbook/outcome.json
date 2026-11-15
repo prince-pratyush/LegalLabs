@@ -1,0 +1,63 @@
+{
+  "template": "nda",
+  "model": "qwen3:4b-instruct",
+  "wall_ms": 120000,
+  "chars": 9000,
+  "pages": 3,
+  "paragraphs": 40,
+  "existing_edits": 4,
+  "outcome": {
+    "results": [
+      {
+        "rule_title": "Mutuality",
+        "status": "acceptable",
+        "verification": "ok",
+        "evidence": [{ "paragraph_index": 5, "quote": "Both parties", "verified": "ok" }]
+      },
+      {
+        "rule_title": "Residuals",
+        "status": "needs_review",
+        "verification": "evidence_mismatch",
+        "evidence": [
+          { "paragraph_index": 8, "quote": "aided or unaided", "verified": "ok" },
+          { "paragraph_index": 8, "quote": "words not there", "verified": "mismatch" }
+        ]
+      },
+      { "rule_title": "Assignment", "status": "not_found", "verification": "ok", "evidence": [] },
+      { "rule_title": "Term and Survival", "status": "acceptable", "verification": "ok", "evidence": [] }
+    ],
+    "gaps": [
+      {
+        "kind": "uncovered_clause",
+        "reason": "A non-compete binds the client.",
+        "severity": "high",
+        "evidence": [{ "paragraph_index": 10, "verified": "ok" }]
+      },
+      {
+        "kind": "existing_edit",
+        "reason": "The counterparty shifted all costs to the client.",
+        "severity": "medium",
+        "evidence": [{ "paragraph_index": 30, "verified": "ok" }]
+      },
+      {
+        "kind": "existing_edit",
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low",
+        "evidence": [{ "paragraph_index": 34, "verified": "ok" }]
+      }
+    ],
+    "usage": { "input_tokens": 20000, "output_tokens": 1500, "cost_usd": 0, "models": ["qwen3:4b-instruct"] },
+    "phases": {
+      "plan": { "calls": 2 },
+      "verify": { "calls": 1 },
+      "rules": { "a": { "calls": 1 }, "b": { "calls": 3 } }
+    }
+  },
+  "ooxml": {
+    "suggestions": 2,
+    "applied": 1,
+    "valid": 1,
+    "failed": { "ANCHOR_FAILED": 1 },
+    "combined": { "applied": 1, "reread_ok": true, "soffice_ok": null }
+  }
+}
