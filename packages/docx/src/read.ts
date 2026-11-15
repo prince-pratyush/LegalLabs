@@ -440,7 +440,7 @@ const notes = (xml: string | undefined, tag: string) =>
       }).length
     : 0;
 
-const ID = /\bw:id="(-?\d+)"/g;
+const ID = /\bw:id\s*=\s*(["'])(-?\d+)\1/g;
 
 /**
  * Paragraph indexing matches Office.js `body.paragraphs`, which the Word pane anchors by:
@@ -538,7 +538,7 @@ function loadUnchecked(bytes: Uint8Array): DocModel {
     src,
     ...["comments", "footnotes", "endnotes", "header", "footer"].flatMap(partText),
   ]) {
-    for (const match of xml?.matchAll(ID) ?? []) maxId = Math.max(maxId, Number(match[1]));
+    for (const match of xml?.matchAll(ID) ?? []) maxId = Math.max(maxId, Number(match[2]));
   }
 
   return { pkg, src, root, paragraphs, existingEdits, excludedRegions: regions, maxId };

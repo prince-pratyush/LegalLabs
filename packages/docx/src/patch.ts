@@ -7,6 +7,7 @@ import {
   type DocModel,
   type Field,
   type Item,
+  type RunInfo,
   DocxError,
   loadDocument,
   type Package,
@@ -226,12 +227,29 @@ export function patchParagraph(
   const insRPr = insertedRPr((host?.item.run ?? firstRun)?.rPr, pxml);
   const marks = comment ? { id: comment() } : undefined;
 
+  // A run split into pieces repeats its rPr; a w:rPrChange in it keeps its id on the
+  // first copy only, since revision ids must stay unique.
+  const copied = new Set<XmlElement>();
+  const copyRPr = (run: RunInfo) => {
+    if (!run.rPr) return "";
+    const xml = sourceOf(run.rPr, pxml);
+    const change = child(run.rPr, "w:rPrChange");
+    if (!change || !copied.has(run.el)) {
+      copied.add(run.el);
+      return xml;
+    }
+    const open = pxml
+      .slice(change.start, change.openEnd)
+      .replace(/\bw:id\s*=\s*(["'])-?\d+\1/, `w:id="${rev.id()}"`);
+    const offset = run.rPr.start;
+    return xml.slice(0, change.start - offset) + open + xml.slice(change.openEnd - offset);
+  };
+
   const plain = (piece: Piece) => {
     const run = piece.item.run;
     if (piece.whole || !run) return sourceOf(piece.item.node, pxml);
     const open = pxml.slice(run.el.start, run.el.openEnd);
-    const rPr = run.rPr ? sourceOf(run.rPr, pxml) : "";
-    return `${open}${rPr}${textXml(model.text.slice(piece.from, piece.to), "w:t")}</w:r>`;
+    return `${open}${copyRPr(run)}${textXml(model.text.slice(piece.from, piece.to), "w:t")}</w:r>`;
   };
 
   let out = "";
@@ -251,7 +269,7 @@ export function patchParagraph(
         if (op.op === "delete" && run && piece.to > piece.from) {
           gone.push({
             text: model.text.slice(piece.from, piece.to),
-            rPr: run.rPr ? sourceOf(run.rPr, pxml) : "",
+            rPr: copyRPr(run),
           });
         } else {
           flush();

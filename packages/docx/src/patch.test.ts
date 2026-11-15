@@ -405,6 +405,40 @@ describe("patchDocx", () => {
     expect(part(untracked.bytes, "word/settings.xml")).toBe(part(original, "word/settings.xml"));
   });
 
+  it("keeps revision ids unique when a run with w:rPrChange is split", () => {
+    const body =
+      "<w:p><w:r><w:rPr><w:b/><w:rPrChange w:id='900' w:author=\"X\" w:date=\"2026-01-01T00:00:00Z\"><w:rPr/></w:rPrChange></w:rPr><w:t>Alpha beta gamma</w:t></w:r></w:p>";
+    const result = patchDocx(
+      fixture({ body }),
+      [replace({ paragraph_index: 0, before: "beta", after: "delta" })],
+      OPTS,
+    );
+    expect(result.failed).toEqual([]);
+    const doc = parse(part(result.bytes, "word/document.xml"));
+    const ids = ["ins", "del", "rPrChange"].flatMap((tag) =>
+      all(doc, tag).map((el) => el.getAttribute("w:id")),
+    );
+    expect(all(doc, "rPrChange")).toHaveLength(3);
+    expect(new Set(ids).size).toBe(ids.length);
+    // The inserted run takes the formatting but not the old change record.
+    expect(all(all(doc, "ins")[0] as never, "rPrChange")).toHaveLength(0);
+    expect(all(all(doc, "ins")[0] as never, "b")).toHaveLength(1);
+  });
+
+  it("allocates ids above a single-quoted w:id", () => {
+    const body =
+      "<w:p><w:bookmarkStart w:id='5000' w:name='x'/><w:r><w:t>Alpha beta</w:t></w:r><w:bookmarkEnd w:id='5000'/></w:p>";
+    const result = patchDocx(
+      fixture({ body }),
+      [replace({ paragraph_index: 0, before: "beta", after: "gamma" })],
+      OPTS,
+    );
+    const doc = parse(part(result.bytes, "word/document.xml"));
+    for (const el of [...all(doc, "ins"), ...all(doc, "del")]) {
+      expect(Number(el.getAttribute("w:id"))).toBeGreaterThan(5000);
+    }
+  });
+
   it("appends to an existing comments part", () => {
     const once = patchDocx(original, [replace({ comment: "first" })], OPTS);
     const twice = patchDocx(
