@@ -10,8 +10,8 @@ import {
   SelectValue,
   StatusText,
 } from "@legallabs/ui";
-import { useEffect, useState } from "react";
-import { type Api, ApiError } from "../api.js";
+import { useEffect, useRef, useState } from "react";
+import { type Api, messageOf } from "../api.js";
 import { CardList } from "../cards/CardList.js";
 import { type Card, type CardState, cardsFromReview } from "../cards/card.js";
 import type { WordHost } from "../office/host.js";
@@ -31,8 +31,21 @@ type Phase =
   | { kind: "running"; done: number }
   | { kind: "results"; reviewId: string | null };
 
-const messageOf = (err: unknown) =>
-  err instanceof ApiError ? err.message : "Something went wrong. Try again.";
+const REGION: Record<string, string> = {
+  header: "headers",
+  footer: "footers",
+  toc: "tables of contents",
+  text_box: "text boxes",
+  footnote: "footnotes",
+};
+
+/** Spec WRD-006: say which parts Word won't be edited in, so nobody assumes they were checked. */
+export const excludedLine = (regions: Record<string, number>) => {
+  const parts = Object.entries(regions)
+    .filter(([, n]) => n > 0)
+    .map(([kind, n]) => `${n} ${REGION[kind] ?? kind.replace(/_/g, " ")}`);
+  return parts.length ? `Read but never edited: ${parts.join(", ")}.` : null;
+};
 
 /** Library → Playbooks: customise, run against the open document, then work the cards. */
 export function ReviewPanel({ api, host }: { api: Api | null; host: WordHost }) {
@@ -45,6 +58,17 @@ export function ReviewPanel({ api, host }: { api: Api | null; host: WordHost }) 
   const [cards, setCards] = useState<Card[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [excluded, setExcluded] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
+  // Polling stops when the pane leaves this panel.
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
+  const live = () => alive.current;
 
   useEffect(() => {
     if (!api) {
@@ -70,28 +94,34 @@ export function ReviewPanel({ api, host }: { api: Api | null; host: WordHost }) 
   const run = async () => {
     if (!api) return;
     setError(null);
-    const { text } = await host.read("document");
-    const size = sizeOf(text.length);
-    if (!size.ok) {
-      setError(
-        "This document is over a million characters, too long to review. Ask about a selection instead.",
-      );
-      return;
-    }
-    setWarning(
-      size.long
-        ? "Reviews over 100 pages are slower and less accurate; consider running selected rules."
-        : null,
-    );
-    setPhase({ kind: "running", done: 0 });
     try {
+      const { text } = await host.read("document");
+      const size = sizeOf(text.length);
+      if (!size.ok) {
+        setError(
+          "This document is over a million characters, too long to review. Ask about a selection instead.",
+        );
+        return;
+      }
+      setWarning(
+        size.long
+          ? "Reviews over 100 pages are slower and less accurate; consider running selected rules."
+          : null,
+      );
+      setPhase({ kind: "running", done: 0 });
       const reviewId = await startReview(api, host, playbookId, { party, paper, mode });
-      const review = await waitForReview(api, reviewId, (r) =>
-        setPhase({ kind: "running", done: r.results.length }),
+      const review = await waitForReview(
+        api,
+        reviewId,
+        (r) => live() && setPhase({ kind: "running", done: r.results.length }),
+        undefined,
+        live,
       );
       setCards(cardsFromReview(review));
+      setExcluded(excludedLine(review.excluded_regions));
       setPhase({ kind: "results", reviewId });
     } catch (err) {
+      if (!live()) return;
       setError(messageOf(err));
       setPhase({ kind: "pick" });
     }
@@ -99,10 +129,14 @@ export function ReviewPanel({ api, host }: { api: Api | null; host: WordHost }) 
 
   const runSample = async () => {
     if (!import.meta.env.DEV) return;
-    const { sampleCards } = await import("../dev/sample.js");
-    const { paragraphs } = await host.read("document");
-    setCards(await sampleCards(paragraphs));
-    setPhase({ kind: "results", reviewId: null });
+    try {
+      const { sampleCards } = await import("../dev/sample.js");
+      const { paragraphs } = await host.read("document");
+      setCards(await sampleCards(paragraphs));
+      setPhase({ kind: "results", reviewId: null });
+    } catch (err) {
+      setError(messageOf(err));
+    }
   };
 
   if (phase.kind === "results") {
@@ -125,15 +159,23 @@ export function ReviewPanel({ api, host }: { api: Api | null; host: WordHost }) 
           {...(api && reviewId
             ? {
                 onRerun: (card: Card) => {
-                  if (!card.ruleId) return;
+                  if (!card.ruleId || rerunning) return;
+                  setRerunning(true);
                   void rerunRule(api, host, reviewId, card.ruleId)
-                    .then(() => waitForReview(api, reviewId, () => {}))
+                    .then(() => waitForReview(api, reviewId, () => {}, undefined, live))
                     .then((review) => setCards(cardsFromReview(review)))
-                    .catch((err) => setError(messageOf(err)));
+                    .catch((err) => live() && setError(messageOf(err)))
+                    .finally(() => live() && setRerunning(false));
                 },
               }
             : {})}
         />
+        {excluded && <p className="text-dense text-fg-muted">{excluded}</p>}
+        {rerunning && (
+          <p className="text-dense text-fg-muted" aria-live="polite">
+            Re-running the rule…
+          </p>
+        )}
         {error && <StatusText tone="failed">{error}</StatusText>}
       </div>
     );
