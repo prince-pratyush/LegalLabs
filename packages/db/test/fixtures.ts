@@ -315,6 +315,47 @@ export async function seed(tx: Tx) {
     acme: await playbook(acme, ana, corpTeam),
     beta: await playbook(beta, bob, betaTeam),
   };
+
+  // A finished review of the owner's document, with its steps and one suggestion.
+  const review = async (
+    ws: string,
+    owner: string,
+    pb: { playbookId: string; versionId: string },
+    doc: { documentId: string; versionId: string },
+  ) => {
+    const runId = await id(
+      `insert into work.run (workspace_id, owner_id, kind, status)
+       values ($1, $2, 'playbook_review', 'done') returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into work.run_step (workspace_id, run_id, ordinal, kind, status, model)
+       values ($1, $2, 0, 'plan', 'done', 'fixture')`,
+      [ws, runId],
+    );
+    const reviewId = await id(
+      `insert into work.playbook_review (workspace_id, run_id, owner_id, playbook_id,
+         playbook_version_id, playbook_name, rules, document_id, document_version_id, surface,
+         customisation, status)
+       values ($1, $2, $3, $4, $5, 'NDA positions', '[]', $6, $7, 'web',
+               '{"party":"Acme","paper":"theirs","mode":"standard","scope":"all"}', 'done')
+       returning id`,
+      [ws, runId, owner, pb.playbookId, pb.versionId, doc.documentId, doc.versionId],
+    );
+    await tx.rows(
+      `insert into work.review_suggestion (id, workspace_id, review_id, rule_id, kind, anchor,
+         before, after, justification)
+       values (core.uuid7(), $1, $2, core.uuid7(), 'replace',
+               '{"paragraph_index":0,"char_from":0,"char_to":3,"para_hash":"00"}',
+               'The', 'This', 'Fixture.')`,
+      [ws, reviewId],
+    );
+    return { runId, reviewId };
+  };
+  const reviews = {
+    acme: await review(acme, ana, playbooks.acme, documents.acme),
+    beta: await review(beta, bob, playbooks.beta, documents.beta),
+  };
   // Seeded as the table owner, as the earlier objects are.
   const library = async (ws: string, owner: string) => {
     const promptId = await id(
@@ -342,6 +383,7 @@ export async function seed(tx: Tx) {
     vaults,
     threads,
     playbooks,
+    reviews,
     library: libraryItems,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,
