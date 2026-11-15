@@ -97,10 +97,20 @@ describe("PlaybookBuilder", () => {
     expect(onReload).toHaveBeenCalledOnce();
   });
 
-  it("offers a review entry point only once published, not yet enabled", () => {
+  it("offers a review entry point only once published", () => {
+    render(<Harness status="unpublished" onReview={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Review a contract" })).toBeNull();
+    cleanup();
     render(<Harness status="published" />);
     expect(disabled("Review a contract")).toBe(true);
     expect(disabled("Unpublish")).toBe(false);
+  });
+
+  it("starts a review when given a handler", async () => {
+    const onReview = vi.fn();
+    render(<Harness status="published" onReview={onReview} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Review a contract" }));
+    expect(onReview).toHaveBeenCalledOnce();
   });
 
   it("shows a past version read-only", () => {

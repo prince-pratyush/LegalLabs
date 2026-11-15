@@ -36,6 +36,7 @@ export function PlaybookBuilder({
   onPublish,
   onUnpublish,
   onBackToCurrent,
+  onReview,
   aside,
 }: {
   draft: PlaybookDraft;
@@ -59,6 +60,8 @@ export function PlaybookBuilder({
   onPublish: () => void;
   onUnpublish: () => void;
   onBackToCurrent?: () => void;
+  /** Starts a review against this playbook; offered once it is published. */
+  onReview?: () => void;
   /** Version history, beside the rules on wide screens. */
   aside?: ReactNode;
 }) {
@@ -128,12 +131,19 @@ export function PlaybookBuilder({
               )}
               {status === "published" && (
                 <>
-                  <Button variant="secondary" disabled aria-describedby={reviewHint}>
+                  <Button
+                    variant="secondary"
+                    disabled={!onReview || dirty}
+                    aria-describedby={onReview ? undefined : reviewHint}
+                    onClick={onReview}
+                  >
                     Review a contract
                   </Button>
-                  <span id={reviewHint} className="text-caption text-fg-muted">
-                    Reviewing a contract against this playbook is coming soon.
-                  </span>
+                  {!onReview && (
+                    <span id={reviewHint} className="text-caption text-fg-muted">
+                      Reviewing a contract against this playbook is coming soon.
+                    </span>
+                  )}
                 </>
               )}
               {dirty && access === "manage" && (
