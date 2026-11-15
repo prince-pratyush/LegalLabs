@@ -22,23 +22,37 @@ export function terms(text: string): string[] {
 
 const stem = (w: string) => (w.length > 4 ? w.replace(/s$/, "") : w).slice(0, 6);
 
+type Posting = { doc: number; tf: number };
+
+/** Inverted index over body paragraphs; built once per review. */
 type Index = {
-  docs: { index: number; tf: Map<string, number>; len: number; heading: Set<string> }[];
-  df: Map<string, number>;
+  docs: { index: number; len: number }[];
+  postings: Map<string, Posting[]>;
+  headings: Map<string, number[]>;
   avg: number;
 };
 
 function buildIndex(paragraphs: readonly ReviewParagraph[]): Index {
-  const df = new Map<string, number>();
-  const docs = paragraphs.map((p) => {
+  const postings = new Map<string, Posting[]>();
+  const headings = new Map<string, number[]>();
+  const docs = paragraphs.map((p, doc) => {
     const ts = terms(p.text);
     const tf = new Map<string, number>();
     for (const t of ts) tf.set(t, (tf.get(t) ?? 0) + 1);
-    for (const t of tf.keys()) df.set(t, (df.get(t) ?? 0) + 1);
-    return { index: p.index, tf, len: ts.length, heading: new Set(terms(p.section_path ?? "")) };
+    for (const [t, n] of tf) {
+      const list = postings.get(t) ?? [];
+      list.push({ doc, tf: n });
+      postings.set(t, list);
+    }
+    for (const t of new Set(terms(p.section_path ?? ""))) {
+      const list = headings.get(t) ?? [];
+      list.push(doc);
+      headings.set(t, list);
+    }
+    return { index: p.index, len: ts.length };
   });
   const avg = docs.reduce((s, d) => s + d.len, 0) / Math.max(docs.length, 1) || 1;
-  return { docs, df, avg };
+  return { docs, postings, headings, avg };
 }
 
 /** Query terms: the title counts double, then the standard position and a little sample text. */
@@ -53,6 +67,9 @@ function ruleQuery(rule: Rule): Map<string, number> {
   return q;
 }
 
+/** Rule id → paragraph index → score. */
+export type Scores = Map<string, Map<number, number>>;
+
 /**
  * BM25 of each paragraph against each rule, plus a bonus when the section heading carries a
  * title word. Excluded and empty paragraphs score 0.
@@ -60,28 +77,30 @@ function ruleQuery(rule: Rule): Map<string, number> {
 export function lexicalScores(
   paragraphs: readonly ReviewParagraph[],
   rules: readonly Rule[],
-): Map<string, Map<number, number>> {
-  const body = paragraphs.filter((p) => !p.excluded && p.text.trim());
-  const idx = buildIndex(body);
+): Scores {
+  const idx = buildIndex(paragraphs.filter((p) => !p.excluded && p.text.trim()));
   const n = idx.docs.length;
   const k1 = 1.2;
   const b = 0.75;
-  const out = new Map<string, Map<number, number>>();
+  const out: Scores = new Map();
   for (const rule of rules) {
-    const q = ruleQuery(rule);
-    const title = new Set(terms(rule.title));
-    const scores = new Map<number, number>();
-    for (const d of idx.docs) {
-      let s = 0;
-      for (const [t, w] of q) {
-        const f = d.tf.get(t);
-        if (!f) continue;
-        const df = idx.df.get(t) ?? 0;
-        const idf = Math.log(1 + (n - df + 0.5) / (df + 0.5));
-        s += (w * idf * (f * (k1 + 1))) / (f + k1 * (1 - b + (b * d.len) / idx.avg));
+    const acc = new Map<number, number>();
+    for (const [t, w] of ruleQuery(rule)) {
+      const list = idx.postings.get(t);
+      if (!list) continue;
+      const idf = Math.log(1 + (n - list.length + 0.5) / (list.length + 0.5));
+      for (const { doc, tf } of list) {
+        const len = idx.docs[doc]?.len ?? 0;
+        const s = (w * idf * (tf * (k1 + 1))) / (tf + k1 * (1 - b + (b * len) / idx.avg));
+        acc.set(doc, (acc.get(doc) ?? 0) + s);
       }
-      for (const t of title) if (d.heading.has(t)) s += 1.5;
-      if (s > 0) scores.set(d.index, s);
+    }
+    for (const t of new Set(terms(rule.title)))
+      for (const doc of idx.headings.get(t) ?? []) acc.set(doc, (acc.get(doc) ?? 0) + 1.5);
+    const scores = new Map<number, number>();
+    for (const [doc, s] of acc) {
+      const d = idx.docs[doc];
+      if (d && s > 0) scores.set(d.index, s);
     }
     out.set(rule.id, scores);
   }
@@ -102,9 +121,9 @@ export function lexicalMap(
   paragraphs: readonly ReviewParagraph[],
   rules: readonly Rule[],
   opts: LexicalOptions = {},
+  scores: Scores = lexicalScores(paragraphs, rules),
 ): { clause_map: Record<string, number[]>; uncovered: number[] } {
   const { topK = 4, relative = 0.5, minScore = 2 } = opts;
-  const scores = lexicalScores(paragraphs, rules);
   const clause_map: Record<string, number[]> = {};
   const covered = new Set<number>();
   for (const rule of rules) {
@@ -129,7 +148,10 @@ export function lexicalMap(
   return { clause_map, uncovered };
 }
 
-/** The paragraph most like the rule, for anchoring an insertion when the clause is missing. */
+/**
+ * The paragraph most like the rule, for anchoring an insertion when the clause is missing.
+ * Undefined when nothing scores: an insertion after an arbitrary paragraph would mislead.
+ */
 export function mostRelated(
   scores: Map<number, number> | undefined,
   paragraphs: readonly ReviewParagraph[],
@@ -144,5 +166,5 @@ export function mostRelated(
       bestScore = s;
     }
   }
-  return best ?? body.at(-1);
+  return best;
 }
