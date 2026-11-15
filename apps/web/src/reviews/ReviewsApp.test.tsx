@@ -93,6 +93,7 @@ const review = (overrides: Partial<Review> = {}): Review => ({
   summary: { acceptable: 0, needs_review: 0, not_acceptable: 1, not_found: 0, gaps: 0 },
   warnings: [],
   usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0, models: [] },
+  rules: [{ id: RULE, title: "Limitation of liability" }],
   started_at: "2026-11-15T00:00:00.000Z",
   finished_at: "2026-11-15T00:01:00.000Z",
   ...overrides,
@@ -213,7 +214,8 @@ describe("ReviewPage", () => {
   const editor = (current: () => Review) =>
     serve({
       [`GET /api/v1/reviews/${REVIEW}`]: () => [200, { review: current() }],
-      [`GET /api/v1/playbooks/${PLAYBOOK}`]: () => [200, { playbook }],
+      // The stored rules drive progress, so the playbook itself may be gone.
+      [`GET /api/v1/playbooks/${PLAYBOOK}`]: () => [404, { code: "NOT_FOUND", message: "Gone" }],
       [`GET /api/v1/reviews/${REVIEW}/document`]: () => [
         200,
         { kind: "docx", paragraphs: [{ index: 0, text: TEXT, excluded: false }] },
@@ -271,6 +273,7 @@ describe("ReviewPage", () => {
     vi.stubGlobal("EventSource", undefined);
     render(<ReviewPage reviewId={REVIEW} />);
     expect(await screen.findByRole("region", { name: "Review progress" })).toBeTruthy();
+    expect(screen.getByText("Limitation of liability")).toBeTruthy();
     current = review();
     // No EventSource here, so the page polls every two seconds.
     expect(

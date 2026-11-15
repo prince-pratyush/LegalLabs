@@ -18,7 +18,6 @@ import {
   toast,
 } from "@legallabs/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { playbookApi } from "../playbooks/api.js";
 import { messageOf } from "../vaults/shared.js";
 import { followRun, type ReviewBody, reviewApi } from "./api.js";
 
@@ -67,19 +66,15 @@ export function ReviewPage({ reviewId }: { reviewId: string }) {
     });
   }, [reload]);
 
-  // The rule list for progress comes from the version the review ran against.
+  // The rule list for progress is the one the review stored: the playbook may have changed
+  // since, or be hidden from this reader.
   useEffect(() => {
     if (!review || rules) return;
     const scope = review.customisation.scope;
-    const named = review.results.map((f) => ({ id: f.rule_id, title: f.rule_title }));
-    playbookApi.get(review.playbook_id).then(
-      (p) =>
-        setRules(
-          p.rules
-            .filter((r) => scope === "all" || scope.includes(r.id))
-            .map((r) => ({ id: r.id, title: r.title })),
-        ),
-      () => setRules(named),
+    setRules(
+      (review.rules ?? review.results.map((f) => ({ id: f.rule_id, title: f.rule_title }))).filter(
+        (r) => scope === "all" || scope.includes(r.id),
+      ),
     );
   }, [review, rules]);
 
