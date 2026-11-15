@@ -1,4 +1,5 @@
 import {
+  type Anchor,
   type CitationEvent,
   FINISHED,
   Plan,
@@ -6,9 +7,12 @@ import {
   type RunStatus,
 } from "@legallabs/contracts";
 import type { AnswerCitation, Range, RunCoverage, RunStep } from "@legallabs/ui";
+import { anchorOf } from "../viewer/open-citation.js";
 
 export interface LiveCitation extends AnswerCitation {
-  /** A deep link or an authority URL, only for a verified citation. */
+  /** Where the viewer opens a verified document citation; null for anything else. */
+  anchor: Anchor | null;
+  /** An authority's web page, only for a verified authority citation. */
   openUrl: string | null;
 }
 
@@ -56,7 +60,19 @@ function citationOf(event: CitationEvent, at: number): LiveCitation {
     documentName: event.document?.name ?? event.authority?.title ?? null,
     page: event.document?.page_no ?? null,
     quote: event.quote,
-    openUrl: event.verified === "ok" ? (event.open_url ?? null) : null,
+    anchor:
+      event.verified === "ok" && event.document
+        ? anchorOf({
+            document_id: event.document.document_id,
+            version_id: event.document.version_id,
+            page: event.document.page_no ?? null,
+            char_from: event.document.char_from ?? null,
+            char_to: event.document.char_to ?? null,
+            quote: event.quote,
+            status: event.verified,
+          })
+        : null,
+    openUrl: event.verified === "ok" && event.authority ? event.authority.url : null,
   };
 }
 

@@ -202,6 +202,26 @@ export async function seed(tx: Tx) {
   };
   const documents = { acme: await document(acme, ana), beta: await document(beta, bob) };
 
+  // A vault with one folder and one filed document in each workspace.
+  const vault = async (ws: string, owner: string) => {
+    const vaultId = await id(
+      "insert into content.vault (workspace_id, owner_id, name) values ($1, $2, 'Deal room') returning id",
+      [ws, owner],
+    );
+    const folderId = await id(
+      `insert into content.folder (workspace_id, vault_id, name, created_by)
+       values ($1, $2, 'Contracts', $3) returning id`,
+      [ws, vaultId, owner],
+    );
+    const documentId = await id(
+      `insert into content.document (workspace_id, owner_id, name, mime, size, vault_id, folder_id)
+       values ($1, $2, 'nda.txt', 'text/plain', 10, $3, $4) returning id`,
+      [ws, owner, vaultId, folderId],
+    );
+    return { vaultId, folderId, documentId };
+  };
+  const vaults = { acme: await vault(acme, ana), beta: await vault(beta, bob) };
+
   const thread = async (ws: string, owner: string, versionId: string) => {
     const threadId = await id(
       `insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Liability') returning id`,
@@ -253,8 +273,18 @@ export async function seed(tx: Tx) {
     beta: await thread(beta, bob, documents.beta.versionId),
   };
 
+  const preset = (ws: string, user: string) =>
+    tx.rows(
+      `insert into knowledge.source_filter_preset (workspace_id, user_id, source_id, name, filter)
+       values ($1, $2, 'us_caselaw', 'Supreme Court', '{"courts":["us"]}')`,
+      [ws, user],
+    );
+  await preset(acme, ana);
+  await preset(beta, bob);
+
   return {
     documents,
+    vaults,
     threads,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,

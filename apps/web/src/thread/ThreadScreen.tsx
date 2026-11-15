@@ -1,4 +1,4 @@
-import { FINISHED, isTerminal, parseCitationPath } from "@legallabs/contracts";
+import { FINISHED, isTerminal } from "@legallabs/contracts";
 import {
   AnswerText,
   AnswerTextSkeleton,
@@ -33,15 +33,15 @@ import { SourcesPanel } from "./SourcesPanel.js";
 import { ThreadComposer } from "./ThreadComposer.js";
 
 /** Verified citations open the viewer (or the authority); flagged ones never link. */
-function follow(citation: LiveCitation) {
-  if (citation.status !== "ok" || !citation.openUrl) return false;
-  if (citation.openUrl.startsWith("/d/")) {
-    const target = parseCitationPath(citation.openUrl);
-    if (!target) return false;
-    openCitation(target, { documentName: citation.documentName, quote: citation.quote });
+function follow(citation: LiveCitation, all: readonly LiveCitation[]) {
+  if (citation.status !== "ok") return false;
+  if (citation.anchor) {
+    // The answer's other verified sources come along, so the viewer can step through them.
+    const context = all.flatMap((c) => (c.anchor ? [c.anchor] : []));
+    openCitation(citation.anchor, { context });
     return true;
   }
-  if (/^https?:\/\//.test(citation.openUrl)) {
+  if (citation.openUrl && /^https:\/\//.test(citation.openUrl)) {
     window.open(citation.openUrl, "_blank", "noopener,noreferrer");
     return true;
   }
@@ -191,7 +191,7 @@ export function ThreadScreen({
   const cite = (answerId: string, citations: readonly LiveCitation[], n: number) => {
     const citation = citations.find((c) => c.n === n);
     setPanel({ kind: "sources", answerId, n });
-    if (citation) follow(citation);
+    if (citation) follow(citation, citations);
   };
 
   const awaiting = live?.status === "awaiting_approval" && !live.finished;

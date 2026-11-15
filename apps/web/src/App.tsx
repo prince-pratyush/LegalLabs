@@ -7,14 +7,17 @@ import {
   type PaletteCommand,
   setThemeSetting,
 } from "@legallabs/ui";
-import { History, SquarePen } from "lucide-react";
+import { History, Library, SquarePen } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
-import { navigate, parseRoute, paths, type Route, useHash } from "./router.js";
+import { navigate, parseRoute, paths, useHash } from "./router.js";
 import { Shell, ShellContext, type ShellProps } from "./shell.js";
 import { ThreadScreen } from "./thread/ThreadScreen.js";
-import { CitationViewer } from "./viewer/CitationViewer.js";
+import { go, parseRoute as parseVaultRoute } from "./vaults/route.js";
+import { VaultsApp } from "./vaults/VaultsApp.js";
+import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
+import { useLocation, useReturnFocus } from "./viewer/open-citation.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 const RECENTS = 5;
@@ -27,11 +30,33 @@ export function App() {
       () => setSignedIn(false),
     );
   }, []);
+  const location = useLocation();
+  const viewing = isDocumentHref(location.href);
+  useReturnFocus(viewing);
+  // Opening a document pushes a path without the hash, so the screen behind it is remembered.
+  const current = useHash();
+  const behind = useRef(current);
+  if (!viewing) behind.current = current;
+  const hash = behind.current;
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
-  return signedIn ? (
-    <Workspace onSignedOut={() => setSignedIn(false)} />
-  ) : (
-    <SignIn onSignedIn={() => setSignedIn(true)} />
+  if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
+  return (
+    <>
+      {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
+      <div className="contents" inert={viewing}>
+        {parseVaultRoute(hash) ? (
+          <VaultsApp onLeave={() => navigate(paths.new)} />
+        ) : (
+          <Workspace hash={hash} onSignedOut={() => setSignedIn(false)} />
+        )}
+      </div>
+      {/* Over the page, not instead of it, so closing returns to the same place. */}
+      {viewing ? (
+        <div className="fixed inset-0 z-40 bg-bg">
+          <DocumentPage href={location.href} state={location.state} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -118,18 +143,8 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   );
 }
 
-function pathOf(route: Route): string {
-  if (route.name === "thread") return paths.thread(route.id);
-  if (route.name === "history") return paths.history;
-  return paths.new;
-}
-
-function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
-  const route = parseRoute(useHash());
-  // A citation opens beside whatever was showing, so the thread stays in view.
-  const behind = useRef<Route>({ name: "new" });
-  if (route.name !== "viewer") behind.current = route;
-  const screen = behind.current;
+function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => void }) {
+  const screen = parseRoute(hash);
   const [recents, setRecents] = useState<HistoryItem[]>([]);
 
   const refreshRecents = useCallback(() => {
@@ -144,17 +159,6 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
     await api.logout().catch(() => undefined);
     onSignedOut();
   };
-
-  const closeViewer = () => navigate(pathOf(behind.current));
-  const overlay =
-    route.name === "viewer" ? (
-      <CitationViewer
-        key={route.path}
-        target={route.target}
-        path={route.path}
-        onClose={closeViewer}
-      />
-    ) : null;
 
   const commands: PaletteCommand[] = [
     ...recents.map(
@@ -172,6 +176,13 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       group: "Actions",
       label: "New thread",
       run: () => navigate(paths.new),
+    },
+    {
+      id: "vaults",
+      kind: "action",
+      group: "Go to",
+      label: "Vaults",
+      run: () => go({ page: "list" }),
     },
     {
       id: "history",
@@ -229,6 +240,15 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
           <History aria-hidden />
           History
         </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => go({ page: "list" })}
+        >
+          <Library aria-hidden />
+          Vaults
+        </Button>
       </div>
       <section className="grid gap-2" aria-labelledby="recents-heading">
         <h2 id="recents-heading" className="text-caption font-semibold text-fg-muted uppercase">
@@ -266,8 +286,8 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       sidebarLabel="Threads"
       commands={commands}
       sidebar={sidebar}
-      panel={overlay ?? panel}
-      {...(overlay ? { onTogglePanel: closeViewer } : onTogglePanel ? { onTogglePanel } : {})}
+      panel={panel}
+      {...(onTogglePanel ? { onTogglePanel } : {})}
     >
       {children}
     </AppShell>

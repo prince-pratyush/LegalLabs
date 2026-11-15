@@ -1,24 +1,21 @@
-import { type CitationTarget, parseCitationPath } from "@legallabs/contracts";
 import { useSyncExternalStore } from "react";
 
 export type Route =
   | { name: "new" }
   | { name: "thread"; id: string }
   | { name: "history" }
-  | { name: "viewer"; target: CitationTarget; path: string }
   | { name: "missing" };
 
-/** Reads a location hash such as `#/t/123`; anything unknown is "missing", not a crash. */
+/**
+ * Reads a location hash such as `#/t/123`; anything unknown is "missing", not a crash.
+ * Documents open on real paths (`/d/...`) in the viewer, over whichever screen this shows.
+ */
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, "") || "/";
   if (path === "/") return { name: "new" };
   if (path === "/history") return { name: "history" };
   const thread = /^\/t\/([^/?#]+)$/.exec(path);
   if (thread?.[1]) return { name: "thread", id: decodeURIComponent(thread[1]) };
-  if (path.startsWith("/d/")) {
-    const target = parseCitationPath(path);
-    if (target) return { name: "viewer", target, path };
-  }
   return { name: "missing" };
 }
 
@@ -32,9 +29,14 @@ export function navigate(path: string) {
   window.location.hash = path;
 }
 
+// Back from the document viewer is a history step across paths, which fires popstate, not hashchange.
 const subscribe = (notify: () => void) => {
   window.addEventListener("hashchange", notify);
-  return () => window.removeEventListener("hashchange", notify);
+  window.addEventListener("popstate", notify);
+  return () => {
+    window.removeEventListener("hashchange", notify);
+    window.removeEventListener("popstate", notify);
+  };
 };
 
 export function useHash(): string {

@@ -1,10 +1,18 @@
 export { cn } from "./cn.js";
 export { AppShell } from "./components/app-shell.js";
+export { Breadcrumbs, type Crumb } from "./components/breadcrumbs.js";
 export { Button, type ButtonProps, buttonStyles } from "./components/button.js";
 export { Checkbox } from "./components/checkbox.js";
 export { CommandPalette, type PaletteCommand } from "./components/command-palette.js";
 export { ConfirmDialog } from "./components/confirm-dialog.js";
 export { DataTable, type TableColumn } from "./components/data-table.js";
+export {
+  DocumentViewer,
+  type DocumentViewerProps,
+  ViewerSkeleton,
+  type ViewerSource,
+  type ViewerTarget,
+} from "./components/document-viewer.js";
 export { EmptyState } from "./components/empty-state.js";
 export {
   CitationMarker,
@@ -13,6 +21,7 @@ export {
   type EvidenceStatus,
 } from "./components/evidence.js";
 export { Field, type FieldControlProps, Input, Label, Textarea } from "./components/field.js";
+export { FolderTree, type TreeFolder } from "./components/folder-tree.js";
 export {
   Menu,
   MenuContent,
@@ -115,6 +124,12 @@ export {
 } from "./components/thread/sources-list.js";
 export { Toaster, toast } from "./components/toast.js";
 export { Kbd, Tooltip, TooltipProvider } from "./components/tooltip.js";
+export {
+  FileStateText,
+  type UploadItem,
+  type UploadState,
+  UploadTray,
+} from "./components/upload-tray.js";
 export { formatKeys, KEYMAP, matchesChord, useHotkeys } from "./shortcuts.js";
 export {
   applyTheme,
@@ -128,3 +143,10 @@ export {
   themeSetting,
 } from "./theme.js";
 export { type ColorRole, colors, motion, space, type Theme, typography } from "./tokens.js";
+export {
+  loadPdf,
+  type PdfDocument,
+  type PdfLoader,
+  preloadPdf,
+  setPdfWorker,
+} from "./viewer/pdf.js";

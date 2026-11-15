@@ -48,6 +48,10 @@ const CONCURRENCY = 2;
 const READ_OUTPUT = 800;
 const CHARS_PER_TOKEN = 3;
 const WALL_CLOCK_MS = 45 * 60_000;
+// Per batch, as the spec bounds each subagent (threads.md 9).
+const BATCH_TOKENS = 200_000;
+// The run stops reading once it has spent this share of its approved high estimate.
+const SPEND_SHARE = 0.8;
 const RANKED = 200;
 // Rough per-page and per-file token counts, for the estimate shown before approval.
 const TOKENS_PER_PAGE = 700;
@@ -75,8 +79,8 @@ function estimate(gateway: Gateway, read: readonly ScopeDocument[]) {
     .map((m) => (input * m.price.input + output * m.price.output) / 1_000_000);
   const round = (n: number) => Math.round(n * 10_000) / 10_000;
   return {
-    low: round(Math.min(0, ...(costs.length ? costs : [0]))),
-    high: round(Math.max(0, ...costs)),
+    low: round(costs.length ? Math.min(...costs) : 0),
+    high: round(costs.length ? Math.max(...costs) : 0),
   };
 }
 
@@ -128,6 +132,9 @@ export async function planDeep(
     steps,
     estimated_cost_usd: estimate(deps.gateway, read),
     editable: true,
+    not_read: skipped
+      .slice(0, 50)
+      .map(({ document, reason }) => ({ name: label(document), reason })),
     scope: { question, focus, read, skipped },
   };
 }
@@ -150,6 +157,10 @@ export async function readDeep(
     scope: DeepScope;
     emit: (event: NewEvent) => Promise<unknown>;
     cancelled: () => boolean;
+    /** Aborts a model call in flight, on cancel or at the deadline. */
+    signal: AbortSignal;
+    /** The plan's high estimate in US dollars; 0 means free models, so no cap. */
+    budgetUsd: number;
   },
 ): Promise<DeepResult> {
   const { principal, scope, emit } = input;
@@ -172,11 +183,11 @@ export async function readDeep(
     READ_PROMPT.length -
     1_000;
 
-  async function readOne(document: ScopeDocument, question: string) {
+  async function readOne(document: ScopeDocument, question: string): Promise<number> {
     const pages = await pagesOf(deps, principal, document.versionId);
     if (pages.length === 0) {
       unread.push({ name: label(document), reason: "No readable text" });
-      return;
+      return 0;
     }
     // Whole pages only, in order, until the window is full; the rest is reported as unread.
     const sent: typeof pages = [];
@@ -188,32 +199,40 @@ export async function readDeep(
     }
     if (sent.length === 0) {
       unread.push({ name: label(document), reason: "First page too long to read in one pass" });
-      return;
+      return 0;
     }
     const code = randomBytes(12).toString("hex");
     let output: string;
+    let tokens = 0;
     try {
-      const result = await deps.gateway.call({
-        task_class: "read_extract",
-        messages: [
-          { role: "system", content: READ_PROMPT },
-          {
-            role: "user",
-            content: `${sent.map((p) => `<page-${code} n="${p.page_no}">\n${p.text}\n</page-${code}>`).join("\n")}\n\nQuestion: ${question}`,
-          },
-        ],
-        budget: { max_output: READ_OUTPUT, max_cost_usd: 0.05 },
-        routing: { workspace: principal.workspaceId },
-        trace: randomUUID(),
-      });
+      const result = await deps.gateway.call(
+        {
+          task_class: "read_extract",
+          messages: [
+            { role: "system", content: READ_PROMPT },
+            {
+              role: "user",
+              content: `${sent.map((p) => `<page-${code} n="${p.page_no}">\n${p.text}\n</page-${code}>`).join("\n")}\n\nQuestion: ${question}`,
+            },
+          ],
+          budget: { max_output: READ_OUTPUT, max_cost_usd: 0.05 },
+          routing: { workspace: principal.workspaceId },
+          trace: randomUUID(),
+        },
+        input.signal,
+      );
       output = result.output;
+      tokens = result.usage.input_tokens + result.usage.output_tokens;
       usage.input_tokens += result.usage.input_tokens;
       usage.output_tokens += result.usage.output_tokens;
       costUsd += result.cost_usd;
     } catch (err) {
       if (!(err instanceof GatewayError)) throw err;
-      unread.push({ name: label(document), reason: "No model could read it" });
-      return;
+      unread.push({
+        name: label(document),
+        reason: input.signal.aborted ? "Stopped before it was read" : "No model could read it",
+      });
+      return 0;
     }
     coverage.docs_read += 1;
     coverage.pages_read += sent.length;
@@ -245,7 +264,17 @@ export async function readDeep(
         text: page.text,
       });
     }
+    return tokens;
   }
+
+  const stopReason = () => {
+    if (input.signal.aborted) return "Stopped before it was read";
+    if (Date.now() - started > WALL_CLOCK_MS) return "Run time limit reached";
+    if (input.budgetUsd > 0 && costUsd >= input.budgetUsd * SPEND_SHARE) {
+      return "Run cost limit reached";
+    }
+    return null;
+  };
 
   const question = scope.focus ? `${scope.question}\nFocus: ${scope.focus}` : scope.question;
   const batches: ScopeDocument[][] = [];
@@ -259,13 +288,22 @@ export async function readDeep(
       const title = `Reading ${batch.length} file${batch.length === 1 ? "" : "s"} (batch ${index + 1} of ${batches.length})`;
       await emit({ type: "step", step_id: stepId, kind: "read", status: "started", title });
       const before = costUsd;
+      let batchTokens = 0;
       for (const document of batch) {
         if (input.cancelled()) return;
-        if (Date.now() - started > WALL_CLOCK_MS) {
-          unread.push({ name: label(document), reason: "Run time limit reached" });
+        const stop =
+          stopReason() ?? (batchTokens >= BATCH_TOKENS ? "Batch token limit reached" : null);
+        if (stop) {
+          unread.push({ name: label(document), reason: stop });
           continue;
         }
-        await readOne(document, question);
+        try {
+          batchTokens += await readOne(document, question);
+        } catch (err) {
+          // One bad file never stops the others; it is listed as unread instead.
+          console.error(`deep read failed: ${err instanceof Error ? err.name : "unknown"}`);
+          unread.push({ name: label(document), reason: "Couldn't be read" });
+        }
         await emit({ type: "coverage", coverage: { ...coverage } });
       }
       await emit({

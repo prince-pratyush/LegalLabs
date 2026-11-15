@@ -370,7 +370,12 @@ export function threadHttp(options: ThreadHttpOptions) {
   app.post("/runs/:id/plan/edit", limitBody, async (c) => {
     const parsed = planEditBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return invalid(c);
-    return (await threads.editPlan(c.get("principal"), c.req.param("id"), parsed.data.instruction))
+    return (await threads.editPlan(
+      c.get("principal"),
+      c.req.param("id"),
+      parsed.data.instruction,
+      clientOf(c),
+    ))
       ? c.body(null, 202)
       : c.json(
           { code: "NOT_AWAITING_APPROVAL", message: "That plan isn't waiting for approval." },

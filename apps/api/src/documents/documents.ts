@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { fileTypeLimit, type RetrievalScope } from "@legallabs/contracts";
 import { contextual, type Embedder, EmbedUnavailable, type Reranker } from "@legallabs/embed";
 import { type Block, detectType, type Failure } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
@@ -28,6 +29,8 @@ export interface UploadInput {
   name: string;
   bytes: Uint8Array;
   matterId: string | null;
+  vaultId?: string;
+  folderId?: string | null;
 }
 
 export type UploadResult =
@@ -37,7 +40,9 @@ export type UploadResult =
       reason:
         | Extract<Failure, "UNSUPPORTED_TYPE" | "FILE_TOO_LARGE">
         | "FORBIDDEN"
-        | "MATTER_NOT_FOUND";
+        | "MATTER_NOT_FOUND"
+        | "VAULT_FILE_LIMIT"
+        | "VAULT_SIZE_LIMIT";
     };
 
 export interface Passage {
@@ -54,6 +59,8 @@ export interface Passage {
 
 export interface SearchOptions {
   limit?: number;
+  /** Narrows the search to vaults, folders (with subfolders) and documents. */
+  scope?: RetrievalScope;
   documentIds?: readonly string[];
   /** Pins a search to exact versions, as a thread that cites them needs. */
   versionIds?: readonly string[];
@@ -64,7 +71,7 @@ export interface SearchOptions {
 export interface Documents {
   /** Stores the file and queues it; reading it happens in the ingest worker. */
   upload(principal: Principal, input: UploadInput, client: Client): Promise<UploadResult>;
-  /** The caller's newest documents, up to a fixed page. */
+  /** Outside vaults only: vault files are listed per folder, which scales. */
   list(principal: Principal): Promise<Summary[]>;
   /** Null for anything the caller can't read. */
   get(principal: Principal, documentId: string): Promise<Summary | null>;
@@ -103,6 +110,28 @@ const searchText = (query: string, match: "all" | "any") => {
   const text = query.replaceAll("\0", "");
   return match === "any" ? text.replace(/(^|\s)-\S*/g, "$1") : text;
 };
+
+class NoRoom extends Error {
+  constructor(readonly reason: "VAULT_FILE_LIMIT" | "VAULT_SIZE_LIMIT") {
+    super(reason);
+  }
+}
+
+// "Deed.pdf" becomes "Deed (2).pdf" when a folder already holds one.
+const stem = (name: string) => {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+};
+
+export function freeName(name: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(name.toLowerCase())) return name;
+  const base = stem(name);
+  const extension = name.slice(base.length);
+  for (let n = 2; ; n++) {
+    const next = `${base} (${n})${extension}`;
+    if (!taken.has(next.toLowerCase())) return next;
+  }
+}
 
 const clampPassages = (limit: number) =>
   Math.min(Math.max(Math.trunc(limit) || DEFAULT_PASSAGES, 1), MAX_PASSAGES);
@@ -201,10 +230,30 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
     // First, so a row never points at a missing object; a retry reuses an orphan.
     await options.store.putIfAbsent(contentKey(workspaceId, sha256.toString("hex")), input.bytes);
     return asApp(pool, principal, async (db) => {
+      const vaultId = input.vaultId ?? null;
+      const folderId = vaultId ? (input.folderId ?? null) : null;
+      let name = input.name;
+      if (vaultId) {
+        // Holds the vault's lock until commit, so parallel uploads can't overshoot its limit.
+        const room = await db.query<{ refused: NoRoom["reason"] | null }>(
+          "select content.claim_vault_room($1, 1, $2) refused",
+          [vaultId, input.bytes.length],
+        );
+        const refused = room.rows[0]?.refused;
+        if (refused) throw new NoRoom(refused);
+        const taken = await db.query<{ name: string }>(
+          `select name from content.document
+            where vault_id = $1 and folder_id is not distinct from $2
+              and starts_with(lower(name), lower($3))`,
+          [vaultId, folderId, stem(input.name)],
+        );
+        name = freeName(input.name, new Set(taken.rows.map((row) => row.name.toLowerCase())));
+      }
       const document = await db.query<{ id: string; created_at: Date }>(
-        `insert into content.document (workspace_id, owner_id, matter_id, name, mime, size)
-         values ($1, $2, $3, $4, $5, $6) returning id, created_at`,
-        [workspaceId, userId, input.matterId, input.name, mime, input.bytes.length],
+        `insert into content.document
+           (workspace_id, owner_id, matter_id, name, mime, size, vault_id, folder_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, created_at`,
+        [workspaceId, userId, input.matterId, name, mime, input.bytes.length, vaultId, folderId],
       );
       const row = document.rows[0];
       if (!row) throw new Error("insert returned no document");
@@ -237,7 +286,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       return toSummary({
         id: row.id,
         version_id: versionId,
-        name: input.name,
+        name,
         mime,
         size: String(input.bytes.length),
         status: "queued",
@@ -252,19 +301,29 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
 
   return {
     async upload(principal, input, client) {
+      const vaultId = input.vaultId ?? null;
       const access = await asApp(pool, principal, async (db) => {
         const { rows } = await db.query<{ allowed: boolean; reachable: boolean }>(
-          `select core.has_permission('threads.use') allowed,
+          `select core.has_permission('threads.use')
+                  and ($2::uuid is null
+                       or coalesce(content.vault_level($2) in ('owner', 'full', 'edit'), false))
+                  and ($3::uuid is null or exists (
+                    select 1 from content.folder f where f.id = $3 and f.vault_id = $2)) allowed,
                   core.can_access_matter($1::uuid) reachable`,
-          [input.matterId],
+          [input.matterId, vaultId, vaultId ? (input.folderId ?? null) : null],
         );
         return rows[0];
       });
       if (!access?.allowed) return { ok: false, reason: "FORBIDDEN" };
       if (!access.reachable) return { ok: false, reason: "MATTER_NOT_FOUND" };
       const mime = detectType(input.bytes, input.name);
+      const typeLimit = fileTypeLimit(input.name)?.bytes ?? MAX_FILE_BYTES;
       const refused =
-        input.bytes.length > MAX_FILE_BYTES ? "FILE_TOO_LARGE" : mime ? null : "UNSUPPORTED_TYPE";
+        input.bytes.length > Math.min(MAX_FILE_BYTES, typeLimit)
+          ? "FILE_TOO_LARGE"
+          : mime
+            ? null
+            : "UNSUPPORTED_TYPE";
       if (refused !== null || mime === null) {
         await asApp(pool, principal, (db) =>
           db.query(
@@ -282,6 +341,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       try {
         return { ok: true, document: await save(principal, input, mime, client) };
       } catch (err) {
+        if (err instanceof NoRoom) return { ok: false, reason: err.reason };
         // A wall or permission can change between the check and the insert.
         if ((err as { code?: string }).code === RLS_REFUSED) {
           return { ok: false, reason: "FORBIDDEN" };
@@ -324,8 +384,13 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
     async search(
       principal,
       query,
-      { limit = DEFAULT_PASSAGES, documentIds, versionIds, match = "all" } = {},
+      { limit = DEFAULT_PASSAGES, scope, documentIds, versionIds, match = "all" } = {},
     ) {
+      // Both lists narrow, so a document must be in each one given.
+      const documents =
+        documentIds && scope?.document_ids
+          ? documentIds.filter((id) => scope.document_ids?.includes(id))
+          : (scope?.document_ids ?? documentIds);
       query = query.slice(0, MAX_QUERY);
       const take = clampPassages(limit);
       // Embedded outside the transaction, so a slow model never holds a connection.
@@ -340,6 +405,19 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
         }
       }
       const rows = await asApp(pool, principal, async (db) => {
+        // Folders first, as a plain list: inside the search the planner guesses badly.
+        const folders = scope?.folder_ids
+          ? (
+              await db.query<{ id: string }>(
+                `with recursive tree as (
+                   select f.id from content.folder f where f.id = any($1::uuid[])
+                   union
+                   select f.id from content.folder f join tree on f.parent_id = tree.id
+                 ) select id from tree`,
+                [scope.folder_ids.filter((id) => UUID.test(id))],
+              )
+            ).rows.map((row) => row.id)
+          : null;
         // Row security rules out both indexes, so the scope joins are what limit the scan.
         const result = await db.query<PassageRow>(
           `with words as (
@@ -354,6 +432,8 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
               where core.has_permission('threads.use')
                 and ($3::uuid[] is null or d.id = any($3::uuid[]))
                 and ($5::uuid[] is null or v.id = any($5::uuid[]))
+                and ($10::uuid[] is null or d.vault_id = any($10::uuid[]))
+                and ($11::uuid[] is null or d.folder_id = any($11::uuid[]))
            ), lexical as (
              select s.id, row_number() over (order by ts_rank_cd(s.tsv, w.q) desc, s.id) r
                from scope s, words w
@@ -379,13 +459,15 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
           [
             searchText(query, match),
             options.reranker ? CANDIDATES : take,
-            documentIds?.filter((id) => UUID.test(id)) ?? null,
+            documents?.filter((id) => UUID.test(id)) ?? null,
             match === "any",
             versionIds?.filter((id) => UUID.test(id)) ?? null,
             vector,
             CANDIDATES,
             options.embedder?.model ?? null,
             MAX_DISTANCE,
+            scope?.vault_ids?.filter((id) => UUID.test(id)) ?? null,
+            folders,
           ],
         );
         return result.rows;
@@ -418,9 +500,10 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
 
     async list(principal) {
       return asApp(pool, principal, async (db) => {
-        const { rows } = await db.query<SummaryRow>(`${SUMMARY_SQL} order by d.id desc limit $1`, [
-          LIST_LIMIT,
-        ]);
+        const { rows } = await db.query<SummaryRow>(
+          `${SUMMARY_SQL} and d.vault_id is null order by d.id desc limit $1`,
+          [LIST_LIMIT],
+        );
         return rows.map(toSummary);
       });
     },

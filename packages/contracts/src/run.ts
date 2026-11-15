@@ -41,6 +41,8 @@ export const Plan = z.object({
   steps: z.array(PlanStep),
   estimated_cost_usd: z.object({ low: z.number(), high: z.number() }),
   editable: z.boolean(),
+  // Files the plan won't read and why, so nothing is left out silently.
+  not_read: z.array(z.object({ name: z.string(), reason: z.string() })).optional(),
 });
 export type Plan = z.infer<typeof Plan>;
 

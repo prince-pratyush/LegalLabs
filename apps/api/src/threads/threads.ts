@@ -175,7 +175,12 @@ export interface Threads {
   /** Starts a planned deep analysis. False unless it is the caller's and awaiting approval. */
   approve(principal: Principal, runId: string, client: Client): Promise<boolean>;
   /** Re-plans with a plain-language change; the run stays awaiting approval. */
-  editPlan(principal: Principal, runId: string, instruction: string): Promise<boolean>;
+  editPlan(
+    principal: Principal,
+    runId: string,
+    instruction: string,
+    client: Client,
+  ): Promise<boolean>;
   favourite(principal: Principal, threadId: string, on: boolean): Promise<boolean>;
   share(
     principal: Principal,
@@ -456,6 +461,9 @@ const audit = (
 /** The run was cancelled or failed while its answer was being saved. */
 class RunStopped extends Error {}
 
+// Reading stops at 45 minutes; this leaves the report room to finish.
+const DEEP_DEADLINE_MS = 50 * 60_000;
+
 const RUN_MESSAGES = {
   MODEL_NOT_ALLOWED: "That model isn't available to you.",
   MODEL_UNAVAILABLE: "No model could answer just now. Try again shortly.",
@@ -620,8 +628,10 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     focus: string | null,
   ) {
     const emit = (event: NewEvent) => log.append(principal, run.id, event);
+    // A re-plan keeps the old plan if it fails, so it never reports the run as planned or failed.
+    const replanning = focus !== null;
     try {
-      await emit({ type: "status", status: "planned" });
+      if (!replanning) await emit({ type: "status", status: "planned" });
       const stored = await planDeep({ pool, ...options }, principal, documents, question, focus);
       const saved = await asApp(pool, principal, (db) =>
         db.query(
@@ -633,9 +643,10 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       if (saved.rowCount === 0) return;
       const { scope: _scope, ...shown } = stored;
       await emit({ type: "plan", plan: shown });
-      await emit({ type: "status", status: "awaiting_approval" });
+      if (!replanning) await emit({ type: "status", status: "awaiting_approval" });
     } catch (err) {
       console.error(`plan ${run.id} failed: ${err instanceof Error ? err.name : "unknown"}`);
+      if (replanning) return;
       await asApp(pool, principal, (db) =>
         db.query("update work.run set status = 'failed' where id = $1 and status = 'planned'", [
           run.id,
@@ -643,7 +654,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       ).catch(() => {});
       await log.append(principal, run.id, { type: "status", status: "failed" }).catch(() => {});
     } finally {
-      log.release(run.id);
+      // An approved run may already be writing to this log; its own work releases it.
+      if (!active.has(run.id)) log.release(run.id);
     }
   }
 
@@ -662,9 +674,23 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       await emit({ type: "status", status: "running" });
       const read = await readDeep(
         { pool, ...options },
-        { principal, scope: stored.scope, emit, cancelled: () => cancelled(run.id) },
+        {
+          principal,
+          scope: stored.scope,
+          emit,
+          cancelled: () => cancelled(run.id),
+          // Cancel or the deadline stops a model call mid-flight, not only between files.
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(DEEP_DEADLINE_MS)]),
+          budgetUsd: stored.estimated_cost_usd.high,
+        },
       );
-      if (cancelled(run.id)) return;
+      if (cancelled(run.id)) {
+        // What reading cost is kept even when the report is never written.
+        await asApp(pool, principal, (db) =>
+          db.query("update work.run set cost_usd = $2 where id = $1", [run.id, read.costUsd]),
+        ).catch(() => {});
+        return;
+      }
       const cited = new Set(read.findings.map((finding) => finding.document.versionId));
       const documents = stored.scope.read.filter((d) => cited.has(d.versionId));
       const note = `\n\n${coverageNote(read.coverage, read.unread)}`;
@@ -1127,12 +1153,25 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         const { rows } = await db.query<{ thread_id: string; plan: StoredPlan }>(
           `update work.run set status = 'running', updated_at = now()
             where id = $1 and kind = 'deep_analysis' and status = 'awaiting_approval'
+              and owner_id = $2
             returning thread_id, plan`,
-          [runId],
+          [runId, principal.userId],
         );
         const row = rows[0];
         if (row) {
-          await audit(db, principal, "run.approved", row.thread_id, { run_id: runId }, client);
+          await audit(
+            db,
+            principal,
+            "run.approved",
+            row.thread_id,
+            {
+              run_id: runId,
+              files_to_read: row.plan.scope.read.length,
+              files_not_read: row.plan.scope.skipped.length,
+              estimated_cost_usd: row.plan.estimated_cost_usd,
+            },
+            client,
+          );
         }
         return row ?? null;
       });
@@ -1143,7 +1182,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       return true;
     },
 
-    async editPlan(principal, runId, instruction) {
+    async editPlan(principal, runId, instruction, client) {
       if (!UUID.test(runId)) return false;
       const current = await asApp(pool, principal, async (db) => {
         const { rows } = await db.query<{ thread_id: string; plan: StoredPlan | null }>(
@@ -1155,6 +1194,17 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         return rows[0] ?? null;
       });
       if (!current?.plan) return false;
+      // The instruction's length only: what the user typed stays out of the audit log.
+      await asApp(pool, principal, (db) =>
+        audit(
+          db,
+          principal,
+          "run.plan_edited",
+          current.thread_id,
+          { run_id: runId, instruction_chars: instruction.length },
+          client,
+        ),
+      );
       const { scope } = current.plan;
       const documents = [...scope.read, ...scope.skipped.map((s) => s.document)].map((d) => ({
         ...d,
@@ -1177,8 +1227,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       const stopped = await asApp(pool, principal, async (db) => {
         const { rows } = await db.query<{ thread_id: string }>(
           `update work.run set status = 'cancelled', updated_at = now()
-            where id = $1 and status not in ('done', 'failed', 'cancelled') returning thread_id`,
-          [runId],
+            where id = $1 and owner_id = $2 and status not in ('done', 'failed', 'cancelled')
+            returning thread_id`,
+          [runId, principal.userId],
         );
         const threadId = rows[0]?.thread_id;
         if (threadId) {

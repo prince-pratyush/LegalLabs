@@ -23,6 +23,8 @@ const grant = `insert into core.share_grant
   values ($1, 'thread', $2, $3, $4, $5, $6, $7, $8)`;
 
 // Threads are shared only through work.share_thread, so direct writes use a vault.
+// Threads and vaults are shared only through their checked functions, so a table stands in.
+const tableGrant = grant.replace("'thread'", "'review_table'");
 const vaultGrant = grant.replace("'thread'", "'vault'");
 
 describe("has_access", () => {
@@ -101,11 +103,14 @@ describe("share_grant under row-level security", () => {
       await tx.as(s.ben, s.acme);
       const t5 = (await tx.one<{ id: string }>("select core.uuid7() as id")).id;
       expect(
-        await tx.error(vaultGrant, [s.acme, t5, "user", s.cal, "view", s.ana, null, null]),
+        await tx.error(tableGrant, [s.acme, t5, "user", s.cal, "view", s.ana, null, null]),
       ).toMatch(/row-level security/);
       expect(
-        await tx.error(vaultGrant, [s.acme, t5, "user", s.cal, "view", s.ben, null, null]),
+        await tx.error(tableGrant, [s.acme, t5, "user", s.cal, "view", s.ben, null, null]),
       ).toBeUndefined();
+      expect(
+        await tx.error(vaultGrant, [s.acme, t5, "user", s.cal, "view", s.ben, null, null]),
+      ).toMatch(/row-level security/);
     });
   });
 

@@ -51,7 +51,7 @@ export type ModelInfo = {
 };
 
 export type Gateway = {
-  call(request: GatewayCall): Promise<GatewayResult>;
+  call(request: GatewayCall, signal?: AbortSignal): Promise<GatewayResult>;
   /** A signal stops the model, so a cancelled answer stops costing. */
   stream(
     request: GatewayCall,
@@ -189,11 +189,15 @@ export function createGateway(options: GatewayOptions): Gateway {
   }
 
   return {
-    call: (request) =>
+    call: (request, signal) =>
       run(
         request,
-        (provider, providerRequest) => provider.complete(providerRequest),
-        () => false,
+        (provider, providerRequest) => {
+          if (signal?.aborted) throw new Error("aborted");
+          return provider.complete(signal ? { ...providerRequest, signal } : providerRequest);
+        },
+        // A cancelled call must not fall back to another model.
+        () => signal?.aborted === true,
       ),
 
     stream(request, onText, signal) {

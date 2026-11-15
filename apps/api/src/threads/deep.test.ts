@@ -5,7 +5,7 @@ import type { Principal } from "../auth/auth.js";
 import type { Documents } from "../documents/documents.js";
 import { type Seeded, seedMember, testDocuments, testPool, testThreads } from "../test-db.js";
 import type { ScopeDocument } from "./answer.js";
-import { coverageNote, planDeep, READ_CAP } from "./deep.js";
+import { coverageNote, planDeep, READ_CAP, readDeep } from "./deep.js";
 
 const pool = testPool();
 afterAll(() => pool.end());
@@ -85,7 +85,9 @@ describe("deep analysis", () => {
     });
     expect(planned && "plan" in planned && "scope" in planned.plan).toBe(false);
 
-    expect(await threads.editPlan(principal, asked.runId, "Focus on termination")).toBe(true);
+    expect(await threads.editPlan(principal, asked.runId, "Focus on termination", client)).toBe(
+      true,
+    );
     expect((await threads.run(principal, asked.runId))?.status).toBe("awaiting_approval");
 
     expect(await threads.approve(principal, asked.runId, client)).toBe(true);
@@ -135,7 +137,72 @@ describe("deep analysis", () => {
 
     expect(await threads.approve(asPrincipal(other), deep.runId, client)).toBe(false);
     expect(await threads.approve(asPrincipal(m), plain.runId, client)).toBe(false);
-    expect(await threads.editPlan(asPrincipal(other), deep.runId, "x")).toBe(false);
+    expect(await threads.editPlan(asPrincipal(other), deep.runId, "x", client)).toBe(false);
+  });
+});
+
+describe("the readers", () => {
+  const scopeOf = async (m: Seeded, provider: ModelProvider) => {
+    const { documents, ids } = await room(m);
+    const gateway = createGateway({
+      providers: { anthropic: provider },
+      recordUsage: async () => {},
+    });
+    const all = await documents.list(asPrincipal(m));
+    const scope = all
+      .filter((d) => ids.includes(d.id))
+      .map((d) => ({ id: d.id, versionId: d.versionId, versionNo: 1, name: d.name, pageCount: 1 }));
+    const plan = await planDeep(
+      { pool, gateway, documents },
+      asPrincipal(m),
+      scope,
+      "Risky terms?",
+      null,
+    );
+    return { deps: { pool, gateway, documents }, plan };
+  };
+  const quiet = async () => {};
+
+  it("stop at the cost cap and say which files they left", async () => {
+    const m = await seedMember(pool);
+    const { deps, plan } = await scopeOf(m, reviewer().provider);
+    expect(plan.estimated_cost_usd.low).toBeGreaterThan(0);
+    expect(plan.estimated_cost_usd.high).toBeGreaterThanOrEqual(plan.estimated_cost_usd.low);
+
+    const read = await readDeep(deps, {
+      principal: asPrincipal(m),
+      scope: plan.scope,
+      emit: quiet,
+      cancelled: () => false,
+      signal: new AbortController().signal,
+      budgetUsd: 1e-9,
+    });
+
+    expect(read.coverage.docs_read).toBeLessThan(3);
+    expect(read.unread.map((u) => u.reason)).toContain("Run cost limit reached");
+  });
+
+  it("read nothing once stopped, and list every file as not read", async () => {
+    const m = await seedMember(pool);
+    const model = reviewer();
+    const { deps, plan } = await scopeOf(m, model.provider);
+    const stopped = new AbortController();
+    stopped.abort();
+
+    const read = await readDeep(deps, {
+      principal: asPrincipal(m),
+      scope: plan.scope,
+      emit: quiet,
+      cancelled: () => false,
+      signal: stopped.signal,
+      budgetUsd: 0,
+    });
+
+    expect(model.calls).toHaveLength(0);
+    expect(read.unread).toHaveLength(3);
+    expect(new Set(read.unread.map((u) => u.reason))).toEqual(
+      new Set(["Stopped before it was read"]),
+    );
   });
 });
 

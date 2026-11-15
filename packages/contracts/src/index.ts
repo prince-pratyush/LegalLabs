@@ -1,6 +1,7 @@
 export { AuditAction, AuditActorType, auditActions } from "./audit.js";
 export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
+export { RetrievalScope } from "./retrieval.js";
 export {
   CitationCounts,
   CitationEvent,
@@ -31,4 +32,35 @@ export {
   type VaultPort,
   type VaultSummary,
 } from "./thread.js";
+export {
+  ContentControls,
+  FILE_TYPE_LIMITS,
+  FileState,
+  fileTypeLimit,
+  hasAccess,
+  RetentionHours,
+  UploadRejection,
+  VAULT_LIMITS,
+  VaultAccess,
+  VaultGrant,
+  VaultLevel,
+} from "./vault.js";
+export {
+  Anchor,
+  CitationStatus,
+  citationHref,
+  DocumentHit,
+  type DocumentLocation,
+  DocumentStatus,
+  MAX_LAYOUT_PAGES,
+  type OpenCitation,
+  type OpenCitationOptions,
+  PageLayout,
+  PageLine,
+  PageSize,
+  parseDocumentHref,
+  RenderKind,
+  RenderManifest,
+  viewerPaths,
+} from "./viewer.js";
 export { Wall, WallMode } from "./wall.js";
