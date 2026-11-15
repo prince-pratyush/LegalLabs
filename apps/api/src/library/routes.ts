@@ -33,6 +33,11 @@ const FAILURES: Record<LibraryFailure, { status: 400 | 403 | 404 | 413; message:
   INVALID_GRANTS: { status: 400, message: "Check who you're sharing with." },
   NOT_DOCX: { status: 400, message: "Upload a Word document or template (.docx or .dotx)." },
   MACROS: { status: 400, message: "Templates with macros can't be used. Save it without macros." },
+  ACTIVE_CONTENT: {
+    status: 400,
+    message:
+      "Templates can't contain embedded objects or links to other files. Remove them and save again.",
+  },
   STRICT: { status: 400, message: "Save the template as a standard Word document, not Strict." },
   TOO_LARGE: { status: 413, message: "A template can be up to 10 MB." },
 };

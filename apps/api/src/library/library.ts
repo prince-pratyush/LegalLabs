@@ -80,6 +80,7 @@ export type LibraryFailure =
   | "INVALID_GRANTS"
   | "NOT_DOCX"
   | "MACROS"
+  | "ACTIVE_CONTENT"
   | "STRICT"
   | "TOO_LARGE";
 
@@ -520,10 +521,11 @@ export function createLibrary(pool: pg.Pool): Library {
     },
 
     async createTemplate(p, fields, file, client) {
-      const read = readUpload(file);
-      if (!read.ok) return read;
       return attempt(p, async (db) => {
+        // Who may upload is checked before the file is read, so nobody else can make us parse.
         await allowed(db, "library.manage");
+        const read = readUpload(file);
+        if (!read.ok) throw new Refused(read.reason);
         const { rows } = await db.query<{ id: string }>(
           `insert into library.template (workspace_id, owner_id, name, description, instructions)
            values ($1, $2, $3, $4, $5) returning id`,
@@ -547,10 +549,10 @@ export function createLibrary(pool: pg.Pool): Library {
 
     async addVersion(p, id, file, note, client) {
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
-      const read = readUpload(file);
-      if (!read.ok) return read;
       return attempt(p, async (db) => {
         await editable(db, id);
+        const read = readUpload(file);
+        if (!read.ok) throw new Refused(read.reason);
         const no = await addVersionRow(db, p, id, file, read.value, { note });
         await audit(db, p, client, "template.version_added", "template", id, { no });
         return templateView(await mustFind(template(db, id)));
@@ -692,16 +694,21 @@ export function createLibrary(pool: pg.Pool): Library {
         if (!(kind === "prompt" ? await prompt(db, id) : await template(db, id))) {
           throw new Refused("NOT_FOUND");
         }
-        const { rows } = await db.query<{
-          principal_type: string;
-          principal_id: string;
-          level: string;
-          change: "added" | "changed" | "removed" | "kept";
-        }>("select * from library.set_shares($1, $2, $3::jsonb)", [
-          kind,
-          id,
-          JSON.stringify(grants),
-        ]);
+        const { rows } = await db
+          .query<{
+            principal_type: string;
+            principal_id: string;
+            level: string;
+            change: "added" | "changed" | "removed" | "kept";
+          }>("select * from library.set_shares($1, $2, $3::jsonb)", [
+            kind,
+            id,
+            JSON.stringify(grants),
+          ])
+          .catch((err: { code?: string }) => {
+            // A group or workspace from elsewhere fails core.check_principal.
+            throw err.code === "23503" ? new Refused("INVALID_GRANTS") : err;
+          });
         for (const r of rows) {
           if (r.change === "kept") continue;
           await audit(db, p, client, actions[r.change], objectType, id, {
