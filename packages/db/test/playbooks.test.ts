@@ -170,12 +170,19 @@ describe("playbooks", () => {
   it("hide a deleted playbook, and let only a manager delete", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
-      const remove = (user: string) =>
-        tx.error("update work.playbook set deleted_at = now(), deleted_by = $1", [user]);
+      const remove = async () =>
+        (
+          await tx.one<{ ok: boolean }>("select work.delete_playbook($1) as ok", [
+            s.playbooks.acme.playbookId,
+          ])
+        ).ok;
       await tx.as(s.ben, s.acme);
-      expect(await remove(s.ben)).toMatch(/needs manage/);
+      expect(await remove()).toBe(false);
+      expect(await tx.error("update work.playbook set deleted_at = now()")).toMatch(
+        /permission denied/,
+      );
       await tx.as(s.ana, s.acme);
-      expect(await remove(s.ana)).toBeUndefined();
+      expect(await remove()).toBe(true);
       expect(await visible(tx)).toEqual([]);
     });
   });

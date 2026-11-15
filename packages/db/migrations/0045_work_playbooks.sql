@@ -149,7 +149,7 @@ create trigger playbook_guard before update on work.playbook
   for each row execute function work.playbook_guard();
 
 grant select, insert on work.playbook to legallabs_app;
-grant update (name, contract_type, status, version_id, owner_id, updated_at, deleted_at, deleted_by)
+grant update (name, contract_type, status, version_id, owner_id, updated_at)
   on work.playbook to legallabs_app;
 create policy playbook_read on work.playbook for select to legallabs_app
   using (core.in_tenant(workspace_id) and deleted_at is null
@@ -164,6 +164,24 @@ create policy playbook_insert on work.playbook for insert to legallabs_app
 create policy playbook_update on work.playbook for update to legallabs_app
   using (core.in_tenant(workspace_id) and work.playbook_level(id) in ('edit', 'manage'))
   with check (core.in_tenant(workspace_id));
+
+-- A function, since the deleted row would no longer pass the read policy it is checked against.
+create function work.delete_playbook(p_playbook uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  if work.playbook_level(p_playbook) is distinct from 'manage' then
+    return false;
+  end if;
+  update work.playbook set deleted_at = now(), deleted_by = core.current_user_id()
+   where id = p_playbook;
+  return true;
+end
+$$;
+grant update (deleted_at, deleted_by) on work.playbook to legallabs_definer;
+create policy definer_delete on work.playbook for update to legallabs_definer
+  using (true) with check (true);
+alter function work.delete_playbook(uuid) owner to legallabs_definer;
+grant execute on function work.delete_playbook(uuid) to legallabs_app;
 
 grant select, insert on work.playbook_version to legallabs_app;
 create policy playbook_version_read on work.playbook_version for select to legallabs_app
