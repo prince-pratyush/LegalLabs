@@ -23,6 +23,12 @@
   --color-external-bg: var(--external-bg);
   --color-destructive: var(--destructive);
   --color-warning: var(--warning);
+  --color-flag-red: var(--flag-red);
+  --color-flag-orange: var(--flag-orange);
+  --color-flag-yellow: var(--flag-yellow);
+  --color-flag-green: var(--flag-green);
+  --color-flag-blue: var(--flag-blue);
+  --color-flag-purple: var(--flag-purple);
   --color-transparent: transparent;
   --color-current: currentColor;
 

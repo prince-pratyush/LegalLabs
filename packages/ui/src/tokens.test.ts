@@ -63,6 +63,23 @@ describe.each(["light", "dark"] as Theme[])("%s theme", (theme) => {
     }
   }
 
+  // Flag rules and icons are marks, not text, so 3:1 is enough.
+  const flags = [
+    "flagRed",
+    "flagOrange",
+    "flagYellow",
+    "flagGreen",
+    "flagBlue",
+    "flagPurple",
+  ] as const;
+  for (const flag of flags) {
+    for (const bg of surfaces) {
+      it(`${flag} on ${bg} is at least 3:1`, () => {
+        expect(contrast(c[flag], c[bg])).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+
   for (const fill of ["accent", "destructive"] as const) {
     it(`button text on ${fill} is at least 4.5:1`, () => {
       expect(contrast(c.bg, c[fill])).toBeGreaterThanOrEqual(4.5);
