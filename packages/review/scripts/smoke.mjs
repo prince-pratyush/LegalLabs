@@ -79,7 +79,11 @@ const outcome = await runReview(
   },
   {
     complete,
-    onEvent: (e) => console.error(`${((performance.now() - started) / 1000).toFixed(1)}s ${e.type}`),
+    // A slow machine can raise the 60 s per-rule budget: RULE_TIMEOUT_MS=600000.
+    ruleTimeoutMs: Number(process.env.RULE_TIMEOUT_MS ?? 60_000),
+    concurrency: Number(process.env.CONCURRENCY ?? 8),
+    onEvent: (e) =>
+      console.error(`${((performance.now() - started) / 1000).toFixed(1)}s ${e.type}`),
   },
 );
 console.log(JSON.stringify(outcome, null, 2));
