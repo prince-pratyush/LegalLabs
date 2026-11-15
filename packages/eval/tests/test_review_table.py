@@ -270,6 +270,13 @@ def test_maud_plain_and_cited(maud_file: Path, tmp_path: Path) -> None:
     assert by_contract["c2"].answer == "All Stock"
 
 
+def test_spread_sample_sets_the_corpus(cuad_file: Path) -> None:
+    suite = ReviewTableE2e(local=cuad_file)
+    suite.load_tasks()
+    suite.selected([])
+    assert suite.corpus() == []
+
+
 def test_spread_takes_evenly_spaced_tasks(maud_file: Path, tmp_path: Path) -> None:
     suite = ExtractMaud(local=maud_file)
     system = {"harness": "model", "vendor": "ollama", "params": {"model": "m"}}

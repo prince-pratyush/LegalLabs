@@ -323,8 +323,12 @@ class ReviewTableE2e(Suite):
                 )
             )
         tasks = tasks[:limit] if limit else tasks
-        self.docs = [Document(t.metadata["name"], t.context or "") for t in tasks]
+        self.selected(tasks)
         return tasks
+
+    def selected(self, tasks: list[TaskDatum]) -> None:
+        # Only the rows being scored are uploaded, so a sample doesn't index all 100.
+        self.docs = [Document(t.metadata["name"], t.context or "") for t in tasks]
 
     def corpus(self) -> list[Document]:
         return self.docs

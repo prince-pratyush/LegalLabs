@@ -87,6 +87,7 @@ class Runner:
             tasks = every[::step][:limit]
         else:
             tasks = self.suite.load_tasks(limit)
+        self.suite.selected(tasks)
         grader = self.suite.make_grader(self.harness.vendors)
         self.harness.prepare(self.suite.corpus())
         try:

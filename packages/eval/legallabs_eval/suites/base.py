@@ -26,6 +26,9 @@ class Suite:
     def corpus(self) -> list[Document]:
         return []
 
+    def selected(self, tasks: list[TaskDatum]) -> None:
+        """Told which tasks the run kept, for suites whose corpus follows the tasks."""
+
     def make_grader(self, system_vendors: frozenset[str]) -> Grader:
         raise NotImplementedError
 
