@@ -1,9 +1,9 @@
 import { Checkbox, Label } from "@legallabs/ui";
 import { useId } from "react";
-import { ApiError } from "../api.js";
+import { messageOf } from "../api.js";
 
-const FALLBACK = "Something went wrong. Try again.";
-export const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
+// Re-exported, since the vault and library pages import it from here.
+export { messageOf };
 
 export const formatBytes = (bytes: number) => {
   const units = ["B", "KB", "MB", "GB", "TB"];

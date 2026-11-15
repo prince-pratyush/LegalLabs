@@ -9,6 +9,8 @@ import {
   type ScopeOptions,
   type Thread,
 } from "../api.js";
+import { PromptPicker } from "../library/PromptPicker.js";
+import { takeComposerPrefill } from "../library/prefill.js";
 import { documentStatus } from "../text.js";
 import { toBlocks } from "./compose.js";
 
@@ -40,7 +42,8 @@ export function ThreadComposer({
   onSend: (input: AskInput) => Promise<boolean>;
   onStop: () => void;
 }) {
-  const [draft, setDraft] = useState("");
+  // A prompt sent from the Library arrives in a new thread once, ready to edit and send.
+  const [draft, setDraft] = useState(() => (thread ? "" : (takeComposerPrefill() ?? "")));
   const [mentions, setMentions] = useState<Mentionable[]>([]);
   const [uploads, setUploads] = useState<DocumentSummary[]>([]);
   const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
@@ -203,6 +206,9 @@ export function ThreadComposer({
           setMentions((list) => [...list.filter((m) => m.label !== item.label), item])
         }
       />
+      <div className="flex justify-end">
+        <PromptPicker onPick={setDraft} />
+      </div>
       {failures.map((line) => (
         <p key={line} role="status" className="px-1 text-caption text-destructive">
           {line}

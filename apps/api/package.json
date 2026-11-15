@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@legallabs/contracts": "workspace:*",
@@ -24,7 +25,9 @@
     "@legallabs/ingest": "workspace:*",
     "@legallabs/knowledge": "workspace:*",
     "@legallabs/model-gateway": "workspace:*",
+    "@legallabs/review": "workspace:*",
     "@legallabs/storage": "workspace:*",
+    "fflate": "0.8.3",
     "@node-rs/argon2": "2.2.2",
     "hono": "4.13.17",
     "pg": "8.23.1",
@@ -32,7 +35,7 @@
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
-    "fflate": "0.8.3",
+    "aws4fetch": "1.0.20",
     "vitest": "5.1.0"
   }
 }

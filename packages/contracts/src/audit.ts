@@ -34,6 +34,7 @@ const objectVerbs = [
 export const auditActions: string[] = [
   "logout",
   ...family("login", ["success", "failure", "mfa_challenge"]),
+  "addin.signed_in",
   ...family("session", ["revoked", "rotated"]),
   ...family("token", ["created", "rotated", "revoked", "used_denied"]),
   ...family("guest", ["code_sent", "code_failed"]),
@@ -68,6 +69,11 @@ export const auditActions: string[] = [
     "downloaded",
     "previewed",
   ]),
+
+  ...family("playbook", ["published", "unpublished", "grant_changed", "generated"]),
+  ...family("playbook_review", ["started", "finished", "cancelled"]),
+  ...family("suggestion", ["applied", "dismissed", "revised", "alternates_requested"]),
+  ...family("review", ["exported", "redline_downloaded"]),
 
   ...family("share", [
     "granted",

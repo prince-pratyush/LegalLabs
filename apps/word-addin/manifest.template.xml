@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+  <Id>c4ed8806-78dc-4627-9b34-c5869aff3781</Id>
+  <Version>0.1.0.0</Version>
+  <ProviderName>LegalLabs</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="LegalLabs"/>
+  <Description DefaultValue="Ask about the open document, review it against a playbook, proofread and translate, with every edit as a tracked change."/>
+  <IconUrl DefaultValue="{{ORIGIN}}/addin/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="{{ORIGIN}}/addin/icon-64.png"/>
+  <SupportUrl DefaultValue="{{ORIGIN}}/"/>
+  <AppDomains>
+    <AppDomain>{{ORIGIN}}</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="WordApi" MinVersion="1.1"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="{{ORIGIN}}/addin/taskpane.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Title"/>
+            <Description resid="Description"/>
+            <LearnMoreUrl resid="Home"/>
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="LegalLabs.Group">
+                <Label resid="Title"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon16"/>
+                  <bt:Image size="32" resid="Icon32"/>
+                  <bt:Image size="80" resid="Icon80"/>
+                </Icon>
+                <Control xsi:type="Button" id="LegalLabs.Open">
+                  <Label resid="Title"/>
+                  <Supertip>
+                    <Title resid="Title"/>
+                    <Description resid="Description"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon16"/>
+                    <bt:Image size="32" resid="Icon32"/>
+                    <bt:Image size="80" resid="Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>LegalLabs.Pane</TaskpaneId>
+                    <SourceLocation resid="Pane"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon16" DefaultValue="{{ORIGIN}}/addin/icon-16.png"/>
+        <bt:Image id="Icon32" DefaultValue="{{ORIGIN}}/addin/icon-32.png"/>
+        <bt:Image id="Icon80" DefaultValue="{{ORIGIN}}/addin/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Pane" DefaultValue="{{ORIGIN}}/addin/taskpane.html"/>
+        <bt:Url id="Home" DefaultValue="{{ORIGIN}}/"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Title" DefaultValue="LegalLabs"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Description" DefaultValue="Ask, review, proofread and translate with tracked changes."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

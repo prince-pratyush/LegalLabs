@@ -205,6 +205,7 @@ export class ApiError extends Error {
 
 const FALLBACK = "Something went wrong. Try again.";
 
+/** What to tell the person: the server's own words when it gave any. */
 export const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {

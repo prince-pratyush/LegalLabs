@@ -7,10 +7,16 @@ import {
   type PaletteCommand,
   setThemeSetting,
 } from "@legallabs/ui";
-import { History, Library, SquarePen } from "lucide-react";
+import { BookMarked, ClipboardList, History, Library, SquarePen } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
+import { LibraryApp } from "./library/LibraryApp.js";
+import { libraryHash, parseLibraryRoute } from "./library/route.js";
+import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
+import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
+import { ReviewsApp } from "./reviews/ReviewsApp.js";
+import { parseReviewRoute } from "./reviews/route.js";
 import { navigate, parseRoute, paths, useHash } from "./router.js";
 import { Shell, ShellContext, type ShellProps } from "./shell.js";
 import { ThreadScreen } from "./thread/ThreadScreen.js";
@@ -43,7 +49,13 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseVaultRoute(hash) ? (
+        {parseReviewRoute(hash) ? (
+          <ReviewsApp onLeave={() => navigate(paths.new)} />
+        ) : parsePlaybookRoute(hash) ? (
+          <PlaybooksApp onLeave={() => navigate(paths.new)} />
+        ) : parseLibraryRoute(hash) ? (
+          <LibraryApp onLeave={() => navigate(paths.new)} />
+        ) : parseVaultRoute(hash) ? (
           <VaultsApp onLeave={() => navigate(paths.new)} />
         ) : (
           <Workspace hash={hash} onSignedOut={() => setSignedIn(false)} />
@@ -184,6 +196,20 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => go({ page: "list" }),
     },
     {
+      id: "playbooks",
+      kind: "action",
+      group: "Go to",
+      label: "Playbooks",
+      run: () => goPlaybooks({ page: "list" }),
+    },
+    {
+      id: "library",
+      kind: "action",
+      group: "Go to",
+      label: "Library",
+      run: () => navigate(libraryHash().slice(1)),
+    },
+    {
       id: "history",
       kind: "action",
       group: "Actions",
@@ -247,6 +273,24 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <Library aria-hidden />
           Vaults
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => goPlaybooks({ page: "list" })}
+        >
+          <ClipboardList aria-hidden />
+          Playbooks
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => navigate(libraryHash().slice(1))}
+        >
+          <BookMarked aria-hidden />
+          Library
         </Button>
       </div>
       <section className="grid gap-2" aria-labelledby="recents-heading">
