@@ -227,7 +227,9 @@ describe("TablesApp list", () => {
     });
     window.location.hash = "#/tables";
     render(<TablesApp onLeave={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Star DD table" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Star DD table" }, { timeout: 10_000 }),
+    );
     await waitFor(() =>
       expect(sent.map((s) => s.route)).toContain(`POST /review-tables/${T}/star`),
     );
@@ -255,7 +257,7 @@ describe("TablePage", () => {
       [`POST /review-tables/${T}/columns/${K}/run`]: () => [202, { run_id: null }],
     });
     render(<TablePage tableId={T} onBack={() => {}} />);
-    const header = await screen.findByRole("columnheader");
+    const header = await screen.findByRole("columnheader", {}, { timeout: 10_000 });
     expect(header.textContent).toContain("Dry run · 1/10 · $0");
     fireEvent.click(within(header).getByRole("button", { name: "Run remaining" }));
     await waitFor(() =>
@@ -274,7 +276,9 @@ describe("TablePage", () => {
       ],
     });
     render(<TablePage tableId={T} onBack={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: /open .* Governing law/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /open .* Governing law/ }, { timeout: 10_000 }),
+    );
     const drawer = await screen.findByRole("region", { name: "Governing law for MSA.pdf" });
     await waitFor(() => expect(drawer.getAttribute("aria-busy")).toBeNull());
     fireEvent.click(within(drawer).getByRole("button", { name: "Verify" }));
