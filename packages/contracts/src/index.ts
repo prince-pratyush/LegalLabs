@@ -63,6 +63,7 @@ export {
   StarterTemplate,
   Suggestion,
   SuggestionStatus,
+  Text,
   Usage,
 } from "./playbook.js";
 export { RetrievalScope } from "./retrieval.js";

@@ -180,11 +180,61 @@ describe("PlaybookPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save version" }));
     await waitFor(() => expect(screen.getByText("Version 3")).toBeTruthy());
     const patch = sent.find((s) => s.route.startsWith("PATCH"))?.body as {
+      base_version_no: number;
       name: string;
       rules: { id: string }[];
     };
+    expect(patch.base_version_no).toBe(2);
     expect(patch.name).toBe("SaaS MSA v3");
     expect(patch.rules[0]?.id).toBe(RULE);
+  });
+
+  it("keeps edits and offers a reload when someone else saved first", async () => {
+    let version = 2;
+    serve({
+      [`GET /api/v1/playbooks/${ID}`]: () => [200, { playbook: playbook({ version_no: version }) }],
+      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { versions }],
+      [`PATCH /api/v1/playbooks/${ID}`]: () => [
+        409,
+        { code: "STALE", message: "Someone else saved this playbook since you opened it." },
+      ],
+    });
+    render(
+      <TooltipProvider>
+        <PlaybookPage playbookId={ID} version={null} onChanged={vi.fn()} />
+      </TooltipProvider>,
+    );
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Mine" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save version" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Someone else changed/);
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Mine");
+    version = 3;
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(screen.getByText("Version 3")).toBeTruthy());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("tells an editor when readers still get an older published version", async () => {
+    serve({
+      [`GET /api/v1/playbooks/${ID}`]: () => [
+        200,
+        {
+          playbook: playbook({
+            status: "published",
+            published_version_no: 1,
+            has_unpublished_changes: true,
+          }),
+        },
+      ],
+      [`GET /api/v1/playbooks/${ID}/versions`]: () => [200, { versions }],
+    });
+    render(
+      <TooltipProvider>
+        <PlaybookPage playbookId={ID} version={null} onChanged={vi.fn()} />
+      </TooltipProvider>,
+    );
+    expect(await screen.findByText(/Readers and reviews still get version 1/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Publish changes" })).toBeTruthy();
   });
 
   it("publishes for an approver and shows the API's refusal", async () => {

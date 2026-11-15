@@ -3,15 +3,17 @@ import {
   PlaybookGrants,
   PlaybookPatch,
   PlaybookStatus,
+  Text,
 } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
+import type { Limiter } from "../auth/limiter.js";
 import type { PlaybookFailure, Playbooks } from "./playbooks.js";
 
 type Env = { Variables: { principal: Principal } };
-type Status = 400 | 403 | 404 | 413 | 422 | 503;
+type Status = 400 | 403 | 404 | 409 | 413 | 422 | 503;
 
 const FAILURES: Record<PlaybookFailure, { status: Status; message: string }> = {
   NOT_FOUND: { status: 404, message: "That playbook or document wasn't found." },
@@ -31,6 +33,14 @@ const FAILURES: Record<PlaybookFailure, { status: Status; message: string }> = {
     status: 503,
     message: "No model could read the document. Try again shortly.",
   },
+  STALE: {
+    status: 409,
+    message: "Someone else saved this playbook since you opened it. Reload to see their changes.",
+  },
+  INVALID_CONDITION: {
+    status: 422,
+    message: "A rule's condition must point at another rule here, without going in a circle.",
+  },
 };
 
 // The contract's refinements name these codes, so they reach the client as themselves.
@@ -42,20 +52,27 @@ const RULE_MESSAGES: Record<(typeof RULE_ERRORS)[number], string> = {
 
 const listQuery = z.object({
   status: PlaybookStatus.optional(),
-  contract_type: z.string().max(100).optional(),
-  q: z.string().max(200).optional(),
+  contract_type: Text(100).optional(),
+  q: Text(200).optional(),
 });
+// The version the editor started from, so a save can't silently undo someone else's.
+const PatchBody = PlaybookPatch.extend({ base_version_no: z.number().int().min(1) });
 const versionNo = z.coerce
   .number()
   .int()
   .min(1)
   .max(2 ** 31 - 1);
 
-export function playbookHttp(playbooks: Playbooks, clientOf: (c: Context) => Client) {
+/** `asks` is the threads' limiter, so drafting rules counts against the same model budget. */
+export function playbookHttp(
+  playbooks: Playbooks,
+  clientOf: (c: Context) => Client,
+  asks?: Limiter,
+) {
   const app = new Hono<Env>();
-  // 200 rules of a few thousand characters each fit well inside this.
+  // The same cap as drafts; 200 rules of a few thousand characters each fit inside it.
   const limitBody = bodyLimit({
-    maxSize: 8 * 1024 * 1024,
+    maxSize: 4 * 1024 * 1024,
     onError: (c) => c.json({ code: "TOO_LARGE", message: "That request is too large." }, 413),
   });
 
@@ -98,6 +115,18 @@ export function playbookHttp(playbooks: Playbooks, clientOf: (c: Context) => Cli
   app.post("/playbooks", limitBody, async (c) => {
     const body = await parse(c, PlaybookCreate);
     if (!("data" in body)) return body.response;
+    if (body.data.source.kind === "document") {
+      // Checked first, so someone who can't create never spends a model call or an ask.
+      if (!(await playbooks.canCreate(c.get("principal")))) return fail(c, "FORBIDDEN");
+      const wait = asks?.take(c.get("principal").userId) ?? 0;
+      if (wait > 0) {
+        c.header("Retry-After", String(wait));
+        return c.json(
+          { code: "TOO_MANY_REQUESTS", message: "You've asked a lot just now. Try again shortly." },
+          429,
+        );
+      }
+    }
     const result = await playbooks.create(c.get("principal"), body.data, clientOf(c));
     if (!result.ok) return fail(c, result.reason);
     return c.json(
@@ -115,12 +144,18 @@ export function playbookHttp(playbooks: Playbooks, clientOf: (c: Context) => Cli
   });
 
   app.patch("/playbooks/:id", limitBody, async (c) => {
-    const body = await parse(c, PlaybookPatch);
+    const body = await parse(c, PatchBody);
     if (!("data" in body)) return body.response;
+    const { base_version_no, ...patch } = body.data;
+    // An empty change would only add a version identical to the last one.
+    if (Object.keys(patch).length === 0) {
+      return c.json({ code: "INVALID_REQUEST", message: "There is nothing to change." }, 400);
+    }
     const result = await playbooks.update(
       c.get("principal"),
       c.req.param("id"),
-      body.data,
+      patch,
+      base_version_no,
       clientOf(c),
     );
     return result.ok ? c.json({ playbook: result.playbook }) : fail(c, result.reason);

@@ -36,7 +36,9 @@ export type PlaybookFailure =
   | "NO_PARSEABLE_INPUT"
   | "DOC_TOO_LARGE"
   | "NO_RULES_FOUND"
-  | "MODEL_UNAVAILABLE";
+  | "MODEL_UNAVAILABLE"
+  | "STALE"
+  | "INVALID_CONDITION";
 
 export type PlaybookResult =
   | { ok: true; playbook: Playbook; generation?: { parts_read: number; parts_total: number } }
@@ -51,12 +53,16 @@ export interface ListFilter {
 export interface Playbooks {
   list(principal: Principal, filter: ListFilter): Promise<PlaybookSummary[]>;
   get(principal: Principal, id: string): Promise<Playbook | null>;
+  /** Whether the caller may create playbooks, asked before any model call is spent. */
+  canCreate(principal: Principal): Promise<boolean>;
   create(principal: Principal, input: CreateInput, client: Client): Promise<PlaybookResult>;
   /** Every saved change is a new version, so a review always names what it ran against. */
   update(
     principal: Principal,
     id: string,
     patch: PatchInput,
+    /** The version the caller edited; another save since then is refused, not overwritten. */
+    baseVersionNo: number,
     client: Client,
   ): Promise<PlaybookResult>;
   setStatus(
@@ -127,7 +133,14 @@ export function assignIds(rules: readonly In[], previous: readonly StoredRule[])
       r.condition?.kind === "rule_status" && renamed.has(r.condition.rule_id)
         ? { ...r.condition, rule_id: renamed.get(r.condition.rule_id) ?? r.condition.rule_id }
         : r.condition;
-    const provenance = r.provenance !== undefined ? r.provenance : known.get(id)?.provenance;
+    // A rewritten position no longer rests on the quoted source, so its provenance goes.
+    const before = known.get(id);
+    const provenance =
+      r.provenance !== undefined
+        ? r.provenance
+        : before?.standard_position === r.standard_position
+          ? before?.provenance
+          : undefined;
     const { provenance: _drop, ...rest } = r;
     return {
       ...rest,
@@ -137,6 +150,28 @@ export function assignIds(rules: readonly In[], previous: readonly StoredRule[])
       ...(provenance !== undefined ? { provenance } : {}),
     } as StoredRule;
   });
+}
+
+/**
+ * A rule_status condition must point at another rule in the same set, and the chain
+ * of such conditions must not loop, or a review could never decide where to start.
+ */
+export function conditionsHold(rules: readonly StoredRule[]): boolean {
+  const next = new Map<string, string>();
+  for (const r of rules) {
+    if (r.condition?.kind === "rule_status") next.set(r.id, r.condition.rule_id);
+  }
+  const ids = new Set(rules.map((r) => r.id));
+  for (const [from, to] of next) if (to === from || !ids.has(to)) return false;
+  // Each rule has at most one condition, so following it either ends or comes back.
+  for (const start of next.keys()) {
+    const seen = new Set<string>([start]);
+    for (let at = next.get(start); at !== undefined; at = next.get(at)) {
+      if (seen.has(at)) return false;
+      seen.add(at);
+    }
+  }
+  return true;
 }
 
 /** Copies for a clone: every id is new, and conditions follow. */
@@ -158,16 +193,26 @@ interface Row {
   guidance: string | null;
   rule_count: number;
   access: PlaybookLevel;
+  published_version_id: string | null;
+  published_version_no: number | null;
+  has_unpublished_changes: boolean;
   created_at: Date;
   updated_at: Date;
 }
 
+// Editors get the latest draft; everyone else the published version, never a draft.
 const select = (extra = "") => `
-  select${extra} p.id, p.workspace_id, p.owner_id, p.name, p.contract_type, p.status, p.version_id,
-         v.no version_no, v.guidance, jsonb_array_length(v.rules) rule_count,
-         work.playbook_level(p.id) access, p.created_at, p.updated_at
-    from work.playbook p
-    join work.playbook_version v on v.id = p.version_id`;
+  select${extra} p.id, p.workspace_id, p.owner_id, v.name, v.contract_type, p.status,
+         v.id version_id, v.no version_no, v.guidance, jsonb_array_length(v.rules) rule_count,
+         p.access, p.published_version_id, pv.no published_version_no,
+         (p.access in ('edit', 'manage') and p.published_version_id is not null
+          and p.published_version_id <> p.version_id) has_unpublished_changes,
+         p.created_at, p.updated_at
+    from (select p.*, work.playbook_level(p.id) access from work.playbook p) p
+    join work.playbook_version v
+      on v.id = case when p.access in ('edit', 'manage') then p.version_id
+                     else p.published_version_id end
+    left join work.playbook_version pv on pv.id = p.published_version_id`;
 
 const summary = (row: Row): PlaybookSummary => ({
   id: row.id,
@@ -180,10 +225,16 @@ const summary = (row: Row): PlaybookSummary => ({
   version_id: row.version_id,
   version_no: row.version_no,
   access: row.access,
+  published_version_id: row.published_version_id,
+  published_version_no: row.published_version_no,
+  has_unpublished_changes: row.has_unpublished_changes,
   created_at: row.created_at.toISOString(),
   updated_at: row.updated_at.toISOString(),
   rule_count: row.rule_count,
 });
+
+// Where a rule came from is for its authors to check; readers get the rule alone.
+const withoutProvenance = ({ provenance: _p, ...rule }: StoredRule): StoredRule => rule;
 
 async function load(db: Db, id: string): Promise<Playbook | null> {
   const { rows } = await db.query<Row & { rules: StoredRule[] }>(
@@ -193,7 +244,7 @@ async function load(db: Db, id: string): Promise<Playbook | null> {
   const row = rows[0];
   if (!row) return null;
   const { rule_count: _c, ...rest } = summary(row);
-  return { ...rest, rules: row.rules };
+  return { ...rest, rules: row.access === "view" ? row.rules.map(withoutProvenance) : row.rules };
 }
 
 const audit = (
@@ -292,6 +343,14 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
     return level;
   };
 
+  const canCreate = (principal: Principal) =>
+    asApp(pool, principal, async (db) => {
+      const { rows } = await db.query<{ ok: boolean }>(
+        "select core.has_permission('playbooks.create') as ok",
+      );
+      return rows[0]?.ok === true;
+    });
+
   async function sourceRules(
     principal: Principal,
     input: CreateInput,
@@ -343,8 +402,8 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
         const { rows } = await db.query<Row>(
           `${select()}
             where ($1::text is null or p.status = $1)
-              and ($2::text is null or lower(p.contract_type) = lower($2))
-              and ($3::text is null or p.name ilike '%' || $3 || '%' or p.contract_type ilike '%' || $3 || '%')
+              and ($2::text is null or lower(v.contract_type) = lower($2))
+              and ($3::text is null or v.name ilike '%' || $3 || '%' or v.contract_type ilike '%' || $3 || '%')
             order by p.updated_at desc, p.id desc limit $4`,
           [
             filter.status ?? null,
@@ -362,10 +421,14 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
       return asApp(pool, principal, (db) => load(db, id));
     },
 
+    canCreate,
+
     async create(principal, input, client) {
       try {
+        if (!(await canCreate(principal))) return { ok: false, reason: "FORBIDDEN" };
         const source = await sourceRules(principal, input);
         const rules = assignIds(source.rules, []);
+        if (!conditionsHold(rules)) return { ok: false, reason: "INVALID_CONDITION" };
         const guidance = input.guidance ?? source.guidance ?? null;
         return await guarded(principal, async (db) => {
           const id = uuid7();
@@ -437,14 +500,16 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
       }
     },
 
-    async update(principal, id, patch, client) {
+    async update(principal, id, patch, baseVersionNo, client) {
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
       return guarded(principal, async (db) => {
         const level = await lockedLevel(db, id);
         if (level === "view") throw new Refused("FORBIDDEN");
         const current = await load(db, id);
         if (!current) throw new Refused("NOT_FOUND");
+        if (current.version_no !== baseVersionNo) throw new Refused("STALE");
         const rules = patch.rules ? assignIds(patch.rules, current.rules) : current.rules;
+        if (!conditionsHold(rules)) throw new Refused("INVALID_CONDITION");
         const next = {
           name: patch.name ?? current.name,
           contract_type: patch.contract_type ?? current.contract_type,
@@ -483,9 +548,16 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
       return guarded(principal, async (db) => {
         const level = await lockedLevel(db, id);
         if (level !== "manage") throw new Refused("FORBIDDEN");
+        // Publishing again moves readers to the latest draft; unpublishing hides it from them.
         const { rowCount } = await db.query(
-          "update work.playbook set status = $2, updated_at = now() where id = $1 and status <> $2",
-          [id, status],
+          status === "published"
+            ? `update work.playbook set status = 'published', published_version_id = version_id,
+                      updated_at = now()
+                where id = $1 and published_version_id is distinct from version_id`
+            : `update work.playbook set status = 'unpublished', published_version_id = null,
+                      updated_at = now()
+                where id = $1 and status = 'published'`,
+          [id],
         );
         const playbook = await load(db, id);
         if (!playbook) throw new Refused("NOT_FOUND");
@@ -567,7 +639,7 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
           guidance: v.guidance,
           version_id: v.id,
           version_no: v.no,
-          rules: v.rules,
+          rules: current.access === "view" ? v.rules.map(withoutProvenance) : v.rules,
           updated_at: v.created_at.toISOString(),
         };
       });

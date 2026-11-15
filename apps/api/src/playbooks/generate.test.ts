@@ -1,7 +1,7 @@
 import { createGateway, type Message, type ModelProvider } from "@legallabs/model-gateway";
 import { describe, expect, it } from "vitest";
 import { generateRules, parseRules, partsOf, verifyQuote } from "./generate.js";
-import { assignIds, uuid7 } from "./playbooks.js";
+import { assignIds, conditionsHold, uuid7 } from "./playbooks.js";
 
 const DOC = "0190a000-0000-7000-8000-000000000001";
 
@@ -66,10 +66,12 @@ describe("generateRules", () => {
 
   it("splits a contract for a small model and merges rules by title", async () => {
     const seen: string[] = [];
+    const systems: string[] = [];
     const gateway = createGateway({
       providers: {
         ollama: provider((messages) => {
           seen.push(messages[1]?.content ?? "");
+          systems.push(messages[0]?.content ?? "");
           return JSON.stringify({
             rules: [
               { title: "Term", standard_position: "Two years." },
@@ -96,7 +98,11 @@ describe("generateRules", () => {
     expect(result.parts_read).toBe(8);
     expect(result.rules.filter((r) => r.title === "Term")).toHaveLength(1);
     // Each part is fenced by a fresh random tag the contract can't predict.
-    expect(seen[0]).toMatch(/^<contract-[0-9a-f]{24}>/);
+    // Typed by a user, the contract type sits inside the fence too, never in the system prompt.
+    expect(seen[0]).toMatch(
+      /^<contract-type-([0-9a-f]{24})>MSA<\/contract-type-\1>\n<contract-\1>/,
+    );
+    expect(systems[0]).not.toContain("MSA");
   });
 
   it("fails as unavailable when no model answers", async () => {
@@ -157,5 +163,48 @@ describe("assignIds", () => {
       rule_id: rules[1]?.id,
       equals: "not_acceptable",
     });
+  });
+
+  it("drops provenance once the standard position is rewritten", () => {
+    const keep = uuid7();
+    const previous = [
+      {
+        id: keep,
+        ordinal: 0,
+        title: "A",
+        standard_position: "a",
+        fallbacks: [],
+        flag: false,
+        actions: [],
+        provenance: { document_id: DOC, quote: "q", verified: true },
+      },
+    ];
+    const base = { id: keep, title: "A", fallbacks: [], flag: false, actions: [] };
+    const [same] = assignIds([{ ...base, standard_position: "a", guidance: "why" }], previous);
+    expect(same?.provenance).toEqual(previous[0]?.provenance);
+    const [rewritten] = assignIds([{ ...base, standard_position: "b" }], previous);
+    expect(rewritten).not.toHaveProperty("provenance");
+  });
+});
+
+describe("conditionsHold", () => {
+  const rule = (id: string, on?: string) => ({
+    id,
+    ordinal: 0,
+    title: id,
+    standard_position: "x",
+    fallbacks: [],
+    flag: false,
+    actions: [],
+    ...(on
+      ? { condition: { kind: "rule_status" as const, rule_id: on, equals: "acceptable" as const } }
+      : {}),
+  });
+  const [a, b, c] = [uuid7(), uuid7(), uuid7()];
+  it("accepts a chain and refuses a missing target, a self reference and a loop", () => {
+    expect(conditionsHold([rule(a), rule(b, a), rule(c, b)])).toBe(true);
+    expect(conditionsHold([rule(a, uuid7())])).toBe(false);
+    expect(conditionsHold([rule(a, a)])).toBe(false);
+    expect(conditionsHold([rule(a, c), rule(b, a), rule(c, b)])).toBe(false);
   });
 });

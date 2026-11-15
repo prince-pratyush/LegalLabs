@@ -58,4 +58,11 @@ export const SaveFailed: Story = {
 export const Empty: Story = {
   args: { draft: { name: "", contract_type: "", guidance: "", rules: [] }, versionNo: 1 },
 };
+export const PublishedWithDraftChanges: Story = {
+  args: { status: "published", publishedVersionNo: 2, unpublishedChanges: true },
+};
+export const AuthorEditingAfterPublish: Story = {
+  args: { status: "published", access: "edit", publishedVersionNo: 2, unpublishedChanges: true },
+};
+export const ChangedBySomeoneElse: Story = { args: { dirty: true, stale: true, onReload: fn() } };
 export const Loading: Story = { render: () => <PlaybookBuilderSkeleton /> };
