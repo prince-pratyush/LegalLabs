@@ -115,6 +115,47 @@ describe("deep analysis", () => {
     );
   });
 
+  it("holds no stream while a plan waits, and reopens after approval or a re-plan", async () => {
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [
+        200,
+        { thread: thread({ messages: [QUESTION], runs: [run("planned")] }) },
+      ],
+      [`POST /api/v1/runs/${RUN_ID}/plan/edit`]: () => [202, null],
+      [`POST /api/v1/runs/${RUN_ID}/approve`]: () => [202, null],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    await waitFor(() => expect(FakeSource.all).toHaveLength(1));
+    const first = FakeSource.all[0];
+    first?.emit("plan", 1, { plan: PLAN });
+    first?.emit("status", 2, { status: "awaiting_approval" });
+    expect(first?.open).toBe(false);
+
+    const card = await screen.findByRole("region", { name: "Plan awaiting approval" });
+    fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(card).getByLabelText("What should change?"), {
+      target: { value: "Fewer files" },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Re-plan" }));
+    await waitFor(() => expect(FakeSource.all).toHaveLength(2));
+    const second = FakeSource.all[1];
+    expect(second?.url).toBe(`/api/v1/runs/${RUN_ID}/events?after=2`);
+    second?.emit("plan", 3, { plan: PLAN });
+    second?.emit("status", 4, { status: "awaiting_approval" });
+    expect(second?.open).toBe(false);
+
+    fireEvent.click(
+      within(await screen.findByRole("region", { name: "Plan awaiting approval" })).getByRole(
+        "button",
+        { name: "Approve" },
+      ),
+    );
+    await waitFor(() => expect(FakeSource.all).toHaveLength(3));
+    expect(FakeSource.all[2]?.url).toBe(`/api/v1/runs/${RUN_ID}/events?after=4`);
+  });
+
   it("shows steps and how much was read while it runs", async () => {
     serve({
       ...signedIn,
