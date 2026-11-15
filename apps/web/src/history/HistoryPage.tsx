@@ -6,7 +6,7 @@ import {
   HistoryTable,
   NO_FILTERS,
 } from "@legallabs/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, messageOf } from "../api.js";
 import { navigate, paths } from "../router.js";
 import { Shell } from "../shell.js";
@@ -62,16 +62,24 @@ export function HistoryPage({ onFavourite }: { onFavourite?: () => void }) {
     };
   }, [applied, attempt]);
 
+  // The filters a page was asked for; a page that lands after they change belongs to old results.
+  const current = useRef(applied);
+  useEffect(() => {
+    current.current = applied;
+  }, [applied]);
+
   const loadMore = async () => {
-    const query = historyQuery(applied, new Date());
+    const asked = applied;
+    const query = historyQuery(asked, new Date());
     if (!query || !cursor) return;
     setMore(true);
     try {
       const page = await api.history({ ...query, cursor });
+      if (current.current !== asked) return;
       setRows((current) => [...current, ...page.items.map(toRow)]);
       setCursor(page.next_cursor);
     } catch (err) {
-      setError(messageOf(err));
+      if (current.current === asked) setError(messageOf(err));
     } finally {
       setMore(false);
     }
