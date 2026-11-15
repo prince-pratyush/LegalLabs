@@ -1,4 +1,10 @@
-import { ExportFormat, LibraryGrant, PromptInput, TemplateFields } from "@legallabs/contracts";
+import {
+  ExportFormat,
+  LIBRARY_LIMITS,
+  LibraryGrant,
+  PromptInput,
+  TemplateFields,
+} from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
@@ -31,7 +37,8 @@ const FAILURES: Record<LibraryFailure, { status: 400 | 403 | 404 | 413; message:
   TOO_LARGE: { status: 413, message: "A template can be up to 10 MB." },
 };
 
-const MAX_UPLOAD = 10 * 1024 * 1024 + 64 * 1024;
+// Room for the form around the file.
+const MAX_UPLOAD = LIBRARY_LIMITS.templateBytes + 64 * 1024;
 const small = bodyLimit({ maxSize: 64 * 1024, onError: (c) => invalid(c) });
 const upload = bodyLimit({
   maxSize: MAX_UPLOAD,
@@ -45,7 +52,7 @@ const notFound = (c: Context) =>
 
 const promptPatch = PromptInput.partial().strict();
 const templatePatch = TemplateFields.partial().strict();
-const sharesBody = z.object({ grants: z.array(LibraryGrant).max(100) }).strict();
+const sharesBody = z.object({ grants: z.array(LibraryGrant).max(LIBRARY_LIMITS.grants) }).strict();
 const defaultBody = z.object({ on: z.boolean() }).strict();
 const versionNo = z.coerce.number().int().min(1).max(100_000);
 const fileName = z
@@ -157,7 +164,6 @@ export function libraryRoutes(library: Library, clientOf: (c: Context) => Client
     });
   });
 
-  // Prompts
   app.get("/prompts", async (c) =>
     c.json({ prompts: (await library.listPrompts(c.get("principal"))).map(promptJson) }),
   );
@@ -187,7 +193,6 @@ export function libraryRoutes(library: Library, clientOf: (c: Context) => Client
     return result.ok ? c.body(null, 204) : respond(c, result, () => ({}));
   });
 
-  // Templates
   app.get("/templates", async (c) =>
     c.json({ templates: (await library.listTemplates(c.get("principal"))).map(templateJson) }),
   );
@@ -290,7 +295,6 @@ export function libraryRoutes(library: Library, clientOf: (c: Context) => Client
     return file ? download(c, file.bytes, file.filename) : notFound(c);
   });
 
-  // Shares, for both kinds
   for (const kind of ["prompt", "template"] as const satisfies readonly LibraryKind[]) {
     app.get(`/${kind}s/:id/shares`, async (c) => {
       const shares = await library.shares(c.get("principal"), kind, c.req.param("id"));

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   type ExportFormat,
+  LIBRARY_LIMITS,
   type LibraryGrant,
   type PromptInput,
   promptVariables,
@@ -157,7 +158,6 @@ export interface Library {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_TEMPLATE_BYTES = 10 * 1024 * 1024;
 // Raised by library.set_shares; anything else is a real error.
 const SQL_REFUSALS = new Set<string>([
   "NOT_FOUND",
@@ -296,7 +296,8 @@ const canDelete = (access: Access) => access === "owner" || access === "manage";
 /** Checks an upload is a Word file we can fill, and finds its placeholders. */
 function readUpload(file: UploadedFile): Result<string[]> {
   if (!/\.(docx|dotx)$/i.test(file.name)) return { ok: false, reason: "NOT_DOCX" };
-  if (file.bytes.byteLength > MAX_TEMPLATE_BYTES) return { ok: false, reason: "TOO_LARGE" };
+  if (file.bytes.byteLength > LIBRARY_LIMITS.templateBytes)
+    return { ok: false, reason: "TOO_LARGE" };
   try {
     openTemplate(file.bytes);
     return { ok: true, value: placeholders(file.bytes) };
@@ -321,8 +322,6 @@ This sample shows a draft in this template: **bold**, *italic* and plain text.
 ### Heading three
 
 Closing paragraph.`;
-
-export const nowSeconds = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
 
 export function createLibrary(pool: pg.Pool): Library {
   const audit = (
@@ -360,13 +359,13 @@ export function createLibrary(pool: pg.Pool): Library {
     (await db.query<PromptRow>(`${PROMPT_SQL} where p.id = $1`, [id])).rows[0] ?? null;
   const template = async (db: Db, id: string) =>
     (await db.query<TemplateRow>(`${TEMPLATE_SQL} where t.id = $1`, [id])).rows[0] ?? null;
-  const found = async <T>(row: Promise<T | null>): Promise<T> => {
+  const mustFind = async <T>(row: Promise<T | null>): Promise<T> => {
     const value = await row;
     if (!value) throw new Refused("NOT_FOUND");
     return value;
   };
   const editable = async (db: Db, id: string) => {
-    const row = await found(template(db, id));
+    const row = await mustFind(template(db, id));
     if (!canEdit(row.access)) throw new Refused("FORBIDDEN");
     return row;
   };
@@ -453,14 +452,14 @@ export function createLibrary(pool: pg.Pool): Library {
         );
         const id = rows[0]?.id ?? "";
         await audit(db, p, client, "library_item.created", "library_item", id, { kind: "prompt" });
-        return promptView(await found(prompt(db, id)));
+        return promptView(await mustFind(prompt(db, id)));
       });
     },
 
     async updatePrompt(p, id, patch, client) {
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
       return attempt(p, async (db) => {
-        const before = await found(prompt(db, id));
+        const before = await mustFind(prompt(db, id));
         if (!canEdit(before.access)) throw new Refused("FORBIDDEN");
         await db.query(
           `update library.prompt
@@ -480,14 +479,14 @@ export function createLibrary(pool: pg.Pool): Library {
           kind: "prompt",
           fields: Object.keys(patch),
         });
-        return promptView(await found(prompt(db, id)));
+        return promptView(await mustFind(prompt(db, id)));
       });
     },
 
     async deletePrompt(p, id, client) {
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
       return attempt(p, async (db) => {
-        const row = await found(prompt(db, id));
+        const row = await mustFind(prompt(db, id));
         if (!canDelete(row.access)) throw new Refused("FORBIDDEN");
         await db.query("delete from library.prompt where id = $1", [id]);
         await audit(db, p, client, "library_item.deleted", "library_item", id, {
@@ -542,7 +541,7 @@ export function createLibrary(pool: pg.Pool): Library {
           file_name: file.name,
           size: file.bytes.byteLength,
         });
-        return templateView(await found(template(db, id)));
+        return templateView(await mustFind(template(db, id)));
       });
     },
 
@@ -554,7 +553,7 @@ export function createLibrary(pool: pg.Pool): Library {
         await editable(db, id);
         const no = await addVersionRow(db, p, id, file, read.value, { note });
         await audit(db, p, client, "template.version_added", "template", id, { no });
-        return templateView(await found(template(db, id)));
+        return templateView(await mustFind(template(db, id)));
       });
     },
 
@@ -579,7 +578,7 @@ export function createLibrary(pool: pg.Pool): Library {
           no: added,
           reverted_from: no,
         });
-        return templateView(await found(template(db, id)));
+        return templateView(await mustFind(template(db, id)));
       });
     },
 
@@ -606,14 +605,14 @@ export function createLibrary(pool: pg.Pool): Library {
         await audit(db, p, client, "template.updated", "template", id, {
           fields: Object.keys(patch),
         });
-        return templateView(await found(template(db, id)));
+        return templateView(await mustFind(template(db, id)));
       });
     },
 
     async deleteTemplate(p, id, client) {
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
       return attempt(p, async (db) => {
-        const row = await found(template(db, id));
+        const row = await mustFind(template(db, id));
         if (!canDelete(row.access)) throw new Refused("FORBIDDEN");
         await db.query("delete from library.template where id = $1", [id]);
         await audit(db, p, client, "template.deleted", "template", id, { name: row.name });
@@ -624,11 +623,11 @@ export function createLibrary(pool: pg.Pool): Library {
     async setDefault(p, id, on, client) {
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
       return attempt(p, async (db) => {
-        await found(template(db, id));
+        await mustFind(template(db, id));
         await allowed(db, "library.manage");
         await db.query("select library.set_default_template($1, $2)", [id, on]);
         await audit(db, p, client, "template.updated", "template", id, { default: on });
-        return templateView(await found(template(db, id)));
+        return templateView(await mustFind(template(db, id)));
       });
     },
 
@@ -659,7 +658,7 @@ export function createLibrary(pool: pg.Pool): Library {
           title: row.name,
           blocks: markdownBlocks(SAMPLE),
           author: "LegalLabs",
-          date: nowSeconds(),
+          date: new Date(),
           template: new Uint8Array(rows[0].bytes),
         };
         const bytes = format === "pdf" ? await buildPdf(input) : buildDocx(input);
