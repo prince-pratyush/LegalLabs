@@ -26,6 +26,8 @@ export interface TrackedInput {
   author: string;
   date: Date | string;
   title?: string;
+  /** A firm's .docx or .dotx to pour the document into. */
+  template?: Uint8Array;
 }
 
 const textRuns = (block: Block): TextRun[] =>
@@ -209,5 +211,6 @@ export function buildTrackedDocx(input: TrackedInput): Uint8Array {
     paragraphs,
     lists,
     trackRevisions: true,
+    ...(input.template ? { template: input.template } : {}),
   });
 }

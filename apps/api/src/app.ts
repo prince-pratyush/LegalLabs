@@ -17,6 +17,8 @@ import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
 import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
+import type { Library } from "./library/library.js";
+import { libraryRoutes } from "./library/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
 import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
@@ -63,6 +65,8 @@ export interface AppOptions {
   drafts: Drafts;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
+  /** Optional, like vaults. */
+  library?: Library;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -87,6 +91,7 @@ export function createApp({
   viewer,
   drafts,
   vaults,
+  library,
   knowledge,
   playbooks,
   clientIp,
@@ -218,6 +223,7 @@ export function createApp({
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
   }
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf));
+  if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));

@@ -27,6 +27,10 @@ import {
   type Thread,
   type ThreadSummary,
 } from "./api.js";
+import { LibraryApp } from "./library/LibraryApp.js";
+import { PromptPicker } from "./library/PromptPicker.js";
+import { takeComposerPrefill } from "./library/prefill.js";
+import { libraryHash, parseLibraryRoute } from "./library/route.js";
 import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
 import { documentStatus, segments } from "./text.js";
@@ -59,6 +63,12 @@ export function App() {
       <div className="contents" inert={viewing}>
         {parsePlaybookRoute(hash) ? (
           <PlaybooksApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parseLibraryRoute(hash) ? (
+          <LibraryApp
             onLeave={() => {
               window.location.hash = "";
             }}
@@ -171,7 +181,8 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [thread, setThread] = useState<Thread | null>(null);
-  const [question, setQuestion] = useState("");
+  // A prompt sent from the Library arrives here once, ready to edit and send.
+  const [question, setQuestion] = useState(() => takeComposerPrefill() ?? "");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -300,6 +311,15 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       group: "Go to",
       label: "Playbooks",
       run: () => goPlaybooks({ page: "list" }),
+    },
+    {
+      id: "library",
+      kind: "action",
+      group: "Go to",
+      label: "Library",
+      run: () => {
+        window.location.hash = libraryHash();
+      },
     },
     {
       id: "upload",
@@ -491,6 +511,7 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
             <Button type="submit" disabled={!canAsk}>
               Ask
             </Button>
+            <PromptPicker onPick={setQuestion} />
             {busy && <span className="text-fg-muted">Finding an answer…</span>}
           </div>
         </form>
