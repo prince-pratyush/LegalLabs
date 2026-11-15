@@ -160,7 +160,13 @@ export function analyseParagraph(
       }
       if (fields.some((field) => field.toc)) inToc = true;
     }
-    const info: RunInfo = { el: r, rPr: child(r, "w:rPr"), text: text.slice(from), from, to: text.length };
+    const info: RunInfo = {
+      el: r,
+      rPr: child(r, "w:rPr"),
+      text: text.slice(from),
+      from,
+      to: text.length,
+    };
     if (info.to > info.from) runs.push(info);
     const runLock: Lock | undefined =
       lock ?? (inField ? "EXCLUDED_REGION" : opaque ? "UNSUPPORTED_CONTENT" : undefined);
@@ -385,7 +391,8 @@ export function loadDocument(bytes: Uint8Array): DocModel {
   const pkg = openPackage(bytes);
   const src = text(pkg, pkg.docPath) ?? "";
   const root = parseXml(src);
-  if (root.attrs["xmlns:w"] !== W_NS) throw new Error("document.xml must bind w: to WordprocessingML");
+  if (root.attrs["xmlns:w"] !== W_NS)
+    throw new Error("document.xml must bind w: to WordprocessingML");
   const body = child(root, "w:body");
   if (!body) throw new Error("document.xml has no w:body");
 
@@ -451,7 +458,10 @@ export function loadDocument(bytes: Uint8Array): DocModel {
   regions.endnote = partText("endnotes").reduce((sum, xml) => sum + notes(xml, "w:endnote"), 0);
 
   let maxId = 0;
-  for (const xml of [src, ...["comments", "footnotes", "endnotes", "header", "footer"].flatMap(partText)]) {
+  for (const xml of [
+    src,
+    ...["comments", "footnotes", "endnotes", "header", "footer"].flatMap(partText),
+  ]) {
     for (const match of xml?.matchAll(ID) ?? []) maxId = Math.max(maxId, Number(match[1]));
   }
 

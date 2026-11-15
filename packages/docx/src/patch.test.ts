@@ -64,7 +64,8 @@ function fixture(options: { settings?: boolean } = {}): Uint8Array {
     "word/media/image1.png": new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3, 255]),
   };
   if (settings) {
-    parts["word/settings.xml"] = `${HEAD}<w:settings xmlns:w="${W}"><w:zoom w:percent="100"/><w:proofState w:spelling="clean"/><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/></w:settings>`;
+    parts["word/settings.xml"] =
+      `${HEAD}<w:settings xmlns:w="${W}"><w:zoom w:percent="100"/><w:proofState w:spelling="clean"/><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/></w:settings>`;
   }
   const mtime = new Date("2026-01-01T00:00:00Z");
   return zipSync(
@@ -210,7 +211,8 @@ describe("patchDocx", () => {
     // The new run takes the bold of the run it replaces.
     expect(all(ins[0] as unknown as ReturnType<typeof parse>, "b")).toHaveLength(1);
     // Ids sit above everything already in the document.
-    for (const el of [...dels, ...ins]) expect(Number(el.getAttribute("w:id"))).toBeGreaterThan(102);
+    for (const el of [...dels, ...ins])
+      expect(Number(el.getAttribute("w:id"))).toBeGreaterThan(102);
 
     const paragraph = bodyParagraphs(doc)[3] as Element;
     const source = xml.slice(xml.indexOf('<w:p w14:paraId="1A2B3C4D">'));
@@ -222,7 +224,9 @@ describe("patchDocx", () => {
     expect(source).toContain(
       '<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">shall deliver the Goods within thirty (30) days</w:t></w:r>',
     );
-    expect(source).toContain('<w:r w:rsidR="00AB12CD"><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">The </w:t></w:r>');
+    expect(source).toContain(
+      '<w:r w:rsidR="00AB12CD"><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">The </w:t></w:r>',
+    );
 
     const comments = parse(part(result.bytes, "word/comments.xml"));
     const [comment] = all(comments, "comment");
@@ -261,14 +265,23 @@ describe("patchDocx", () => {
     const xmlAfter = part(result.bytes, "word/document.xml");
     const cut = xmlBefore.indexOf('<w:p w14:paraId="1A2B3C4D">');
     expect(xmlAfter.slice(0, cut)).toBe(xmlBefore.slice(0, cut));
-    const tail = xmlBefore.slice(xmlBefore.indexOf("<w:p><w:r><w:t xml:space=\"preserve\">Anchor"));
+    const tail = xmlBefore.slice(xmlBefore.indexOf('<w:p><w:r><w:t xml:space="preserve">Anchor'));
     expect(xmlAfter.endsWith(tail)).toBe(true);
   });
 
   it("inserts a tracked paragraph after the anchor with its style and numbering", () => {
     const result = patchDocx(
       original,
-      [{ id: "n1", kind: "insert_after", paragraph_index: 3, before: "", after: "New clause.", comment: "Why" }],
+      [
+        {
+          id: "n1",
+          kind: "insert_after",
+          paragraph_index: 3,
+          before: "",
+          after: "New clause.",
+          comment: "Why",
+        },
+      ],
       OPTS,
     );
     expect(result.applied).toEqual(["n1"]);
@@ -286,10 +299,7 @@ describe("patchDocx", () => {
   it("applies several edits to one paragraph in order", () => {
     const result = patchDocx(
       original,
-      [
-        replace(),
-        replace({ id: "s2", before: "thirty (30) days", after: "sixty (60) days" }),
-      ],
+      [replace(), replace({ id: "s2", before: "thirty (30) days", after: "sixty (60) days" })],
       OPTS,
     );
     expect(result.applied).toEqual(["s1", "s2"]);
@@ -301,11 +311,19 @@ describe("patchDocx", () => {
   it("matches before with loose whitespace and keeps the rest", () => {
     const result = patchDocx(
       original,
-      [replace({ paragraph_index: 9, before: "for the delivery\nterms.", after: "for the payment terms." })],
+      [
+        replace({
+          paragraph_index: 9,
+          before: "for the delivery\nterms.",
+          after: "for the payment terms.",
+        }),
+      ],
       OPTS,
     );
     expect(result.failed).toEqual([]);
-    expect(readDocx(result.bytes).paragraphs[9]?.text).toBe("See clause 1.1 for the payment terms.");
+    expect(readDocx(result.bytes).paragraphs[9]?.text).toBe(
+      "See clause 1.1 for the payment terms.",
+    );
   });
 
   it("reports anchor failures and refuses excluded or locked text", () => {
@@ -340,7 +358,10 @@ describe("patchDocx", () => {
   });
 
   it("is deterministic for the same inputs", () => {
-    const edits = [replace({ comment: "c" }), replace({ id: "s2", paragraph_index: 5, before: "Cell A", after: "Cell Z" })];
+    const edits = [
+      replace({ comment: "c" }),
+      replace({ id: "s2", paragraph_index: 5, before: "Cell A", after: "Cell Z" }),
+    ];
     const a = patchDocx(original, edits, OPTS);
     const b = patchDocx(fixture(), edits, OPTS);
     expect(a.bytes).toEqual(b.bytes);
@@ -372,7 +393,9 @@ describe("patchDocx", () => {
     expect(comments.map((c) => c.textContent)).toEqual(["first", "second"]);
     const ids = comments.map((c) => Number(c.getAttribute("w:id")));
     expect(new Set(ids).size).toBe(2);
-    expect(part(twice.bytes, "word/_rels/document.xml.rels").match(/comments\.xml/g)).toHaveLength(1);
+    expect(part(twice.bytes, "word/_rels/document.xml.rels").match(/comments\.xml/g)).toHaveLength(
+      1,
+    );
   });
 
   it("patches a document the builder made", () => {
@@ -438,7 +461,14 @@ describe.skipIf(!soffice)("LibreOffice", () => {
       fixture(),
       [
         replace({ comment: "Rule: say Vendor" }),
-        { id: "n", kind: "insert_after", paragraph_index: 3, before: "", after: "New clause.", comment: "Why" },
+        {
+          id: "n",
+          kind: "insert_after",
+          paragraph_index: 3,
+          before: "",
+          after: "New clause.",
+          comment: "Why",
+        },
         replace({ id: "c", paragraph_index: 5, before: "Cell A", after: "Cell Z" }),
       ],
       OPTS,

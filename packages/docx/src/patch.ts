@@ -140,9 +140,18 @@ function pieces(items: readonly Item[], ops: readonly Op[]): Piece[] {
       out.push({ item, from: item.from, to: item.to, whole: true });
       continue;
     }
-    const bounds = [item.from, ...[...cuts].filter((at) => at > item.from && at < item.to).sort((x, y) => x - y), item.to];
+    const bounds = [
+      item.from,
+      ...[...cuts].filter((at) => at > item.from && at < item.to).sort((x, y) => x - y),
+      item.to,
+    ];
     for (let i = 0; i + 1 < bounds.length; i++) {
-      out.push({ item, from: bounds[i] as number, to: bounds[i + 1] as number, whole: bounds.length === 2 });
+      out.push({
+        item,
+        from: bounds[i] as number,
+        to: bounds[i + 1] as number,
+        whole: bounds.length === 2,
+      });
     }
   }
   return out;
@@ -339,11 +348,11 @@ function withTrackRevisions(xml: string | undefined): string {
   if (existing) {
     const value = existing.attrs["w:val"];
     if (value === undefined || ["true", "1", "on"].includes(value)) return xml;
-    return xml.slice(0, existing.start) + "<w:trackRevisions/>" + xml.slice(existing.end);
+    return `${xml.slice(0, existing.start)}<w:trackRevisions/>${xml.slice(existing.end)}`;
   }
   const next = elements(root).find((el) => !BEFORE_TRACK.has(el.name));
   if (!next) return appendChild(xml, "<w:trackRevisions/>");
-  return xml.slice(0, next.start) + "<w:trackRevisions/>" + xml.slice(next.start);
+  return `${xml.slice(0, next.start)}<w:trackRevisions/>${xml.slice(next.start)}`;
 }
 
 function commentXml(id: number, body: string, author: string, date: string): string {
@@ -362,7 +371,11 @@ function commentXml(id: number, body: string, author: string, date: string): str
  * comments.xml, settings.xml, [Content_Types].xml and the document's relationships
  * are rewritten; every other part is copied unchanged. Same input, same bytes.
  */
-export function patchDocx(bytes: Uint8Array, edits: readonly PatchEdit[], opts: PatchOptions): PatchResult {
+export function patchDocx(
+  bytes: Uint8Array,
+  edits: readonly PatchEdit[],
+  opts: PatchOptions,
+): PatchResult {
   const date = isoSeconds(opts.date);
   const doc = loadDocument(bytes);
   let next = doc.maxId + 1;
@@ -404,7 +417,8 @@ export function patchDocx(bytes: Uint8Array, edits: readonly PatchEdit[], opts: 
   );
   for (const [index, state] of order) {
     const el = (doc.paragraphs[index] as { el: XmlElement }).el;
-    document = document.slice(0, el.start) + state.xml + state.after.join("") + document.slice(el.end);
+    document =
+      document.slice(0, el.start) + state.xml + state.after.join("") + document.slice(el.end);
   }
 
   const out: Record<string, string> = { [doc.pkg.docPath]: document };
