@@ -1,0 +1,213 @@
+{
+  "contracts": ["nda-001-p03", "msa-002-p03", "nda-003-p05"],
+  "dataset_fingerprint": "playbook-v1-7-16-8a93aa67c7fb",
+  "mode": "rescore",
+  "report": {
+    "confusion": {
+      "acceptable": {
+        "acceptable": 17,
+        "needs_review": 3,
+        "not_acceptable": 9
+      },
+      "not_acceptable": {
+        "not_acceptable": 16
+      },
+      "not_found": {
+        "acceptable": 1,
+        "needs_review": 3,
+        "not_found": 8
+      }
+    },
+    "contracts": 3,
+    "errors": {
+      "count": 0,
+      "rate": 0.0
+    },
+    "gate": {
+      "checks": {
+        "evidence_verification": false,
+        "gap_recall": true,
+        "latency": null,
+        "ooxml_validity": true,
+        "status_accuracy": false
+      },
+      "evidence_verification_min": 0.99,
+      "gap_recall_min": 0.9,
+      "long_contract_min_pages": 35,
+      "long_contract_wall_seconds_p50_max": 300.0,
+      "ooxml_validity_min": 1.0,
+      "pass": false,
+      "status_accuracy_min": 0.8
+    },
+    "latency": {
+      "long_contract_wall_seconds_p50": "not measured",
+      "long_contracts": 0,
+      "per_contract": [
+        {
+          "id": "nda-001-p03",
+          "pages": 4,
+          "wall_seconds": 977.393
+        },
+        {
+          "id": "msa-002-p03",
+          "pages": 4,
+          "wall_seconds": 1589.598
+        },
+        {
+          "id": "nda-003-p05",
+          "pages": 6,
+          "wall_seconds": 1507.891
+        }
+      ]
+    },
+    "pages": 14,
+    "playbook.evidence_verification_rate": {
+      "bootstrap95_over_contracts": [0.916667, 0.956522],
+      "findings_evidence_mismatch": 3,
+      "findings_retry_exhausted": 0,
+      "hits": 46,
+      "n": 49,
+      "rate": 0.938776,
+      "wilson95": [0.834793, 0.97896]
+    },
+    "playbook.ooxml_validity_rate": {
+      "anchor_failed": 0,
+      "bootstrap95_over_contracts": [1.0, 1.0],
+      "hits": 25,
+      "n": 25,
+      "rate": 1.0,
+      "soffice_checked": 0,
+      "soffice_ok": 0,
+      "suggestions": 25,
+      "wilson95": [0.866804, 1.0]
+    },
+    "playbook.rule_classification_accuracy": {
+      "bootstrap95_over_contracts": [0.6, 1.0],
+      "by_template": {
+        "msa": {
+          "bootstrap95_over_contracts": [0.6, 0.6],
+          "hits": 15,
+          "n": 25,
+          "rate": 0.6,
+          "wilson95": [0.407391, 0.765969]
+        },
+        "nda": {
+          "bootstrap95_over_contracts": [0.8125, 1.0],
+          "hits": 29,
+          "n": 32,
+          "rate": 0.90625,
+          "wilson95": [0.757815, 0.967599]
+        }
+      },
+      "by_variant": {
+        "fallback": {
+          "bootstrap95_over_contracts": [0.222222, 1.0],
+          "hits": 7,
+          "n": 17,
+          "rate": 0.411765,
+          "wilson95": [0.216108, 0.639949]
+        },
+        "omitted": {
+          "bootstrap95_over_contracts": [0.5, 1.0],
+          "hits": 10,
+          "n": 12,
+          "rate": 0.833333,
+          "wilson95": [0.551964, 0.953036]
+        },
+        "standard": {
+          "bootstrap95_over_contracts": [0.833333, 1.0],
+          "hits": 11,
+          "n": 12,
+          "rate": 0.916667,
+          "wilson95": [0.646114, 0.985135]
+        },
+        "unacceptable": {
+          "bootstrap95_over_contracts": [1.0, 1.0],
+          "hits": 16,
+          "n": 16,
+          "rate": 1.0,
+          "wilson95": [0.806387, 1.0]
+        }
+      },
+      "hits": 44,
+      "n": 57,
+      "rate": 0.77193,
+      "strict": {
+        "bootstrap95_over_contracts": [0.6, 0.9375],
+        "hits": 41,
+        "n": 57,
+        "rate": 0.719298,
+        "wilson95": [0.591696, 0.819208]
+      },
+      "wilson95": [0.647937, 0.861582],
+      "wrong_misclassified": 12,
+      "wrong_unverified": 1
+    },
+    "playbook.unanticipated_edit_detection_recall": {
+      "model_only": {
+        "bootstrap95_over_contracts": [0.333333, 0.5],
+        "existing_edit": {
+          "bootstrap95_over_contracts": [0.0, 0.0],
+          "hits": 0,
+          "n": 6,
+          "rate": 0.0,
+          "wilson95": [0.0, 0.390343]
+        },
+        "hits": 4,
+        "n": 10,
+        "rate": 0.4,
+        "uncovered_clause": {
+          "bootstrap95_over_contracts": [1.0, 1.0],
+          "hits": 4,
+          "n": 4,
+          "rate": 1.0,
+          "wilson95": [0.5101, 1.0]
+        },
+        "wilson95": [0.168178, 0.68733]
+      },
+      "precision_vs_planted": {
+        "model_only": {
+          "bootstrap95_over_contracts": [0.25, 0.5],
+          "hits": 4,
+          "n": 11,
+          "rate": 0.363636,
+          "wilson95": [0.151662, 0.646203]
+        },
+        "system": {
+          "bootstrap95_over_contracts": [0.785714, 0.916667],
+          "hits": 45,
+          "n": 52,
+          "rate": 0.865385,
+          "wilson95": [0.747264, 0.933232]
+        }
+      },
+      "system": {
+        "bootstrap95_over_contracts": [1.0, 1.0],
+        "existing_edit": {
+          "bootstrap95_over_contracts": [1.0, 1.0],
+          "hits": 6,
+          "n": 6,
+          "rate": 1.0,
+          "wilson95": [0.609657, 1.0]
+        },
+        "hits": 10,
+        "n": 10,
+        "rate": 1.0,
+        "uncovered_clause": {
+          "bootstrap95_over_contracts": [1.0, 1.0],
+          "hits": 4,
+          "n": 4,
+          "rate": 1.0,
+          "wilson95": [0.5101, 1.0]
+        },
+        "wilson95": [0.72246, 1.0]
+      }
+    },
+    "tokens": {
+      "input": 96464,
+      "model_calls": 70,
+      "output": 17739
+    }
+  },
+  "suite": "playbook-review"
+}

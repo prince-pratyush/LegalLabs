@@ -1,0 +1,434 @@
+{
+  "completed_tasks": 16,
+  "config_hash": "75d02f07ae12",
+  "cost": {
+    "by_stage": {
+      "agent": {
+        "known_cost_usd": 0.0,
+        "missing_cost_count": 0,
+        "records": 16
+      },
+      "grader": {
+        "known_cost_usd": 0.0,
+        "missing_cost_count": 0,
+        "records": 16
+      }
+    },
+    "cost_known": true,
+    "known_cost_usd": 0.0,
+    "missing_cost_count": 0,
+    "total_cost_usd": 0.0
+  },
+  "environment": {
+    "engine_sha256": "eb83f031c55a6e32733bd640a97513b5857903b6007a791fdd4ca54afcc567ab",
+    "git_dirty": true,
+    "git_sha": "bf82976d95cbeb69771613bf5d4bd0e58d841527",
+    "node": "v22.23.1"
+  },
+  "failed_as_zero": 0.254375,
+  "failed_excluded": 0.254375,
+  "finished_at": "2026-11-15T14:59:17Z",
+  "metric_counts": {
+    "confusion.acceptable.acceptable": 10,
+    "confusion.acceptable.needs_review": 7,
+    "confusion.acceptable.not_acceptable": 8,
+    "confusion.acceptable.not_found": 16,
+    "confusion.not_acceptable.acceptable": 6,
+    "confusion.not_acceptable.needs_review": 4,
+    "confusion.not_acceptable.not_acceptable": 4,
+    "confusion.not_acceptable.not_found": 16,
+    "confusion.not_found.acceptable": 2,
+    "confusion.not_found.needs_review": 3,
+    "confusion.not_found.not_acceptable": 2,
+    "confusion.not_found.not_found": 16,
+    "evidence_ok": 16,
+    "evidence_total": 16,
+    "findings_evidence_mismatch": 16,
+    "findings_retry_exhausted": 16,
+    "gap_recall": 16,
+    "gaps_existing_edit_found": 16,
+    "gaps_existing_edit_found_by_model": 16,
+    "gaps_existing_edit_total": 16,
+    "gaps_found": 16,
+    "gaps_found_by_model": 16,
+    "gaps_injected": 16,
+    "gaps_reported": 16,
+    "gaps_reported_by_model": 16,
+    "gaps_reported_by_model_matching": 16,
+    "gaps_reported_matching": 16,
+    "gaps_uncovered_clause_found": 16,
+    "gaps_uncovered_clause_found_by_model": 16,
+    "gaps_uncovered_clause_total": 16,
+    "input_tokens": 16,
+    "model_calls": 16,
+    "ooxml_anchor_failed": 16,
+    "ooxml_applied": 16,
+    "ooxml_combined_ok": 16,
+    "ooxml_soffice_ok": 11,
+    "ooxml_suggestions": 16,
+    "ooxml_valid": 16,
+    "output_tokens": 16,
+    "pages": 16,
+    "status_accuracy": 16,
+    "status_correct": 16,
+    "status_strict_correct": 16,
+    "status_total": 16,
+    "status_wrong_misclassified": 16,
+    "template.msa.correct": 8,
+    "template.msa.total": 8,
+    "template.nda.correct": 8,
+    "template.nda.total": 8,
+    "variant.fallback.correct": 16,
+    "variant.fallback.total": 16,
+    "variant.omitted.correct": 16,
+    "variant.omitted.total": 16,
+    "variant.standard.correct": 16,
+    "variant.standard.total": 16,
+    "variant.unacceptable.correct": 16,
+    "variant.unacceptable.total": 16,
+    "wall_seconds": 16
+  },
+  "metrics_failed_excluded": {
+    "confusion.acceptable.acceptable": 1.3,
+    "confusion.acceptable.needs_review": 1.142857,
+    "confusion.acceptable.not_acceptable": 1.25,
+    "confusion.acceptable.not_found": 8.75,
+    "confusion.not_acceptable.acceptable": 1.0,
+    "confusion.not_acceptable.needs_review": 1.25,
+    "confusion.not_acceptable.not_acceptable": 1.0,
+    "confusion.not_acceptable.not_found": 4.0625,
+    "confusion.not_found.acceptable": 1.0,
+    "confusion.not_found.needs_review": 1.333333,
+    "confusion.not_found.not_acceptable": 1.0,
+    "confusion.not_found.not_found": 4.3125,
+    "evidence_ok": 3.375,
+    "evidence_total": 3.375,
+    "findings_evidence_mismatch": 0.0,
+    "findings_retry_exhausted": 0.0,
+    "gap_recall": 0.489583,
+    "gaps_existing_edit_found": 1.4375,
+    "gaps_existing_edit_found_by_model": 0.0,
+    "gaps_existing_edit_total": 1.4375,
+    "gaps_found": 1.4375,
+    "gaps_found_by_model": 0.0,
+    "gaps_injected": 2.9375,
+    "gaps_reported": 9.9375,
+    "gaps_reported_by_model": 0.0,
+    "gaps_reported_by_model_matching": 0.0,
+    "gaps_reported_matching": 9.9375,
+    "gaps_uncovered_clause_found": 0.0,
+    "gaps_uncovered_clause_found_by_model": 0.0,
+    "gaps_uncovered_clause_total": 1.5,
+    "input_tokens": 93085.125,
+    "model_calls": 50.25,
+    "ooxml_anchor_failed": 0.0,
+    "ooxml_applied": 1.0,
+    "ooxml_combined_ok": 1.0,
+    "ooxml_soffice_ok": 1.0,
+    "ooxml_suggestions": 1.0,
+    "ooxml_valid": 1.0,
+    "output_tokens": 1606.6875,
+    "pages": 19.875,
+    "status_accuracy": 0.254375,
+    "status_correct": 5.375,
+    "status_strict_correct": 5.375,
+    "status_total": 20.5,
+    "status_wrong_misclassified": 15.125,
+    "template.msa.correct": 7.25,
+    "template.msa.total": 25.0,
+    "template.nda.correct": 3.5,
+    "template.nda.total": 16.0,
+    "variant.fallback.correct": 0.5,
+    "variant.fallback.total": 5.5625,
+    "variant.omitted.correct": 4.3125,
+    "variant.omitted.total": 4.8125,
+    "variant.standard.correct": 0.3125,
+    "variant.standard.total": 5.125,
+    "variant.unacceptable.correct": 0.25,
+    "variant.unacceptable.total": 5.0,
+    "wall_seconds": 0.080125
+  },
+  "primary_metric": "status_accuracy",
+  "report": {
+    "confusion": {
+      "acceptable": {
+        "acceptable": 13,
+        "needs_review": 8,
+        "not_acceptable": 10,
+        "not_found": 140
+      },
+      "not_acceptable": {
+        "acceptable": 6,
+        "needs_review": 5,
+        "not_acceptable": 4,
+        "not_found": 65
+      },
+      "not_found": {
+        "acceptable": 2,
+        "needs_review": 4,
+        "not_acceptable": 2,
+        "not_found": 69
+      }
+    },
+    "contracts": 16,
+    "errors": {
+      "count": 0,
+      "rate": 0.0
+    },
+    "gate": {
+      "checks": {
+        "evidence_verification": true,
+        "gap_recall": false,
+        "latency": true,
+        "ooxml_validity": true,
+        "status_accuracy": false
+      },
+      "evidence_verification_min": 0.99,
+      "gap_recall_min": 0.9,
+      "long_contract_min_pages": 35,
+      "long_contract_wall_seconds_p50_max": 300.0,
+      "ooxml_validity_min": 1.0,
+      "pass": false,
+      "status_accuracy_min": 0.8
+    },
+    "latency": {
+      "long_contract_wall_seconds_p50": 0.108,
+      "long_contracts": 4,
+      "per_contract": [
+        {
+          "id": "nda-001-p03",
+          "pages": 4,
+          "wall_seconds": 0.049
+        },
+        {
+          "id": "msa-002-p03",
+          "pages": 4,
+          "wall_seconds": 0.091
+        },
+        {
+          "id": "nda-003-p05",
+          "pages": 6,
+          "wall_seconds": 0.098
+        },
+        {
+          "id": "msa-004-p05",
+          "pages": 6,
+          "wall_seconds": 0.075
+        },
+        {
+          "id": "nda-005-p08",
+          "pages": 9,
+          "wall_seconds": 0.035
+        },
+        {
+          "id": "msa-006-p08",
+          "pages": 9,
+          "wall_seconds": 0.039
+        },
+        {
+          "id": "nda-007-p12",
+          "pages": 13,
+          "wall_seconds": 0.057
+        },
+        {
+          "id": "msa-008-p12",
+          "pages": 13,
+          "wall_seconds": 0.048
+        },
+        {
+          "id": "nda-009-p18",
+          "pages": 19,
+          "wall_seconds": 0.098
+        },
+        {
+          "id": "msa-010-p18",
+          "pages": 19,
+          "wall_seconds": 0.104
+        },
+        {
+          "id": "nda-011-p25",
+          "pages": 26,
+          "wall_seconds": 0.064
+        },
+        {
+          "id": "msa-012-p25",
+          "pages": 26,
+          "wall_seconds": 0.065
+        },
+        {
+          "id": "nda-013-p40",
+          "pages": 41,
+          "wall_seconds": 0.106
+        },
+        {
+          "id": "msa-014-p40",
+          "pages": 41,
+          "wall_seconds": 0.111
+        },
+        {
+          "id": "nda-015-p40",
+          "pages": 41,
+          "wall_seconds": 0.137
+        },
+        {
+          "id": "msa-016-p40",
+          "pages": 41,
+          "wall_seconds": 0.105
+        }
+      ]
+    },
+    "pages": 318,
+    "playbook.evidence_verification_rate": {
+      "bootstrap95_over_contracts": [1.0, 1.0],
+      "findings_evidence_mismatch": 0,
+      "findings_retry_exhausted": 0,
+      "hits": 54,
+      "n": 54,
+      "rate": 1.0,
+      "wilson95": [0.933584, 1.0]
+    },
+    "playbook.ooxml_validity_rate": {
+      "anchor_failed": 0,
+      "bootstrap95_over_contracts": [1.0, 1.0],
+      "hits": 16,
+      "n": 16,
+      "rate": 1.0,
+      "soffice_checked": 11,
+      "soffice_ok": 11,
+      "suggestions": 16,
+      "wilson95": [0.806387, 1.0]
+    },
+    "playbook.rule_classification_accuracy": {
+      "bootstrap95_over_contracts": [0.207715, 0.315493],
+      "by_template": {
+        "msa": {
+          "bootstrap95_over_contracts": [0.213333, 0.365],
+          "hits": 58,
+          "n": 200,
+          "rate": 0.29,
+          "wilson95": [0.231539, 0.356376]
+        },
+        "nda": {
+          "bootstrap95_over_contracts": [0.151786, 0.296875],
+          "hits": 28,
+          "n": 128,
+          "rate": 0.21875,
+          "wilson95": [0.155904, 0.297986]
+        }
+      },
+      "by_variant": {
+        "fallback": {
+          "bootstrap95_over_contracts": [0.042105, 0.136842],
+          "hits": 8,
+          "n": 89,
+          "rate": 0.089888,
+          "wilson95": [0.046252, 0.167463]
+        },
+        "omitted": {
+          "bootstrap95_over_contracts": [0.837838, 0.957746],
+          "hits": 69,
+          "n": 77,
+          "rate": 0.896104,
+          "wilson95": [0.808154, 0.946408]
+        },
+        "standard": {
+          "bootstrap95_over_contracts": [0.0125, 0.116883],
+          "hits": 5,
+          "n": 82,
+          "rate": 0.060976,
+          "wilson95": [0.026324, 0.134922]
+        },
+        "unacceptable": {
+          "bootstrap95_over_contracts": [0.012658, 0.090909],
+          "hits": 4,
+          "n": 80,
+          "rate": 0.05,
+          "wilson95": [0.019613, 0.121625]
+        }
+      },
+      "hits": 86,
+      "n": 328,
+      "rate": 0.262195,
+      "strict": {
+        "bootstrap95_over_contracts": [0.207715, 0.315493],
+        "hits": 86,
+        "n": 328,
+        "rate": 0.262195,
+        "wilson95": [0.217545, 0.312351]
+      },
+      "wilson95": [0.217545, 0.312351],
+      "wrong_misclassified": 242,
+      "wrong_unverified": 0
+    },
+    "playbook.unanticipated_edit_detection_recall": {
+      "model_only": {
+        "bootstrap95_over_contracts": [0.0, 0.0],
+        "existing_edit": {
+          "bootstrap95_over_contracts": [0.0, 0.0],
+          "hits": 0,
+          "n": 23,
+          "rate": 0.0,
+          "wilson95": [0.0, 0.143121]
+        },
+        "hits": 0,
+        "n": 47,
+        "rate": 0.0,
+        "uncovered_clause": {
+          "bootstrap95_over_contracts": [0.0, 0.0],
+          "hits": 0,
+          "n": 24,
+          "rate": 0.0,
+          "wilson95": [0.0, 0.137981]
+        },
+        "wilson95": [0.0, 0.07556]
+      },
+      "precision_vs_planted": {
+        "model_only": {
+          "bootstrap95_over_contracts": null,
+          "hits": 0,
+          "n": 0,
+          "rate": null,
+          "wilson95": [0.0, 1.0]
+        },
+        "system": {
+          "bootstrap95_over_contracts": [1.0, 1.0],
+          "hits": 159,
+          "n": 159,
+          "rate": 1.0,
+          "wilson95": [0.976409, 1.0]
+        }
+      },
+      "system": {
+        "bootstrap95_over_contracts": [0.425532, 0.553191],
+        "existing_edit": {
+          "bootstrap95_over_contracts": [1.0, 1.0],
+          "hits": 23,
+          "n": 23,
+          "rate": 1.0,
+          "wilson95": [0.856879, 1.0]
+        },
+        "hits": 23,
+        "n": 47,
+        "rate": 0.489362,
+        "uncovered_clause": {
+          "bootstrap95_over_contracts": [0.0, 0.0],
+          "hits": 0,
+          "n": 24,
+          "rate": 0.0,
+          "wilson95": [0.0, 0.137981]
+        },
+        "wilson95": [0.352753, 0.627578]
+      }
+    },
+    "tokens": {
+      "input": 1489362,
+      "model_calls": 804,
+      "output": 25707
+    }
+  },
+  "run_dir": "runs/playbook-fake-playbook-review-soffice-75d02f07ae12",
+  "selected_tasks": 16,
+  "suite": "playbook-review",
+  "system": "playbook-fake",
+  "total_failed": 0
+}

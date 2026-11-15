@@ -1,0 +1,2120 @@
+{
+  "generator_version": 1,
+  "seed": 7,
+  "contracts": [
+    {
+      "id": "nda-001-p03",
+      "template": "nda",
+      "file": "nda-001-p03.docx",
+      "pages_target": 3,
+      "chars": 9222,
+      "pages": 4,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "omitted",
+          "status": "not_found"
+        }
+      ],
+      "injected": [
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "text": "During the discussions and for eighteen months afterwards, Ardent must not develop, buy or use any product that competes with Corvane's evaluation platform.",
+          "paragraph_index": 10
+        },
+        {
+          "key": "notices",
+          "kind": "existing_edit",
+          "text": "A notice is treated as received when it is sent by email, whether or not it reaches the address in the Details.",
+          "paragraph_index": 34
+        },
+        {
+          "key": "agency",
+          "kind": "existing_edit",
+          "text": "Corvane may make commitments on behalf of Ardent in dealings with Corvane's subcontractors.",
+          "paragraph_index": 44
+        }
+      ]
+    },
+    {
+      "id": "msa-002-p03",
+      "template": "msa",
+      "file": "msa-002-p03.docx",
+      "pages_target": 3,
+      "chars": 9231,
+      "pages": 4,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "fallback",
+          "status": "acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "text": "During the term and for two years afterwards, the Customer must not develop internally or buy from any third party any software that competes with the Supplier's platform.",
+          "paragraph_index": 10
+        },
+        {
+          "key": "waiver",
+          "kind": "existing_edit",
+          "text": "A failure to exercise a right within 30 days waives that right.",
+          "paragraph_index": 56
+        },
+        {
+          "key": "counterparts",
+          "kind": "existing_edit",
+          "text": "This agreement may be signed in counterparts, which together form one document, and binds the Customer once the Customer has signed it even if the Supplier never signs.",
+          "paragraph_index": 62
+        }
+      ]
+    },
+    {
+      "id": "nda-003-p05",
+      "template": "nda",
+      "file": "nda-003-p05.docx",
+      "pages_target": 5,
+      "chars": 15261,
+      "pages": 6,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "evaluation_fee",
+          "kind": "uncovered_clause",
+          "text": "Ardent must pay Corvane an evaluation fee of $25,000 within 30 days of signing, which is not refundable in any circumstances.",
+          "paragraph_index": 8
+        },
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "text": "During the discussions and for eighteen months afterwards, Ardent must not develop, buy or use any product that competes with Corvane's evaluation platform.",
+          "paragraph_index": 10
+        },
+        {
+          "key": "counterparts",
+          "kind": "existing_edit",
+          "text": "This agreement may be signed in counterparts, which together form one document, and binds Ardent once Ardent has signed it even if Corvane never signs.",
+          "paragraph_index": 44
+        },
+        {
+          "key": "severance",
+          "kind": "existing_edit",
+          "text": "If any provision protecting Corvane is unenforceable, Ardent must agree a replacement provision with the same effect.",
+          "paragraph_index": 46
+        }
+      ]
+    },
+    {
+      "id": "msa-004-p05",
+      "template": "msa",
+      "file": "msa-004-p05.docx",
+      "pages_target": 5,
+      "chars": 15117,
+      "pages": 6,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "minimum_commitment",
+          "kind": "uncovered_clause",
+          "text": "The Customer must buy services worth at least $750,000 in each contract year and must pay any shortfall within 30 days after the end of that year.",
+          "paragraph_index": 32
+        },
+        {
+          "key": "waiver",
+          "kind": "existing_edit",
+          "text": "A failure to exercise a right within 30 days waives that right.",
+          "paragraph_index": 54
+        }
+      ]
+    },
+    {
+      "id": "nda-005-p08",
+      "template": "nda",
+      "file": "nda-005-p08.docx",
+      "pages_target": 8,
+      "chars": 24510,
+      "pages": 9,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "fallback",
+          "status": "acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "text": "During the discussions and for eighteen months afterwards, Ardent must not develop, buy or use any product that competes with Corvane's evaluation platform.",
+          "paragraph_index": 20
+        },
+        {
+          "key": "agency",
+          "kind": "existing_edit",
+          "text": "Corvane may make commitments on behalf of Ardent in dealings with Corvane's subcontractors.",
+          "paragraph_index": 44
+        },
+        {
+          "key": "counterparts",
+          "kind": "existing_edit",
+          "text": "This agreement may be signed in counterparts, which together form one document, and binds Ardent once Ardent has signed it even if Corvane never signs.",
+          "paragraph_index": 46
+        }
+      ]
+    },
+    {
+      "id": "msa-006-p08",
+      "template": "msa",
+      "file": "msa-006-p08.docx",
+      "pages_target": 8,
+      "chars": 24282,
+      "pages": 9,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "text": "During the term and for two years afterwards, the Customer must not develop internally or buy from any third party any software that competes with the Supplier's platform.",
+          "paragraph_index": 18
+        },
+        {
+          "key": "exclusivity",
+          "kind": "uncovered_clause",
+          "text": "The Customer appoints the Supplier as its exclusive provider of analytics services worldwide for the term.",
+          "paragraph_index": 20
+        },
+        {
+          "key": "variation",
+          "kind": "existing_edit",
+          "text": "This agreement may be varied by the Supplier giving written notice to the Customer.",
+          "paragraph_index": 44
+        }
+      ]
+    },
+    {
+      "id": "nda-007-p12",
+      "template": "nda",
+      "file": "nda-007-p12.docx",
+      "pages_target": 12,
+      "chars": 36327,
+      "pages": 13,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "omitted",
+          "status": "not_found"
+        }
+      ],
+      "injected": [
+        {
+          "key": "receivables_carve_out",
+          "kind": "uncovered_clause",
+          "text": "Despite any restriction on transfer in this agreement, Corvane may transfer its rights under it, together with any Ardent information it holds, to any purchaser of its accounts receivable without notice to Ardent.",
+          "paragraph_index": 24
+        },
+        {
+          "key": "severance",
+          "kind": "existing_edit",
+          "text": "If any provision protecting Corvane is unenforceable, Ardent must agree a replacement provision with the same effect.",
+          "paragraph_index": 44
+        }
+      ]
+    },
+    {
+      "id": "msa-008-p12",
+      "template": "msa",
+      "file": "msa-008-p12.docx",
+      "pages_target": 12,
+      "chars": 36311,
+      "pages": 13,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "fallback",
+          "status": "acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "unilateral_amendment",
+          "kind": "uncovered_clause",
+          "text": "The Supplier may amend any part of this agreement by posting a revised version on its website, and the Customer's continued use of the services is acceptance of the amended terms.",
+          "paragraph_index": 10
+        },
+        {
+          "key": "variation",
+          "kind": "existing_edit",
+          "text": "This agreement may be varied by the Supplier giving written notice to the Customer.",
+          "paragraph_index": 48
+        },
+        {
+          "key": "entire_agreement",
+          "kind": "existing_edit",
+          "text": "This agreement is the entire agreement about its subject matter and replaces all earlier understandings, except the Supplier's standard terms of business, which also apply and prevail over this agreement.",
+          "paragraph_index": 54
+        }
+      ]
+    },
+    {
+      "id": "nda-009-p18",
+      "template": "nda",
+      "file": "nda-009-p18.docx",
+      "pages_target": 18,
+      "chars": 54440,
+      "pages": 19,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "receivables_carve_out",
+          "kind": "uncovered_clause",
+          "text": "Despite any restriction on transfer in this agreement, Corvane may transfer its rights under it, together with any Ardent information it holds, to any purchaser of its accounts receivable without notice to Ardent.",
+          "paragraph_index": 12
+        },
+        {
+          "key": "severance",
+          "kind": "existing_edit",
+          "text": "If any provision protecting Corvane is unenforceable, Ardent must agree a replacement provision with the same effect.",
+          "paragraph_index": 42
+        }
+      ]
+    },
+    {
+      "id": "msa-010-p18",
+      "template": "msa",
+      "file": "msa-010-p18.docx",
+      "pages_target": 18,
+      "chars": 54371,
+      "pages": 19,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "fallback",
+          "status": "acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "most_favoured",
+          "kind": "uncovered_clause",
+          "text": "The Customer must offer the Supplier any work of the kind covered by this agreement on terms no less favourable than those the Customer offers any other provider.",
+          "paragraph_index": 34
+        },
+        {
+          "key": "exclusivity",
+          "kind": "uncovered_clause",
+          "text": "The Customer appoints the Supplier as its exclusive provider of analytics services worldwide for the term.",
+          "paragraph_index": 42
+        },
+        {
+          "key": "notices",
+          "kind": "existing_edit",
+          "text": "A notice is treated as received when it is sent by email, whether or not it reaches the address in the Details.",
+          "paragraph_index": 52
+        }
+      ]
+    },
+    {
+      "id": "nda-011-p25",
+      "template": "nda",
+      "file": "nda-011-p25.docx",
+      "pages_target": 25,
+      "chars": 75451,
+      "pages": 26,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "text": "During the discussions and for eighteen months afterwards, Ardent must not develop, buy or use any product that competes with Corvane's evaluation platform.",
+          "paragraph_index": 8
+        },
+        {
+          "key": "evaluation_fee",
+          "kind": "uncovered_clause",
+          "text": "Ardent must pay Corvane an evaluation fee of $25,000 within 30 days of signing, which is not refundable in any circumstances.",
+          "paragraph_index": 10
+        },
+        {
+          "key": "costs",
+          "kind": "existing_edit",
+          "text": "Ardent bears both parties' costs of negotiating and signing this agreement.",
+          "paragraph_index": 42
+        },
+        {
+          "key": "agency",
+          "kind": "existing_edit",
+          "text": "Corvane may make commitments on behalf of Ardent in dealings with Corvane's subcontractors.",
+          "paragraph_index": 48
+        }
+      ]
+    },
+    {
+      "id": "msa-012-p25",
+      "template": "msa",
+      "file": "msa-012-p25.docx",
+      "pages_target": 25,
+      "chars": 75614,
+      "pages": 26,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "receivables_carve_out",
+          "kind": "uncovered_clause",
+          "text": "Despite any restriction on transfer in this agreement, the Supplier may transfer its right to receive payments under it, together with any Customer data needed to collect them, to any financier or debt purchaser without notice.",
+          "paragraph_index": 12
+        },
+        {
+          "key": "most_favoured",
+          "kind": "uncovered_clause",
+          "text": "The Customer must offer the Supplier any work of the kind covered by this agreement on terms no less favourable than those the Customer offers any other provider.",
+          "paragraph_index": 22
+        },
+        {
+          "key": "costs",
+          "kind": "existing_edit",
+          "text": "The Customer bears both parties' costs of negotiating and signing this agreement.",
+          "paragraph_index": 46
+        }
+      ]
+    },
+    {
+      "id": "nda-013-p40",
+      "template": "nda",
+      "file": "nda-013-p40.docx",
+      "pages_target": 40,
+      "chars": 120789,
+      "pages": 41,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "most_favoured",
+          "kind": "uncovered_clause",
+          "text": "For three years after signing, if Ardent buys any product or service of the kind discussed under this agreement from another supplier, it must first offer Corvane the chance to supply it on terms no less favourable to Corvane than those given to that supplier.",
+          "paragraph_index": 28
+        },
+        {
+          "key": "evaluation_fee",
+          "kind": "uncovered_clause",
+          "text": "Ardent must pay Corvane an evaluation fee of $25,000 within 30 days of signing, which is not refundable in any circumstances.",
+          "paragraph_index": 36
+        },
+        {
+          "key": "variation",
+          "kind": "existing_edit",
+          "text": "This agreement may be varied by Corvane giving written notice to Ardent.",
+          "paragraph_index": 42
+        },
+        {
+          "key": "counterparts",
+          "kind": "existing_edit",
+          "text": "This agreement may be signed in counterparts, which together form one document, and binds Ardent once Ardent has signed it even if Corvane never signs.",
+          "paragraph_index": 52
+        }
+      ]
+    },
+    {
+      "id": "msa-014-p40",
+      "template": "msa",
+      "file": "msa-014-p40.docx",
+      "pages_target": 40,
+      "chars": 120699,
+      "pages": 41,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "omitted",
+          "status": "not_found"
+        }
+      ],
+      "injected": [
+        {
+          "key": "minimum_commitment",
+          "kind": "uncovered_clause",
+          "text": "The Customer must buy services worth at least $750,000 in each contract year and must pay any shortfall within 30 days after the end of that year.",
+          "paragraph_index": 10
+        },
+        {
+          "key": "unilateral_amendment",
+          "kind": "uncovered_clause",
+          "text": "The Supplier may amend any part of this agreement by posting a revised version on its website, and the Customer's continued use of the services is acceptance of the amended terms.",
+          "paragraph_index": 28
+        },
+        {
+          "key": "agency",
+          "kind": "existing_edit",
+          "text": "The Supplier may make commitments on behalf of the Customer in dealings with the Supplier's subcontractors.",
+          "paragraph_index": 48
+        }
+      ]
+    },
+    {
+      "id": "nda-015-p40",
+      "template": "nda",
+      "file": "nda-015-p40.docx",
+      "pages_target": 40,
+      "chars": 120813,
+      "pages": 41,
+      "rules": [
+        {
+          "rule": "Mutuality",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Definition of Confidential Information",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Exclusions from Confidential Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Permitted Use and Need-to-Know Disclosure",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Compelled Disclosure",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Standard of Care",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Term and Survival",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Return and Destruction",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "No Licence or Transfer of IP",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Residuals",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Remedies and Injunctive Relief",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Personal Information",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "No Warranty and No Obligation to Proceed",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Assignment",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "costs_shift",
+          "kind": "uncovered_clause",
+          "text": "Ardent must reimburse Corvane's legal costs of any dispute about this agreement, whatever the outcome of that dispute.",
+          "paragraph_index": 22
+        },
+        {
+          "key": "entire_agreement",
+          "kind": "existing_edit",
+          "text": "This agreement is the entire agreement about its subject matter and replaces all earlier understandings, except Corvane's standard terms of business, which also apply and prevail over this agreement.",
+          "paragraph_index": 46
+        }
+      ]
+    },
+    {
+      "id": "msa-016-p40",
+      "template": "msa",
+      "file": "msa-016-p40.docx",
+      "pages_target": 40,
+      "chars": 120725,
+      "pages": 41,
+      "rules": [
+        {
+          "rule": "Limitation of Liability Cap",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Exclusions from the Liability Cap",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Consequential Loss",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Ownership of Deliverables",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "IP Indemnity",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Warranties",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Service Levels and Service Credits",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Payment Terms",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Price Increases",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Term and Renewal",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Convenience",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Termination for Cause",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Transition Assistance",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Data Protection",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Processor Terms (EU/UK GDPR)",
+          "variant": "omitted",
+          "status": "not_found"
+        },
+        {
+          "rule": "Privacy Act Compliance (AU)",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Information Security",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Audit Rights",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Subcontracting",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Insurance",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Confidentiality and Publicity",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        },
+        {
+          "rule": "Governing Law and Jurisdiction",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Assignment and Change of Control",
+          "variant": "fallback",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Force Majeure",
+          "variant": "standard",
+          "status": "acceptable"
+        },
+        {
+          "rule": "Non-Solicitation",
+          "variant": "unacceptable",
+          "status": "not_acceptable"
+        }
+      ],
+      "injected": [
+        {
+          "key": "exclusivity",
+          "kind": "uncovered_clause",
+          "text": "The Customer appoints the Supplier as its exclusive provider of analytics services worldwide for the term.",
+          "paragraph_index": 20
+        },
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "text": "During the term and for two years afterwards, the Customer must not develop internally or buy from any third party any software that competes with the Supplier's platform.",
+          "paragraph_index": 44
+        },
+        {
+          "key": "entire_agreement",
+          "kind": "existing_edit",
+          "text": "This agreement is the entire agreement about its subject matter and replaces all earlier understandings, except the Supplier's standard terms of business, which also apply and prevail over this agreement.",
+          "paragraph_index": 62
+        }
+      ]
+    }
+  ]
+}

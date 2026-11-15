@@ -1,0 +1,19 @@
+{
+  "config_hash": "75d02f07ae12",
+  "dataset_fingerprint": "playbook-v2-7-16-fd6ce2d50396",
+  "harness_fingerprint": "eb83f031c55a6e32733bd640a97513b5857903b6007a791fdd4ca54afcc567ab",
+  "judges": null,
+  "output_schema": null,
+  "run_suffix": "soffice",
+  "schema_version": 1,
+  "suite": "playbook-review",
+  "suite_instructions_sha256": "dab8085df834ae93dd5043a34414fb2897b0848643cab01e14452a175c389172",
+  "system": "playbook-fake",
+  "system_config": {
+    "harness": "playbook-node",
+    "params": {
+      "client": "fake"
+    },
+    "vendor": "local"
+  }
+}

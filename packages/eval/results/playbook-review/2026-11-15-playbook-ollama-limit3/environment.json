@@ -1,0 +1,20 @@
+{
+  "note": "Reconstructed after the run: this run predates run.ts recording its environment. Values marked as observed were read on 2026-11-16 from the same machine; the model was not re-pulled in between.",
+  "git_sha": "5b2f14b7e82dc1e908b5354e1bb60a7bfe899e76",
+  "engine_sha256": "not recorded at run time",
+  "node": "v22.23.1 (observed)",
+  "ollama_version": "0.40.16 (observed)",
+  "model": "qwen3:4b-instruct",
+  "ollama_digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0 (observed)",
+  "ollama_seed": "not set; temperature 0",
+  "rule_ids": "random per run, so not reproducible",
+  "params": {
+    "parallelism": 1,
+    "num_ctx": 8192,
+    "rule_timeout_ms": 600000,
+    "call_timeout_ms": 600000,
+    "concurrency": 1
+  },
+  "machine": "8 GB Apple silicon laptop, 12-32% memory free during the run",
+  "corpus": "generator v1, seed 7, contracts nda-001-p03, msa-002-p03, nda-003-p05; corpus-v1/gold.json is its gold"
+}
