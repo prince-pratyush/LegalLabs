@@ -11,7 +11,8 @@ export type Route =
  * Documents open on real paths (`/d/...`) in the viewer, over whichever screen this shows.
  */
 export function parseRoute(hash: string): Route {
-  const path = hash.replace(/^#/, "") || "/";
+  // A query (e.g. from a shared link) doesn't change which screen it is.
+  const path = hash.replace(/^#/, "").split("?")[0] || "/";
   if (path === "/") return { name: "new" };
   if (path === "/history") return { name: "history" };
   const thread = /^\/t\/([^/?#]+)$/.exec(path);

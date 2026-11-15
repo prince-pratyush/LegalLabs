@@ -19,6 +19,8 @@ describe("parseRoute", () => {
     expect(parseRoute("#/history")).toEqual({ name: "history" });
     expect(parseRoute("#/t/abc")).toEqual({ name: "thread", id: "abc" });
     expect(parseRoute("#/nowhere")).toEqual({ name: "missing" });
+    expect(parseRoute("#/history?q=cap")).toEqual({ name: "history" });
+    expect(parseRoute("#/t/abc?from=share")).toEqual({ name: "thread", id: "abc" });
   });
 
   it("leaves vault routes and document paths to their own screens", () => {
