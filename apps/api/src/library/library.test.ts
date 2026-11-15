@@ -22,6 +22,11 @@ import { createTemplatePort } from "./port.js";
 const pool = testPool();
 afterAll(() => pool.end());
 
+type UploadBody = {
+  code?: string;
+  template: { id: string; current: Record<string, unknown>; [key: string]: unknown };
+};
+
 function harness() {
   const documents = testDocuments(pool);
   const app = createApp({
@@ -62,14 +67,14 @@ function harness() {
     extra: Record<string, string> = {},
   ) => {
     const form = new FormData();
-    form.set("file", new File([bytes.slice().buffer as ArrayBuffer], name));
+    form.set("file", new File([bytes.slice()], name));
     for (const [key, value] of Object.entries(extra)) form.set(key, value);
     const res = await app.request(`/api/v1${path}`, {
       method: "POST",
       headers: { cookie },
       body: form,
     });
-    return { status: res.status, body: await res.json() };
+    return { status: res.status, body: (await res.json()) as UploadBody };
   };
   return { signIn, call, raw, upload };
 }

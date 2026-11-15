@@ -6,6 +6,13 @@ export { Checkbox } from "./components/checkbox.js";
 export { CommandPalette, type PaletteCommand } from "./components/command-palette.js";
 export { ConfirmDialog } from "./components/confirm-dialog.js";
 export { DataTable, type TableColumn } from "./components/data-table.js";
+export {
+  DocumentViewer,
+  type DocumentViewerProps,
+  ViewerSkeleton,
+  type ViewerSource,
+  type ViewerTarget,
+} from "./components/document-viewer.js";
 export { EmptyState } from "./components/empty-state.js";
 export {
   CitationMarker,
@@ -136,3 +143,10 @@ export {
   themeSetting,
 } from "./theme.js";
 export { type ColorRole, colors, motion, space, type Theme, typography } from "./tokens.js";
+export {
+  loadPdf,
+  type PdfDocument,
+  type PdfLoader,
+  preloadPdf,
+  setPdfWorker,
+} from "./viewer/pdf.js";

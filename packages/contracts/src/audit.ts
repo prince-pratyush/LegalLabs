@@ -121,6 +121,8 @@ export const auditActions: string[] = [
   ...family("restore", ["started", "completed"]),
 
   ...family("export", ["user", "matter", "legal_hold", "audit", "analytics", "evidence_pack"]),
+
+  ...family("knowledge.filter_preset", ["created", "updated", "deleted"]),
 ];
 
 export const AuditAction = z.enum(auditActions);
