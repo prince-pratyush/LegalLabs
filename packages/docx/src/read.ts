@@ -272,6 +272,7 @@ export interface Relationship {
   id: string;
   type: string;
   target: string;
+  external: boolean;
 }
 
 export function relationships(xml: string | undefined): Relationship[] {
@@ -280,6 +281,7 @@ export function relationships(xml: string | undefined): Relationship[] {
     id: rel.attrs.Id ?? "",
     type: rel.attrs.Type ?? "",
     target: rel.attrs.Target ?? "",
+    external: rel.attrs.TargetMode === "External",
   }));
 }
 

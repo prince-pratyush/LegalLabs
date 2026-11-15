@@ -278,13 +278,21 @@ function assertWellFormed(name: string, xml: string) {
   parser.parseFromString(xml, "text/xml");
 }
 
+const DOCUMENT_PART = "word/document.xml";
+
 function load(bytes: Uint8Array): DocModel {
+  let doc: DocModel;
   try {
-    return loadDocument(bytes);
+    doc = loadDocument(bytes);
   } catch (error) {
     if (error instanceof DocxError) throw new PatchError(error.code, error.message);
     throw error;
   }
+  // §4.6 names the parts the patcher may rewrite; a main part elsewhere is refused.
+  if (doc.pkg.docPath !== DOCUMENT_PART) {
+    throw new PatchError("OOXML_INVALID", `the main document must be ${DOCUMENT_PART}`);
+  }
+  return doc;
 }
 
 /** Parts are written as UTF-8, so a declaration that said UTF-16 must say so too. */
@@ -301,6 +309,17 @@ function targetParagraph(doc: DocModel, edit: PatchEdit) {
 }
 
 const CT = "application/vnd.openxmlformats-officedocument.wordprocessingml";
+const PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
+const TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types";
+
+/** A part we rewrite must be the element we expect in the namespace we expect. */
+function expectRoot(part: string, xml: string | undefined, name: string, nsAttr: string, ns: string) {
+  if (xml === undefined) return;
+  const root = parseXml(xml);
+  if (root.name !== name || root.attrs[nsAttr] !== ns) {
+    throw new PatchError("OOXML_INVALID", `${part} must be ${name} in ${ns}`);
+  }
+}
 
 /** Adds a part's relationship and content type when the package lacks them. */
 class Registry {
@@ -310,20 +329,31 @@ class Registry {
   constructor(private readonly pkg: Package) {
     this.rels = text(pkg, pkg.relsPath);
     this.types = text(pkg, "[Content_Types].xml");
+    expectRoot(pkg.relsPath, this.rels, "Relationships", "xmlns", PKG_REL_NS);
+    expectRoot("[Content_Types].xml", this.types, "Types", "xmlns", TYPES_NS);
   }
 
-  /** The part's path, registering `fallback` if the document has no such part. */
+  /**
+   * The part's path, registering `fallback` if the document has no such part. Only
+   * the spec's own path is accepted, so a hostile relationship cannot point the
+   * write at document.xml or outside the package.
+   */
   part(type: string, fallback: string, contentType: string): string {
+    const path = resolveTarget(this.pkg.docPath, fallback);
     const found = relationships(this.rels).find((rel) => relType(rel, type));
-    if (found) return resolveTarget(this.pkg.docPath, found.target);
+    if (found) {
+      if (found.external || resolveTarget(this.pkg.docPath, found.target) !== path) {
+        throw new PatchError("OOXML_INVALID", `the ${type} relationship must target ${path}`);
+      }
+      return path;
+    }
     const used = new Set(relationships(this.rels).map((rel) => rel.id));
     let n = used.size + 1;
     while (used.has(`rId${n}`)) n++;
     const rel = `<Relationship Id="rId${n}" Type="${REL_NS}/${type}" Target="${fallback}"/>`;
     this.rels = this.rels
       ? appendChild(this.rels, rel)
-      : `${XML_HEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel}</Relationships>`;
-    const path = resolveTarget(this.pkg.docPath, fallback);
+      : `${XML_HEAD}<Relationships xmlns="${PKG_REL_NS}">${rel}</Relationships>`;
     const types = this.types ?? "";
     const declared = elements(parseXml(types), "Override").some(
       (el) => el.attrs.PartName === `/${path}`,
@@ -437,23 +467,31 @@ export function patchDocx(
   }
 
   const out: Record<string, string> = { [doc.pkg.docPath]: document };
-  const registry = new Registry(doc.pkg);
-  if (comments.length) {
-    const path = registry.part("comments", "comments.xml", `${CT}.comments+xml`);
-    const existing = text(doc.pkg, path);
-    out[path] = existing
-      ? appendChild(existing, comments.join(""))
-      : `${XML_HEAD}<w:comments xmlns:w="${W_NS}">${comments.join("")}</w:comments>`;
-  }
-  if (opts.trackRevisions ?? true) {
-    const path = registry.part("settings", "settings.xml", `${CT}.settings+xml`);
-    out[path] = withTrackRevisions(text(doc.pkg, path));
-  }
-  if (registry.rels !== text(doc.pkg, doc.pkg.relsPath) && registry.rels) {
-    out[doc.pkg.relsPath] = registry.rels;
-  }
-  if (registry.types !== text(doc.pkg, "[Content_Types].xml") && registry.types) {
-    out["[Content_Types].xml"] = registry.types;
+  try {
+    const registry = new Registry(doc.pkg);
+    if (comments.length) {
+      const path = registry.part("comments", "comments.xml", `${CT}.comments+xml`);
+      const existing = text(doc.pkg, path);
+      expectRoot(path, existing, "w:comments", "xmlns:w", W_NS);
+      out[path] = existing
+        ? appendChild(existing, comments.join(""))
+        : `${XML_HEAD}<w:comments xmlns:w="${W_NS}">${comments.join("")}</w:comments>`;
+    }
+    if (opts.trackRevisions ?? true) {
+      const path = registry.part("settings", "settings.xml", `${CT}.settings+xml`);
+      const existing = text(doc.pkg, path);
+      expectRoot(path, existing, "w:settings", "xmlns:w", W_NS);
+      out[path] = withTrackRevisions(existing);
+    }
+    if (registry.rels !== text(doc.pkg, doc.pkg.relsPath) && registry.rels) {
+      out[doc.pkg.relsPath] = registry.rels;
+    }
+    if (registry.types !== text(doc.pkg, "[Content_Types].xml") && registry.types) {
+      out["[Content_Types].xml"] = registry.types;
+    }
+  } catch (error) {
+    if (error instanceof PatchError) throw error;
+    throw new PatchError("OOXML_INVALID", error instanceof Error ? error.message : String(error));
   }
   for (const [name, xml] of Object.entries(out)) assertWellFormed(name, xml);
 

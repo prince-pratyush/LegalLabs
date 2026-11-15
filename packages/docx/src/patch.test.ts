@@ -479,6 +479,62 @@ describe("untrusted packages", () => {
     );
   });
 
+  it("only writes the spec's parts, whatever the relationships say", () => {
+    const withRel = (extra: string) =>
+      fixture({
+        edit: (parts) => {
+          const rels = parts["word/_rels/document.xml.rels"] as string;
+          parts["word/_rels/document.xml.rels"] = rels.replace(
+            "</Relationships>",
+            `${extra}</Relationships>`,
+          );
+        },
+      });
+    const hostile = withRel(rel("rId9", "comments", "document.xml"));
+    expect(() => patchDocx(hostile, [replace({ comment: "c" })], OPTS)).toThrow(
+      expect.objectContaining({ code: "OOXML_INVALID" }),
+    );
+    const external = withRel(
+      '<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="https://example.com/c.xml" TargetMode="External"/>',
+    );
+    expect(() => patchDocx(external, [replace({ comment: "c" })], OPTS)).toThrow(
+      expect.objectContaining({ code: "OOXML_INVALID" }),
+    );
+    const elsewhere = fixture({
+      edit: (parts) => {
+        parts["_rels/.rels"] = (parts["_rels/.rels"] as string).replace(
+          'Target="word/document.xml"',
+          'Target="word/main.xml"',
+        );
+        parts["word/main.xml"] = parts["word/document.xml"] as string;
+      },
+    });
+    expect(readDocx(elsewhere).paragraphs).toHaveLength(10);
+    expect(() => patchDocx(elsewhere, [replace()], OPTS)).toThrow(
+      expect.objectContaining({ code: "OOXML_INVALID" }),
+    );
+  });
+
+  it("checks the namespace of each part it rewrites", () => {
+    const wrongSettings = fixture({
+      edit: (parts) =>
+        void (parts["word/settings.xml"] =
+          `${HEAD}<w:settings xmlns:w="urn:not-word"><w:zoom w:percent="100"/></w:settings>`),
+    });
+    expect(() => patchDocx(wrongSettings, [replace()], OPTS)).toThrow(
+      expect.objectContaining({ code: "OOXML_INVALID" }),
+    );
+    const wrongRels = fixture({
+      edit: (parts) =>
+        void (parts["word/_rels/document.xml.rels"] = (
+          parts["word/_rels/document.xml.rels"] as string
+        ).replace("package/2006/relationships", "package/2006/other")),
+    });
+    expect(() => patchDocx(wrongRels, [replace()], OPTS)).toThrow(
+      expect.objectContaining({ code: "OOXML_INVALID" }),
+    );
+  });
+
   it("reads UTF-16 parts and writes them back as UTF-8", () => {
     const bytes = fixture({
       edit: (parts) => {
