@@ -449,16 +449,17 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
     await db.query(
       `insert into work.run_step (workspace_id, run_id, ordinal, kind, status, model, input_ref,
                                   usage, cost_usd, finished_at)
-       select $1, $2, $3 + x.n - 1, x.kind, $4, x.model, x.ref, x.usage, x.cost, now()
-         from jsonb_to_recordset($5) with ordinality
-              as x(kind text, model text, ref text, usage jsonb, cost numeric, n bigint)`,
+       select $1, $2, $3 + x.n, x.kind, $4, x.model, x.ref, x.usage, x.cost, now()
+         from jsonb_to_recordset($5)
+              as x(n int, kind text, model text, ref text, usage jsonb, cost numeric)`,
       [
         principal.workspaceId,
         runId,
         base,
         status,
         JSON.stringify(
-          steps.map((s) => ({
+          steps.map((s, n) => ({
+            n,
             kind: s.kind,
             model: s.usage.models.at(-1) ?? null,
             ref: s.ref,
