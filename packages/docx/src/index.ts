@@ -9,4 +9,21 @@ export {
   type Run,
   type TextRun,
 } from "./markdown.js";
+export {
+  type PatchEdit,
+  PatchError,
+  type PatchFailureCode,
+  type PatchOptions,
+  type PatchResult,
+  paragraphFragment,
+  patchDocx,
+} from "./patch.js";
+export {
+  type BodyParagraph,
+  type BodyRun,
+  type ExcludedKind,
+  type ExistingEdit,
+  type ReadResult,
+  readDocx,
+} from "./read.js";
 export { buildTrackedDocx, type TrackedInput } from "./tracked.js";
