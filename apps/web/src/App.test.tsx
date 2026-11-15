@@ -201,6 +201,30 @@ describe("a thread", () => {
     expect(screen.getByTestId("answer-m2")).toBeTruthy();
   });
 
+  it("says when a verified source has no link to open", async () => {
+    const authority = {
+      ...source(1, 4, "ok"),
+      kind: "authority" as const,
+      document_id: null,
+      version_id: null,
+      authority: { id: "a1", citation: "Act s 1", title: "Act", url: "http://insecure.test" },
+      open_url: null,
+    };
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [
+        200,
+        { thread: thread({ messages: [QUESTION, { ...ANSWER, citations: [authority] }] }) },
+      ],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    const answer = await screen.findByTestId("answer-m2");
+    fireEvent.click(within(answer).getByRole("button", { name: "Source 1, verified" }));
+    expect(await screen.findByText("Source link unavailable for [1].")).toBeTruthy();
+    expect(window.location.pathname).toBe("/");
+  });
+
   it("flags sentences with no verified source", async () => {
     const flagged = { ...ANSWER, ungrounded: [[0, 6]] as [number, number][] };
     serve({

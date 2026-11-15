@@ -6,12 +6,15 @@ import type { LiveCitation } from "./run-state.js";
 export function SourcesPanel({
   citations,
   activeN,
+  unavailable = false,
   onOpen,
   onFlagged,
   onClose,
 }: {
   citations: readonly LiveCitation[];
   activeN?: number;
+  /** The active source is verified but has no document page or web link to open. */
+  unavailable?: boolean;
   onOpen: (n: number) => void;
   onFlagged: (n: number) => void;
   onClose: () => void;
@@ -21,6 +24,11 @@ export function SourcesPanel({
   return (
     <SidePanel title="Sources" onClose={onClose} width={width} onWidthChange={setWidth}>
       <div className="grid gap-4">
+        {unavailable && activeN !== undefined && (
+          <p role="status" className="text-dense text-fg-muted">
+            Source link unavailable for [{activeN}].
+          </p>
+        )}
         {flagged && (
           <section
             aria-label={`Source ${flagged.n}`}

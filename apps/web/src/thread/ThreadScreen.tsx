@@ -50,7 +50,7 @@ function follow(citation: LiveCitation, all: readonly LiveCitation[]) {
 }
 
 type Panel =
-  | { kind: "sources"; answerId: string; n?: number }
+  | { kind: "sources"; answerId: string; n?: number; unavailable?: boolean }
   | { kind: "share" }
   | { kind: "drafts"; draftId?: string }
   | null;
@@ -182,8 +182,10 @@ export function ThreadScreen({
 
   const cite = (answerId: string, citations: readonly LiveCitation[], n: number) => {
     const citation = citations.find((c) => c.n === n);
-    setPanel({ kind: "sources", answerId, n });
-    if (citation) follow(citation, citations);
+    const opened = citation ? follow(citation, citations) : false;
+    // A verified source with nowhere to open says so, rather than doing nothing visible.
+    const unavailable = citation?.status === "ok" && !opened;
+    setPanel({ kind: "sources", answerId, n, ...(unavailable ? { unavailable } : {}) });
   };
 
   const awaiting = live?.status === "awaiting_approval" && !live.finished;
@@ -227,6 +229,7 @@ export function ThreadScreen({
       <SourcesPanel
         citations={answerCitations(panel.answerId)}
         {...(panel.n !== undefined ? { activeN: panel.n } : {})}
+        unavailable={panel.unavailable === true}
         onOpen={(n) => cite(panel.answerId, answerCitations(panel.answerId), n)}
         onFlagged={(n) => setPanel({ kind: "sources", answerId: panel.answerId, n })}
         onClose={() => setPanel(null)}
