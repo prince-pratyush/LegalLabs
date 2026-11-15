@@ -5,7 +5,6 @@ import { historyQuery } from "./history/query.js";
 import { parseRoute } from "./router.js";
 import { toBlocks } from "./thread/compose.js";
 import { reduceRun, startRun } from "./thread/run-state.js";
-import { openCitation } from "./viewer/open-citation.js";
 
 const DOC = "0190a000-0000-7000-8000-000000000001";
 
@@ -22,24 +21,10 @@ describe("parseRoute", () => {
     expect(parseRoute("#/nowhere")).toEqual({ name: "missing" });
   });
 
-  it("reads a viewer deep link with its page and span", () => {
-    expect(parseRoute(`#/d/${DOC}/v/2?p=4&cf=10&ct=20`)).toEqual({
-      name: "viewer",
-      path: `/d/${DOC}/v/2?p=4&cf=10&ct=20`,
-      target: { document_id: DOC, version_no: 2, page: 4, char_from: 10, char_to: 20 },
-    });
-  });
-
-  it("treats a malformed deep link as missing", () => {
-    expect(parseRoute(`#/d/${DOC}/v/2`)).toEqual({ name: "missing" });
-    expect(parseRoute("#/d/not-an-id/v/2?p=1")).toEqual({ name: "missing" });
-  });
-
-  it("round-trips what openCitation writes", () => {
-    const target = { document_id: DOC, version_no: 1, page: 3, char_from: 0, char_to: 7 };
-    openCitation(target);
-    const route = parseRoute(window.location.hash);
-    expect(route.name === "viewer" && route.target).toEqual(target);
+  it("leaves vault routes and document paths to their own screens", () => {
+    // Vaults own #/vaults; the viewer opens on a real /d/ path, not a hash.
+    expect(parseRoute("#/vaults")).toEqual({ name: "missing" });
+    expect(parseRoute(`#/d/${DOC}/v/2?p=4`)).toEqual({ name: "missing" });
   });
 });
 

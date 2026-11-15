@@ -8,13 +8,14 @@ configure({ asyncUtilTimeout: 5000 });
 export const DOC = "0190a000-0000-7000-8000-000000000001";
 export const THREAD_ID = "0190a000-0000-7000-8000-000000000003";
 export const RUN_ID = "0190a000-0000-7000-8000-000000000009";
+export const VERSION = "0190a000-0000-7000-8000-000000000002";
 
 export const source = (n: number, at: number, status: Citation["status"]): Citation => ({
   n,
   at,
   kind: "document",
   document_id: status === "unresolved" ? null : DOC,
-  version_id: status === "unresolved" ? null : "v",
+  version_id: status === "unresolved" ? null : VERSION,
   version_no: status === "unresolved" ? null : 1,
   document_name: status === "unresolved" ? null : "msa.pdf",
   page: 3,
@@ -82,7 +83,7 @@ export const thread = (over: Partial<Thread> = {}): Thread => ({
   documents: [
     {
       id: DOC,
-      version_id: "v",
+      version_id: VERSION,
       version_no: 1,
       name: "msa.pdf",
       page_count: 10,
@@ -168,4 +169,6 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.location.hash = "";
+  // The viewer opens on a real path; put the page back for the next test.
+  window.history.replaceState(null, "", "/");
 });
