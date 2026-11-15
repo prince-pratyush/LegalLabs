@@ -89,7 +89,7 @@ describe("deep analysis", () => {
     await waitFor(() => expect(FakeSource.all).toHaveLength(1));
     const stream = FakeSource.all[0];
     if (!stream) throw new Error("no stream");
-    expect(await screen.findByText("Planning the analysis…")).toBeTruthy();
+    expect((await screen.findByText("Planning the analysis…")).getAttribute("role")).toBe("status");
     stream.emit("plan", 1, { plan: PLAN });
     stream.emit("status", 2, { status: "awaiting_approval" });
 

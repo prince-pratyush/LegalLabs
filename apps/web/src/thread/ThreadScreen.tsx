@@ -474,15 +474,21 @@ function LiveAnswer({
   // Nothing is read until a person approves the plan and its cost.
   if (run.status === "awaiting_approval" && !run.finished) {
     return run.plan ? (
-      <PlanCard
-        steps={run.plan.steps}
-        costLow={run.plan.estimated_cost_usd.low}
-        costHigh={run.plan.estimated_cost_usd.high}
-        onApprove={onApprove}
-        onEdit={onEditPlan}
-        onCancel={onCancelPlan}
-        busy={planBusy}
-      />
+      <div className="grid gap-2">
+        {/* Announced, since the card appears without the reader moving to it. */}
+        <p role="status" className="sr-only">
+          A plan is ready. Approve it, edit it or cancel.
+        </p>
+        <PlanCard
+          steps={run.plan.steps}
+          costLow={run.plan.estimated_cost_usd.low}
+          costHigh={run.plan.estimated_cost_usd.high}
+          onApprove={onApprove}
+          onEdit={onEditPlan}
+          onCancel={onCancelPlan}
+          busy={planBusy}
+        />
+      </div>
     ) : (
       <PlanCardSkeleton />
     );
@@ -490,7 +496,9 @@ function LiveAnswer({
   return (
     <article className="grid gap-3" aria-label="Answer in progress">
       {run.status === "planned" && !run.finished && (
-        <p className="text-dense text-fg-muted">Planning the analysis…</p>
+        <p role="status" className="text-dense text-fg-muted">
+          Planning the analysis…
+        </p>
       )}
       {(run.steps.length > 0 || run.coverage) && !run.finished && (
         <RunProgress steps={run.steps} {...(run.coverage ? { coverage: run.coverage } : {})} />
@@ -506,7 +514,11 @@ function LiveAnswer({
       ) : !run.finished ? (
         <AnswerTextSkeleton />
       ) : null}
-      {run.status === "cancelled" && <p className="text-dense text-fg-muted">Stopped.</p>}
+      {run.status === "cancelled" && (
+        <p role="status" className="text-dense text-fg-muted">
+          Stopped.
+        </p>
+      )}
       {/* Same rule as a saved answer, so the streamed text is never shown as checked. */}
       {run.finished && !run.error && run.text && !run.citations.some((c) => c.status === "ok") && (
         <UnverifiedNote />
