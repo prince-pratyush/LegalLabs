@@ -26,10 +26,10 @@ export const sizeOf = (chars: number): Size =>
 /** Published playbooks the user can run; null when this server has no playbook reviews yet. */
 export async function listPlaybooks(api: Api): Promise<PlaybookSummary[] | null> {
   try {
-    const body = await api.get<{ playbooks?: PlaybookSummary[]; items?: PlaybookSummary[] }>(
+    const body = await api.get<{ playbooks: PlaybookSummary[] }>(
       "/api/v1/playbooks?filter[status]=published",
     );
-    return body.playbooks ?? body.items ?? [];
+    return body.playbooks;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null;
     throw err;
@@ -40,7 +40,7 @@ export async function listPlaybooks(api: Api): Promise<PlaybookSummary[] | null>
 async function uploadVersion(api: Api, host: WordHost): Promise<string> {
   const bytes = await host.file();
   const form = new FormData();
-  form.append("file", new File([bytes as Uint8Array<ArrayBuffer>], `${host.title()}.docx`));
+  form.append("file", new File([bytes], `${host.title()}.docx`));
   const { document } = await api.upload<{ document: { version_id: string } }>(
     "/api/v1/documents",
     form,
@@ -76,8 +76,11 @@ export async function waitForReview(
   reviewId: string,
   onUpdate: (review: Review) => void,
   wait: Wait = sleep,
+  /** False once nobody is waiting, e.g. the pane moved on; polling then stops. */
+  live: () => boolean = () => true,
 ): Promise<Review> {
   for (let waited = 0; ; waited += POLL_MS) {
+    if (!live()) throw new ApiError(499, "STOPPED", "Stopped waiting for the review.");
     const { review } = await api.get<{ review: Review }>(`/api/v1/reviews/${reviewId}`);
     onUpdate(review);
     if (review.status === "failed") throw new ApiError(500, "REVIEW_FAILED", "The review failed.");
@@ -99,5 +102,10 @@ export async function rerunRule(api: Api, host: WordHost, reviewId: string, rule
 export const reportDecision = (api: Api, reviewId: string) => async (decision: Decision) => {
   const base = `/api/v1/reviews/${reviewId}/suggestions/${decision.card.id}`;
   if (decision.state === "dismissed") await api.post(`${base}/dismiss`, {});
-  else await api.post(`${base}/apply`, { surface: "word", with_comment: decision.withComment });
+  else
+    await api.post(`${base}/apply`, {
+      surface: "word",
+      with_comment: decision.withComment,
+      ...(decision.observed ? { observed: decision.observed } : {}),
+    });
 };

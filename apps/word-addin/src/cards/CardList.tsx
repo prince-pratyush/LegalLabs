@@ -1,10 +1,17 @@
 import { diffWords } from "@legallabs/docx";
 import { Button, DiffView, StatusText, type Tone } from "@legallabs/ui";
 import { useState } from "react";
+import type { Anchor } from "../edits/anchor.js";
 import type { WordHost } from "../office/host.js";
 import { type Card, type CardKind, type CardState, inDocumentOrder, KIND_LABEL } from "./card.js";
 
-export type Decision = { card: Card; state: "applied" | "dismissed"; withComment: boolean };
+export type Decision = {
+  card: Card;
+  state: "applied" | "dismissed";
+  withComment: boolean;
+  /** Where Word found the clause when applying, for the server's drift check. */
+  observed?: Anchor;
+};
 
 const TONE: Record<CardKind, Tone> = {
   not_acceptable: "failed",
@@ -52,7 +59,11 @@ function SuggestionCard({
           {KIND_LABEL[card.kind]}
         </StatusText>
         {card.before && (
-          <Button size="sm" variant="quiet" onClick={() => void host.select(card.before)}>
+          <Button
+            size="sm"
+            variant="quiet"
+            onClick={() => void host.select(card.before).catch(() => false)}
+          >
             Go to
           </Button>
         )}
@@ -134,7 +145,14 @@ export function CardList({
     );
     const state: CardState = result.ok ? "applied" : "anchor_failed";
     onChange(card.id, state);
-    if (result.ok) await onDecide?.({ card, state: "applied", withComment }).catch(() => {});
+    if (result.ok) {
+      const decision: Decision = { card, state: "applied", withComment };
+      if (result.observed) decision.observed = result.observed;
+      // The edit is in Word either way; say so if LegalLabs didn't hear about it.
+      await onDecide?.(decision).catch(() =>
+        setReport("Applied in Word, but LegalLabs wasn't told, so the web still shows it pending."),
+      );
+    }
     return result.ok;
   };
 
