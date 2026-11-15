@@ -57,6 +57,38 @@ harness = "naive-rag"
 vendor = "anthropic"
 params = { model = "claude-sonnet-5-5", max_tokens = 2048, top_k = 8 }
 
+# Playbook review (playbook-review suite): node/run.ts per contract, needing Node 22.18+
+# and the workspace packages built (pnpm --filter '@legallabs/eval^...' build).
+# Offline and free: replies are canned, so its scores only prove the pipeline runs. CI runs it.
+[systems.playbook-fake]
+harness = "playbook-node"
+vendor = "local"
+params = { client = "fake" }
+
+# The local model through Ollama (OLLAMA_BASE_URL, default http://localhost:11434). A small
+# machine needs the long timeouts and one contract at a time: pass --concurrency 1.
+[systems.playbook-ollama]
+harness = "playbook-node"
+vendor = "ollama"
+params = { client = "ollama", model = "qwen3:4b-instruct", parallelism = 1, num_ctx = 8192, rule_timeout_ms = 600000, call_timeout_ms = 600000, task_timeout_seconds = 14400 }
+
+# The model gateway's Anthropic route (ANTHROPIC_API_KEY); it routes only claude-haiku-5-5.
+[systems.playbook-gateway-haiku]
+harness = "playbook-node"
+vendor = "anthropic"
+params = { client = "gateway", model = "anthropic/claude-haiku-5-5", parallelism = 8 }
+
+# Direct calls for models the gateway does not route (ANTHROPIC_API_KEY, OPENAI_API_KEY).
+[systems.playbook-claude-sonnet]
+harness = "playbook-node"
+vendor = "anthropic"
+params = { client = "anthropic", model = "claude-sonnet-5-5", parallelism = 8 }
+
+[systems.playbook-gpt]
+harness = "playbook-node"
+vendor = "openai"
+params = { client = "openai", model = "gpt-5.5", parallelism = 8 }
+
 # Judges grade answer suites: two per criterion, from distinct vendors the system
 # doesn't use. Keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY.
 [judges.gpt]

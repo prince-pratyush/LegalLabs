@@ -1,0 +1,967 @@
+{
+  "template": "nda",
+  "model": "qwen3:4b-instruct",
+  "wall_ms": 1507891,
+  "chars": 15261,
+  "pages": 6,
+  "paragraphs": 84,
+  "existing_edits": 26,
+  "outcome": {
+    "clause_map": {
+      "528a0c8b-6106-4738-bf2d-ef6fd4862616": [2, 42],
+      "68a5e5d8-52fb-4ae3-91f1-695bc15e9d84": [3],
+      "02d76a77-a358-4181-9c62-92850bdc8163": [6],
+      "4989fd6f-5a53-475d-a644-e5c5ffd928d7": [12],
+      "ac3ed66b-499d-4f27-b700-9c5e0b124fea": [14],
+      "92ddf0c1-50cf-4c05-a28e-912b8d467764": [6],
+      "210fad9f-17f0-4f77-9107-61915622a363": [14],
+      "568aab3c-bbdc-4274-a207-d8f600bf712e": [16],
+      "2ab5152d-3fc5-4201-b5f7-b41e4f58e269": [18],
+      "9fabef7c-4ae6-446b-b2ed-683d33d28e7c": [20],
+      "ef8c5677-d653-4a73-875a-d4e87041d54c": [22],
+      "b7d4b318-0c52-4d4a-a94c-2a16ff9004b4": [24],
+      "146a6fdb-deb7-49c8-ae2e-b15444113bae": [26],
+      "b668ac04-af8c-437b-89f0-4c739d5f8b0c": [28],
+      "da71e509-56bc-4c23-8f23-8fbf893ab640": [13],
+      "3157caab-4550-47d8-b5f6-4a681d03844d": [30]
+    },
+    "uncovered": [
+      0, 1, 4, 5, 7, 8, 9, 10, 11, 15, 17, 19, 21, 23, 25, 27, 29, 31, 32, 33, 34, 35, 36, 37, 38,
+      39, 40, 41, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
+      63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83
+    ],
+    "results": [
+      {
+        "rule_id": "528a0c8b-6106-4738-bf2d-ef6fd4862616",
+        "rule_title": "Mutuality",
+        "flag": false,
+        "status": "needs_review",
+        "evidence": [
+          {
+            "paragraph_index": 41,
+            "section_path": "1 > 1.20",
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "Neither party may make commitments on behalf of the other.",
+            "verified": "mismatch"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause at paragraph 41 does not address mutuality of obligations or define who discloses or receives information. The agreement lacks any definition of 'disclosing' or 'receiving party' or any clause that establishes mutual obligations. Given that the draft is titled 'Mutual Non-Disclosure Agreement' but contains no operative clauses that reflect mutual protection, exclusions, or remedies, and instead only prohibits commitments on behalf of the other, it fails to meet the standard position. There is no evidence that either party is both a discloser and recipient, or that protections apply equally. The absence of any mutual obligations or reciprocal protections renders the mutuality claim hollow and the agreement effectively one-way in the counterparty's favour, especially as Ardent will likely share information during evaluation. This constitutes an unacceptable failure to meet the mutuality standard. (Quoted evidence could not be matched to the document; check by hand.)",
+        "verification": "evidence_mismatch",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 2640, "output_tokens": 516 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "68a5e5d8-52fb-4ae3-91f1-695bc15e9d84",
+        "rule_title": "Definition of Confidential Information",
+        "flag": false,
+        "status": "not_found",
+        "evidence": [],
+        "matched": "none",
+        "explanation": "The contract does not contain a definition of 'Confidential Information' and therefore does not address this rule.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1077, "output_tokens": 48 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "02d76a77-a358-4181-9c62-92850bdc8163",
+        "rule_title": "Exclusions from Confidential Information",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 6,
+            "section_path": "1 > 1.2",
+            "char_from": 0,
+            "char_to": 533,
+            "quote": "None of the duties in this agreement covers information that the Recipient proves, using its written records, (a) has entered the public domain without any fault on the Recipient's part, (b) was already lawfully in the Recipient's hands with no restriction before it was disclosed, (c) came to the Recipient lawfully from someone else who was under no obligation of confidence, or (d) was created by the Recipient independently, without using or referring to anything the Discloser provided. These four cases are the only exclusions.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause clearly lists the four standard exclusions from confidential information and places the burden of proof on the Recipient using written records, which aligns with the standard position. It does not include any unacceptable exclusions or overly broad language, and it explicitly limits exclusions to these four cases. The wording is precise and consistent with best practice in NDAs, particularly under Australian and US law where such exclusions are well-established.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1113, "output_tokens": 230 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "4989fd6f-5a53-475d-a644-e5c5ffd928d7",
+        "rule_title": "Permitted Use and Need-to-Know Disclosure",
+        "flag": true,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 12,
+            "section_path": "1 > 1.5",
+            "char_from": 0,
+            "char_to": 234,
+            "quote": "The Recipient may use Confidential Information for any business purpose, including improving its own products and training its machine learning models, and may pass it to its affiliates and partners, for whom it has no responsibility.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause permits use for 'any business purpose' and includes improving the Recipient's own products and training machine learning models, which are explicitly unacceptable under the rule. It also states the Recipient has 'no responsibility' for affiliates and partners, violating the requirement that the Recipient remains liable for disclosures to third parties. These elements directly match the unacceptable language in the rule.",
+        "suggestion": {
+          "id": "01a1df83-c3c4-7dc3-a6cd-4421e6973233",
+          "rule_id": "4989fd6f-5a53-475d-a644-e5c5ffd928d7",
+          "anchor": {
+            "paragraph_index": 12,
+            "char_from": 0,
+            "char_to": 234,
+            "para_hash": "be66d8ca0654a28b18d29ebf981bc72011d83d894a404b2747b68e458cf18b8d"
+          },
+          "kind": "replace",
+          "before": "The Recipient may use Confidential Information for any business purpose, including improving its own products and training its machine learning models, and may pass it to its affiliates and partners, for whom it has no responsibility.",
+          "after": "The Recipient may use Confidential Information only for the stated purpose and may disclose it only to its employees, officers and professional advisers who need to know it for that purpose and are bound by confidentiality duties at least as protective. The Recipient is liable for any breach by those people.",
+          "justification": "The clause permits use for 'any business purpose' and includes improving the Recipient's own products and training machine learning models, which are explicitly unacceptable under the rule. It also states the Recipient has 'no responsibility' for affiliates and partners, violating the requirement that the Recipient remains liable for disclosures to third parties. These elements directly match the unacceptable language in the rule.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1078, "output_tokens": 257 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "ac3ed66b-499d-4f27-b700-9c5e0b124fea",
+        "rule_title": "Compelled Disclosure",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 14,
+            "section_path": "1 > 1.6",
+            "char_from": 0,
+            "char_to": 284,
+            "quote": "If a law, regulation, court order or stock exchange rule requires the Recipient to disclose Confidential Information, the Recipient must, if lawful, tell the Discloser promptly, help the Discloser seek a protective order or other remedy, and disclose no more than is legally required.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause meets the standard position by requiring prompt notification to the discloser, cooperation in seeking a protective order, and disclosure only of what is legally required. It is clear, balanced, and consistent with the standard position for a mutual NDA, especially in a regulated environment where disclosure by law is common.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 992, "output_tokens": 151 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "92ddf0c1-50cf-4c05-a28e-912b8d467764",
+        "rule_title": "Standard of Care",
+        "flag": false,
+        "status": "not_found",
+        "evidence": [],
+        "matched": "none",
+        "explanation": "The contract does not contain any clause addressing the standard of care for the protection of Confidential Information.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1084, "output_tokens": 46 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "210fad9f-17f0-4f77-9107-61915622a363",
+        "rule_title": "Term and Survival",
+        "flag": false,
+        "status": "not_found",
+        "evidence": [],
+        "matched": "none",
+        "explanation": "The contract does not contain any provisions relating to the term or survival of confidentiality obligations.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1014, "output_tokens": 44 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "568aab3c-bbdc-4274-a207-d8f600bf712e",
+        "rule_title": "Return and Destruction",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 16,
+            "section_path": "1 > 1.7",
+            "char_from": 0,
+            "char_to": 218,
+            "quote": "The Recipient may keep copies of any Confidential Information indefinitely for its records, and those copies are not subject to the obligations in this agreement. The Recipient has no obligation to return any material.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause allows indefinite retention of copies for records without confidentiality obligations and removes the return obligation entirely, directly matching the unacceptable language in the rule guidance. This violates both the standard position and fallbacks by permitting indefinite retention without continued confidentiality and eliminating the return obligation.",
+        "suggestion": {
+          "id": "01a1df85-9f0a-7788-be40-3006eda079e2",
+          "rule_id": "568aab3c-bbdc-4274-a207-d8f600bf712e",
+          "anchor": {
+            "paragraph_index": 16,
+            "char_from": 0,
+            "char_to": 218,
+            "para_hash": "bfdf73ad4bf8a4eef35278b42266c13e239b63f412f276d1ba3f8a961409551b"
+          },
+          "kind": "replace",
+          "before": "The Recipient may keep copies of any Confidential Information indefinitely for its records, and those copies are not subject to the obligations in this agreement. The Recipient has no obligation to return any material.",
+          "after": "Copies may be retained for record purposes only if they remain subject to the confidentiality obligations of this Agreement and are not accessed for any other purpose until deleted in the ordinary course. The Recipient shall promptly return or destroy all Confidential Information and copies upon request or when the purpose ends, and confirm in writing that it has done so.",
+          "justification": "The clause allows indefinite retention of copies for records without confidentiality obligations and removes the return obligation entirely, directly matching the unacceptable language in the rule guidance. This violates both the standard position and fallbacks by permitting indefinite retention without continued confidentiality and eliminating the return obligation.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 978, "output_tokens": 239 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "2ab5152d-3fc5-4201-b5f7-b41e4f58e269",
+        "rule_title": "No Licence or Transfer of IP",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 18,
+            "section_path": "1 > 1.8",
+            "char_from": 0,
+            "char_to": 207,
+            "quote": "Ardent assigns to Corvane all rights in any feedback, ideas or suggestions it provides in the course of the discussions, and Corvane will own any improvement developed from Ardent's Confidential Information.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause assigns ownership of feedback and ideas to the counterparty and grants them ownership of improvements based on Ardent's Confidential Information, which directly matches the unacceptable language under the rule. This violates the standard position by granting the counterparty ownership of feedback and improvements without restriction, and it fails to limit the use of such information to the stated purpose.",
+        "suggestion": {
+          "id": "01a1df86-5dc5-7bcc-950d-8311533801c9",
+          "rule_id": "2ab5152d-3fc5-4201-b5f7-b41e4f58e269",
+          "anchor": {
+            "paragraph_index": 18,
+            "char_from": 0,
+            "char_to": 207,
+            "para_hash": "ba895cea68758e83f6917fe3ff5ea1d803071e850fd506bd67a08b8841cc0c3d"
+          },
+          "kind": "replace",
+          "before": "Ardent assigns to Corvane all rights in any feedback, ideas or suggestions it provides in the course of the discussions, and Corvane will own any improvement developed from Ardent's Confidential Information.",
+          "after": "Ardent grants Corvane a non-exclusive licence to use general product feedback that does not contain any of Ardent's Confidential Information, and Corvane will not own any improvement developed from Ardent's Confidential Information.",
+          "justification": "The clause assigns ownership of feedback and ideas to the counterparty and grants them ownership of improvements based on Ardent's Confidential Information, which directly matches the unacceptable language under the rule. This violates the standard position by granting the counterparty ownership of feedback and improvements without restriction, and it fails to limit the use of such information to the stated purpose.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1009, "output_tokens": 242 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "9fabef7c-4ae6-446b-b2ed-683d33d28e7c",
+        "rule_title": "Residuals",
+        "flag": true,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 20,
+            "section_path": "1 > 1.9",
+            "char_from": 0,
+            "char_to": 189,
+            "quote": "No right is given to use Confidential Information that a person remembers. The Recipient may not use information retained in the memory of its personnel for anything other than the Purpose.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "matched_fallback_index": 0,
+        "explanation": "The clause limits the use of retained knowledge to the Purpose and explicitly prohibits use of information remembered by personnel, aligning with the narrow fallback position that excludes specific information and restricts use to general skills and know-how. It does not permit use of information 'aided or unaided' or for any purpose beyond the Purpose, and does not cover personal data, financial information, product and business plans, source code, security information or trade secrets—though these exclusions are not explicitly stated, the clause's scope is sufficiently narrow to meet the fallback standard.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1083, "output_tokens": 176 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "ef8c5677-d653-4a73-875a-d4e87041d54c",
+        "rule_title": "Remedies and Injunctive Relief",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 22,
+            "section_path": "1 > 1.10",
+            "char_from": 0,
+            "char_to": 137,
+            "quote": "Each party acknowledges that equitable relief, including an injunction, is available for a breach or threatened breach of this agreement.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause clearly states that equitable relief, including an injunction, is available for a breach or threatened breach, which aligns with the standard position. It does not limit remedies to damages, does not cap liability, and does not exclude injunctive relief. The language is broad enough to support the Discloser seeking equitable relief without needing to prove actual loss or post a bond, consistent with the standard position in all four jurisdictions. The inclusion of 'injunction' satisfies the requirement for injunctive relief, and the mutual acknowledgment of equitable relief meets the standard position without any unacceptable limitations.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1033, "output_tokens": 174 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "b7d4b318-0c52-4d4a-a94c-2a16ff9004b4",
+        "rule_title": "Non-Solicitation",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 24,
+            "section_path": "1 > 1.11",
+            "char_from": 0,
+            "char_to": 139,
+            "quote": "Either party remains free to solicit, hire or engage any employee or contractor of the other party; this agreement places no limit on that.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause explicitly allows both parties to solicit, hire, or engage any employee or contractor of the other party, with no restrictions. This meets the standard position of no non-solicitation or no-hire restriction on either party, and aligns with the guidance that such clauses are not needed and can hamper recruitment. There is no one-way restriction, no restriction on customers or suppliers, no duration beyond 12 months, and no fee for hiring. The language is clear and protective of both parties' rights to hire and engage personnel.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1097, "output_tokens": 170 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "146a6fdb-deb7-49c8-ae2e-b15444113bae",
+        "rule_title": "Personal Information",
+        "flag": true,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 26,
+            "section_path": "1 > 1.12",
+            "char_from": 0,
+            "char_to": 385,
+            "quote": "Where either party shares personal information, the Recipient may use it solely for the Purpose, must handle it as applicable data protection law requires and with appropriate security, and must tell the Discloser without undue delay of any breach affecting it. Before sharing any personal information beyond business contact details, the parties will sign a data processing agreement.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause meets the standard position by requiring the Recipient to use personal data solely for the Purpose, handle it in compliance with data protection law and with appropriate security, and notify the Discloser of any breach. It also includes a requirement to sign a data processing agreement before sharing personal data beyond business contact details, which aligns with the standard position and relevant data protection regimes in the EU, UK, and Australia. The language is clear and sufficient to protect the discloser's personal data, especially in evaluations involving HR or CRM systems.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1158, "output_tokens": 207 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "b668ac04-af8c-437b-89f0-4c739d5f8b0c",
+        "rule_title": "No Warranty and No Obligation to Proceed",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 28,
+            "section_path": "1 > 1.13",
+            "char_from": 0,
+            "char_to": 188,
+            "quote": "Ardent warrants that all information it provides is accurate and complete, and for six months after signing Ardent must negotiate exclusively with Corvane about the proposed collaboration.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause contains a warranty about the accuracy of information provided by Ardent, which violates the standard position of 'no warranty'. It also includes an exclusivity obligation (negotiate exclusively with Corvane), which is unacceptable under the rule guidance as it creates a commercial commitment and belongs in a separate term sheet. These elements directly match the unacceptable language specified in the rule.",
+        "suggestion": {
+          "id": "01a1df89-7c24-7479-a37d-0c2eec7ad881",
+          "rule_id": "b668ac04-af8c-437b-89f0-4c739d5f8b0c",
+          "anchor": {
+            "paragraph_index": 28,
+            "char_from": 0,
+            "char_to": 188,
+            "para_hash": "4a2e42351ac4e394cccff5d8fdb9ea3d00aef954393dd00dad032e1c41ce9262"
+          },
+          "kind": "replace",
+          "before": "Ardent warrants that all information it provides is accurate and complete, and for six months after signing Ardent must negotiate exclusively with Corvane about the proposed collaboration.",
+          "after": "All Confidential Information is provided as is, without warranty, and neither party is obliged to enter any further agreement or transaction. Any commitment must be in a separate signed agreement.",
+          "justification": "The clause contains a warranty about the accuracy of information provided by Ardent, which violates the standard position of 'no warranty'. It also includes an exclusivity obligation (negotiate exclusively with Corvane), which is unacceptable under the rule guidance as it creates a commercial commitment and belongs in a separate term sheet. These elements directly match the unacceptable language specified in the rule.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 947, "output_tokens": 221 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "da71e509-56bc-4c23-8f23-8fbf893ab640",
+        "rule_title": "Governing Law and Jurisdiction",
+        "flag": false,
+        "status": "not_found",
+        "evidence": [],
+        "matched": "none",
+        "explanation": "The mapped paragraphs do not deal with this rule.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1046, "output_tokens": 27 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "3157caab-4550-47d8-b5f6-4a681d03844d",
+        "rule_title": "Assignment",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 30,
+            "section_path": "1 > 1.14",
+            "char_from": 0,
+            "char_to": 204,
+            "quote": "Corvane may assign this agreement to any person, including a competitor of Ardent, without consent, and on assignment Corvane is released from all obligations, including for information already disclosed.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause allows Corvane to assign the agreement freely to any person, including a competitor, without consent, and releases the assignor from obligations for information already disclosed—this directly matches the unacceptable language in the rule. This exposes our sensitive information to an unknown party and undermines our control over disclosure, violating both the standard position and fallbacks.",
+        "suggestion": {
+          "id": "01a1df8a-74c1-7675-b8c5-b2c3fb91245b",
+          "rule_id": "3157caab-4550-47d8-b5f6-4a681d03844d",
+          "anchor": {
+            "paragraph_index": 30,
+            "char_from": 0,
+            "char_to": 204,
+            "para_hash": "24dd98539e54aeec0c604c2a24802668a89098aec1be16849c6e45a528a0e089"
+          },
+          "kind": "replace",
+          "before": "Corvane may assign this agreement to any person, including a competitor of Ardent, without consent, and on assignment Corvane is released from all obligations, including for information already disclosed.",
+          "after": "Ardent may assign this agreement to any person, including an affiliate or a successor in a merger or sale of substantially all relevant assets, with written notice and the assignee bound in writing; Corvane may not assign this agreement without Ardent's prior written consent, and no assignment shall release Corvane from obligations for information already disclosed.",
+          "justification": "The clause allows Corvane to assign the agreement freely to any person, including a competitor, without consent, and releases the assignor from obligations for information already disclosed—this directly matches the unacceptable language in the rule. This exposes our sensitive information to an unknown party and undermines our control over disclosure, violating both the standard position and fallbacks.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 967, "output_tokens": 261 },
+        "cost_usd": 0
+      }
+    ],
+    "gaps": [
+      {
+        "id": "01a1df77-8d6f-7041-b154-c0b46893fd08",
+        "kind": "uncovered_clause",
+        "evidence": [
+          {
+            "paragraph_index": 8,
+            "char_from": 0,
+            "char_to": 125,
+            "quote": "Ardent must pay Corvane an evaluation fee of $25,000 within 30 days of signing, which is not refundable in any circumstances.",
+            "verified": "ok",
+            "section_path": "1 > 1.3"
+          }
+        ],
+        "reason": "Introduces a financial obligation with no refund, creating a significant risk for Ardent if the collaboration fails or is terminated early. The fee is non-refundable, which is not addressed in the playbook and creates an asymmetric financial burden.",
+        "severity": "high"
+      },
+      {
+        "id": "01a1df77-8d89-7239-9edd-5e2f2112636a",
+        "kind": "uncovered_clause",
+        "evidence": [
+          {
+            "paragraph_index": 10,
+            "char_from": 0,
+            "char_to": 156,
+            "quote": "During the discussions and for eighteen months afterwards, Ardent must not develop, buy or use any product that competes with Corvane's evaluation platform.",
+            "verified": "ok",
+            "section_path": "1 > 1.4"
+          }
+        ],
+        "reason": "Introduces a non-solicitation and competitive restriction that goes beyond the playbook's stated absence of non-hire or non-solicitation clauses. This creates a long-term restriction on Ardent's business activities, which is not covered by the playbook and significantly alters Ardent's rights and obligations.",
+        "severity": "high"
+      },
+      {
+        "id": "01a1df77-8d89-7c4e-91d3-fc00fa38c273",
+        "kind": "uncovered_clause",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 117,
+            "quote": "If any provision protecting Corvane is unenforceable, Ardent must agree a replacement provision with the same effect.",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "This clause alters the risk and obligations by requiring Ardent to negotiate a replacement provision, which may lead to unintended concessions or new obligations. The playbook does not address this, and it introduces a new obligation on Ardent to modify terms, which is not covered.",
+        "severity": "high"
+      },
+      {
+        "id": "01a1df77-8d8a-778e-a071-aa54ca857491",
+        "kind": "uncovered_clause",
+        "evidence": [
+          {
+            "paragraph_index": 44,
+            "char_from": 0,
+            "char_to": 151,
+            "quote": "This agreement may be signed in counterparts, which together form one document, and binds Ardent once Ardent has signed it even if Corvane never signs.",
+            "verified": "ok",
+            "section_path": "1 > 1.21"
+          }
+        ],
+        "reason": "This creates a risk that Ardent is bound by the agreement without Corvane's signature, which is not addressed in the playbook. It alters the legal effect and binding nature of the agreement, increasing Ardent's exposure without reciprocal assurance.",
+        "severity": "high"
+      },
+      {
+        "id": "01a1df81-1079-7da1-97dd-087f9a173816",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 44,
+            "char_from": 70,
+            "char_to": 78,
+            "quote": "document",
+            "verified": "ok",
+            "section_path": "1 > 1.21"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-107f-7eab-be9e-a5b559dffc09",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 44,
+            "char_from": 70,
+            "char_to": 151,
+            "quote": "document, and binds Ardent once Ardent has signed it even if Corvane never signs.",
+            "verified": "ok",
+            "section_path": "1 > 1.21"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1081-7c30-8fe0-b337126f440e",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 36,
+            "char_to": 52,
+            "quote": "is unenforceable",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1081-7e18-ad39-a6c5b5775544",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 17,
+            "char_to": 27,
+            "quote": "protecting",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1081-78ce-81af-02a8b6cf38a5",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "it",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1081-7cf9-b26a-038ebe1e539c",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 28,
+            "char_to": 35,
+            "quote": "Corvane",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1081-7474-b75a-5ded10df8c93",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "severed",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1081-7ded-b49c-180f986a2818",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 39,
+            "char_to": 53,
+            "quote": "unenforceable,",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1082-7118-836a-ac714c89879d",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 54,
+            "char_to": 60,
+            "quote": "Ardent",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1082-793f-929c-3ca3bc833854",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 61,
+            "char_to": 65,
+            "quote": "must",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1082-7028-8db2-2eaff3ed6a2d",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "rest",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1082-76fd-9381-27d746b8b3af",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 66,
+            "char_to": 71,
+            "quote": "agree",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1082-7c8e-a31e-9b68bf67d325",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "this",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1083-7878-8f50-2e239cb783a3",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 74,
+            "char_to": 85,
+            "quote": "replacement",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1083-7b51-9550-1f1cf8be12f8",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "agreement",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1083-7bab-b037-03f99097e1fc",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 7,
+            "char_to": 16,
+            "quote": "provision",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1083-7e66-95a7-4d889b9c8967",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "continues",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1083-752a-bb84-dd12a2e49dc6",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 96,
+            "char_to": 100,
+            "quote": "with",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1083-7a21-b671-39cd354633bd",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 43,
+            "char_to": 48,
+            "quote": "force",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df81-1083-75da-b96b-74d026086c05",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "char_from": 105,
+            "char_to": 117,
+            "quote": "same effect.",
+            "verified": "ok",
+            "section_path": "1 > 1.22"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      }
+    ],
+    "summary": {
+      "acceptable": 6,
+      "needs_review": 1,
+      "not_acceptable": 5,
+      "not_found": 4,
+      "gaps": 24
+    },
+    "usage": {
+      "input_tokens": 32147,
+      "output_tokens": 6510,
+      "cost_usd": 0,
+      "models": ["qwen3:4b-instruct"]
+    },
+    "phases": {
+      "plan": {
+        "input_tokens": 5382,
+        "output_tokens": 108,
+        "cost_usd": 0,
+        "models": ["qwen3:4b-instruct"],
+        "calls": 2
+      },
+      "rules": {
+        "528a0c8b-6106-4738-bf2d-ef6fd4862616": {
+          "input_tokens": 2640,
+          "output_tokens": 516,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 2
+        },
+        "68a5e5d8-52fb-4ae3-91f1-695bc15e9d84": {
+          "input_tokens": 1077,
+          "output_tokens": 48,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "02d76a77-a358-4181-9c62-92850bdc8163": {
+          "input_tokens": 1113,
+          "output_tokens": 230,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "4989fd6f-5a53-475d-a644-e5c5ffd928d7": {
+          "input_tokens": 1078,
+          "output_tokens": 257,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "ac3ed66b-499d-4f27-b700-9c5e0b124fea": {
+          "input_tokens": 992,
+          "output_tokens": 151,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "92ddf0c1-50cf-4c05-a28e-912b8d467764": {
+          "input_tokens": 1084,
+          "output_tokens": 46,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "210fad9f-17f0-4f77-9107-61915622a363": {
+          "input_tokens": 1014,
+          "output_tokens": 44,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "568aab3c-bbdc-4274-a207-d8f600bf712e": {
+          "input_tokens": 978,
+          "output_tokens": 239,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "2ab5152d-3fc5-4201-b5f7-b41e4f58e269": {
+          "input_tokens": 1009,
+          "output_tokens": 242,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "9fabef7c-4ae6-446b-b2ed-683d33d28e7c": {
+          "input_tokens": 1083,
+          "output_tokens": 176,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "ef8c5677-d653-4a73-875a-d4e87041d54c": {
+          "input_tokens": 1033,
+          "output_tokens": 174,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "b7d4b318-0c52-4d4a-a94c-2a16ff9004b4": {
+          "input_tokens": 1097,
+          "output_tokens": 170,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "146a6fdb-deb7-49c8-ae2e-b15444113bae": {
+          "input_tokens": 1158,
+          "output_tokens": 207,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "b668ac04-af8c-437b-89f0-4c739d5f8b0c": {
+          "input_tokens": 947,
+          "output_tokens": 221,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "da71e509-56bc-4c23-8f23-8fbf893ab640": {
+          "input_tokens": 1046,
+          "output_tokens": 27,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "3157caab-4550-47d8-b5f6-4a681d03844d": {
+          "input_tokens": 967,
+          "output_tokens": 261,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        }
+      },
+      "verify": {
+        "input_tokens": 8449,
+        "output_tokens": 3393,
+        "cost_usd": 0,
+        "models": ["qwen3:4b-instruct"],
+        "calls": 3
+      }
+    },
+    "coverage": { "paragraphs": 84, "read": 84 },
+    "warnings": ["existing_tracked_changes"],
+    "aborted": false
+  },
+  "ooxml": {
+    "suggestions": 5,
+    "applied": 5,
+    "valid": 5,
+    "failed": {},
+    "combined": { "applied": 5, "reread_ok": true, "soffice_ok": null }
+  }
+}

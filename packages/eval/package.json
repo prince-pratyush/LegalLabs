@@ -1,0 +1,20 @@
+{
+  "name": "@legallabs/eval",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@legallabs/contracts": "workspace:*",
+    "@legallabs/docx": "workspace:*",
+    "@legallabs/model-gateway": "workspace:*",
+    "@legallabs/review": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "5.1.0"
+  }
+}

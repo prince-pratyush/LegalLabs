@@ -1,0 +1,190 @@
+{
+  "completed_tasks": 3,
+  "config_hash": "44364b4a0c40",
+  "cost": {
+    "by_stage": {
+      "agent": {
+        "known_cost_usd": 0.0,
+        "missing_cost_count": 0,
+        "records": 3
+      },
+      "grader": {
+        "known_cost_usd": 0.0,
+        "missing_cost_count": 0,
+        "records": 3
+      }
+    },
+    "cost_known": true,
+    "known_cost_usd": 0.0,
+    "missing_cost_count": 0,
+    "total_cost_usd": 0.0
+  },
+  "failed_as_zero": 0.741667,
+  "failed_excluded": 0.741667,
+  "finished_at": "2026-11-15T14:09:16Z",
+  "metric_counts": {
+    "confusion.acceptable.acceptable": 3,
+    "confusion.acceptable.needs_review": 2,
+    "confusion.acceptable.not_acceptable": 2,
+    "confusion.not_acceptable.not_acceptable": 3,
+    "confusion.not_found.acceptable": 1,
+    "confusion.not_found.needs_review": 3,
+    "confusion.not_found.not_found": 3,
+    "evidence_ok": 3,
+    "evidence_total": 3,
+    "findings_evidence_mismatch": 3,
+    "findings_retry_exhausted": 3,
+    "gap_recall": 3,
+    "gaps_existing_edit_found": 3,
+    "gaps_existing_edit_found_by_model": 3,
+    "gaps_existing_edit_total": 3,
+    "gaps_reported": 3,
+    "gaps_uncovered_clause_found": 3,
+    "gaps_uncovered_clause_found_by_model": 3,
+    "gaps_uncovered_clause_total": 3,
+    "input_tokens": 3,
+    "model_calls": 3,
+    "ooxml_anchor_failed": 3,
+    "ooxml_applied": 3,
+    "ooxml_combined_ok": 3,
+    "ooxml_suggestions": 3,
+    "ooxml_valid": 3,
+    "output_tokens": 3,
+    "pages": 3,
+    "seconds_per_40_pages": 3,
+    "status_accuracy": 3,
+    "status_correct": 3,
+    "status_total": 3,
+    "wall_seconds": 3
+  },
+  "metrics_failed_excluded": {
+    "confusion.acceptable.acceptable": 5.666667,
+    "confusion.acceptable.needs_review": 1.5,
+    "confusion.acceptable.not_acceptable": 4.5,
+    "confusion.not_acceptable.not_acceptable": 5.333333,
+    "confusion.not_found.acceptable": 1.0,
+    "confusion.not_found.needs_review": 1.0,
+    "confusion.not_found.not_found": 2.666667,
+    "evidence_ok": 15.333333,
+    "evidence_total": 16.333333,
+    "findings_evidence_mismatch": 1.0,
+    "findings_retry_exhausted": 0.0,
+    "gap_recall": 1.0,
+    "gaps_existing_edit_found": 2.0,
+    "gaps_existing_edit_found_by_model": 2.0,
+    "gaps_existing_edit_total": 2.0,
+    "gaps_reported": 17.333333,
+    "gaps_uncovered_clause_found": 1.333333,
+    "gaps_uncovered_clause_found_by_model": 1.333333,
+    "gaps_uncovered_clause_total": 1.333333,
+    "input_tokens": 32154.666667,
+    "model_calls": 23.333333,
+    "ooxml_anchor_failed": 0.0,
+    "ooxml_applied": 8.333333,
+    "ooxml_combined_ok": 1.0,
+    "ooxml_suggestions": 8.333333,
+    "ooxml_valid": 8.333333,
+    "output_tokens": 5913.0,
+    "pages": 4.666667,
+    "seconds_per_40_pages": 11907.505556,
+    "status_accuracy": 0.741667,
+    "status_correct": 13.666667,
+    "status_total": 19.0,
+    "wall_seconds": 1358.294
+  },
+  "primary_metric": "status_accuracy",
+  "report": {
+    "confusion": {
+      "acceptable": {
+        "acceptable": 17,
+        "needs_review": 3,
+        "not_acceptable": 9
+      },
+      "not_acceptable": {
+        "not_acceptable": 16
+      },
+      "not_found": {
+        "acceptable": 1,
+        "needs_review": 3,
+        "not_found": 8
+      }
+    },
+    "contracts": 3,
+    "errors": {
+      "count": 0,
+      "rate": 0.0
+    },
+    "gate": {
+      "checks": {
+        "evidence_verification": false,
+        "gap_recall": true,
+        "latency": false,
+        "ooxml_validity": true,
+        "status_accuracy": false
+      },
+      "evidence_verification_min": 0.99,
+      "gap_recall_min": 0.9,
+      "ooxml_validity_min": 1.0,
+      "pass": false,
+      "seconds_per_40_pages_p50_max": 300.0,
+      "status_accuracy_min": 0.8
+    },
+    "latency": {
+      "contracts_at_35_pages_or_more": 0,
+      "seconds_per_40_pages_max": 15895.98,
+      "seconds_per_40_pages_p50": 10052.607,
+      "wall_seconds_p50": 1507.891,
+      "wall_seconds_p50_at_35_pages_or_more": null
+    },
+    "pages": 14,
+    "playbook.evidence_verification_rate": {
+      "ci95": [0.8347925657791229, 0.9789602350444708],
+      "n": 49,
+      "rate": 0.938776
+    },
+    "playbook.ooxml_validity_rate": {
+      "anchor_failed": 0,
+      "ci95": [0.8668035060468213, 1.0],
+      "n": 25,
+      "rate": 1.0,
+      "soffice_checked": 0,
+      "soffice_ok": 0,
+      "suggestions": 25
+    },
+    "playbook.rule_classification_accuracy": {
+      "ci95": [0.5916955491727645, 0.8192075171502777],
+      "n": 57,
+      "rate": 0.719298
+    },
+    "playbook.unanticipated_edit_detection_recall": {
+      "ci95": [0.7224598312333834, 1.0],
+      "existing_edit": {
+        "ci95": [0.6096569663469354, 0.9999999999999999],
+        "n": 6,
+        "rate": 1.0
+      },
+      "existing_edit_by_model": {
+        "ci95": [0.6096569663469354, 0.9999999999999999],
+        "n": 6,
+        "rate": 1.0
+      },
+      "n": 10,
+      "rate": 1.0,
+      "uncovered_clause": {
+        "ci95": [0.5100999795960008, 1.0],
+        "n": 4,
+        "rate": 1.0
+      }
+    },
+    "tokens": {
+      "input": 96464,
+      "model_calls": 70,
+      "output": 17739
+    }
+  },
+  "run_dir": "runs/playbook-ollama-playbook-review-44364b4a0c40",
+  "selected_tasks": 3,
+  "suite": "playbook-review",
+  "system": "playbook-ollama",
+  "total_failed": 0
+}

@@ -31,7 +31,11 @@ def sha256(text: str) -> str:
 
 
 def make_manifest(
-    system_name: str, system: dict[str, Any], suite: "Suite", suffix: str = ""
+    system_name: str,
+    system: dict[str, Any],
+    suite: "Suite",
+    suffix: str = "",
+    harness_fingerprint: str = "",
 ) -> dict[str, Any]:
     """Anything that changes a score goes in the hash, so old results can't be reused."""
     manifest = {
@@ -46,6 +50,9 @@ def make_manifest(
         "judges": suite.judges,
         "run_suffix": suffix,
     }
+    # Only when set, so systems without one keep their existing hashes and runs.
+    if harness_fingerprint:
+        manifest["harness_fingerprint"] = harness_fingerprint
     manifest["config_hash"] = sha256(json.dumps(manifest, sort_keys=True))[:12]
     return manifest
 

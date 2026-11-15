@@ -1,0 +1,6 @@
+{
+  "note": "The run itself did not set SOFFICE_TEST. On 2026-11-15 each saved outcome's suggestions were patched into its v1 contract with checkOoxml (node/run.ts) and the combined file was converted by LibreOffice (soffice --headless --convert-to pdf).",
+  "nda-001-p03": { "suggestions": 8, "applied": 8, "valid": 8, "soffice_ok": true },
+  "msa-002-p03": { "suggestions": 12, "applied": 12, "valid": 12, "soffice_ok": true },
+  "nda-003-p05": { "suggestions": 5, "applied": 5, "valid": 5, "soffice_ok": true }
+}

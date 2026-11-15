@@ -1,0 +1,1201 @@
+{
+  "template": "msa",
+  "model": "qwen3:4b-instruct",
+  "wall_ms": 1589598,
+  "chars": 9231,
+  "pages": 4,
+  "paragraphs": 72,
+  "existing_edits": 12,
+  "outcome": {
+    "clause_map": {
+      "ec096527-80e9-43c2-a9dd-073e87ea864c": [5, 6, 8],
+      "dbb3624f-dfc0-4ac6-928d-f609251df302": [6],
+      "c51fca57-b85f-4196-8531-05913e96ce7f": [8],
+      "431af279-c034-4dc3-8c76-98d8a0b62d1c": [12, 71],
+      "376ded46-ac22-432c-ac6a-efcfd0500908": [14],
+      "30c0b954-df98-4cbb-8742-e7780c135ce6": [14],
+      "15b3f703-c656-4e77-9d29-07e68c529630": [15, 16],
+      "0194e9ef-4c37-4754-b824-33b5e2fad75a": [18],
+      "abb76a2a-4437-4165-97e6-775ec940de15": [20],
+      "22e6a58c-4853-48f7-8f8c-db3ab8abca03": [22],
+      "cbb2e214-04cb-4279-9ad1-e5cf2a799125": [24],
+      "6174d8ca-20c6-4c19-adbc-d0bfc6e1b11f": [26],
+      "e6948862-9235-4a0f-b248-24d5f828f983": [28],
+      "9fab7600-41a9-46df-a2ee-fc40530ebf12": [30],
+      "39602637-911c-4eda-8ad3-ef21935b79dc": [32],
+      "41125df4-ae88-4dc7-b9c6-eae06b3d4827": [30],
+      "ce24afbe-b39a-47a4-9cc0-9db267b958b2": [34],
+      "377cbc6a-9881-44b0-9bfb-1ac97e21b1df": [36],
+      "9d5b10f6-eb5f-4895-bbd4-bcbf4eb4f84c": [44],
+      "ca6d1ef5-3c4d-4d39-8f13-1c25a8b39514": [38],
+      "21cf38d9-f247-4ea7-b087-5a1161546c8f": [40],
+      "74d59fd3-0564-4cbf-ac84-e8ccf9ba2e71": [42],
+      "956b07e6-1642-40b9-a40b-08e2c10292d5": [44],
+      "abe039f4-c3dc-4a3a-81c3-02cf94116062": [46],
+      "838b4095-7acf-43be-bf76-ead15001c405": [48]
+    },
+    "uncovered": [
+      0, 1, 2, 3, 4, 7, 9, 10, 11, 13, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45,
+      47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70
+    ],
+    "results": [
+      {
+        "rule_id": "ec096527-80e9-43c2-a9dd-073e87ea864c",
+        "rule_title": "Limitation of Liability Cap",
+        "flag": true,
+        "status": "needs_review",
+        "evidence": [
+          {
+            "paragraph_index": 5,
+            "section_path": "1 > 1.2",
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "None of the liability limits applies to: personal injury or death resulting from negligence; fraud; wilful misconduct or abandonment of the services; breach of confidentiality; breach of data protection or security obligations; the Supplier's intellectual property indemnity; or any liability the law does not allow to be limited.",
+            "verified": "mismatch"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The contract contains no limitation of liability cap clause at all. The relevant rule requires a cap on total liability, either mutually and at a defined level (e.g., 12 months' fees or a multiple thereof), with appropriate floors or reasoning for usage-based or early-term deals. The absence of any such cap, combined with the presence of exclusions for negligence, fraud, and breach of data obligations, means the term is entirely missing. This fails to meet any of the acceptable positions (standard or fallback), and thus falls into the unacceptable category as it does not provide any cap at all. (Quoted evidence could not be matched to the document; check by hand.)",
+        "verification": "evidence_mismatch",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 3434, "output_tokens": 541 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "dbb3624f-dfc0-4ac6-928d-f609251df302",
+        "rule_title": "Exclusions from the Liability Cap",
+        "flag": true,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 6,
+            "section_path": "1 > 1.2",
+            "char_from": 0,
+            "char_to": 330,
+            "quote": "None of the liability limits applies to: personal injury or death resulting from negligence; fraud; wilful misconduct or abandonment of the services; breach of confidentiality; breach of data protection or security obligations; the Supplier's intellectual property indemnity; or any liability the law does not allow to be limited.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause excludes certain liabilities but does not establish a super-cap for data protection, security, or confidentiality breaches, nor does it separate such breaches from the general liability cap. It fails to meet the standard position by not providing a super-cap of at least three times annual fees for data breaches, and it does not expressly include breach notification costs, credit monitoring, or regulatory fines as recoverable direct losses. Moreover, it does not treat data breach liabilities as uncapped or subject to a separate super-cap, which is required when the supplier hosts or processes personal or regulated data. The absence of any super-cap structure, combined with the failure to address consequential losses, makes this clause unacceptable under the rule guidance.",
+        "suggestion": {
+          "id": "01a1df61-0d12-72fd-b1eb-7ace66e9885d",
+          "rule_id": "dbb3624f-dfc0-4ac6-928d-f609251df302",
+          "anchor": {
+            "paragraph_index": 6,
+            "char_from": 0,
+            "char_to": 330,
+            "para_hash": "3ac5c70c4e04a154af8c5a012cefb1ec8932d236cdf036ee8bf42635c5963364"
+          },
+          "kind": "replace",
+          "before": "None of the liability limits applies to: personal injury or death resulting from negligence; fraud; wilful misconduct or abandonment of the services; breach of confidentiality; breach of data protection or security obligations; the Supplier's intellectual property indemnity; or any liability the law does not allow to be limited.",
+          "after": "None of the liability limits applies to: personal injury or death resulting from negligence; fraud; wilful misconduct or abandonment of the services; breach of confidentiality; breach of data protection or security obligations; the Supplier's intellectual property indemnity; or any liability the law does not allow to be limited. Data protection, security and confidentiality breaches are subject to a super-cap of the greater of a fixed amount and three times annual fees, and breach notification costs, credit monitoring, forensic investigation and regulatory fines (to the extent recoverable under applicable law) are direct losses.",
+          "justification": "The clause excludes certain liabilities but does not establish a super-cap for data protection, security, or confidentiality breaches, nor does it separate such breaches from the general liability cap. It fails to meet the standard position by not providing a super-cap of at least three times annual fees for data breaches, and it does not expressly include breach notification costs, credit monitoring, or regulatory fines as recoverable direct losses. Moreover, it does not treat data breach liabilities as uncapped or subject to a separate super-cap, which is required when the supplier hosts or processes personal or regulated data. The absence of any super-cap structure, combined with the failure to address consequential losses, makes this clause unacceptable under the rule guidance.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1271, "output_tokens": 412 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "c51fca57-b85f-4196-8531-05913e96ce7f",
+        "rule_title": "Consequential Loss",
+        "flag": true,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 8,
+            "section_path": "1 > 1.3",
+            "char_from": 0,
+            "char_to": 214,
+            "quote": "Neither party is liable for loss of profits, revenue or goodwill or for indirect loss, but data restoration costs, breach response costs and the extra cost of obtaining replacement services may always be recovered.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause excludes loss of profits, revenue and goodwill, and indirect loss, which are core components of the unacceptable language. It also fails to define 'consequential loss' narrowly or provide a clear list of recoverable direct losses beyond data restoration, breach response and replacement services. In England and Wales, such exclusions are particularly problematic under the Unfair Contract Terms Act 1977, and in Australia, the Australian Consumer Law strengthens the enforceability of direct losses and may render such broad exclusions void, especially where the customer is a small business. The absence of a defined list of recoverable losses and the exclusion of 'loss of profits'—a key head of loss—violates standard positions and falls into the unacceptable category.",
+        "suggestion": {
+          "id": "01a1df62-096b-7346-90dc-05c6c2aa1c01",
+          "rule_id": "c51fca57-b85f-4196-8531-05913e96ce7f",
+          "anchor": {
+            "paragraph_index": 8,
+            "char_from": 0,
+            "char_to": 214,
+            "para_hash": "a70b25c38421c1e6945f8c2d69756b5db8b173f4d1d384883e8b3690165642d2"
+          },
+          "kind": "replace",
+          "before": "Neither party is liable for loss of profits, revenue or goodwill or for indirect loss, but data restoration costs, breach response costs and the extra cost of obtaining replacement services may always be recovered.",
+          "after": "Neither party is liable for indirect or consequential loss, defined narrowly as loss that does not arise naturally from the breach, but the following are expressly recoverable as direct loss: costs of replacement services, remediation and data restoration, breach response costs, regulatory fines where recoverable by law, and wasted expenditure.",
+          "justification": "The clause excludes loss of profits, revenue and goodwill, and indirect loss, which are core components of the unacceptable language. It also fails to define 'consequential loss' narrowly or provide a clear list of recoverable direct losses beyond data restoration, breach response and replacement services. In England and Wales, such exclusions are particularly problematic under the Unfair Contract Terms Act 1977, and in Australia, the Australian Consumer Law strengthens the enforceability of direct losses and may render such broad exclusions void, especially where the customer is a small business. The absence of a defined list of recoverable losses and the exclusion of 'loss of profits'—a key head of loss—violates standard positions and falls into the unacceptable category.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1258, "output_tokens": 328 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "431af279-c034-4dc3-8c76-98d8a0b62d1c",
+        "rule_title": "IP Ownership of Deliverables",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 12,
+            "section_path": "1 > 1.5",
+            "char_from": 67,
+            "char_to": 252,
+            "quote": "The Customer owns its data and, once paid for, any bespoke deliverables, and the Supplier licenses any embedded Supplier materials to the Customer perpetually for its business purposes.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "matched_fallback_index": 0,
+        "explanation": "The clause meets the fallback position: the supplier owns its platform and general improvements, the customer owns its data and bespoke deliverables upon payment, and the supplier grants a perpetual licence to embedded IP for the customer's business purposes. This is a balanced, market-standard position that avoids unacceptable language such as supplier ownership of customer data or deliverables containing confidential information. It also aligns with the guidance for SaaS where data and outputs are central.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1343, "output_tokens": 156 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "376ded46-ac22-432c-ac6a-efcfd0500908",
+        "rule_title": "IP Indemnity",
+        "flag": true,
+        "status": "not_found",
+        "evidence": [],
+        "matched": "none",
+        "explanation": "The mapped paragraphs do not deal with this rule.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1249, "output_tokens": 27 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "30c0b954-df98-4cbb-8742-e7780c135ce6",
+        "rule_title": "Warranties",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 14,
+            "section_path": "1 > 1.6",
+            "char_from": 0,
+            "char_to": 228,
+            "quote": "The Supplier warrants that one-off deliverables will conform to their specifications for 90 days after delivery, and that the ongoing services will be performed with reasonable skill and care and will not contain malicious code.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause only provides a 90-day conformity warranty for one-off deliverables and lacks a material conformity warranty for the whole term of ongoing services. It also fails to include a warranty of compliance with law or a warranty that services will conform materially to documentation for the whole term. Furthermore, it does not include a refund remedy or re-performance as a remedy, and the implied warranty of fitness for a particular purpose is not addressed. This misses the standard position and all fallbacks, and aligns with the unacceptable language (e.g., no material conformity, no law compliance, no refund or re-performance).",
+        "suggestion": {
+          "id": "01a1df63-d39c-73f2-920d-3d4df7bb7c0b",
+          "rule_id": "30c0b954-df98-4cbb-8742-e7780c135ce6",
+          "anchor": {
+            "paragraph_index": 14,
+            "char_from": 0,
+            "char_to": 228,
+            "para_hash": "481ed99316a0a3bcf662e99eb57cf004b70a1483547f374e413bcd7c32f1244e"
+          },
+          "kind": "replace",
+          "before": "The Supplier warrants that one-off deliverables will conform to their specifications for 90 days after delivery, and that the ongoing services will be performed with reasonable skill and care and will not contain malicious code.",
+          "after": "The Supplier warrants that the services will be performed with reasonable skill and care by suitably qualified people, will conform materially to the documentation and specifications for the whole term, will comply with law, and will not contain malicious code. Breach entitles the customer to re-performance, a refund and its other remedies.",
+          "justification": "The clause only provides a 90-day conformity warranty for one-off deliverables and lacks a material conformity warranty for the whole term of ongoing services. It also fails to include a warranty of compliance with law or a warranty that services will conform materially to documentation for the whole term. Furthermore, it does not include a refund remedy or re-performance as a remedy, and the implied warranty of fitness for a particular purpose is not addressed. This misses the standard position and all fallbacks, and aligns with the unacceptable language (e.g., no material conformity, no law compliance, no refund or re-performance).",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1222, "output_tokens": 310 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "15b3f703-c656-4e77-9d29-07e68c529630",
+        "rule_title": "Service Levels and Service Credits",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 16,
+            "section_path": "1 > 1.7",
+            "char_from": 0,
+            "char_to": 200,
+            "quote": "The Supplier gives no service level commitment. Any service credits it chooses to offer are the Customer's sole and exclusive remedy for every performance failure and must be claimed within five days.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause completely fails the standard position by omitting any service level commitment, treating service credits as the sole and exclusive remedy for all performance failures, and imposing a strict five-day claim period. This matches the unacceptable language under the rule, particularly the exclusivity of credits and the absence of any SLA for a business-critical service. In Australia, such terms may be void under the Australian Consumer Law due to being one-sided and unreasonable, and in the UK, they may breach the penalty rule. The absence of any availability commitment or response/resolution times further undermines the core of the service level requirement.",
+        "suggestion": {
+          "id": "01a1df64-c78a-7160-93d6-f88643c23bb1",
+          "rule_id": "15b3f703-c656-4e77-9d29-07e68c529630",
+          "anchor": {
+            "paragraph_index": 16,
+            "char_from": 0,
+            "char_to": 200,
+            "para_hash": "99c7a705dea1fe88d62c7f214ae399dcb0f91383c4a805089f6bbe024fad6851"
+          },
+          "kind": "replace",
+          "before": "The Supplier gives no service level commitment. Any service credits it chooses to offer are the Customer's sole and exclusive remedy for every performance failure and must be claimed within five days.",
+          "after": "The Supplier commits to a minimum service availability of 99.9% measured monthly, with response and resolution times by severity. Any service credits offered are not the Customer's sole remedy and are applied automatically. Credits are not the sole and exclusive remedy for all performance failures. For repeated or serious failures, the Customer has the right to terminate the service.",
+          "justification": "The clause completely fails the standard position by omitting any service level commitment, treating service credits as the sole and exclusive remedy for all performance failures, and imposing a strict five-day claim period. This matches the unacceptable language under the rule, particularly the exclusivity of credits and the absence of any SLA for a business-critical service. In Australia, such terms may be void under the Australian Consumer Law due to being one-sided and unreasonable, and in the UK, they may breach the penalty rule. The absence of any availability commitment or response/resolution times further undermines the core of the service level requirement.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1334, "output_tokens": 306 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "0194e9ef-4c37-4754-b824-33b5e2fad75a",
+        "rule_title": "Payment Terms",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 18,
+            "section_path": "1 > 1.8",
+            "char_from": 0,
+            "char_to": 256,
+            "quote": "Invoices are payable within 14 days. The Supplier may suspend the services immediately if any amount is late, interest accrues on late amounts at 2% per month, and all future fees for the term become payable at once if the Customer breaches this agreement.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause imposes a 14-day payment period, which is less than the minimum 30-day requirement under the standard position and unacceptable rule. It also allows immediate suspension of services upon late payment, which violates the standard position and unacceptable language. Additionally, it specifies interest at 2% per month and acceleration of all future fees on breach, both of which are explicitly prohibited under the unacceptable rule. These elements collectively breach the customer’s rights and exceed permissible limits under both UK and Australian law, particularly under the Unfair Contract Terms Act 1977 and the Australian Consumer Law.",
+        "suggestion": {
+          "id": "01a1df65-c5d4-79b4-9027-9ac366eff983",
+          "rule_id": "0194e9ef-4c37-4754-b824-33b5e2fad75a",
+          "anchor": {
+            "paragraph_index": 18,
+            "char_from": 0,
+            "char_to": 256,
+            "para_hash": "1bacc7275cf5cdac2e6666eb3d749b6178b205eeb9bf528847753212d44f377c"
+          },
+          "kind": "replace",
+          "before": "Invoices are payable within 14 days. The Supplier may suspend the services immediately if any amount is late, interest accrues on late amounts at 2% per month, and all future fees for the term become payable at once if the Customer breaches this agreement.",
+          "after": "Invoices are payable within 30 days of receipt of a valid, undisputed invoice. The Customer may withhold disputed amounts in good faith while the dispute is resolved, and the Supplier may not suspend services for disputed amounts. Interest accrues on late payments at the statutory rate, and no acceleration of future fees occurs on any breach.",
+          "justification": "The clause imposes a 14-day payment period, which is less than the minimum 30-day requirement under the standard position and unacceptable rule. It also allows immediate suspension of services upon late payment, which violates the standard position and unacceptable language. Additionally, it specifies interest at 2% per month and acceleration of all future fees on breach, both of which are explicitly prohibited under the unacceptable rule. These elements collectively breach the customer’s rights and exceed permissible limits under both UK and Australian law, particularly under the Unfair Contract Terms Act 1977 and the Australian Consumer Law.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1221, "output_tokens": 338 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "abb76a2a-4437-4165-97e6-775ec940de15",
+        "rule_title": "Price Increases",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 20,
+            "section_path": "1 > 1.9",
+            "char_from": 0,
+            "char_to": 134,
+            "quote": "On each renewal the Supplier may increase the fees by no more than the change in the consumer price index plus 2%, on 60 days' notice.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause allows an increase on renewal without a cap on the increase (only 'no more than' CPI plus 2% is stated, but this is not a fixed cap and does not meet the standard position or fallbacks), and it does not specify a maximum cap (e.g., 3% or CPI+2% capped at 3%), nor does it require written notice beyond 60 days. Moreover, it permits increases during renewal without a clear mechanism to ensure the increase is not at the supplier's discretion. This fails to meet any acceptable position under the standard or fallbacks, and matches the unacceptable language of uncapped increases and lack of a clear, enforceable cap. The absence of a cap at the lower of 3% and CPI change, or a cap at CPI+2% with a maximum of 3%, makes it unacceptably vague and supplier-favourable.",
+        "suggestion": {
+          "id": "01a1df66-bd92-7069-b7de-12f57d9e3580",
+          "rule_id": "abb76a2a-4437-4165-97e6-775ec940de15",
+          "anchor": {
+            "paragraph_index": 20,
+            "char_from": 0,
+            "char_to": 134,
+            "para_hash": "b5c105c94e264bfb8d8063dbfc36528d5de2094da7ed6912080036c5cb33185e"
+          },
+          "kind": "replace",
+          "before": "On each renewal the Supplier may increase the fees by no more than the change in the consumer price index plus 2%, on 60 days' notice.",
+          "after": "On each renewal the Supplier may increase the fees by no more than the lower of 3% and the change in the consumer price index plus 2%, with at least 90 days' written notice before the renewal date.",
+          "justification": "The clause allows an increase on renewal without a cap on the increase (only 'no more than' CPI plus 2% is stated, but this is not a fixed cap and does not meet the standard position or fallbacks), and it does not specify a maximum cap (e.g., 3% or CPI+2% capped at 3%), nor does it require written notice beyond 60 days. Moreover, it permits increases during renewal without a clear mechanism to ensure the increase is not at the supplier's discretion. This fails to meet any acceptable position under the standard or fallbacks, and matches the unacceptable language of uncapped increases and lack of a clear, enforceable cap. The absence of a cap at the lower of 3% and CPI change, or a cap at CPI+2% with a maximum of 3%, makes it unacceptably vague and supplier-favourable.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1138, "output_tokens": 336 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "22e6a58c-4853-48f7-8f8c-db3ab8abca03",
+        "rule_title": "Term and Renewal",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 22,
+            "section_path": "1 > 1.10",
+            "char_from": 0,
+            "char_to": 267,
+            "quote": "This agreement runs for an initial term of three years. After that it renews for one year at a time, but the Customer may opt out by notice given no later than 30 days before any renewal date, and the Supplier must send a renewal reminder at least 60 days in advance.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause meets the standard position by specifying a fixed initial term (three years), automatic one-year renewals, a 30-day opt-out notice, and a 60-day supplier reminder. Although the initial term is longer than one year, the renewal is still on a one-year basis and subject to customer opt-out and supplier reminder, which aligns with the standard position. The rule does not require a fixed initial term of one year, only that renewal is one-year terms with customer opt-out and supplier reminder. Thus, it satisfies the standard position without violating any unacceptable terms.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1229, "output_tokens": 213 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "cbb2e214-04cb-4279-9ad1-e5cf2a799125",
+        "rule_title": "Termination for Convenience",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 24,
+            "section_path": "1 > 1.11",
+            "char_from": 0,
+            "char_to": 231,
+            "quote": "The Supplier may terminate this agreement for convenience on seven days' notice. The Customer may not terminate before the end of the term, and if it does it must pay all fees for the rest of the term and forfeits any prepaid fees.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause grants the supplier unilateral termination for convenience with only seven days' notice, which is unacceptable under the standard position. It also prevents the customer from terminating for convenience at all, and imposes a fee for termination that includes forfeiting prepaid fees — both of which are unacceptable under the defined unacceptable language. The customer has no right to terminate for convenience, and the supplier's termination right is too short and unbalanced, violating both the standard position and the unacceptable line.",
+        "suggestion": {
+          "id": "01a1df68-4af9-7826-ade9-c7b0a0a88184",
+          "rule_id": "cbb2e214-04cb-4279-9ad1-e5cf2a799125",
+          "anchor": {
+            "paragraph_index": 24,
+            "char_from": 0,
+            "char_to": 231,
+            "para_hash": "5f5a9c2d548415af5f590cd243913f360d7529581f7fef8712c2bb48a8939ec7"
+          },
+          "kind": "replace",
+          "before": "The Supplier may terminate this agreement for convenience on seven days' notice. The Customer may not terminate before the end of the term, and if it does it must pay all fees for the rest of the term and forfeits any prepaid fees.",
+          "after": "The Customer may terminate this agreement for convenience on 30 days' written notice, paying only for services delivered up to termination and receiving a refund of prepaid fees for the remaining period. The Supplier has no right to terminate for convenience.",
+          "justification": "The clause grants the supplier unilateral termination for convenience with only seven days' notice, which is unacceptable under the standard position. It also prevents the customer from terminating for convenience at all, and imposes a fee for termination that includes forfeiting prepaid fees — both of which are unacceptable under the defined unacceptable language. The customer has no right to terminate for convenience, and the supplier's termination right is too short and unbalanced, violating both the standard position and the unacceptable line.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1169, "output_tokens": 280 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "6174d8ca-20c6-4c19-adbc-d0bfc6e1b11f",
+        "rule_title": "Termination for Cause",
+        "flag": false,
+        "status": "needs_review",
+        "evidence": [
+          {
+            "paragraph_index": 26,
+            "section_path": "1 > 1.12",
+            "char_from": 0,
+            "char_to": 211,
+            "quote": "Either party may terminate for a material breach not remedied within 30 days of notice or if the other party becomes insolvent, and the Customer may also terminate for chronic failure to meet the service levels.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "explanation": "The clause includes mutual termination for material breach after 30 days and insolvency, and customer termination for chronic SLA failure — aligning with the standard position. However, it does not explicitly mention data or security breaches, change of control, or regulatory direction as customer termination triggers, which are part of the standard position. While the SLA failure trigger is present, the absence of data or security breach triggers means it falls short of the full standard position. The clause is therefore partially compliant and requires clarification on whether data or security breaches are covered. It also lacks explicit reference to insolvency triggers being 'to the extent permitted by law', which is required under jurisdictional rules. Thus, it meets a fallback but not the full standard position, warranting review.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1219, "output_tokens": 226 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "e6948862-9235-4a0f-b248-24d5f828f983",
+        "rule_title": "Transition Assistance",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 28,
+            "section_path": "1 > 1.13",
+            "char_from": 0,
+            "char_to": 255,
+            "quote": "The Supplier will delete all Customer data immediately when this agreement ends. Any data export is available only in the Supplier's proprietary format, for an additional fee, and only once all amounts invoiced, including disputed amounts, have been paid.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause explicitly states that data is deleted immediately upon termination, and data export is restricted to a proprietary format and requires payment of all invoiced amounts including disputed ones, which directly matches the unacceptable language defined in the rule. This violates all acceptable positions under transition assistance, including data return, format, and payment conditions.",
+        "suggestion": {
+          "id": "01a1df69-d2da-7cf4-a879-20db3b8e0038",
+          "rule_id": "e6948862-9235-4a0f-b248-24d5f828f983",
+          "anchor": {
+            "paragraph_index": 28,
+            "char_from": 0,
+            "char_to": 255,
+            "para_hash": "72b02e0bbeb28821f4cc67f73f55cb0f02dfc9a85890ec6036b71f1292e3229d"
+          },
+          "kind": "replace",
+          "before": "The Supplier will delete all Customer data immediately when this agreement ends. Any data export is available only in the Supplier's proprietary format, for an additional fee, and only once all amounts invoiced, including disputed amounts, have been paid.",
+          "after": "The Supplier will return all Customer data in a usable, standard format without charge within 30 days of termination, and will provide reasonable transition assistance for up to 12 months at the then-current rates, continuing services on the same terms during transition.",
+          "justification": "The clause explicitly states that data is deleted immediately upon termination, and data export is restricted to a proprietary format and requires payment of all invoiced amounts including disputed ones, which directly matches the unacceptable language defined in the rule. This violates all acceptable positions under transition assistance, including data return, format, and payment conditions.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1186, "output_tokens": 252 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "9fab7600-41a9-46df-a2ee-fc40530ebf12",
+        "rule_title": "Data Protection",
+        "flag": true,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 30,
+            "section_path": "1 > 1.14",
+            "char_from": 0,
+            "char_to": 475,
+            "quote": "The Supplier will handle Customer personal data solely as the Customer instructs in writing and to provide the services, under a data processing agreement that complies with applicable law. It will not sell the data or put it to any secondary use, such as training models, will use only approved subprocessors, will notify the Customer of any breach within 48 hours, will help the Customer respond to individuals and regulators, and will return or delete the data at the end.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause meets the standard position by clearly stating that the supplier processes data only as instructed, prohibits secondary use (including model training), limits use to services, requires approved subprocessors, mandates 48-hour breach notification, includes assistance with data subject requests and regulators, and commits to returning or deleting data at the end. This aligns fully with the customer’s standard position on data protection.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1329, "output_tokens": 205 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "39602637-911c-4eda-8ad3-ef21935b79dc",
+        "rule_title": "Processor Terms (EU/UK GDPR)",
+        "flag": true,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 32,
+            "section_path": "1 > 1.15",
+            "char_from": 0,
+            "char_to": 536,
+            "quote": "For personal data subject to the EU or UK GDPR, the data processing agreement includes every term required by Article 28(3): processing only on documented instructions, confidentiality of personnel, Article 32 security, prior authorisation and flow-down for subprocessors, help with data subject rights and with Articles 32 to 36, deletion or return at the end, and audit and information rights. Transfers outside the EEA or UK rely on adequacy, the Standard Contractual Clauses or the UK Addendum, backed by a transfer risk assessment.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "standard",
+        "explanation": "The clause fully meets the standard position by specifying all required elements under Article 28(3) of GDPR or UK GDPR, including documented instructions, personnel confidentiality, security (Article 32), subprocessor controls with prior authorisation and flow-down, assistance with data subject rights, compliance with Articles 32 to 36, deletion or return at the end, and audit and information rights. It also clearly references lawful transfer mechanisms (adequacy, Standard Contractual Clauses, UK Addendum) supported by a transfer risk assessment, which satisfies the international transfer requirement. There is no indication of any missing or unacceptable element.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1439, "output_tokens": 276 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "41125df4-ae88-4dc7-b9c6-eae06b3d4827",
+        "rule_title": "Privacy Act Compliance (AU)",
+        "flag": true,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 30,
+            "section_path": "1 > 1.14",
+            "char_from": 0,
+            "char_to": 475,
+            "quote": "The Supplier will handle Customer personal data solely as the Customer instructs in writing and to provide the services, under a data processing agreement that complies with applicable law. It will not sell the data or put it to any secondary use, such as training models, will use only approved subprocessors, will notify the Customer of any breach within 48 hours, will help the Customer respond to individuals and regulators, and will return or delete the data at the end.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "explanation": "The clause meets the fallback position by including compliance with applicable law (implying APPs), restricting use to services, prohibiting secondary use, limiting subprocessor use, requiring breach notification within 48 hours, and ensuring return or deletion of data. While it does not explicitly name the Australian Privacy Principles (APPs), the reference to 'applicable law' and the specific obligations align with APP 6, 8, 11 and 12 in context. The 48-hour breach notice satisfies the fallback requirement of 'without undue delay' and is within the 72-hour window. There is no mention of overseas disclosure, so the restriction is effectively in place. The clause does not allow use for direct marketing, and there is no reliance on small business exemptions. Thus, it meets the fallback position without falling into unacceptable language.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1339, "output_tokens": 294 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "ce24afbe-b39a-47a4-9cc0-9db267b958b2",
+        "rule_title": "Information Security",
+        "flag": true,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 34,
+            "section_path": "1 > 1.16",
+            "char_from": 0,
+            "char_to": 172,
+            "quote": "The Supplier will maintain its current ISO/IEC 27001 certification throughout the term and will supply its annual certification and audit report to the Customer on request.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "matched_fallback_index": 1,
+        "explanation": "The clause meets the fallback position by specifying that the supplier maintains its current ISO/IEC 27001 certification throughout the term and provides annual certification and audit reports on request. This satisfies the fallback 2 condition, which requires current certification maintained throughout the term with annual reports supplied on request, even if detailed security obligations are not explicitly listed. The clause does not contain any unacceptable language such as allowing changes at will or placing responsibility on the customer. It also does not fall short of the standard position in terms of core security measures like encryption or incident notification, though those are not explicitly stated here. Given the customer's sector is not specified, and assuming a general non-regulated context, this fallback is acceptable under the guidance provided.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1208, "output_tokens": 218 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "377cbc6a-9881-44b0-9bfb-1ac97e21b1df",
+        "rule_title": "Audit Rights",
+        "flag": false,
+        "status": "needs_review",
+        "evidence": [
+          {
+            "paragraph_index": 36,
+            "section_path": "1 > 1.17",
+            "char_from": 0,
+            "char_to": 184,
+            "quote": "Once a year, on 30 days' notice, the Customer may audit the Supplier's records and systems relevant to the services, and current independent certifications will satisfy routine audits.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "explanation": "The clause provides annual audit rights with 30 days' notice and limits audits to records and systems relevant to the services, which aligns with Fallback 1. However, it does not explicitly include regulator access or confirm that the supplier bears its own costs or remedies non-compliance. Additionally, it does not address audit rights in the event of an incident or regulatory request, nor does it confirm that independent certifications are sufficient only for routine audits and not as evidence after a breach. While it meets part of the standard position, it falls short on key regulatory access and compliance remediation obligations. Regulator access is critical under DORA, APRA CPS 230, and UK outsourcing rules, and GDPR/UK GDPR Article 28(3)(h) requires processor access for audits. Thus, the clause is insufficient to meet the full standard position or even the regulator access requirement.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1135, "output_tokens": 247 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "9d5b10f6-eb5f-4895-bbd4-bcbf4eb4f84c",
+        "rule_title": "Subcontracting",
+        "flag": false,
+        "status": "not_found",
+        "evidence": [],
+        "matched": "none",
+        "explanation": "The contract does not contain any clause addressing subcontracting.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1175, "output_tokens": 38 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "ca6d1ef5-3c4d-4d39-8f13-1c25a8b39514",
+        "rule_title": "Insurance",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 38,
+            "section_path": "1 > 1.18",
+            "char_from": 0,
+            "char_to": 195,
+            "quote": "The Supplier is not required to hold any insurance. If it does hold insurance, the limits of that cover are the most it is liable to pay, and it may cancel the cover without telling the Customer.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause explicitly states that the supplier is not required to hold any insurance, which directly contradicts the standard position and all fallbacks. It also allows cancellation of cover without notice and references insurance limits as the maximum liability, which violates the rule guidance on liability caps and the requirement for insurance to support liability positions. These elements constitute unacceptable language under the rule.",
+        "suggestion": {
+          "id": "01a1df6f-0222-7e8d-85e1-04a39d74f958",
+          "rule_id": "ca6d1ef5-3c4d-4d39-8f13-1c25a8b39514",
+          "anchor": {
+            "paragraph_index": 38,
+            "char_from": 0,
+            "char_to": 195,
+            "para_hash": "780c9d902a15174ec0adb44821f4de838a4c4be384f3ed9fff44418d8437604e"
+          },
+          "kind": "replace",
+          "before": "The Supplier is not required to hold any insurance. If it does hold insurance, the limits of that cover are the most it is liable to pay, and it may cancel the cover without telling the Customer.",
+          "after": "The Supplier maintains, for the term and for a reasonable run-off period, professional indemnity or technology errors and omissions, cyber, public and product liability, and statutory workers' compensation insurance, each with limits appropriate to the deal and with reputable insurers, and provides certificates on request.",
+          "justification": "The clause explicitly states that the supplier is not required to hold any insurance, which directly contradicts the standard position and all fallbacks. It also allows cancellation of cover without notice and references insurance limits as the maximum liability, which violates the rule guidance on liability caps and the requirement for insurance to support liability positions. These elements constitute unacceptable language under the rule.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1129, "output_tokens": 254 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "21cf38d9-f247-4ea7-b087-5a1161546c8f",
+        "rule_title": "Confidentiality and Publicity",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 40,
+            "section_path": "1 > 1.19",
+            "char_from": 0,
+            "char_to": 310,
+            "quote": "Each party must keep the other's non-public information secret while this agreement runs and for five years after it ends, with no time limit for trade secrets and personal data. Also, neither party will use the other's name or logo, or announce this relationship, unless the other has first agreed in writing.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "explanation": "The clause provides mutual confidentiality for the term and five years after termination, with indefinite protection for trade secrets and personal data, and prohibits use of the other's name or logo or announcement of the relationship without written consent. This meets the standard position on confidentiality and publicity, including the requirement for written consent on publicity and name/logo use. The five-year period after termination satisfies the standard position, and there is no one-way confidentiality, residuals, or publicisation rights without consent. The clause is clear and comprehensive, fulfilling all elements of the standard position without any unacceptable language.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1199, "output_tokens": 204 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "74d59fd3-0564-4cbf-ac84-e8ccf9ba2e71",
+        "rule_title": "Governing Law and Jurisdiction",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 42,
+            "section_path": "1 > 1.20",
+            "char_from": 0,
+            "char_to": 244,
+            "quote": "The law of the Republic of Esterra, where the Supplier is incorporated, governs this agreement and its courts have exclusive jurisdiction. Any claim must be brought within six months, and the Customer waives any right to seek injunctive relief.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause specifies the supplier's home law (Republic of Esterra), which is outside the jurisdictions covered by the playbook (US, EU, UK, Australia), and includes a contractual limitation period of six months (shorter than one year) and a waiver of injunctive relief — both of which are unacceptable under the playbook guidelines. These elements violate the standard position and unacceptable language rules, respectively.",
+        "suggestion": {
+          "id": "01a1df70-9519-7427-8518-aacfe7f2c0f9",
+          "rule_id": "74d59fd3-0564-4cbf-ac84-e8ccf9ba2e71",
+          "anchor": {
+            "paragraph_index": 42,
+            "char_from": 0,
+            "char_to": 244,
+            "para_hash": "ecd65b0c2098567050dcd3f39c7856ce74191e9c62325fb513453299a61bb58f"
+          },
+          "kind": "replace",
+          "before": "The law of the Republic of Esterra, where the Supplier is incorporated, governs this agreement and its courts have exclusive jurisdiction. Any claim must be brought within six months, and the Customer waives any right to seek injunctive relief.",
+          "after": "The law of England and Wales governs this agreement and its courts have exclusive jurisdiction. Any claim must be brought within one year, and the Customer retains the right to seek urgent injunctive relief.",
+          "justification": "The clause specifies the supplier's home law (Republic of Esterra), which is outside the jurisdictions covered by the playbook (US, EU, UK, Australia), and includes a contractual limitation period of six months (shorter than one year) and a waiver of injunctive relief — both of which are unacceptable under the playbook guidelines. These elements violate the standard position and unacceptable language rules, respectively.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1154, "output_tokens": 262 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "956b07e6-1642-40b9-a40b-08e2c10292d5",
+        "rule_title": "Assignment and Change of Control",
+        "flag": false,
+        "status": "acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 44,
+            "section_path": "1 > 1.21",
+            "char_from": 0,
+            "char_to": 340,
+            "quote": "The Supplier may not assign, novate or otherwise transfer this agreement unless the Customer first consents in writing. The Customer may transfer it to an affiliate or a successor by giving notice. If control of the Supplier changes, and in particular if a competitor of the Customer acquires it, the Customer may terminate without penalty.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "fallback",
+        "matched_fallback_index": 1,
+        "explanation": "The clause provides a clear restriction on supplier assignment requiring customer consent, allows customer assignment to affiliates or successors with notice, and includes a termination right upon a supplier change of control involving a competitor — meeting both the standard position and fallback 2. It aligns with English and Australian law principles on assignment and novation, and avoids any unacceptable language such as free assignment or barring customer assignment in restructurings.",
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1193, "output_tokens": 180 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "abe039f4-c3dc-4a3a-81c3-02cf94116062",
+        "rule_title": "Force Majeure",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 46,
+            "section_path": "1 > 1.22",
+            "char_from": 0,
+            "char_to": 206,
+            "quote": "Neither party is liable for delay caused by events beyond its reasonable control. Fees are not payable for services not provided, and either party may terminate if the event continues for more than 60 days.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause grants mutual termination after 60 days and provides fee relief for non-provided services, which aligns with unacceptable language under the rule guidance. It includes no requirement to notify promptly or mitigate, and it does not limit the event to those beyond reasonable control with compliance with business continuity plans. Moreover, it allows termination after 60 days, which exceeds the standard 30-day threshold, and the absence of a requirement for mitigation or control assessment undermines the standard position. The clause also fails to exclude cyber attacks or subcontractor failures, and it does not impose business continuity obligations on the supplier. These elements constitute unacceptable terms under the defined unacceptable list.",
+        "suggestion": {
+          "id": "01a1df72-6547-793a-aa5a-f11a80022403",
+          "rule_id": "abe039f4-c3dc-4a3a-81c3-02cf94116062",
+          "anchor": {
+            "paragraph_index": 46,
+            "char_from": 0,
+            "char_to": 206,
+            "para_hash": "96eb66ffddc5a9eb8272d36c2e7213ec1f7cdc5122bf85c0e6d29b117a514bc6"
+          },
+          "kind": "replace",
+          "before": "Neither party is liable for delay caused by events beyond its reasonable control. Fees are not payable for services not provided, and either party may terminate if the event continues for more than 60 days.",
+          "after": "The affected party is not liable for delay caused by events beyond its reasonable control that could not have been prevented by reasonable precautions, including compliance with its business continuity and disaster recovery plans. The affected party must notify promptly and take reasonable steps to mitigate the impact. Fees are suspended for affected services, and the customer may terminate if the event lasts more than 30 days.",
+          "justification": "The clause grants mutual termination after 60 days and provides fee relief for non-provided services, which aligns with unacceptable language under the rule guidance. It includes no requirement to notify promptly or mitigate, and it does not limit the event to those beyond reasonable control with compliance with business continuity plans. Moreover, it allows termination after 60 days, which exceeds the standard 30-day threshold, and the absence of a requirement for mitigation or control assessment undermines the standard position. The clause also fails to exclude cyber attacks or subcontractor failures, and it does not impose business continuity obligations on the supplier. These elements constitute unacceptable terms under the defined unacceptable list.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1207, "output_tokens": 331 },
+        "cost_usd": 0
+      },
+      {
+        "rule_id": "838b4095-7acf-43be-bf76-ead15001c405",
+        "rule_title": "Non-Solicitation",
+        "flag": false,
+        "status": "not_acceptable",
+        "evidence": [
+          {
+            "paragraph_index": 48,
+            "section_path": "1 > 1.23",
+            "char_from": 0,
+            "char_to": 223,
+            "quote": "During the term and for six months afterwards, neither party will actively solicit personnel of the other who were directly involved in the services, but general advertisements and unsolicited approaches are not restricted.",
+            "verified": "ok"
+          }
+        ],
+        "matched": "none",
+        "explanation": "The clause imposes a mutual non-solicitation restriction on personnel directly involved in the services, extending for six months after the term. This goes beyond the acceptable fallbacks by being mutual and covering all personnel directly involved, and it exceeds the 12-month limit permitted in fallback 2. Moreover, it applies to both parties, which is not acceptable under the rule guidance, as a one-way restriction on the customer is required to be acceptable. The clause also fails to exclude general advertisements or unsolicited approaches as required in the acceptable fallbacks. Under Australian and UK law, such restraints are subject to reasonableness tests and may be void if disproportionate. This clause is therefore unenforceable or unreasonable and exceeds the acceptable boundaries defined in the rule guidance.",
+        "suggestion": {
+          "id": "01a1df73-5b03-722c-8332-8c524336fbe0",
+          "rule_id": "838b4095-7acf-43be-bf76-ead15001c405",
+          "anchor": {
+            "paragraph_index": 48,
+            "char_from": 0,
+            "char_to": 223,
+            "para_hash": "3ad65f213d6482ac8eab1aecf63bb2d441b1e98dc9858bfcf0068017722dc2b7"
+          },
+          "kind": "replace",
+          "before": "During the term and for six months afterwards, neither party will actively solicit personnel of the other who were directly involved in the services, but general advertisements and unsolicited approaches are not restricted.",
+          "after": "During the term and for six months afterwards, the Customer will not actively solicit personnel of the Supplier who were directly involved in the services, but general advertisements and unsolicited approaches are not restricted.",
+          "justification": "The clause imposes a mutual non-solicitation restriction on personnel directly involved in the services, extending for six months after the term. This goes beyond the acceptable fallbacks by being mutual and covering all personnel directly involved, and it exceeds the 12-month limit permitted in fallback 2. Moreover, it applies to both parties, which is not acceptable under the rule guidance, as a one-way restriction on the customer is required to be acceptable. The clause also fails to exclude general advertisements or unsolicited approaches as required in the acceptable fallbacks. Under Australian and UK law, such restraints are subject to reasonableness tests and may be void if disproportionate. This clause is therefore unenforceable or unreasonable and exceeds the acceptable boundaries defined in the rule guidance.",
+          "status": "pending"
+        },
+        "verification": "ok",
+        "model": "qwen3:4b-instruct",
+        "usage": { "input_tokens": 1202, "output_tokens": 309 },
+        "cost_usd": 0
+      }
+    ],
+    "gaps": [
+      {
+        "id": "01a1df5d-ec10-7ddc-b2d0-59f545d141b9",
+        "kind": "uncovered_clause",
+        "evidence": [
+          {
+            "paragraph_index": 10,
+            "char_from": 0,
+            "char_to": 171,
+            "quote": "During the term and for two years afterwards, the Customer must not develop internally or buy from any third party any software that competes with the Supplier's platform.",
+            "verified": "ok",
+            "section_path": "1 > 1.4"
+          }
+        ],
+        "reason": "This clause imposes a restrictive obligation on the Customer to avoid developing or purchasing competing software, which is not covered by any existing rule and creates a significant risk of anti-competitive behaviour or breach of fair competition principles. It alters the Customer's rights and obligations in a material way, especially regarding future software development and procurement.",
+        "severity": "high"
+      },
+      {
+        "id": "01a1df5d-ec20-7c28-8009-d12ca23066be",
+        "kind": "uncovered_clause",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 0,
+            "char_to": 63,
+            "quote": "A failure to exercise a right within 30 days waives that right.",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "This clause introduces a time-bound waiver of rights, which is not addressed in the existing rules and significantly alters the risk profile by creating a strict deadline for asserting rights. It affects time, risk, and obligations, and may lead to unintended consequences if rights are not exercised promptly.",
+        "severity": "high"
+      },
+      {
+        "id": "01a1df5d-ec21-751a-b53f-920fda054826",
+        "kind": "uncovered_clause",
+        "evidence": [
+          {
+            "paragraph_index": 62,
+            "char_from": 0,
+            "char_to": 168,
+            "quote": "This agreement may be signed in counterparts, which together form one document, and binds the Customer once the Customer has signed it even if the Supplier never signs.",
+            "verified": "ok",
+            "section_path": "1 > 1.30"
+          }
+        ],
+        "reason": "This clause creates a material risk by allowing the Customer to be bound by the agreement without the Supplier's signature, which is not covered by any existing rule and alters the legal enforceability and mutual obligations between parties. It affects rights, obligations, and the validity of the agreement.",
+        "severity": "high"
+      },
+      {
+        "id": "01a1df5d-ec24-7d36-8eb9-6c9c7a4ab2b3",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "or delay in",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec24-7af3-9642-8c67000835fc",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "exercising",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-7fab-beff-e5dc048a4ccb",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 13,
+            "char_to": 21,
+            "quote": "exercise",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-7106-a996-083e48cfeb7e",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "does",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-7f21-a317-b5dc96711ae7",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 30,
+            "char_to": 36,
+            "quote": "within",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-7c7b-88dd-8649936e3b2f",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "not",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-70cc-9465-71e96206868e",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 0,
+            "char_to": 0,
+            "quote": "30",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-7482-97ac-ede71b53d7be",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 45,
+            "char_to": 50,
+            "quote": "waive",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-7c24-ba55-bdceaad53079",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 56,
+            "char_from": 40,
+            "char_to": 51,
+            "quote": "days waives",
+            "verified": "ok",
+            "section_path": "1 > 1.27"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec25-7546-8f0a-0d2271fcc163",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 62,
+            "char_from": 70,
+            "char_to": 78,
+            "quote": "document",
+            "verified": "ok",
+            "section_path": "1 > 1.30"
+          }
+        ],
+        "reason": "Tracked deletion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      },
+      {
+        "id": "01a1df5d-ec26-7d5b-a215-e563c3e804b5",
+        "kind": "existing_edit",
+        "evidence": [
+          {
+            "paragraph_index": 62,
+            "char_from": 70,
+            "char_to": 168,
+            "quote": "document, and binds the Customer once the Customer has signed it even if the Supplier never signs.",
+            "verified": "ok",
+            "section_path": "1 > 1.30"
+          }
+        ],
+        "reason": "Tracked insertion by Corvane Legal that no playbook rule or gap check addressed; review it before accepting.",
+        "severity": "low"
+      }
+    ],
+    "summary": {
+      "acceptable": 8,
+      "needs_review": 3,
+      "not_acceptable": 12,
+      "not_found": 2,
+      "gaps": 14
+    },
+    "usage": {
+      "input_tokens": 39815,
+      "output_tokens": 6934,
+      "cost_usd": 0,
+      "models": ["qwen3:4b-instruct"]
+    },
+    "phases": {
+      "plan": {
+        "input_tokens": 3926,
+        "output_tokens": 91,
+        "cost_usd": 0,
+        "models": ["qwen3:4b-instruct"],
+        "calls": 2
+      },
+      "rules": {
+        "ec096527-80e9-43c2-a9dd-073e87ea864c": {
+          "input_tokens": 3434,
+          "output_tokens": 541,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 2
+        },
+        "dbb3624f-dfc0-4ac6-928d-f609251df302": {
+          "input_tokens": 1271,
+          "output_tokens": 412,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "c51fca57-b85f-4196-8531-05913e96ce7f": {
+          "input_tokens": 1258,
+          "output_tokens": 328,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "431af279-c034-4dc3-8c76-98d8a0b62d1c": {
+          "input_tokens": 1343,
+          "output_tokens": 156,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "376ded46-ac22-432c-ac6a-efcfd0500908": {
+          "input_tokens": 1249,
+          "output_tokens": 27,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "30c0b954-df98-4cbb-8742-e7780c135ce6": {
+          "input_tokens": 1222,
+          "output_tokens": 310,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "15b3f703-c656-4e77-9d29-07e68c529630": {
+          "input_tokens": 1334,
+          "output_tokens": 306,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "0194e9ef-4c37-4754-b824-33b5e2fad75a": {
+          "input_tokens": 1221,
+          "output_tokens": 338,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "abb76a2a-4437-4165-97e6-775ec940de15": {
+          "input_tokens": 1138,
+          "output_tokens": 336,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "22e6a58c-4853-48f7-8f8c-db3ab8abca03": {
+          "input_tokens": 1229,
+          "output_tokens": 213,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "cbb2e214-04cb-4279-9ad1-e5cf2a799125": {
+          "input_tokens": 1169,
+          "output_tokens": 280,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "6174d8ca-20c6-4c19-adbc-d0bfc6e1b11f": {
+          "input_tokens": 1219,
+          "output_tokens": 226,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "e6948862-9235-4a0f-b248-24d5f828f983": {
+          "input_tokens": 1186,
+          "output_tokens": 252,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "9fab7600-41a9-46df-a2ee-fc40530ebf12": {
+          "input_tokens": 1329,
+          "output_tokens": 205,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "39602637-911c-4eda-8ad3-ef21935b79dc": {
+          "input_tokens": 1439,
+          "output_tokens": 276,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "41125df4-ae88-4dc7-b9c6-eae06b3d4827": {
+          "input_tokens": 1339,
+          "output_tokens": 294,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "ce24afbe-b39a-47a4-9cc0-9db267b958b2": {
+          "input_tokens": 1208,
+          "output_tokens": 218,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "377cbc6a-9881-44b0-9bfb-1ac97e21b1df": {
+          "input_tokens": 1135,
+          "output_tokens": 247,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "9d5b10f6-eb5f-4895-bbd4-bcbf4eb4f84c": {
+          "input_tokens": 1175,
+          "output_tokens": 38,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "ca6d1ef5-3c4d-4d39-8f13-1c25a8b39514": {
+          "input_tokens": 1129,
+          "output_tokens": 254,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "21cf38d9-f247-4ea7-b087-5a1161546c8f": {
+          "input_tokens": 1199,
+          "output_tokens": 204,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "74d59fd3-0564-4cbf-ac84-e8ccf9ba2e71": {
+          "input_tokens": 1154,
+          "output_tokens": 262,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "956b07e6-1642-40b9-a40b-08e2c10292d5": {
+          "input_tokens": 1193,
+          "output_tokens": 180,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "abe039f4-c3dc-4a3a-81c3-02cf94116062": {
+          "input_tokens": 1207,
+          "output_tokens": 331,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        },
+        "838b4095-7acf-43be-bf76-ead15001c405": {
+          "input_tokens": 1202,
+          "output_tokens": 309,
+          "cost_usd": 0,
+          "models": ["qwen3:4b-instruct"],
+          "calls": 1
+        }
+      },
+      "verify": {
+        "input_tokens": 2907,
+        "output_tokens": 300,
+        "cost_usd": 0,
+        "models": ["qwen3:4b-instruct"],
+        "calls": 1
+      }
+    },
+    "coverage": { "paragraphs": 72, "read": 72 },
+    "warnings": ["existing_tracked_changes"],
+    "aborted": false
+  },
+  "ooxml": {
+    "suggestions": 12,
+    "applied": 12,
+    "valid": 12,
+    "failed": {},
+    "combined": { "applied": 12, "reread_ok": true, "soffice_ok": null }
+  }
+}

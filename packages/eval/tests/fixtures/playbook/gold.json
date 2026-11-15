@@ -1,0 +1,57 @@
+{
+  "generator_version": 1,
+  "seed": 1,
+  "contracts": [
+    {
+      "id": "nda-001-p03",
+      "template": "nda",
+      "file": "nda-001-p03.docx",
+      "pages_target": 3,
+      "chars": 9000,
+      "pages": 3,
+      "rules": [
+        { "rule": "Mutuality", "variant": "standard", "status": "acceptable" },
+        { "rule": "Residuals", "variant": "unacceptable", "status": "not_acceptable" },
+        { "rule": "Assignment", "variant": "omitted", "status": "not_found" },
+        { "rule": "Term and Survival", "variant": "fallback", "status": "acceptable" }
+      ],
+      "injected": [
+        {
+          "key": "non_compete",
+          "kind": "uncovered_clause",
+          "paragraph_index": 10,
+          "text": "Ardent must not use competing products."
+        },
+        {
+          "key": "costs",
+          "kind": "existing_edit",
+          "paragraph_index": 30,
+          "text": "Ardent bears both parties' costs."
+        },
+        {
+          "key": "waiver",
+          "kind": "existing_edit",
+          "paragraph_index": 34,
+          "text": "A failure to act within 30 days waives that right."
+        }
+      ]
+    },
+    {
+      "id": "msa-002-p40",
+      "template": "msa",
+      "file": "msa-002-p40.docx",
+      "pages_target": 40,
+      "chars": 120000,
+      "pages": 40,
+      "rules": [{ "rule": "Payment Terms", "variant": "standard", "status": "acceptable" }],
+      "injected": [
+        {
+          "key": "exclusivity",
+          "kind": "uncovered_clause",
+          "paragraph_index": 12,
+          "text": "The Customer appoints the Supplier as exclusive provider."
+        }
+      ]
+    }
+  ]
+}

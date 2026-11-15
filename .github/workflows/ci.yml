@@ -54,19 +54,29 @@ jobs:
 
   eval:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: packages/eval
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
+      # playbook-review runs node/run.ts against the built review, docx and contracts packages.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter "@legallabs/eval..."
+      - run: pnpm --filter "@legallabs/eval^..." build
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
       # The offline baseline needs no keys, so every PR proves a run still ends in summary.json.
       - run: uv run legallabs-eval run --system bm25-local --suite retrieval-golden
+      # Canned replies: proves generation, review, scoring and OOXML checks run; scores mean nothing.
+      - run: uv run legallabs-eval run --system playbook-fake --suite playbook-review --fail-on-task-errors
 
   docproc:
     runs-on: ubuntu-latest
