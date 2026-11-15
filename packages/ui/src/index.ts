@@ -73,11 +73,36 @@ export { PlaybookTable } from "./components/playbook/playbook-table.js";
 export { RuleEditor, RuleEditorSkeleton } from "./components/playbook/rule-editor.js";
 export { VersionList, VersionListSkeleton } from "./components/playbook/version-list.js";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/popover.js";
+// Review tables (RVT).
+export { AddColumnForm, AddColumnPopover } from "./components/review/add-column.js";
+export { BulkBar, type BulkOp, type BulkRequest, sheetText } from "./components/review/bulk-bar.js";
+export {
+  CellDrawer,
+  type DrawerCitation,
+  type DrawerDetail,
+  type DrawerHistory,
+} from "./components/review/cell-drawer.js";
+export { ColumnBuilder } from "./components/review/column-builder.js";
+export {
+  ColumnHeader,
+  ColumnHeaderSkeleton,
+  progressLine,
+  type SortDirection,
+} from "./components/review/column-header.js";
+export {
+  type CreateRequest,
+  type CreateSource,
+  CreateTablePanel,
+  MAX_UPLOADS,
+  type VaultTree,
+} from "./components/review/create-table.js";
 export {
   CustomiseReviewForm,
   CustomiseReviewFormSkeleton,
   type ReviewSettings,
 } from "./components/review/customise-review-form.js";
+export { type ExportChoice, ExportDialog } from "./components/review/export-dialog.js";
+export { type ColumnFilter, cleanFilter, FilterPanel } from "./components/review/filter-panel.js";
 export {
   applyEvent,
   elapsed,
@@ -100,13 +125,36 @@ export {
   summaryLine,
 } from "./components/review/order.js";
 export {
+  columnProblem,
+  type NewColumn,
+  PRESETS,
+  type PresetId,
+  presetColumn,
+  TYPE_NAMES,
+} from "./components/review/presets.js";
+export { elapsedSeconds, ReviewCell, ReviewCellSkeleton } from "./components/review/review-cell.js";
+export {
   marksByParagraph,
   ReviewDocument,
   ReviewDocumentSkeleton,
   type ReviewParagraph,
 } from "./components/review/review-document.js";
+export {
+  type CellKeyOp,
+  type CellRef,
+  moveCell,
+  ReviewGrid,
+  rectangle,
+} from "./components/review/review-grid.js";
 export { ReviewProgress, ReviewProgressSkeleton } from "./components/review/review-progress.js";
 export { type RailView, ReviewRail, ReviewRailSkeleton } from "./components/review/review-rail.js";
+export {
+  DRY_RUN_ROWS,
+  estimateLine,
+  type RunChoice,
+  RunDialog,
+  type RunEstimate,
+} from "./components/review/run-dialog.js";
 export {
   FindingStatusText,
   GapSeverityText,
@@ -120,6 +168,22 @@ export {
   SuggestionCardSkeleton,
   titleOf,
 } from "./components/review/suggestion-card.js";
+export { TableList, type TableSummary } from "./components/review/table-list.js";
+export {
+  CELL_STATUSES,
+  type CellStatus,
+  type ColumnProgress,
+  type ColumnType,
+  cellKey,
+  errorText,
+  FLAG_COLORS,
+  type FlagColor,
+  flagName,
+  formatUsd,
+  type GridCell,
+  type GridColumn,
+  type GridRow,
+} from "./components/review/types.js";
 export {
   Select,
   SelectContent,
