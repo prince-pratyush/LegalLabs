@@ -1,6 +1,7 @@
-import { locate } from "../edits/anchor.js";
+import { locate, paraHash } from "../edits/anchor.js";
 import { hunks } from "../edits/hunks.js";
 import { searchText } from "../edits/search.js";
+import { readFile } from "./file.js";
 import {
   type ApplyResult,
   type Capabilities,
@@ -35,8 +36,12 @@ function find(range: Word.Range, text: string, occurrence: number | "only"): Fou
           : (hits.items[occurrence] ?? null),
     };
   }
-  const head = range.search(searchText(text.slice(0, END)), options);
-  const tail = range.search(searchText(text.slice(-END)), options);
+  const ends = [searchText(text.slice(0, END)), searchText(text.slice(-END))];
+  // Only the first of a long text can be placed, and escaping can push an end past the limit.
+  if (occurrence !== 0 && occurrence !== "only") return { pick: () => null };
+  if (ends.some((end) => end.length > SEARCH_MAX)) return { pick: () => null };
+  const head = range.search(ends[0] ?? "", options);
+  const tail = range.search(ends[1] ?? "", options);
   head.load("items");
   tail.load("items");
   // Unique ends only: anything else could join the wrong two places.
@@ -64,10 +69,13 @@ async function withTracking<T>(
   document.changeTrackingMode = track
     ? Word.ChangeTrackingMode.trackAll
     : Word.ChangeTrackingMode.off;
-  const result = await work();
-  if (!track) document.changeTrackingMode = previous;
-  await context.sync();
-  return result;
+  try {
+    return await work();
+  } finally {
+    // Restored even when the edit fails, so the user's own setting survives.
+    if (!track) document.changeTrackingMode = previous;
+    await context.sync();
+  }
 }
 
 async function applyEdit(
@@ -83,6 +91,12 @@ async function applyEdit(
   const texts = paragraphs.items.map((p) => p.text);
   const where = await locate(texts, edit.anchor, edit.before);
   const paragraph = where.kind === "paragraph" ? paragraphs.items[where.index] : undefined;
+  // What the pane saw, so the server can tell if the clause drifted from its anchor.
+  const observed =
+    where.kind === "paragraph"
+      ? { paragraph_index: where.index, para_hash: await paraHash(texts[where.index] ?? "") }
+      : undefined;
+  const ok = { ok: true as const, ...(observed ? { observed } : {}) };
 
   // A missing clause: added as a new paragraph after its anchor.
   if (edit.before === "") {
@@ -91,7 +105,7 @@ async function applyEdit(
       const added = paragraph.insertParagraph(edit.after, "After");
       if (edit.comment && capabilities.comments)
         added.getRange("Whole").insertComment(edit.comment);
-      return { ok: true } as const;
+      return ok;
     });
   }
 
@@ -124,47 +138,7 @@ async function applyEdit(
       // Some piece couldn't be found on its own: replace the clause as a whole instead.
       range.insertText(edit.after, "Replace");
     }
-    return { ok: true } as const;
-  });
-}
-
-function readFile(): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    Office.context.document.getFileAsync(
-      Office.FileType.Compressed,
-      { sliceSize: 4 * 1024 * 1024 },
-      (opened) => {
-        if (opened.status !== Office.AsyncResultStatus.Succeeded) {
-          reject(new Error(opened.error.message));
-          return;
-        }
-        const file = opened.value;
-        const parts: Uint8Array[] = [];
-        const next = (index: number) => {
-          if (index === file.sliceCount) {
-            file.closeAsync();
-            const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-            let at = 0;
-            for (const part of parts) {
-              out.set(part, at);
-              at += part.length;
-            }
-            resolve(out);
-            return;
-          }
-          file.getSliceAsync(index, (slice) => {
-            if (slice.status !== Office.AsyncResultStatus.Succeeded) {
-              file.closeAsync();
-              reject(new Error(slice.error.message));
-              return;
-            }
-            parts.push(new Uint8Array(slice.value.data as number[]));
-            next(index + 1);
-          });
-        };
-        next(0);
-      },
-    );
+    return ok;
   });
 }
 
@@ -200,9 +174,14 @@ export function createWordHost(): WordHost {
     file: readFile,
 
     title: () => {
-      const url = Office.context.document.url ?? "";
-      const name = decodeURIComponent(url.split(/[\\/]/).pop() ?? "").replace(/\.docx?$/i, "");
-      return name || "Word document";
+      const last = (Office.context.document.url ?? "").split(/[\\/]/).pop() ?? "";
+      let name = last;
+      try {
+        name = decodeURIComponent(last);
+      } catch {
+        // A stray % in the file name: show it as it is.
+      }
+      return name.replace(/\.docx?$/i, "") || "Word document";
     },
 
     select: (text) =>

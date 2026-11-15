@@ -32,7 +32,8 @@ export type Edit = {
 };
 
 export type ApplyResult =
-  | { ok: true }
+  /** `observed` is where the clause was found, for the server's drift check; absent when searched for. */
+  | { ok: true; observed?: Anchor }
   /** The text moved or changed since the suggestion was made, so nothing was touched. */
   | { ok: false; reason: "anchor_failed" | "unsupported" };
 
@@ -43,7 +44,7 @@ export interface WordHost {
   capabilities: Capabilities;
   read(scope: Scope): Promise<ScopeText>;
   /** The whole document as .docx bytes, for reviews that need the original file. */
-  file(): Promise<Uint8Array>;
+  file(): Promise<Uint8Array<ArrayBuffer>>;
   title(): string;
   /** Selects the first place this text appears; false when it isn't there. */
   select(text: string): Promise<boolean>;
