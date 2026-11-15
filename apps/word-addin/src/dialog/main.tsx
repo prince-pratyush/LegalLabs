@@ -11,7 +11,16 @@ Office.onReady(() => {
   followOfficeTheme();
   createRoot(root).render(
     <StrictMode>
-      <SignInDialog send={(message) => Office.context.ui.messageParent(message)} />
+      <SignInDialog
+        send={(message) => {
+          // Addressed to the pane's own origin where the host supports it.
+          try {
+            Office.context.ui.messageParent(message, { targetOrigin: window.location.origin });
+          } catch {
+            Office.context.ui.messageParent(message);
+          }
+        }}
+      />
     </StrictMode>,
   );
 });

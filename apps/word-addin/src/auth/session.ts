@@ -15,7 +15,9 @@ export const tokenStore = {
     try {
       if (token) localStorage.setItem(TOKEN_KEY, token);
       else localStorage.removeItem(TOKEN_KEY);
-    } catch {}
+    } catch {
+      // Storage off: the pane still works, it just asks to sign in next time.
+    }
   },
 };
 
@@ -52,6 +54,12 @@ export const officeDialog: DialogOpener = (url) =>
       const dialog = opened.value;
       dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
         dialog.close();
+        // Newer hosts say where the message came from; only our own sign-in page counts.
+        const from = "origin" in arg ? (arg as { origin?: string }).origin : undefined;
+        if (from && from !== window.location.origin) {
+          reject(new SignInError("failed", "Sign-in came from an unexpected page."));
+          return;
+        }
         resolve("message" in arg ? arg.message : "");
       });
       dialog.addEventHandler(Office.EventType.DialogEventReceived, (arg) => {

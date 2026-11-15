@@ -31,5 +31,7 @@ export function followOfficeTheme(root: HTMLElement = document.documentElement) 
       "officeThemeChanged" as unknown as Office.EventType,
       paint,
     );
-  } catch {}
+  } catch {
+    // No theme events in this host: the pane keeps the theme it opened with.
+  }
 }
