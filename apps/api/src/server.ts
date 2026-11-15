@@ -7,6 +7,8 @@ import { createIngest, type Scanner, scannerFromEnv } from "@legallabs/ingest";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
+import { createSignInAudit } from "./addins/audit.js";
+import { createLanguage } from "./addins/language.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
@@ -89,6 +91,8 @@ const gateway = createGateway({
 // The web app's build, when present, so the demo runs from one server on one origin.
 const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
+// The Word add-in's pane, served under /addin/ when built.
+const addinRoot = fileURLToPath(new URL("../../word-addin/dist", import.meta.url));
 const log = createRunLog(pool);
 // Runs live in this process, so any left unfinished by the last one can never finish.
 // One API process per database for now; several would need a lease per run.
@@ -119,6 +123,11 @@ const app = createApp({
   knowledge: knowledgeStore,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
+  addin: {
+    language: createLanguage(gateway),
+    recordSignIn: createSignInAudit(pool),
+    ...(existsSync(addinRoot) ? { root: addinRoot } : {}),
+  },
 });
 
 serve({
