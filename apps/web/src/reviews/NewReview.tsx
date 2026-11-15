@@ -11,6 +11,8 @@ import { messageOf } from "../vaults/shared.js";
 import { reviewApi } from "./api.js";
 import { goReviews } from "./route.js";
 
+const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 /**
  * The customise sheet. A playbook's page fixes the playbook and a vault file fixes the
  * document; whatever isn't fixed is picked here.
@@ -44,7 +46,8 @@ export function NewReview({
   useEffect(() => {
     if (fixedDocument) return;
     api.documents().then(
-      (all) => setDocuments(all.filter((d) => d.status === "indexed")),
+      // A Word file is read from the file itself, so it needn't wait for indexing.
+      (all) => setDocuments(all.filter((d) => d.status === "indexed" || d.mime === DOCX)),
       (err) => {
         setDocuments([]);
         setError(messageOf(err));
