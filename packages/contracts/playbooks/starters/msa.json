@@ -5,7 +5,7 @@
   "rules": [
     {
       "title": "Limitation of Liability Cap",
-      "standard_position": "Each party's total liability is capped at the greater of a fixed amount agreed for the deal and two times the fees paid or payable in the 12 months before the claim. The cap applies mutually and resets annually or is set per claim.",
+      "standard_position": "Each party's total liability is capped at the greater of a fixed amount agreed for the deal and two times the fees paid or payable in the 12 months before the claim. The cap applies mutually as an aggregate for each contract year.",
       "fallbacks": [
         "Mutual cap at the greater of a fixed floor and 1.5 times the annual fees.",
         "Mutual cap at the fees paid or payable in the 12 months before the claim, with a fixed minimum floor so the cap is meaningful early in the term.",
@@ -45,7 +45,7 @@
       "standard_position": "Neither party is liable for indirect or consequential loss, defined narrowly as loss that does not arise naturally from the breach, and the following are expressly recoverable as direct loss: costs of replacement services, remediation and data restoration, breach response costs, regulatory fines where recoverable by law, and wasted expenditure.",
       "fallbacks": [
         "Mutual exclusion of loss of profits, revenue and goodwill and of indirect loss, with the recoverable list limited to data restoration, breach response costs and the extra cost of replacement services.",
-        "Mutual exclusion of indirect and consequential loss without a recoverable list, provided lost profits are not excluded as a separate category for the customer's direct savings and costs."
+        "Mutual exclusion of indirect and consequential loss with no list of recoverable losses, provided lost profits and savings are not excluded as a separate category, so the customer's direct losses such as extra costs and wasted spend stay recoverable."
       ],
       "unacceptable": "Exclusion of 'all loss of data', 'any loss of profits, whether direct or indirect' in a way that removes our main heads of loss; exclusion of the very losses that arise from the services failing; a definition of consequential loss that covers any loss beyond the fees paid.",
       "guidance": "In England and Wales, 'consequential loss' has traditionally been read to mean loss in the second limb of Hadley v Baxendale (loss not arising naturally), while in Australia Environmental Systems v Peerless Holdings read it more broadly as loss beyond what every claimant would suffer from the breach, and later courts read it in context, so state what is recoverable rather than relying on the label. US courts distinguish direct, incidental and consequential damages, and lost profits can be direct; an express list avoids disputes everywhere.",
@@ -118,7 +118,7 @@
         "Annual payment in advance for subscriptions, with a pro-rata refund of prepaid fees on termination for the supplier's breach or for convenience where allowed."
       ],
       "unacceptable": "Payment on less than 30 days; suspension for late payment without at least 30 days' written notice; late interest above statutory rates; acceleration of all future fees on any breach; no right to dispute invoices.",
-      "guidance": "Statutory late-payment interest applies in some jurisdictions (for example, the UK Late Payment of Commercial Debts (Interest) Act 1998 and EU Late Payment Directive 2011/7/EU implementations) and sets a benchmark for contractual interest. Some EU member states cap B2B payment terms at 60 days unless expressly agreed and not grossly unfair. Australian large businesses may have payment-time reporting duties.",
+      "guidance": "Statutory late-payment interest applies in some jurisdictions (for example, the UK Late Payment of Commercial Debts (Interest) Act 1998 and EU Late Payment Directive 2011/7/EU implementations) and sets a benchmark for contractual interest. Under the EU Late Payment Directive, 60 days is the default maximum B2B payment period, which the parties may extend only by express agreement that is not grossly unfair to the creditor; some member states go further. Australian large businesses may have payment-time reporting duties.",
       "flag": false,
       "actions": [],
       "sample_language": "The customer must pay each valid and undisputed invoice within 45 days after receiving it. If the customer disputes an invoice in good faith, it must notify the supplier with reasons, may withhold the disputed amount until the dispute is resolved, and the supplier may not suspend the services because of that amount."
@@ -294,7 +294,7 @@
       "standard_position": "Mutual confidentiality obligations covering all non-public information for the term and five years after, with trade secrets and personal data protected indefinitely. Neither party may use the other's name or logo or announce the relationship without prior written consent.",
       "fallbacks": [
         "Mutual confidentiality for the term and three years after, with trade secrets and personal data protected indefinitely; the supplier may list the customer's name in a client list after written consent, which may be withdrawn.",
-        "Mutual confidentiality for the term and three years after, with standard exclusions and a backup retention carve-out."
+        "Mutual confidentiality for the term and three years after, with trade secrets and personal data protected indefinitely, standard exclusions and a backup retention carve-out."
       ],
       "unacceptable": "One-way confidentiality protecting only the supplier; confidentiality obligations ending at termination; a residuals clause; a right for the supplier to publicise the relationship, use our logo or issue case studies without consent.",
       "guidance": "Apply the NDA starter's positions on definitions, exclusions, compelled disclosure and residuals; if an NDA already exists, make sure the MSA either supersedes it clearly or incorporates it so there is no gap. Publicity matters to brand and sometimes securities disclosure.",
@@ -348,7 +348,7 @@
         "A mutual restriction for the term and six months after on actively soliciting personnel directly involved in the services, excluding general advertisements and unsolicited approaches.",
         "A restriction on the customer limited to supplier personnel who worked on the services in the previous six months, for up to 12 months, with no fee."
       ],
-      "unacceptable": "A one-way no-hire on the customer covering all supplier staff; restrictions longer than 12 months after the term; a placement fee above a modest percentage of first-year salary; restrictions on hiring people who apply on their own initiative.",
+      "unacceptable": "A one-way no-hire on the customer covering all supplier staff; restrictions longer than 12 months after the term; a placement fee above 15% of first-year salary; restrictions on hiring people who apply on their own initiative.",
       "guidance": "Restraints of this kind are tested for reasonableness and may be unenforceable: California Business and Professions Code s 16600 voids most restraints on engaging in a lawful profession; Australian law voids restraints that go further than reasonably necessary to protect a legitimate interest (with NSW courts able to read them down under the Restraints of Trade Act 1976); UK courts apply a similar reasonableness test. Competition regulators have also scrutinised no-poach agreements between businesses.",
       "flag": false,
       "actions": [],
