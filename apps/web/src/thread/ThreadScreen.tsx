@@ -11,7 +11,7 @@ import {
   RunProgress,
 } from "@legallabs/ui";
 import { FilePen, Share2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   type AskInput,
@@ -22,6 +22,7 @@ import {
   type Thread,
 } from "../api.js";
 import { DraftsPanel } from "../drafts/DraftsPanel.js";
+import { latestOnly } from "../latest.js";
 import { navigate, paths } from "../router.js";
 import { SharePanel } from "../share/SharePanel.js";
 import { Shell } from "../shell.js";
@@ -72,12 +73,15 @@ export function ThreadScreen({
   const [attempt, setAttempt] = useState(0);
   const [planBusy, setPlanBusy] = useState(false);
 
+  // Only the newest request may set the thread, so a slow older one can't roll it back.
+  const fetchThread = useMemo(() => latestOnly(api.thread), []);
   const load = useCallback(async () => {
     if (!threadId) return null;
-    const fresh = await api.thread(threadId);
-    setThread(fresh);
-    return fresh;
-  }, [threadId]);
+    const result = await fetchThread(threadId);
+    if (!result.current) return null;
+    setThread(result.value);
+    return result.value;
+  }, [threadId, fetchThread]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt re-runs the load on Retry
   useEffect(() => {
