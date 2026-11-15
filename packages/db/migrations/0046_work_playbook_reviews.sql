@@ -91,6 +91,8 @@ create table work.review_suggestion (
   decided_by uuid,
   decided_at timestamptz,
   superseded_by uuid,
+  -- Set when the user applied one of the alternates instead of the main text.
+  alternate_id uuid,
   alternates jsonb not null default '[]' check (jsonb_typeof(alternates) = 'array'
                                                 and jsonb_array_length(alternates) <= 3),
   created_at timestamptz not null default now(),
@@ -139,7 +141,7 @@ create policy playbook_review_update on work.playbook_review for update to legal
 
 grant select, insert on work.review_suggestion to legallabs_app;
 grant update (status, applied_with_comment, surface, decided_by, decided_at, superseded_by,
-              alternates)
+              alternate_id, alternates)
   on work.review_suggestion to legallabs_app;
 create policy review_suggestion_read on work.review_suggestion for select to legallabs_app
   using (core.in_tenant(workspace_id)
