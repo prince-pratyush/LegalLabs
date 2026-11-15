@@ -33,6 +33,7 @@ import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp, RLS_REFUSED } from "../db.js";
 import { uuid7 } from "../playbooks/playbooks.js";
 import type { RunLog } from "../runs/log.js";
+import type { DocxValidator } from "./soffice.js";
 import { loadSource, type Source, type SourceFailure, versionMeta } from "./source.js";
 import { buildSummaryDocx, buildXlsx, GAP_COLUMNS, RULE_COLUMNS, type Sheet } from "./summary.js";
 
@@ -151,6 +152,8 @@ export interface ReviewsOptions {
   maxCostUsd?: number;
   /** Reviews one person may have running at once; 3 by default. */
   maxActive?: number;
+  /** Checks a redline opens before it is sent (LibreOffice when configured). */
+  validate?: DocxValidator | null;
   /** Swapped in tests so a review needs no model. */
   run?: typeof runReview;
   now?: () => Date;
@@ -1592,6 +1595,9 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
           } catch (err) {
             if (err instanceof PatchError) throw new Refused("OOXML_INVALID");
             throw err;
+          }
+          if (options.validate && !(await options.validate(patched.bytes))) {
+            throw new Refused("OOXML_INVALID");
           }
           await db.query(
             "select admin.append_audit_event('review.redline_downloaded', 'user', $1, 'playbook_review', $2, $3, $4, $5)",

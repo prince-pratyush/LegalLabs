@@ -197,7 +197,12 @@ const fakeEngine =
 function harness(
   engine: Engine = fakeEngine(),
   reply: () => string = () => "{}",
-  limits: { maxActive?: number; maxCostUsd?: number; asksPerWindow?: number } = {},
+  limits: {
+    maxActive?: number;
+    maxCostUsd?: number;
+    asksPerWindow?: number;
+    validate?: (bytes: Uint8Array) => Promise<boolean>;
+  } = {},
 ) {
   const provider: ModelProvider = {
     complete: async () => ({ text: reply(), usage: { input_tokens: 10, output_tokens: 10 } }),
@@ -229,6 +234,7 @@ function harness(
     now: () => new Date("2026-11-15T10:00:00Z"),
     ...(limits.maxActive ? { maxActive: limits.maxActive } : {}),
     ...(limits.maxCostUsd ? { maxCostUsd: limits.maxCostUsd } : {}),
+    ...(limits.validate ? { validate: limits.validate } : {}),
   });
   const app = createApp({
     auth: createAuth(pool),
@@ -1185,6 +1191,24 @@ describe("redline and export", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     }
+  });
+
+  it("refuses a redline the validator can't open", async () => {
+    const seen: Uint8Array[] = [];
+    const h = harness(fakeEngine(), undefined, {
+      validate: async (bytes) => {
+        seen.push(bytes);
+        return false;
+      },
+    });
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    await waitFor(h, s.cookie, review_id);
+    const res = await h.call(s.cookie, "POST", `/reviews/${review_id}/redline`, {
+      include_pending: true,
+    });
+    expect(res).toMatchObject({ status: 422, body: { code: "OOXML_INVALID" } });
+    expect(seen).toHaveLength(1);
   });
 
   it("exports the summary as xlsx with Rules and Gaps sheets, and as docx (WRD-002-f)", async () => {
