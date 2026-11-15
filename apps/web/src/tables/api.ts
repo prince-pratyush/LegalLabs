@@ -22,6 +22,8 @@ import { ApiError } from "../api.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 
+export const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
+
 // Codes the reviewer can act on get plain words; the rest use the server's message.
 const MESSAGES: Record<string, string> = {
   CELL_LOCKED: "That cell is locked. Unlock it to change it.",
