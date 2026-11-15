@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Auth, Client, Principal } from "../auth/auth.js";
 import { createLimiter } from "../auth/limiter.js";
 import type { CodeStore } from "./codes.js";
-import { type Language, MAX_BATCH_CHARS, MAX_BATCH_PARAGRAPHS } from "./language.js";
+import { LANGUAGES, type Language, MAX_BATCH_CHARS, MAX_BATCH_PARAGRAPHS } from "./language.js";
 
 type Env = { Variables: { principal: Principal } };
 
@@ -32,12 +32,19 @@ export function addinAuthRoutes({
   now,
 }: AddinAuthOptions) {
   const perIp = createLimiter({ limit: 20, windowMs: 60_000, now });
+  // Codes share one store, so one user minting many can't push out everyone else's.
+  const perUser = createLimiter({ limit: 5, windowMs: 60_000, now });
   const app = new Hono();
 
   app.post("/code", async (c) => {
     const token = tokenOf(c);
     const principal = token ? await auth.resolve(token) : null;
     if (!token || !principal) return c.json({ error: "unauthenticated" }, 401);
+    const wait = perUser.take(principal.userId);
+    if (wait > 0) {
+      c.header("Retry-After", String(wait));
+      return c.json({ error: "too_many_attempts" }, 429);
+    }
     return c.json({ code: codes.issue(token) });
   });
 
@@ -67,18 +74,15 @@ const paragraphs = z
   .refine((list) => list.reduce((n, p) => n + p.length, 0) <= MAX_BATCH_CHARS, {
     message: `Send at most ${MAX_BATCH_CHARS} characters at a time.`,
   });
-// Letters only: the name goes into the prompt, so it can't carry instructions.
-const targetLanguage = z
-  .string()
-  .trim()
-  .regex(/^[\p{L} ()-]{2,40}$/u);
+// A fixed list: the name goes into the prompt, so it can't carry instructions.
+const targetLanguage = z.enum(LANGUAGES);
 
 const proofreadBody = z.object({ paragraphs });
 const translateBody = z.object({ paragraphs, language: targetLanguage });
 
 export function addinRoutes(language: Language, now: () => number) {
   // Each batch is a model call, and a long document is many batches.
-  const perUser = createLimiter({ limit: 120, windowMs: 10 * 60_000, now });
+  const perUser = createLimiter({ limit: 60, windowMs: 10 * 60_000, now });
   const app = new Hono<Env>();
   const limitBody = bodyLimit({
     maxSize: 64 * 1024,
