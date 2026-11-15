@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import {
   ANSWER,
@@ -15,7 +15,14 @@ import {
   source,
   THREAD_ID,
   thread,
+  VERSION,
 } from "./testing.js";
+
+// The real viewer draws PDFs, which jsdom can't; this checks only that it opens over the thread.
+vi.mock("./viewer/document-page.js", async (load) => ({
+  ...(await load<typeof import("./viewer/document-page.js")>()),
+  DocumentPage: ({ href }: { href: string }) => <div data-testid="document-page">{href}</div>,
+}));
 
 describe("signing in", () => {
   it("signs in, then offers a new thread", async () => {
@@ -106,6 +113,45 @@ describe("a new thread", () => {
   });
 });
 
+describe("knowledge sources", () => {
+  it("picks a source from the list and scopes the question to it", async () => {
+    const sent = serve({
+      ...signedIn,
+      "GET /api/v1/scope-options": () => [
+        200,
+        {
+          ...SCOPE,
+          sources: [
+            {
+              id: "au-cth-acts",
+              name: "Commonwealth Acts",
+              kind: "legislation",
+              jurisdiction: "AU",
+            },
+          ],
+        },
+      ],
+      "POST /api/v1/threads": () => [
+        202,
+        { thread_id: THREAD_ID, message_id: "m1", run_id: RUN_ID },
+      ],
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }],
+    });
+    render(<App />);
+    const box = await screen.findByRole("textbox", { name: "Ask a question" });
+    fireEvent.click(screen.getByRole("button", { name: "Sources" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Commonwealth Acts/ }));
+    expect(await screen.findByRole("button", { name: "Remove Commonwealth Acts" })).toBeTruthy();
+    fireEvent.change(box, { target: { value: "What is a corporation?", selectionStart: 22 } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(sent.find((c) => c.route === "POST /api/v1/threads")?.body).toMatchObject({
+        scope: { document_ids: [], vault_ids: [], sources: [{ source_id: "au-cth-acts" }] },
+      }),
+    );
+  });
+});
+
 describe("a thread", () => {
   it("shows answers as text with each source's check, and model and cost", async () => {
     serve({ ...signedIn, [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }] });
@@ -144,10 +190,13 @@ describe("a thread", () => {
     expect(window.location.hash).toBe(`#/t/${THREAD_ID}`);
 
     fireEvent.click(within(answer).getByRole("button", { name: "Source 1, verified" }));
-    await waitFor(() => expect(window.location.hash).toBe(`#/d/${DOC}/v/1?p=3&cf=0&ct=7`));
-    const viewer = await screen.findByTestId("citation-viewer");
-    expect(viewer.textContent).toContain("Page 3");
-    expect(viewer.textContent).toContain("quote 1");
+    // Opens the document viewer at the pinned version, page and span.
+    await waitFor(() => expect(window.location.pathname).toBe(`/documents/${DOC}`));
+    expect(window.location.search).toBe(`?v=${VERSION}&page=3&span=0-7`);
+    expect(window.history.state.anchor.quote).toBe("quote 1");
+    // Flagged sources aren't offered to the viewer to step through.
+    expect(window.history.state.context).toHaveLength(1);
+    expect((await screen.findByTestId("document-page")).textContent).toContain(`/documents/${DOC}`);
     // The thread stays in view behind the citation.
     expect(screen.getByTestId("answer-m2")).toBeTruthy();
   });
