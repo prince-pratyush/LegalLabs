@@ -370,3 +370,27 @@ class PlaybookReview(Suite):
                 "pass": failed["count"] == 0 and all(v is True for v in checks.values()),
             },
         }
+
+
+def rescore(gold_dir: Path, outcomes_dir: Path) -> dict[str, Any]:
+    """Grade saved node/run.ts outcomes (<contract id>.json) again, with no model calls.
+
+    Only contracts with an outcome are scored, against the gold.json of the corpus the
+    outcomes were produced on.
+    """
+    suite = PlaybookReview(corpus_dir=gold_dir, generate=False)
+    tasks = [t for t in suite.load_tasks() if (outcomes_dir / f"{t.id}.json").exists()]
+    if not tasks:
+        raise ValueError(f"no outcome in {outcomes_dir} matches a contract in {gold_dir}")
+    results = []
+    for task in tasks:
+        run = json.loads((outcomes_dir / f"{task.id}.json").read_text())
+        m = grade_outcome(task.answer, run)
+        results.append({"task_id": task.id, "score": m["status_accuracy"], "metrics": m})
+    return {
+        "suite": suite.name,
+        "mode": "rescore",
+        "dataset_fingerprint": suite.dataset_fingerprint,
+        "contracts": [t.id for t in tasks],
+        "report": suite.report(results, tasks),
+    }

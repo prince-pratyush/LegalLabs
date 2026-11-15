@@ -9,7 +9,7 @@ from legallabs_eval.registry import HARNESSES, SUITES
 from legallabs_eval.runner import Runner
 from legallabs_eval.schemas import HarnessError, HarnessRequest, NonRetryableError, TaskDatum
 from legallabs_eval.suites.playbook_labels import accepted
-from legallabs_eval.suites.playbook_review import PlaybookReview, grade_outcome
+from legallabs_eval.suites.playbook_review import PlaybookReview, grade_outcome, rescore
 
 FIXTURES = Path(__file__).parent / "fixtures" / "playbook"
 
@@ -268,3 +268,28 @@ def test_cli_can_fail_on_task_errors(monkeypatch, capsys):
     argv = ["run", "--system", "bm25-local", "--suite", "retrieval-golden"]
     assert cli.main(argv) == 0
     assert cli.main([*argv, "--fail-on-task-errors"]) == 1
+
+
+RECORDED = (
+    Path(__file__).parents[1] / "results" / "playbook-review" / "2026-11-15-playbook-ollama-limit3"
+)
+
+
+def test_recorded_local_run_rescores_to_the_committed_figures():
+    """The qwen3:4b-instruct outcomes, graded again with no model call."""
+    summary = rescore(RECORDED / "corpus-v1", RECORDED / "outcomes")
+    report = summary["report"]
+    accuracy = report["playbook.rule_classification_accuracy"]
+    recall = report["playbook.unanticipated_edit_detection_recall"]
+    assert summary["contracts"] == ["nda-001-p03", "msa-002-p03", "nda-003-p05"]
+    assert (accuracy["hits"], accuracy["strict"]["hits"], accuracy["n"]) == (44, 41, 57)
+    assert (recall["system"]["hits"], recall["model_only"]["hits"], recall["system"]["n"]) == (
+        10,
+        4,
+        10,
+    )
+    assert recall["model_only"]["existing_edit"]["hits"] == 0
+    assert report["playbook.evidence_verification_rate"]["hits"] == 46
+    assert report["playbook.ooxml_validity_rate"]["hits"] == 25
+    assert report["latency"]["long_contract_wall_seconds_p50"] == "not measured"
+    assert summary == json.loads((RECORDED / "rescore.json").read_text())
