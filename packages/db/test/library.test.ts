@@ -275,3 +275,42 @@ describe("firm templates", () => {
     });
   });
 });
+
+describe("library guards", () => {
+  it("keeps guests out even when a group they're in is shared", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const id = await prompt(tx, s, s.ana);
+      const tpl = await template(tx, s);
+      await tx.as(s.ana, s.acme);
+      // Gia, a guest, is in the party group.
+      await share(tx, "prompt", id, [
+        { principal_type: "group", principal_id: s.groups.partyP, level: "edit" },
+      ]);
+      await share(tx, "template", tpl, [
+        { principal_type: "group", principal_id: s.groups.partyP, level: "use" },
+      ]);
+      expect(await sees(tx, s.gia, s.acme, "prompt", id)).toBe(false);
+      expect(await sees(tx, s.gia, s.acme, "template", tpl)).toBe(false);
+      expect(
+        await tx.rows("select 1 from library.template_version where template_id = $1", [tpl]),
+      ).toEqual([]);
+      expect(
+        await tx.rows("update library.prompt set name = 'x' where id = $1 returning id", [id]),
+      ).toEqual([]);
+    });
+  });
+
+  it("sets the default only through its function", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(
+        await tx.error(
+          "insert into library.template (workspace_id, owner_id, name, is_default) values ($1, $2, 'x', true)",
+          [s.acme, s.ana],
+        ),
+      ).toMatch(/permission denied/);
+    });
+  });
+});
