@@ -1,9 +1,5 @@
 import { randomBytes } from "node:crypto";
-import {
-  type CitationStatus,
-  type Sources,
-  verifyCitation,
-} from "@legallabs/citations";
+import { type CitationStatus, type Sources, verifyCitation } from "@legallabs/citations";
 import {
   type CellErrorCode,
   type ColumnOptionsFor,
