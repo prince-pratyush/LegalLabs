@@ -82,6 +82,21 @@ describe("PlaybookBuilder", () => {
     expect(screen.getByText(/An approver publishes it/)).toBeTruthy();
   });
 
+  it("asks an approver to publish saved changes; readers still get the old version", () => {
+    render(<Harness status="published" publishedVersionNo={1} unpublishedChanges />);
+    expect(screen.getByText(/Readers and reviews still get version 1/)).toBeTruthy();
+    expect(disabled("Publish changes")).toBe(false);
+  });
+
+  it("stops a save that would undo someone else's, and offers a reload", () => {
+    const onReload = vi.fn();
+    render(<Harness stale onReload={onReload} />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Someone else changed this playbook/);
+    expect(disabled("Save version")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(onReload).toHaveBeenCalledOnce();
+  });
+
   it("offers a review entry point only once published, not yet enabled", () => {
     render(<Harness status="published" />);
     expect(disabled("Review a contract")).toBe(true);

@@ -28,6 +28,10 @@ export function PlaybookBuilder({
   busy = false,
   error,
   viewingVersion = null,
+  publishedVersionNo = null,
+  unpublishedChanges = false,
+  stale = false,
+  onReload,
   onSave,
   onPublish,
   onUnpublish,
@@ -44,6 +48,13 @@ export function PlaybookBuilder({
   error?: string | null;
   /** A past version on screen: shown read-only. */
   viewingVersion?: number | null;
+  /** The version readers and reviews get, when published. */
+  publishedVersionNo?: number | null;
+  /** Saved edits readers don't see yet, until an approver publishes again. */
+  unpublishedChanges?: boolean;
+  /** Someone else saved since this was loaded; saving now would undo their work. */
+  stale?: boolean;
+  onReload?: () => void;
   onSave: () => void;
   onPublish: () => void;
   onUnpublish: () => void;
@@ -96,13 +107,18 @@ export function PlaybookBuilder({
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               {access !== "view" && (
-                <Button onClick={onSave} disabled={busy || !dirty || !clean}>
+                <Button onClick={onSave} disabled={busy || stale || !dirty || !clean}>
                   {busy ? "Saving…" : "Save version"}
                 </Button>
               )}
               {access === "manage" && status === "unpublished" && (
                 <Button variant="secondary" onClick={onPublish} disabled={busy || dirty}>
                   Publish
+                </Button>
+              )}
+              {access === "manage" && status === "published" && unpublishedChanges && (
+                <Button variant="secondary" onClick={onPublish} disabled={busy || dirty}>
+                  Publish changes
                 </Button>
               )}
               {access === "manage" && status === "published" && (
@@ -125,7 +141,28 @@ export function PlaybookBuilder({
               )}
             </div>
           )}
-          {error && (
+          {!past && unpublishedChanges && (
+            <p className="text-warning">
+              This draft has unpublished changes. Readers and reviews still get version{" "}
+              {publishedVersionNo}
+              {access === "manage"
+                ? " until you publish again."
+                : " until an approver publishes it."}
+            </p>
+          )}
+          {stale && (
+            <div role="alert" className="flex flex-wrap items-center gap-3 text-destructive">
+              <p>
+                Someone else changed this playbook since you opened it. Reload to see their changes.
+              </p>
+              {onReload && (
+                <Button variant="secondary" size="sm" onClick={onReload}>
+                  Reload
+                </Button>
+              )}
+            </div>
+          )}
+          {error && !stale && (
             <p role="alert" className="text-destructive">
               {error}
             </p>
