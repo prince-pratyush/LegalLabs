@@ -113,10 +113,7 @@ export function ColumnBuilder({
           <section aria-label="Proposed columns" className="grid gap-2">
             <ul className="grid gap-2">
               {proposals.map((p, i) => (
-                <li
-                  key={`${i}-${p.type}`}
-                  className="flex gap-2 rounded-md border border-border p-2"
-                >
+                <li key={p.key} className="flex gap-2 rounded-md border border-border p-2">
                   <Checkbox
                     checked={p.picked}
                     onCheckedChange={(value) => update(i, { picked: value === true })}
