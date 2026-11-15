@@ -20,7 +20,7 @@
           "instruction": "Counter with the standard position; if the business accepts a lower cap, record the approver in a comment."
         }
       ],
-      "sample_language": "Subject to the exclusions below, each party's total liability arising out of or in connection with this agreement in any contract year is limited to the greater of [fixed amount] and twice the fees paid or payable under this agreement in the 12 months before the event giving rise to the claim."
+      "sample_language": "Subject to the exclusions below, each party's total liability arising out of or in connection with this agreement in any contract year is limited to the greater of [Amount] and twice the fees paid or payable under this agreement in the 12 months before the event giving rise to the claim."
     },
     {
       "title": "Exclusions from the Liability Cap",
@@ -38,7 +38,7 @@
           "instruction": "Do not accept a data liability super-cap below two times annual fees without escalation."
         }
       ],
-      "sample_language": "The limitation in the previous clause does not apply to liability for death or personal injury caused by negligence, fraud, wilful misconduct, the supplier's indemnity for infringement of intellectual property, or any liability that cannot be limited by law. Each party's total liability for breach of its confidentiality, data protection or security obligations is limited to the greater of [fixed amount] and three times the fees paid or payable in the 12 months before the claim, which is in addition to the general limitation."
+      "sample_language": "The limitation in the previous clause does not apply to liability for death or personal injury caused by negligence, fraud, wilful misconduct, the supplier's indemnity for infringement of intellectual property, or any liability that cannot be limited by law. Each party's total liability for breach of its confidentiality, data protection or security obligations is limited to the greater of [Amount] and three times the fees paid or payable in the 12 months before the claim, which is in addition to the general limitation."
     },
     {
       "title": "Consequential Loss",
@@ -134,7 +134,7 @@
       "guidance": "Price caps and auto-renewal must be read together: an uncapped increase plus a long auto-renewal is a trap. Use the consumer price index of the governing jurisdiction (for example US CPI-U, UK CPI, Eurostat HICP or the Australian Bureau of Statistics CPI).",
       "flag": false,
       "actions": [],
-      "sample_language": "The fees are fixed for the initial term. The supplier may increase the fees for a renewal term by giving at least 90 days' written notice before the renewal date, but any increase must not exceed the lesser of 3% and the percentage increase in [index] over the previous 12 months."
+      "sample_language": "The fees are fixed for the initial term. The supplier may increase the fees for a renewal term by giving at least 90 days' written notice before the renewal date, but any increase must not exceed the lesser of 3% and the percentage increase in [Index] over the previous 12 months."
     },
     {
       "title": "Term and Renewal",
@@ -287,7 +287,7 @@
       "guidance": "Insurance limits should support the liability positions; under UCTA s 11(4) the availability of insurance is relevant to whether a limitation is reasonable. Do not let 'liability limited to insurance proceeds' replace the agreed cap.",
       "flag": false,
       "actions": [],
-      "sample_language": "The supplier must maintain with reputable insurers, during the term and for three years after it ends, professional indemnity and cyber insurance each of at least [amount] per claim, and public liability and workers' compensation insurance as required by law, and must give the customer certificates of currency on request."
+      "sample_language": "The supplier must maintain with reputable insurers, during the term and for three years after it ends, professional indemnity and cyber insurance each of at least [Amount] per claim, and public liability and workers' compensation insurance as required by law, and must give the customer certificates of currency on request."
     },
     {
       "title": "Confidentiality and Publicity",
@@ -313,7 +313,7 @@
       "guidance": "Record the governing law when starting a review so the jurisdiction-specific rules apply. Mandatory local rules often apply regardless of chosen law (for example, GDPR, the Australian Consumer Law and UK insolvency rules), so a foreign governing law does not remove them.",
       "flag": false,
       "actions": [],
-      "sample_language": "This agreement is governed by the laws of [customer's jurisdiction]. The parties must first try to resolve any dispute by escalation to senior executives for 20 business days, after which either party may start proceedings in the courts of [customer's jurisdiction], which have exclusive jurisdiction. Nothing prevents a party seeking urgent injunctive relief."
+      "sample_language": "This agreement is governed by the laws of [Jurisdiction]. The parties must first try to resolve any dispute by escalation to senior executives for 20 business days, after which either party may start proceedings in the courts of [Jurisdiction], which have exclusive jurisdiction. Nothing prevents a party seeking urgent injunctive relief."
     },
     {
       "title": "Assignment and Change of Control",

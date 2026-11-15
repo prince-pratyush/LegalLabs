@@ -221,7 +221,7 @@
       "guidance": "For confidentiality breaches speed matters, so preserve access to injunctive relief wherever the breach happens. Record the governing law of the paper when starting a review so jurisdiction-specific guidance applies.",
       "flag": false,
       "actions": [],
-      "sample_language": "This agreement is governed by the laws of [our jurisdiction], and the parties submit to the non-exclusive jurisdiction of its courts. Either party may seek urgent injunctive relief in any court of competent jurisdiction."
+      "sample_language": "This agreement is governed by the laws of [Jurisdiction], and the parties submit to the non-exclusive jurisdiction of its courts. Either party may seek urgent injunctive relief in any court of competent jurisdiction."
     },
     {
       "title": "Assignment",
