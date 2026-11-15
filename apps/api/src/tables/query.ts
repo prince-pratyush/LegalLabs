@@ -40,7 +40,7 @@ function condition(c: CellCondition, param: (value: unknown) => string): string 
   return `exists (select 1 from work.rt_cell c where ${parts.join(" and ")})`;
 }
 
-/** Only finished values sort; everything else sorts last whichever way. */
+/** Only finished, visible values sort; the rest, hidden rows included, sort last either way. */
 function sortExpression(type: ColumnType): string {
   const value = (() => {
     switch (type) {
@@ -54,7 +54,7 @@ function sortExpression(type: ColumnType): string {
         return "lower(s.value_text)";
     }
   })();
-  return `case when s.status = 'done' then ${value} end`;
+  return `case when s.status = 'done' and not ${RESTRICTED_SQL} then ${value} end`;
 }
 
 /** The rows page as SQL and parameters. Throws UnknownColumn for a column not in the table. */

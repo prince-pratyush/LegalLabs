@@ -18,9 +18,14 @@ describe("rowsSql", () => {
 
   it("sorts dates by the typed value with nulls last (RVT-005)", () => {
     const { sql } = rowsSql({ tableId: T, columns, sort: { column_id: DATE, direction: "desc" } });
-    expect(sql).toContain(
-      "case when s.status = 'done' then s.value_typed->>'iso' end desc nulls last",
-    );
+    expect(sql).toMatch(/then s\.value_typed->>'iso' end desc nulls last/);
+  });
+
+  it("gives a hidden row no sort key, so its order says nothing about its value", () => {
+    const { sql } = rowsSql({ tableId: T, columns, sort: { column_id: LAW, direction: "asc" } });
+    const key = sql.slice(sql.indexOf("order by"));
+    expect(key).toMatch(/case when s\.status = 'done' and not exists \(/);
+    expect(key).toContain("select 1 from content.document d where d.id = x.id");
   });
 
   it("ANDs conditions and keeps hidden rows out of a filtered list", () => {
