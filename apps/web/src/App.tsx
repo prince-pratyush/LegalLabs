@@ -8,7 +8,7 @@ import {
   setThemeSetting,
 } from "@legallabs/ui";
 import { History, Library, SquarePen } from "lucide-react";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
 import { navigate, parseRoute, paths, useHash } from "./router.js";
@@ -35,9 +35,8 @@ export function App() {
   useReturnFocus(viewing);
   // Opening a document pushes a path without the hash, so the screen behind it is remembered.
   const current = useHash();
-  const behind = useRef(current);
-  if (!viewing) behind.current = current;
-  const hash = behind.current;
+  const [hash, setHash] = useState(current);
+  if (!viewing && hash !== current) setHash(current);
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
   return (
