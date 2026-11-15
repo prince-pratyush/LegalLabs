@@ -21,6 +21,8 @@ export {
 export {
   type BodyParagraph,
   type BodyRun,
+  DocxError,
+  type DocxErrorCode,
   type ExcludedKind,
   type ExistingEdit,
   type ReadResult,

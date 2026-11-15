@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { normaliseParagraph } from "@legallabs/contracts";
-import { strFromU8, unzipSync } from "fflate";
+import { unzipSync } from "fflate";
 import {
   child,
   descendants,
@@ -285,22 +285,75 @@ export function relationships(xml: string | undefined): Relationship[] {
 
 export const relType = (rel: Relationship, name: string) => rel.type.endsWith(`/${name}`);
 
+export type DocxErrorCode = "TOO_LARGE" | "OOXML_INVALID";
+
+/** The file is not a .docx this package can safely read. */
+export class DocxError extends Error {
+  constructor(
+    readonly code: DocxErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export const ZIP_LIMITS = {
+  entries: 2_000,
+  partBytes: 20 * 1024 * 1024,
+  totalBytes: 200 * 1024 * 1024,
+};
+
+/**
+ * Unzips with limits so a zip bomb cannot exhaust memory. fflate inflates each entry
+ * into a buffer of the size its header declares and never grows it, so the declared
+ * sizes checked here bound what is actually inflated; the totals are checked again
+ * on the real output.
+ */
+export function unzipLimited(bytes: Uint8Array, limits = ZIP_LIMITS): Record<string, Uint8Array> {
+  let entries = 0;
+  let declared = 0;
+  const tooLarge = (what: string) => new DocxError("TOO_LARGE", what);
+  const files = unzipSync(bytes, {
+    filter: (file) => {
+      if (++entries > limits.entries) throw tooLarge(`more than ${limits.entries} zip entries`);
+      if (file.originalSize > limits.partBytes) throw tooLarge(`${file.name} is too large`);
+      declared += file.originalSize;
+      if (declared > limits.totalBytes) throw tooLarge("the unzipped package is too large");
+      return true;
+    },
+  });
+  let total = 0;
+  for (const [name, data] of Object.entries(files)) {
+    if (data.length > limits.partBytes) throw tooLarge(`${name} is too large`);
+    total += data.length;
+  }
+  if (total > limits.totalBytes) throw tooLarge("the unzipped package is too large");
+  return files;
+}
+
 export function openPackage(bytes: Uint8Array): Package {
-  const files = unzipSync(bytes);
+  const files = unzipLimited(bytes);
   const rootRels = files["_rels/.rels"];
-  const main = relationships(rootRels && strFromU8(rootRels)).find((rel) =>
+  const main = relationships(rootRels && decodePart(rootRels)).find((rel) =>
     relType(rel, "officeDocument"),
   );
   const docPath = main ? resolveTarget("", main.target) : "word/document.xml";
-  if (!files[docPath]) throw new Error(`not a Word document: ${docPath} is missing`);
+  if (!files[docPath]) throw new DocxError("OOXML_INVALID", `${docPath} is missing`);
   const slash = docPath.lastIndexOf("/");
   const relsPath = `${docPath.slice(0, slash + 1)}_rels/${docPath.slice(slash + 1)}.rels`;
   return { files, docPath, relsPath };
 }
 
+/** XML part bytes as text, honouring a UTF-16 or UTF-8 byte order mark. */
+export function decodePart(bytes: Uint8Array): string {
+  const [a, b] = bytes;
+  const encoding = a === 0xff && b === 0xfe ? "utf-16le" : a === 0xfe && b === 0xff ? "utf-16be" : "utf-8";
+  return new TextDecoder(encoding, { fatal: true }).decode(bytes);
+}
+
 export const text = (pkg: Package, path: string) => {
   const bytes = pkg.files[path];
-  return bytes ? strFromU8(bytes) : undefined;
+  return bytes ? decodePart(bytes) : undefined;
 };
 
 export interface DocParagraph {
@@ -387,14 +440,14 @@ const ID = /\bw:id="(-?\d+)"/g;
  * tables included. Paragraphs inside text boxes (w:txbxContent) are not indexed, and
  * headers, footers, footnotes, endnotes and comments are separate parts, never indexed.
  */
-export function loadDocument(bytes: Uint8Array): DocModel {
+function loadUnchecked(bytes: Uint8Array): DocModel {
   const pkg = openPackage(bytes);
   const src = text(pkg, pkg.docPath) ?? "";
   const root = parseXml(src);
   if (root.attrs["xmlns:w"] !== W_NS)
-    throw new Error("document.xml must bind w: to WordprocessingML");
+    throw new DocxError("OOXML_INVALID", "document.xml must bind w: to WordprocessingML");
   const body = child(root, "w:body");
-  if (!body) throw new Error("document.xml has no w:body");
+  if (!body) throw new DocxError("OOXML_INVALID", "document.xml has no w:body");
 
   const regions = emptyRegions();
   const paragraphs: DocParagraph[] = [];
@@ -466,6 +519,17 @@ export function loadDocument(bytes: Uint8Array): DocModel {
   }
 
   return { pkg, src, root, paragraphs, existingEdits, excludedRegions: regions, maxId };
+}
+
+/** Any failure to read the package (bad zip, bad XML, wrong namespace) is a DocxError. */
+export function loadDocument(bytes: Uint8Array): DocModel {
+  try {
+    return loadUnchecked(bytes);
+  } catch (error) {
+    if (error instanceof DocxError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new DocxError("OOXML_INVALID", `not a readable .docx: ${message}`);
+  }
 }
 
 /** The body of an existing .docx as the review and the Word pane see it. */

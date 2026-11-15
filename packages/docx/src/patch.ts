@@ -7,6 +7,7 @@ import {
   type DocModel,
   type Field,
   type Item,
+  DocxError,
   loadDocument,
   type Package,
   REL_NS,
@@ -41,7 +42,8 @@ export type PatchFailureCode =
   | "EXCLUDED_REGION"
   | "UNSUPPORTED_CONTENT"
   | "NO_CHANGE"
-  | "OOXML_INVALID";
+  | "OOXML_INVALID"
+  | "TOO_LARGE";
 
 export class PatchError extends Error {
   constructor(
@@ -276,6 +278,19 @@ function assertWellFormed(name: string, xml: string) {
   parser.parseFromString(xml, "text/xml");
 }
 
+function load(bytes: Uint8Array): DocModel {
+  try {
+    return loadDocument(bytes);
+  } catch (error) {
+    if (error instanceof DocxError) throw new PatchError(error.code, error.message);
+    throw error;
+  }
+}
+
+/** Parts are written as UTF-8, so a declaration that said UTF-16 must say so too. */
+const encodeXml = (xml: string) =>
+  strToU8(xml.replace(/^(<\?xml[^>]*encoding=["'])UTF-16(["'])/i, "$1UTF-8$2"));
+
 function targetParagraph(doc: DocModel, edit: PatchEdit) {
   const paragraph = doc.paragraphs[edit.paragraph_index];
   if (!paragraph) throw new PatchError("ANCHOR_FAILED", "no paragraph at that index");
@@ -377,7 +392,7 @@ export function patchDocx(
   opts: PatchOptions,
 ): PatchResult {
   const date = isoSeconds(opts.date);
-  const doc = loadDocument(bytes);
+  const doc = load(bytes);
   let next = doc.maxId + 1;
   const rev: Revision = { id: () => next++, author: opts.author, date };
   const patched = new Map<number, { xml: string; after: string[] }>();
@@ -446,9 +461,9 @@ export function patchDocx(
   const files: Record<string, [Uint8Array, ZipOptions]> = {};
   for (const [name, data] of Object.entries(doc.pkg.files)) {
     const replaced = out[name];
-    files[name] = [replaced === undefined ? data : strToU8(replaced), { mtime }];
+    files[name] = [replaced === undefined ? data : encodeXml(replaced), { mtime }];
   }
-  for (const [name, xml] of Object.entries(out)) files[name] ??= [strToU8(xml), { mtime }];
+  for (const [name, xml] of Object.entries(out)) files[name] ??= [encodeXml(xml), { mtime }];
   return { bytes: zipSync(files, { level: 6 }), applied, failed };
 }
 
@@ -464,7 +479,7 @@ const PKG_NS = "http://schemas.microsoft.com/office/2006/xmlPackage";
  * the pane adds it with `range.insertComment` so it attaches to the live range.
  */
 export function paragraphFragment(bytes: Uint8Array, edit: PatchEdit, opts: PatchOptions): string {
-  const doc = loadDocument(bytes);
+  const doc = load(bytes);
   const paragraph = targetParagraph(doc, edit);
   let next = doc.maxId + 1;
   const rev: Revision = { id: () => next++, author: opts.author, date: isoSeconds(opts.date) };

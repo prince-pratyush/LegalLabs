@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { buildDocx } from "./docx.js";
 import { markdownBlocks } from "./markdown.js";
 import { type PatchEdit, paragraphFragment, patchDocx } from "./patch.js";
-import { readDocx } from "./read.js";
+import { readDocx, unzipLimited } from "./read.js";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
@@ -49,13 +49,18 @@ const rel = (id: string, type: string, target: string) =>
 const override = (part: string, type: string) =>
   `<Override PartName="${part}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${type}+xml"/>`;
 
-function fixture(options: { settings?: boolean } = {}): Uint8Array {
+type Parts = Record<string, string | Uint8Array>;
+
+function fixture(
+  options: { settings?: boolean; body?: string; edit?: (parts: Parts) => void } = {},
+): Uint8Array {
   const settings = options.settings ?? true;
-  const parts: Record<string, string | Uint8Array> = {
+  const body = options.body ?? BODY;
+  const parts: Parts = {
     "[Content_Types].xml": `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>${override("/word/document.xml", "document.main")}${override("/word/styles.xml", "styles")}${settings ? override("/word/settings.xml", "settings") : ""}${override("/word/numbering.xml", "numbering")}${override("/word/footnotes.xml", "footnotes")}${override("/word/header1.xml", "header")}${override("/word/footer1.xml", "footer")}</Types>`,
     "_rels/.rels": `${HEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel("rId1", "officeDocument", "word/document.xml")}</Relationships>`,
     "word/_rels/document.xml.rels": `${HEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel("rId1", "styles", "styles.xml")}${settings ? rel("rId2", "settings", "settings.xml") : ""}${rel("rId3", "numbering", "numbering.xml")}${rel("rId4", "header", "header1.xml")}${rel("rId5", "footer", "footer1.xml")}${rel("rId6", "footnotes", "footnotes.xml")}${rel("rId7", "image", "media/image1.png")}</Relationships>`,
-    "word/document.xml": `${HEAD}<w:document ${NS}><w:body>${BODY}${SECT}</w:body></w:document>`,
+    "word/document.xml": `${HEAD}<w:document ${NS}><w:body>${body}${SECT}</w:body></w:document>`,
     "word/styles.xml": `${HEAD}<w:styles xmlns:w="${W}"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/></w:style></w:styles>`,
     "word/numbering.xml": `${HEAD}<w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`,
     "word/footnotes.xml": `${HEAD}<w:footnotes xmlns:w="${W}"><w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote><w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> As defined in the Order.</w:t></w:r></w:p></w:footnote></w:footnotes>`,
@@ -67,6 +72,7 @@ function fixture(options: { settings?: boolean } = {}): Uint8Array {
     parts["word/settings.xml"] =
       `${HEAD}<w:settings xmlns:w="${W}"><w:zoom w:percent="100"/><w:proofState w:spelling="clean"/><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/></w:settings>`;
   }
+  options.edit?.(parts);
   const mtime = new Date("2026-01-01T00:00:00Z");
   return zipSync(
     Object.fromEntries(
@@ -412,6 +418,80 @@ describe("patchDocx", () => {
     );
     expect(result.failed).toEqual([]);
     expect(readDocx(result.bytes).paragraphs[index]?.text).toBe("The fee is twenty dollars.");
+  });
+});
+
+const utf16 = (xml: string) => {
+  const out = new Uint8Array(2 + xml.length * 2);
+  out.set([0xff, 0xfe]);
+  for (let i = 0; i < xml.length; i++) {
+    const code = xml.charCodeAt(i);
+    out[2 + 2 * i] = code & 0xff;
+    out[3 + 2 * i] = code >> 8;
+  }
+  return out;
+};
+
+describe("untrusted packages", () => {
+  const failure = (bytes: Uint8Array) => {
+    try {
+      patchDocx(bytes, [replace()], OPTS);
+    } catch (error) {
+      return (error as { code?: string }).code;
+    }
+    return "none";
+  };
+
+  it("refuses a part that inflates past the limit without inflating it", () => {
+    const bomb = fixture({ edit: (parts) => void (parts["word/media/big.bin"] = new Uint8Array(21 * 1024 * 1024)) });
+    expect(bomb.length).toBeLessThan(1024 * 1024);
+    expect(failure(bomb)).toBe("TOO_LARGE");
+    expect(() => readDocx(bomb)).toThrow(expect.objectContaining({ code: "TOO_LARGE" }));
+  });
+
+  it("refuses too many entries and too many bytes in total", () => {
+    const many = fixture({
+      edit: (parts) => {
+        for (let i = 0; i < 2_001; i++) parts[`word/media/x${i}.bin`] = new Uint8Array(1);
+      },
+    });
+    expect(failure(many)).toBe("TOO_LARGE");
+    expect(() =>
+      unzipLimited(fixture(), { entries: 100, partBytes: 1_000_000, totalBytes: 2_000 }),
+    ).toThrow(expect.objectContaining({ code: "TOO_LARGE" }));
+  });
+
+  it("reports unreadable input as OOXML_INVALID", () => {
+    const deep = `<w:p><w:r><w:t>x</w:t></w:r></w:p>${"<w:tbl>".repeat(20_000)}${"</w:tbl>".repeat(20_000)}`;
+    const cases = [
+      new Uint8Array([1, 2, 3, 4]),
+      fixture({ edit: (parts) => void delete parts["word/document.xml"] }),
+      fixture({ body: deep }),
+      fixture({ body: "<w:p><w:r><w:t>&#x110000;</w:t></w:r></w:p>" }),
+      fixture({
+        edit: (parts) =>
+          void (parts["word/document.xml"] = `${HEAD}<x:document xmlns:x="${W}"><x:body/></x:document>`),
+      }),
+    ];
+    for (const bytes of cases) expect(failure(bytes)).toBe("OOXML_INVALID");
+    expect(() => paragraphFragment(cases[0] as Uint8Array, replace(), OPTS)).toThrow(
+      expect.objectContaining({ code: "OOXML_INVALID" }),
+    );
+  });
+
+  it("reads UTF-16 parts and writes them back as UTF-8", () => {
+    const bytes = fixture({
+      edit: (parts) => {
+        const xml = parts["word/document.xml"] as string;
+        parts["word/document.xml"] = utf16(xml.replace('encoding="UTF-8"', 'encoding="UTF-16"'));
+      },
+    });
+    expect(readDocx(bytes).paragraphs[3]?.text).toContain("The Supplier shall");
+    const out = part(patchDocx(bytes, [replace()], OPTS).bytes, "word/document.xml");
+    expect(out.startsWith('<?xml version="1.0" encoding="UTF-8"')).toBe(true);
+    expect(readDocx(patchDocx(bytes, [replace()], OPTS).bytes).paragraphs[3]?.text).toContain(
+      "The Vendor shall",
+    );
   });
 });
 
