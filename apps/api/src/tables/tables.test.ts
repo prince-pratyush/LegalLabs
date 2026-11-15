@@ -328,6 +328,9 @@ describe("review tables API", () => {
     const events = await s.h.log.replay(s.m as never, started.run_id, 0);
     const types = events.map((e) => e.type);
     expect(types.filter((t) => t === "cell.updated")).toHaveLength(4);
+    // The log is replayed without a wall check, so it carries no values.
+    expect(JSON.stringify(events)).not.toContain("1,500,000");
+    expect(events.some((e) => "value_text" in e)).toBe(false);
     expect(types).toContain("column.progress");
     expect(types.at(-1)).toBe("status");
     const run = await s.h.call(s.cookie, "GET", `/runs/${started.run_id}`);

@@ -570,6 +570,7 @@ export type ModelCellOutput = z.infer<typeof ModelCellOutput>;
 
 // Run events (SSE on /runs/{id}/events) -------------------------------------------------------
 
+/** Ids, status and counts only: the log outlives walls, so values are re-read from the cell. */
 export const CellUpdatedData = z.object({
   table_id: Id,
   cell_id: Id,
@@ -577,7 +578,6 @@ export const CellUpdatedData = z.object({
   column_id: Id,
   status: CellStatus,
   error_code: CellErrorCode.nullable().optional(),
-  value_text: z.string().nullable().optional(),
   citation_count: z.number().int(),
   verified_citation_count: z.number().int(),
   cost_usd: z.number().nullable().optional(),

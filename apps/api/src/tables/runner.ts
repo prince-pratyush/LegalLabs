@@ -224,7 +224,6 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     const emit = (outcome: {
       status: string;
       errorCode?: string | null;
-      valueText?: string | null;
       citations?: number;
       verified?: number;
       cost?: number | null;
@@ -237,7 +236,6 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
         column_id: request.columnId,
         status: outcome.status as "running",
         error_code: (outcome.errorCode ?? null) as null,
-        value_text: outcome.valueText ?? null,
         citation_count: outcome.citations ?? 0,
         verified_citation_count: outcome.verified ?? 0,
         cost_usd: outcome.cost ?? null,
@@ -385,7 +383,6 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     await emit({
       status: outcome.status,
       errorCode: outcome.errorCode,
-      valueText: outcome.valueText,
       citations: outcome.citations.length,
       verified,
       cost: outcome.costUsd,
