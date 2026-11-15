@@ -70,6 +70,8 @@ export const auditActions: string[] = [
     "previewed",
   ]),
 
+  ...family("playbook", ["published", "unpublished", "grant_changed", "generated"]),
+
   ...family("share", [
     "granted",
     "changed",

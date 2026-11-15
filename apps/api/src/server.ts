@@ -21,6 +21,7 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createRunLog } from "./runs/log.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
@@ -121,6 +122,7 @@ const app = createApp({
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
   viewer: createViewer(pool, store, documents),
+  playbooks: createPlaybooks(pool, { gateway }),
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),

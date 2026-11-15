@@ -14,7 +14,7 @@ import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
-import { createLimiter } from "../auth/limiter.js";
+import { createLimiter, type Limiter } from "../auth/limiter.js";
 import type { RunLog } from "../runs/log.js";
 import type {
   AskFailure,
@@ -38,9 +38,11 @@ export interface ThreadHttpOptions {
   now?: () => number;
   /** Each ask can spend money on a model, so one person can't run up a bill. */
   asksPerWindow?: number;
+  /** Shared with other model-calling routes, so they draw on one budget per person. */
+  asks?: Limiter;
 }
 
-const ASK_WINDOW_MS = 10 * 60_000;
+export const ASK_WINDOW_MS = 10 * 60_000;
 // Polled as well as woken, so a run finished by another server process still reaches the reader.
 const POLL_MS = 5_000;
 const MAX_STREAM_MS = 30 * 60_000;
@@ -205,11 +207,13 @@ const notFound = (c: Context) => c.json({ code: "NOT_FOUND", message: "That wasn
 
 export function threadHttp(options: ThreadHttpOptions) {
   const { threads, log, clientOf, now = Date.now } = options;
-  const asks = createLimiter({
-    limit: options.asksPerWindow ?? 20,
-    windowMs: ASK_WINDOW_MS,
-    now,
-  });
+  const asks =
+    options.asks ??
+    createLimiter({
+      limit: options.asksPerWindow ?? 20,
+      windowMs: ASK_WINDOW_MS,
+      now,
+    });
   const limitBody = bodyLimit({ maxSize: 512 * 1024, onError: (c) => invalid(c) });
   const app = new Hono<Env>();
   const streams = new Map<string, number>();

@@ -24,6 +24,7 @@ import {
   type Citation,
   type DocumentSummary,
   type Message,
+  messageOf,
   type Thread,
   type ThreadSummary,
 } from "./api.js";
@@ -31,6 +32,8 @@ import { LibraryApp } from "./library/LibraryApp.js";
 import { PromptPicker } from "./library/PromptPicker.js";
 import { takeComposerPrefill } from "./library/prefill.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
+import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
+import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
 import { documentStatus, segments } from "./text.js";
 import { go, parseRoute, useHash } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
@@ -38,8 +41,6 @@ import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
 import { anchorOf, openCitation, useLocation, useReturnFocus } from "./viewer/open-citation.js";
 
 const FALLBACK = "Something went wrong. Try again.";
-
-const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
 
 export function App() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -59,7 +60,13 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseLibraryRoute(hash) ? (
+        {parsePlaybookRoute(hash) ? (
+          <PlaybooksApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parseLibraryRoute(hash) ? (
           <LibraryApp
             onLeave={() => {
               window.location.hash = "";
@@ -298,6 +305,13 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       run: () => go({ page: "list" }),
     },
     {
+      id: "playbooks",
+      kind: "action",
+      group: "Go to",
+      label: "Playbooks",
+      run: () => goPlaybooks({ page: "list" }),
+    },
+    {
       id: "library",
       kind: "action",
       group: "Go to",
@@ -419,6 +433,26 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="grid gap-1">
+            <h2 className="text-caption font-semibold text-fg-muted uppercase">Go to</h2>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => go({ page: "list" })}
+            >
+              Vaults
+            </Button>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => goPlaybooks({ page: "list" })}
+            >
+              Playbooks
+            </Button>
           </section>
 
           <Button variant="quiet" size="sm" className="justify-start" onClick={signOut}>

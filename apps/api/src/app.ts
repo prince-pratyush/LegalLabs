@@ -19,7 +19,9 @@ import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
 import type { Library } from "./library/library.js";
 import { libraryRoutes } from "./library/routes.js";
-import { type ThreadHttpOptions, threadHttp } from "./threads/http.js";
+import { playbookHttp } from "./playbooks/http.js";
+import type { Playbooks } from "./playbooks/playbooks.js";
+import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
 
@@ -67,6 +69,8 @@ export interface AppOptions {
   library?: Library;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
+  /** Optional, so harnesses that don't touch playbooks needn't build one. */
+  playbooks?: Playbooks;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -89,6 +93,7 @@ export function createApp({
   vaults,
   library,
   knowledge,
+  playbooks,
   clientIp,
   now = Date.now,
   webRoot,
@@ -211,12 +216,19 @@ export function createApp({
 
   if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
-  app.route("/api/v1", threadHttp({ ...threads, clientOf, now }));
+  // One budget of model calls per person, whether they ask a thread or draft playbook rules.
+  const asks = createLimiter({
+    limit: threads.asksPerWindow ?? 20,
+    windowMs: ASK_WINDOW_MS,
+    now,
+  });
+  app.route("/api/v1", threadHttp({ ...threads, asks, clientOf, now }));
   app.route("/api/v1", draftHttp(drafts, clientOf));
   if (vaults) {
     app.route("/api/v1/vaults", vaultRoutes(vaults, clientOf));
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
   }
+  if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
