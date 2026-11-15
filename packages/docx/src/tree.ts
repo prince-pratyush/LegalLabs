@@ -32,13 +32,29 @@ export class XmlError extends Error {}
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
+/** A character reference must name an XML 1.0 character, or the document is not XML. */
+function fromCharRef(code: number): string {
+  const ok =
+    code === 0x9 ||
+    code === 0xa ||
+    code === 0xd ||
+    (code >= 0x20 && code <= 0xd7ff) ||
+    (code >= 0xe000 && code <= 0xfffd) ||
+    (code >= 0x10000 && code <= 0x10ffff);
+  if (!ok) throw new XmlError(`invalid character reference ${code}`);
+  return String.fromCodePoint(code);
+}
+
 export function decodeXml(text: string): string {
   return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-z]+);/g, (whole, ref: string) => {
-    if (ref.startsWith("#x")) return String.fromCodePoint(Number.parseInt(ref.slice(2), 16));
-    if (ref.startsWith("#")) return String.fromCodePoint(Number.parseInt(ref.slice(1), 10));
+    if (ref.startsWith("#x")) return fromCharRef(Number.parseInt(ref.slice(2), 16));
+    if (ref.startsWith("#")) return fromCharRef(Number.parseInt(ref.slice(1), 10));
     return ENTITIES[ref] ?? whole;
   });
 }
+
+/** Deeper than any real document; the walks over the tree recurse once per level. */
+export const MAX_DEPTH = 256;
 
 const NAME_END = /[\s/>]/;
 
@@ -52,6 +68,7 @@ function indexOrThrow(src: string, needle: string, from: number): number {
 export function parseXml(src: string): XmlElement {
   let root: XmlElement | null = null;
   let current: XmlElement | null = null;
+  let depth = 0;
   let i = 0;
   const addLeaf = (type: XmlOther["type"], start: number, end: number) => {
     if (current) current.children.push({ type, start, end, parent: current });
@@ -73,13 +90,15 @@ export function parseXml(src: string): XmlElement {
       i = indexOrThrow(src, "?>", lt) + 2;
       addLeaf("other", lt, i);
     } else if (src.startsWith("<!", lt)) {
-      i = indexOrThrow(src, ">", lt) + 1;
+      // OOXML never has a DTD; refusing one rules out entity expansion tricks.
+      throw new XmlError(`DOCTYPE or unknown declaration at ${lt}`);
     } else if (src[lt + 1] === "/") {
       const gt = indexOrThrow(src, ">", lt);
       const name = src.slice(lt + 2, gt).trim();
       if (!current || current.name !== name) throw new XmlError(`unexpected </${name}> at ${lt}`);
       current.end = gt + 1;
       current = current.parent;
+      depth--;
       i = gt + 1;
     } else {
       let j = lt + 1;
@@ -116,7 +135,10 @@ export function parseXml(src: string): XmlElement {
       if (current) current.children.push(el);
       else if (root) throw new XmlError("more than one root element");
       else root = el;
-      if (!selfClosing) current = el;
+      if (!selfClosing) {
+        current = el;
+        if (++depth > MAX_DEPTH) throw new XmlError(`nesting deeper than ${MAX_DEPTH}`);
+      }
       i = gt + 1;
     }
   }
