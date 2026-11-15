@@ -1,6 +1,71 @@
 export { AuditAction, AuditActorType, auditActions } from "./audit.js";
 export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
+export {
+  ExportFormat,
+  fillPrompt,
+  LIBRARY_LIMITS,
+  LibraryGrant,
+  LibraryLevel,
+  PromptInput,
+  promptVariables,
+  type ResolvedTemplate,
+  TemplateChoice,
+  TemplateFields,
+  type TemplatePort,
+} from "./library.js";
+export {
+  Action,
+  Alternate,
+  ApplyAllRequest,
+  ApplyAllResult,
+  ApplyRequest,
+  ApplyResult,
+  Condition,
+  Customisation,
+  DismissRequest,
+  Evidence,
+  ExportRequest,
+  estimatePages,
+  Finding,
+  FindingStatus,
+  Gap,
+  Jurisdiction,
+  normaliseParagraph,
+  Paper,
+  PLAYBOOK_LIMITS,
+  Playbook,
+  PlaybookCreate,
+  PlaybookGrant,
+  PlaybookGrants,
+  PlaybookLevel,
+  PlaybookPatch,
+  PlaybookStatus,
+  PlaybookSummary,
+  PlaybookVersion,
+  Provenance,
+  paraHash,
+  RedlineRequest,
+  Review,
+  ReviewAnchor,
+  ReviewError,
+  ReviewEvent,
+  ReviewMode,
+  ReviewRequest,
+  ReviewStatus,
+  ReviewStreamEvent,
+  ReviewSummary,
+  ReviewWarning,
+  ReviseRequest,
+  Rule,
+  RuleInput,
+  RuleList,
+  StarterTemplate,
+  Suggestion,
+  SuggestionStatus,
+  Text,
+  Usage,
+} from "./playbook.js";
 export { RetrievalScope } from "./retrieval.js";
 export * from "./review-table.js";
 export * from "./review-table-values.js";
@@ -17,6 +82,7 @@ export {
   RunKind,
   RunStatus,
 } from "./run.js";
+export { STARTERS, StarterPlaybook, starterPlaybook } from "./starters.js";
 export {
   type AuthorityPassage,
   type Caller,
@@ -47,4 +113,22 @@ export {
   VaultGrant,
   VaultLevel,
 } from "./vault.js";
+export {
+  Anchor,
+  CitationStatus,
+  citationHref,
+  DocumentHit,
+  type DocumentLocation,
+  DocumentStatus,
+  MAX_LAYOUT_PAGES,
+  type OpenCitation,
+  type OpenCitationOptions,
+  PageLayout,
+  PageLine,
+  PageSize,
+  parseDocumentHref,
+  RenderKind,
+  RenderManifest,
+  viewerPaths,
+} from "./viewer.js";
 export { Wall, WallMode } from "./wall.js";

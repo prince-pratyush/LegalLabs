@@ -23,6 +23,7 @@ import {
 import { Folder as FolderIcon, FolderPlus, Upload, Vault as VaultIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api.js";
+import { goReviews } from "../reviews/route.js";
 import {
   type Folder,
   failureText,
@@ -67,6 +68,7 @@ export function VaultView({
   const [loadingFolders, setLoadingFolders] = useState<(string | null)[]>([null]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const onlySelected = selected.size === 1 ? ([...selected][0] ?? "") : "";
   const [uploads, setUploads] = useState<(UploadItem & { fileId?: string })[]>([]);
   const [panel, setPanel] = useState<"share" | "settings" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -483,6 +485,17 @@ export function VaultView({
             {selected.size === 1 && (
               <Button variant="secondary" size="sm" onClick={renameSelected}>
                 Rename
+              </Button>
+            )}
+            {selected.size === 1 && !onlySelected.startsWith("f:") && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  goReviews({ page: "new", playbookId: null, documentId: onlySelected })
+                }
+              >
+                Review against playbook
               </Button>
             )}
             <Select onValueChange={moveSelected}>

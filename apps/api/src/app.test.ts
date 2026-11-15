@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createGateway } from "@legallabs/model-gateway";
@@ -199,6 +199,8 @@ describe("a request from another site", () => {
 describe("the web page", () => {
   const root = mkdtempSync(join(tmpdir(), "legallabs-web-"));
   writeFileSync(join(root, "index.html"), "<!doctype html><title>LegalLabs</title>");
+  mkdirSync(join(root, "assets"));
+  writeFileSync(join(root, "assets", "app-1a2b3c.js"), "export {};");
 
   it("is served from the same origin with a strict content policy", async () => {
     const h = harness("203.0.113.9", root);
@@ -214,6 +216,26 @@ describe("the web page", () => {
     const h = harness();
     const res = await h.app.request("/auth/session");
     expect(res.headers.get("content-security-policy")).toMatch(/^default-src 'self'/);
+  });
+
+  it("lets browsers keep hashed build files, but always rechecks the page", async () => {
+    const h = harness("203.0.113.9", root);
+    const asset = await h.app.request("/assets/app-1a2b3c.js");
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect((await h.app.request("/")).headers.get("cache-control")).toBeNull();
+  });
+
+  it("answers a document link with the app, which then opens the viewer", async () => {
+    const h = harness("203.0.113.9", root);
+    for (const link of [
+      "/documents/01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f?page=2",
+      "/d/01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f/v/1?p=2",
+    ]) {
+      const res = await h.app.request(link);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("<title>LegalLabs</title>");
+    }
   });
 
   it("doesn't hand out files outside its folder", async () => {

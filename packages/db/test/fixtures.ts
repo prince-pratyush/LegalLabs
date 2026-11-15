@@ -273,10 +273,125 @@ export async function seed(tx: Tx) {
     beta: await thread(beta, bob, documents.beta.versionId),
   };
 
+  const preset = (ws: string, user: string) =>
+    tx.rows(
+      `insert into knowledge.source_filter_preset (workspace_id, user_id, source_id, name, filter)
+       values ($1, $2, 'us_caselaw', 'Supreme Court', '{"courts":["us"]}')`,
+      [ws, user],
+    );
+  await preset(acme, ana);
+  await preset(beta, bob);
+
+  // Unpublished, with one rule and an edit grant to the owner's team.
+  const playbook = async (ws: string, owner: string, team: string) => {
+    const playbookId = await id("select core.uuid7() as id", []);
+    const versionId = await id("select core.uuid7() as id", []);
+    await tx.rows(
+      `insert into work.playbook (id, workspace_id, owner_id, name, contract_type, version_id)
+       values ($1, $2, $3, 'NDA positions', 'NDA', $4)`,
+      [playbookId, ws, owner, versionId],
+    );
+    await tx.rows(
+      `insert into work.playbook_version
+         (id, workspace_id, playbook_id, no, name, contract_type, rules, created_by)
+       values ($1, $2, $3, 1, 'NDA positions', 'NDA', $4, $5)`,
+      [
+        versionId,
+        ws,
+        playbookId,
+        JSON.stringify([{ title: "Term", standard_position: "Two years." }]),
+        owner,
+      ],
+    );
+    await tx.rows(
+      `insert into work.playbook_grant
+         (workspace_id, playbook_id, principal_type, principal_id, level, granted_by)
+       values ($1, $2, 'group', $3, 'edit', $4)`,
+      [ws, playbookId, team, owner],
+    );
+    return { playbookId, versionId };
+  };
+  const playbooks = {
+    acme: await playbook(acme, ana, corpTeam),
+    beta: await playbook(beta, bob, betaTeam),
+  };
+
+  // A finished review of the owner's document, with its steps and one suggestion.
+  const review = async (
+    ws: string,
+    owner: string,
+    pb: { playbookId: string; versionId: string },
+    doc: { documentId: string; versionId: string },
+  ) => {
+    const runId = await id(
+      `insert into work.run (workspace_id, owner_id, kind, status)
+       values ($1, $2, 'playbook_review', 'done') returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into work.run_step (workspace_id, run_id, ordinal, kind, status, model)
+       values ($1, $2, 0, 'plan', 'done', 'fixture')`,
+      [ws, runId],
+    );
+    const reviewId = await id(
+      `insert into work.playbook_review (workspace_id, run_id, owner_id, playbook_id,
+         playbook_version_id, playbook_name, rules, document_id, document_version_id, surface,
+         customisation, status)
+       values ($1, $2, $3, $4, $5, 'NDA positions', '[]', $6, $7, 'web',
+               '{"party":"Acme","paper":"theirs","mode":"standard","scope":"all"}', 'done')
+       returning id`,
+      [ws, runId, owner, pb.playbookId, pb.versionId, doc.documentId, doc.versionId],
+    );
+    await tx.rows(
+      `insert into work.review_suggestion (id, workspace_id, review_id, rule_id, kind, anchor,
+         before, after, justification)
+       values (core.uuid7(), $1, $2, core.uuid7(), 'replace',
+               '{"paragraph_index":0,"char_from":0,"char_to":3,"para_hash":"00"}',
+               'The', 'This', 'Fixture.')`,
+      [ws, reviewId],
+    );
+    // A re-run of one rule; reads the same version here, which is enough for coverage.
+    await tx.rows(
+      `insert into work.review_rerun (workspace_id, review_id, rule_id, run_id,
+         source_document_version_id, finding)
+       values ($1, $2, core.uuid7(), $3, $4, '{}')`,
+      [ws, reviewId, runId, doc.versionId],
+    );
+    return { runId, reviewId };
+  };
+  const reviews = {
+    acme: await review(acme, ana, playbooks.acme, documents.acme),
+    beta: await review(beta, bob, playbooks.beta, documents.beta),
+  };
+  // Seeded as the table owner, as the earlier objects are.
+  const library = async (ws: string, owner: string) => {
+    const promptId = await id(
+      `insert into library.prompt (workspace_id, owner_id, name, body)
+       values ($1, $2, 'Summarise', 'Summarise {{document}}') returning id`,
+      [ws, owner],
+    );
+    const templateId = await id(
+      `insert into library.template (workspace_id, owner_id, name) values ($1, $2, 'Letterhead')
+       returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into library.template_version
+         (workspace_id, template_id, no, file_name, bytes, sha256, created_by)
+       values ($1, $2, 1, 'firm.docx', '\\x504b', repeat('a', 64), $3)`,
+      [ws, templateId, owner],
+    );
+    return { promptId, templateId };
+  };
+  const libraryItems = { acme: await library(acme, ana), beta: await library(beta, bob) };
+
   return {
     documents,
     vaults,
     threads,
+    playbooks,
+    reviews,
+    library: libraryItems,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,
     objects: { t1, tb },

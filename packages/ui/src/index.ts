@@ -6,6 +6,13 @@ export { Checkbox } from "./components/checkbox.js";
 export { CommandPalette, type PaletteCommand } from "./components/command-palette.js";
 export { ConfirmDialog } from "./components/confirm-dialog.js";
 export { DataTable, type TableColumn } from "./components/data-table.js";
+export {
+  DocumentViewer,
+  type DocumentViewerProps,
+  ViewerSkeleton,
+  type ViewerSource,
+  type ViewerTarget,
+} from "./components/document-viewer.js";
 export { EmptyState } from "./components/empty-state.js";
 export {
   CitationMarker,
@@ -16,6 +23,20 @@ export {
 export { Field, type FieldControlProps, Input, Label, Textarea } from "./components/field.js";
 export { FolderTree, type TreeFolder } from "./components/folder-tree.js";
 export {
+  type LibraryAction,
+  type LibraryEntry,
+  LibraryList,
+  LibraryListSkeleton,
+} from "./components/library/library-list.js";
+export {
+  type LibraryShare,
+  LibraryShareForm,
+  LibraryShareFormSkeleton,
+  type ShareCandidate,
+  type ShareLevel,
+} from "./components/library/library-share.js";
+export { PromptFill, PromptFillSkeleton } from "./components/library/prompt-fill.js";
+export {
   Menu,
   MenuContent,
   MenuGroup,
@@ -24,7 +45,81 @@ export {
   MenuSeparator,
   MenuTrigger,
 } from "./components/menu.js";
+export {
+  BadgeSkeleton,
+  PlaybookStatus,
+  ProvenanceBadge,
+} from "./components/playbook/badges.js";
+export {
+  type Choice,
+  CreatePlaybookForm,
+  CreatePlaybookFormSkeleton,
+} from "./components/playbook/create-playbook-form.js";
+export {
+  blankRule,
+  checkDraft,
+  type EditableRule,
+  isClean,
+  moveRule,
+  type PlaybookDraft,
+  toEditable,
+  toRuleInput,
+} from "./components/playbook/draft.js";
+export {
+  PlaybookBuilder,
+  PlaybookBuilderSkeleton,
+} from "./components/playbook/playbook-builder.js";
+export { PlaybookTable } from "./components/playbook/playbook-table.js";
+export { RuleEditor, RuleEditorSkeleton } from "./components/playbook/rule-editor.js";
+export { VersionList, VersionListSkeleton } from "./components/playbook/version-list.js";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/popover.js";
+export {
+  CustomiseReviewForm,
+  CustomiseReviewFormSkeleton,
+  type ReviewSettings,
+} from "./components/review/customise-review-form.js";
+export {
+  applyEvent,
+  elapsed,
+  FINDING_LABEL,
+  firstParagraph,
+  gapItem,
+  gapsView,
+  type ProgressEvent,
+  type ProgressState,
+  pendingSuggestions,
+  type ReviewItem,
+  type RuleProgress,
+  ruleItem,
+  rulesFinished,
+  rulesView,
+  type SuggestionGroup,
+  startProgress,
+  suggestionOf,
+  suggestionsView,
+  summaryLine,
+} from "./components/review/order.js";
+export {
+  marksByParagraph,
+  ReviewDocument,
+  ReviewDocumentSkeleton,
+  type ReviewParagraph,
+} from "./components/review/review-document.js";
+export { ReviewProgress, ReviewProgressSkeleton } from "./components/review/review-progress.js";
+export { type RailView, ReviewRail, ReviewRailSkeleton } from "./components/review/review-rail.js";
+export {
+  FindingStatusText,
+  GapSeverityText,
+  SuggestionStatusText,
+} from "./components/review/status.js";
+export {
+  type Alternate,
+  type ApplyChoice,
+  type CardActions,
+  SuggestionCard,
+  SuggestionCardSkeleton,
+  titleOf,
+} from "./components/review/suggestion-card.js";
 export {
   Select,
   SelectContent,
@@ -136,3 +231,10 @@ export {
   themeSetting,
 } from "./theme.js";
 export { type ColorRole, colors, motion, space, type Theme, typography } from "./tokens.js";
+export {
+  loadPdf,
+  type PdfDocument,
+  type PdfLoader,
+  preloadPdf,
+  setPdfWorker,
+} from "./viewer/pdf.js";

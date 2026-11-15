@@ -24,16 +24,25 @@ import {
   type Citation,
   type DocumentSummary,
   type Message,
+  messageOf,
   type Thread,
   type ThreadSummary,
 } from "./api.js";
+import { LibraryApp } from "./library/LibraryApp.js";
+import { PromptPicker } from "./library/PromptPicker.js";
+import { takeComposerPrefill } from "./library/prefill.js";
+import { libraryHash, parseLibraryRoute } from "./library/route.js";
+import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
+import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
+import { ReviewsApp } from "./reviews/ReviewsApp.js";
+import { parseReviewRoute } from "./reviews/route.js";
 import { documentStatus, segments } from "./text.js";
 import { go, parseRoute, useHash } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
+import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
+import { anchorOf, openCitation, useLocation, useReturnFocus } from "./viewer/open-citation.js";
 
 const FALLBACK = "Something went wrong. Try again.";
-
-const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
 
 export function App() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -43,17 +52,51 @@ export function App() {
       () => setSignedIn(false),
     );
   }, []);
+  const location = useLocation();
+  const viewing = isDocumentHref(location.href);
+  useReturnFocus(viewing);
   const hash = useHash();
   if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
-  return parseRoute(hash) ? (
-    <VaultsApp
-      onLeave={() => {
-        window.location.hash = "";
-      }}
-    />
-  ) : (
-    <Workspace onSignedOut={() => setSignedIn(false)} />
+  return (
+    <>
+      {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
+      <div className="contents" inert={viewing}>
+        {parseReviewRoute(hash) ? (
+          <ReviewsApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parsePlaybookRoute(hash) ? (
+          <PlaybooksApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parseLibraryRoute(hash) ? (
+          <LibraryApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parseRoute(hash) ? (
+          <VaultsApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : (
+          <Workspace onSignedOut={() => setSignedIn(false)} />
+        )}
+      </div>
+      {/* Over the page, not instead of it, so closing returns to the same place. */}
+      {viewing ? (
+        <div className="fixed inset-0 z-40 bg-bg">
+          <DocumentPage href={location.href} state={location.state} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -145,7 +188,8 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [thread, setThread] = useState<Thread | null>(null);
-  const [question, setQuestion] = useState("");
+  // A prompt sent from the Library arrives here once, ready to edit and send.
+  const [question, setQuestion] = useState(() => takeComposerPrefill() ?? "");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -269,6 +313,22 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
       run: () => go({ page: "list" }),
     },
     {
+      id: "playbooks",
+      kind: "action",
+      group: "Go to",
+      label: "Playbooks",
+      run: () => goPlaybooks({ page: "list" }),
+    },
+    {
+      id: "library",
+      kind: "action",
+      group: "Go to",
+      label: "Library",
+      run: () => {
+        window.location.hash = libraryHash();
+      },
+    },
+    {
       id: "upload",
       kind: "action",
       group: "Actions",
@@ -383,6 +443,26 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
             </ul>
           </section>
 
+          <section className="grid gap-1">
+            <h2 className="text-caption font-semibold text-fg-muted uppercase">Go to</h2>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => go({ page: "list" })}
+            >
+              Vaults
+            </Button>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => goPlaybooks({ page: "list" })}
+            >
+              Playbooks
+            </Button>
+          </section>
+
           <Button variant="quiet" size="sm" className="justify-start" onClick={signOut}>
             Sign out
           </Button>
@@ -438,6 +518,7 @@ function Workspace({ onSignedOut }: { onSignedOut: () => void }) {
             <Button type="submit" disabled={!canAsk}>
               Ask
             </Button>
+            <PromptPicker onPick={setQuestion} />
             {busy && <span className="text-fg-muted">Finding an answer…</span>}
           </div>
         </form>
@@ -498,6 +579,7 @@ const STATUS: Record<Citation["status"], { label: string; detail: string }> = {
 
 function Sources({ message, onHide }: { message: Message | null; onHide: () => void }) {
   const citations = message?.citations ?? [];
+  const anchors = citations.map(anchorOf).filter((a) => a !== null);
   const [width, setWidth] = useState(360);
   return (
     <section
@@ -524,6 +606,7 @@ function Sources({ message, onHide }: { message: Message | null; onHide: () => v
             {citations.map((citation) => {
               const status = STATUS[citation.status];
               const ok = verified(citation);
+              const anchor = anchorOf(citation);
               return (
                 <li
                   key={citation.n}
@@ -544,6 +627,21 @@ function Sources({ message, onHide }: { message: Message | null; onHide: () => v
                     </span>
                   </p>
                   <q className="italic">{citation.quote ?? "No quote given"}</q>
+                  {anchor ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="justify-self-start"
+                      onClick={(event) =>
+                        openCitation(anchor, {
+                          context: anchors,
+                          newTab: event.metaKey || event.ctrlKey,
+                        })
+                      }
+                    >
+                      Open in document
+                    </Button>
+                  ) : null}
                   <p>
                     <StatusText tone={ok ? "verified" : "flagged"}>{status.label}</StatusText>
                     <span className="text-fg-muted">{` ${status.detail}`}</span>

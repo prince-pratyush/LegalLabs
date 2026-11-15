@@ -1,4 +1,5 @@
 -- A column run is a run like a thread turn, so it shares the event log and the SSE stream.
+-- Runs after the playbook reviews migration, which already let a run stand without a thread.
 alter table work.run
   alter column thread_id drop not null,
   alter column question_id drop not null,
@@ -6,13 +7,16 @@ alter table work.run
   add column column_id uuid,
   add column scope jsonb,
   drop constraint run_kind_check,
-  add constraint run_kind_check check (kind in ('thread', 'deep_analysis', 'rt_column')),
-  -- Each run belongs to exactly one thing: a thread turn or a table column.
+  add constraint run_kind_check
+    check (kind in ('thread', 'deep_analysis', 'playbook_review', 'rt_column')),
+  drop constraint if exists run_thread_check,
+  -- Each run belongs to exactly one thing: a thread turn, a review, or a table column.
   add constraint run_subject check (
-    case when kind = 'rt_column'
-         then table_id is not null and column_id is not null
-              and thread_id is null and question_id is null
-         else thread_id is not null and question_id is not null and table_id is null end),
+    case kind
+      when 'rt_column' then table_id is not null and column_id is not null
+                            and thread_id is null and question_id is null
+      when 'playbook_review' then table_id is null and column_id is null
+      else thread_id is not null and question_id is not null and table_id is null end),
   add foreign key (workspace_id, table_id) references work.review_table (workspace_id, id)
     on delete cascade,
   add foreign key (workspace_id, column_id) references work.rt_column (workspace_id, id)
