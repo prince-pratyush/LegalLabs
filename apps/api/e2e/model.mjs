@@ -1,6 +1,8 @@
-// A stand-in for an OpenAI-compatible model server, so the pilot runs the same
-// way on any machine. It answers from the first passage it is shown, quoting it
-// exactly, which is what a well-behaved model does.
+// A stand-in for an OpenAI-compatible model server, so the pilots run the same way on any
+// machine and never call a paid model. Free-text prompts (answers, page reads, draft edits)
+// are answered from the first passage shown, quoted exactly. JSON prompts (the playbook
+// review's clause map, rule and gap phases, and review-table cells) follow the scripts
+// below; any other JSON prompt gets a 500, so a new prompt can't pass by accident.
 import { createServer } from "node:http";
 
 const PASSAGE = /<passage-[0-9a-f]+ doc="(D\d+)" page="(\d+)">\n([\s\S]*?)\n<\/passage-/;
@@ -14,27 +16,63 @@ const sentence = (text) =>
 const attr = (text) => text.replaceAll('"', "&quot;");
 
 // Playbook review script: which rule finds what. A rule not listed answers not_found, and
-// only the listed gap is reported, so the review comes out the same on every run.
+// only the listed gaps are reported, so the review comes out the same on every run. Each
+// "after" changes one run of words, so its redline is exactly one deletion and one insertion.
 export const PLAYBOOK_SCRIPT = [
   {
     title: "Limitation of Liability Cap",
     para: /liability under this agreement is unlimited/i,
+    status: "not_acceptable",
     before: "The Customer's liability under this agreement is unlimited",
     after:
-      "Each party's total liability under this agreement is capped at the fees paid in the twelve months before the claim",
+      "The Customer's liability under this agreement is capped at the fees paid in the twelve months before the claim",
     explanation: "Unlimited liability for the customer is unacceptable; a mutual cap is needed.",
   },
   {
     title: "Payment Terms",
     para: /payable within 15 days/i,
+    status: "not_acceptable",
     before: "within 15 days of the invoice date",
-    after: "within 45 days after receipt of a valid, undisputed invoice",
+    after: "within 45 days of the invoice date",
     explanation: "Payment on less than 30 days is unacceptable.",
+  },
+  {
+    title: "Price Increases",
+    para: /increase the fees at any time/i,
+    status: "not_acceptable",
+    before: "at any time at its sole discretion",
+    after: "on renewal only, on at least 90 days written notice",
+    explanation: "Increases at the supplier's discretion are unacceptable.",
+  },
+  {
+    title: "Termination for Convenience",
+    para: /for convenience on 7 days/i,
+    status: "not_acceptable",
+    before: "The Supplier may terminate this agreement for convenience on 7 days notice",
+    after: "The Supplier may terminate this agreement for convenience on 90 days notice",
+    explanation: "Supplier termination for convenience on short notice is unacceptable.",
+  },
+  {
+    title: "Governing Law and Jurisdiction",
+    para: /laws of Delaware/i,
+    status: "not_acceptable",
+    before: "the laws of Delaware",
+    after: "the laws of England",
+    explanation: "The supplier's home law is unacceptable.",
+  },
+  {
+    title: "Confidentiality and Publicity",
+    para: /keep the other party's confidential information/i,
+    status: "acceptable",
+    before: "Each party shall keep the other party's confidential information secret",
+    explanation: "Mutual confidentiality meets the standard position.",
   },
 ];
 export const GAP_SCRIPT = {
   para: /coffee beans/i,
-  reason: "A ten-year exclusive purchasing commitment that no playbook rule covers.",
+  paraReason: "A ten-year exclusive purchasing commitment that no playbook rule covers.",
+  editAuthor: "Other Side",
+  editReason: "The other side added a right to suspend the services without notice.",
 };
 
 const numbered = (body, prefix = "") =>
@@ -66,21 +104,42 @@ function playbookReply(system, last) {
         suggestion: null,
       });
     }
+    const evidence = [{ p: hit.p, quote: step.before }];
+    if (step.status === "acceptable") {
+      return JSON.stringify({
+        status: "acceptable",
+        matched: "standard",
+        fallback: null,
+        evidence,
+        explanation: step.explanation,
+        suggestion: null,
+      });
+    }
     return JSON.stringify({
       status: "not_acceptable",
       matched: "unacceptable",
       fallback: null,
-      evidence: [{ p: hit.p, quote: step.before }],
+      evidence,
       explanation: step.explanation,
       suggestion: { p: hit.p, before: step.before, after: step.after },
     });
   }
   if (system.startsWith("You check a contract for")) {
     const bodies = [...last.matchAll(/<doc-[0-9a-f]+>\n([\s\S]*?)\n<\/doc-/g)].map((m) => m[1]);
+    const gaps = [];
+    const edits = /^\[(E\d+)\] (?:inserted|deleted) in paragraph \d+ by (.+?): "(.*)"$/gm;
+    for (const [, ref, author, text] of (bodies[0] ?? "").matchAll(edits)) {
+      if (author === GAP_SCRIPT.editAuthor)
+        gaps.push({ ref, quote: text, reason: GAP_SCRIPT.editReason, severity: "high" });
+    }
     const hit = numbered(bodies.at(-1) ?? "", "P").find((x) => GAP_SCRIPT.para.test(x.text));
-    const gaps = hit
-      ? [{ ref: `P${hit.p}`, quote: hit.text, reason: GAP_SCRIPT.reason, severity: "high" }]
-      : [];
+    if (hit)
+      gaps.push({
+        ref: `P${hit.p}`,
+        quote: hit.text,
+        reason: GAP_SCRIPT.paraReason,
+        severity: "high",
+      });
     return JSON.stringify({ gaps });
   }
   return undefined;
@@ -142,6 +201,7 @@ export function reply(messages) {
     const quote = sentence(page[2]);
     return `${quote}<c page="${page[1]}" quote="${attr(quote)}"/>`;
   }
+  if (/\bJSON\b/.test(system + last)) return { unscripted: system.slice(0, 80) };
   const passage = PASSAGE.exec(last);
   if (!passage) return "I couldn't find this in the selected documents.";
   // Asked to invent, it quotes words that aren't on the page, as a careless model would.
@@ -158,6 +218,13 @@ export function startFakeModel() {
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw || "{}");
     const text = reply(body.messages ?? []);
+    if (typeof text !== "string") {
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end(`unscripted prompt: ${text.unscripted}`);
+      // The API may fall back quietly, so say it where the test run shows it.
+      process.stderr.write(`model stub: unscripted prompt: ${text.unscripted}\n`);
+      return;
+    }
     const usage = {
       prompt_tokens: Math.ceil(raw.length / 4),
       completion_tokens: Math.ceil(text.length / 4),
