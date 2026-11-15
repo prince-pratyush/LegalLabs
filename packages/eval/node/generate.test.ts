@@ -5,6 +5,7 @@ import { BOILERPLATE, CLAUSES, type Template, UNUSUAL } from "./clauses.ts";
 import { buildContract, generateCorpus } from "./generate.ts";
 
 const TEMPLATES: Template[] = ["nda", "msa"];
+const MAX_SHARED_3GRAMS = 0.2;
 const words = (text: string) =>
   normaliseParagraph(text)
     .toLowerCase()
@@ -33,6 +34,28 @@ describe("clause variants", () => {
     ];
     const ours = new Set(held.flatMap((t) => [...shingles(t)]));
     expect(samples.filter((s) => ours.has(s))).toEqual([]);
+  });
+
+  // Held out from the rule text too: a variant that echoes the standard position would
+  // let a model match words instead of judging the clause.
+  it.each(TEMPLATES)("share at most 20%% of 3-grams with the %s rule's own text", (template) => {
+    const rules = starterPlaybook(template).rules ?? [];
+    const over: string[] = [];
+    for (const c of CLAUSES[template]) {
+      const r = rules.find((x) => x.title === c.rule);
+      const ref = shingles(
+        [r?.standard_position, ...(r?.fallbacks ?? []), r?.unacceptable, r?.sample_language].join(
+          " ",
+        ),
+        3,
+      );
+      for (const v of ["standard", "fallback", "unacceptable"] as const) {
+        const mine = [...shingles(c[v], 3)];
+        const share = mine.filter((g) => ref.has(g)).length / mine.length;
+        if (share > MAX_SHARED_3GRAMS) over.push(`${c.rule} ${v}: ${share.toFixed(2)}`);
+      }
+    }
+    expect(over).toEqual([]);
   });
 });
 

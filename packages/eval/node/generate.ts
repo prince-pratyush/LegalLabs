@@ -18,7 +18,7 @@ import {
 } from "./clauses.ts";
 
 // Bump when generated text or labels change, so old runs are never scored against new gold.
-export const GENERATOR_VERSION = 1;
+export const GENERATOR_VERSION = 2;
 export const DEFAULT_SEED = 7;
 export const DEFAULT_COUNT = 16;
 /** Page targets, shortest first, so a run with --limit takes the quick contracts. */

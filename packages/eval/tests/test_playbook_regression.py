@@ -32,12 +32,12 @@ pytestmark = pytest.mark.skipif(not node_ready(), reason="needs Node 22.18+ and 
 
 PINNED = {
     "contracts": 4,
-    "accuracy": (16, 82),
-    "strict_hits": 16,
+    "accuracy": (19, 82),
+    "strict_hits": 19,
     "system_recall": (7, 12),
     "model_recall_hits": 0,
-    "evidence": (9, 9),
-    "ooxml": (3, 3),
+    "evidence": (18, 18),
+    "ooxml": (6, 6),
 }
 
 

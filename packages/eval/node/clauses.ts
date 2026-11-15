@@ -49,7 +49,7 @@ const NDA: ClauseSpec[] = [
     rule: "Definition of Confidential Information",
     heading: "Meaning of Confidential Information",
     standard:
-      '"Confidential Information" means all information that is not public and that a party, or someone acting for it, discloses in connection with the Purpose, in whatever form and whether or not it is marked confidential, including anything a reasonable person would treat as confidential, as well as the existence of the parties\' talks and what was said in them.',
+      '"Confidential Information" covers every non-public item that either side, or anyone on its behalf, shares for the Purpose, whether spoken, written or shown and whether labelled or not, along with anything a sensible person would recognise as private, and the fact that the parties are talking and what they discuss.',
     fallback:
       '"Confidential Information" means information disclosed in connection with the Purpose that is marked confidential when given in writing. Information disclosed orally or visually is included if it is identified as confidential when disclosed or described as confidential in a written note sent within 30 days.',
     unacceptable:
@@ -61,7 +61,7 @@ const NDA: ClauseSpec[] = [
     standard:
       "None of the duties in this agreement covers information that the Recipient proves, using its written records, (a) has entered the public domain without any fault on the Recipient's part, (b) was already lawfully in the Recipient's hands with no restriction before it was disclosed, (c) came to the Recipient lawfully from someone else who was under no obligation of confidence, or (d) was created by the Recipient independently, without using or referring to anything the Discloser provided. These four cases are the only exclusions.",
     fallback:
-      "Information is not Confidential Information if it is or becomes public through no fault of the Recipient, was lawfully known to the Recipient beforehand without restriction, is lawfully received from a third party free of any duty of confidence, is created by the Recipient on its own without relying on or consulting the Discloser's material, or has been approved for release by the Discloser in writing.",
+      "Nothing here restricts the Recipient's handling of material that has entered the public domain without any fault on its part, that it already held lawfully and free of restriction, that someone else under no duty of secrecy handed to it lawfully, that its own staff created without relying on or consulting the Discloser's material, or that the Discloser has cleared for release in a signed note.",
     unacceptable:
       "Information is excluded from these obligations if it is available to the public in any form or could be pieced together from public sources, if the Recipient comes to possess it by any means, or if the Recipient reasonably considers that it is not confidential.",
   },
@@ -69,11 +69,11 @@ const NDA: ClauseSpec[] = [
     rule: "Permitted Use and Need-to-Know Disclosure",
     heading: "Use and onward disclosure",
     standard:
-      "The Recipient may use Confidential Information solely to evaluate the proposed collaboration (the Purpose). It may share it only with those of its staff, officers and professional advisers who must see it for the Purpose and who owe duties of confidence at least as strict as this agreement, and the Recipient answers for any breach by any of them.",
+      "The Recipient may draw on Confidential Information only to weigh up the proposed collaboration (the Purpose). Only its staff, directors and professional advisers who must see the material for the Purpose, and who already owe secrecy duties at least as strict as these, may be shown it, and the Recipient is answerable for any slip by any of them.",
     fallback:
       "Confidential Information may be used solely for the Purpose. Besides its own staff and advisers, the Recipient may share it with affiliates, contractors and financiers who require it for the Purpose, as long as each has agreed in writing to terms no less protective than these and the Recipient stays liable for whatever they do with it.",
     unacceptable:
-      "The Recipient may use Confidential Information for any business purpose, including improving its own products and training its machine learning models, and may pass it to its affiliates and partners, for whom it has no responsibility.",
+      "The Recipient may exploit Confidential Information however it sees fit commercially, for instance to refine its own offerings or to teach its machine learning systems, and may share it with group companies and business partners without answering for what they do with it.",
   },
   {
     rule: "Compelled Disclosure",
@@ -81,7 +81,7 @@ const NDA: ClauseSpec[] = [
     standard:
       "If a law, regulation, court order or stock exchange rule requires the Recipient to disclose Confidential Information, the Recipient must, if lawful, tell the Discloser promptly, help the Discloser seek a protective order or other remedy, and disclose no more than is legally required.",
     fallback:
-      "The Recipient may disclose Confidential Information where compelled by law, but must give the Discloser notice where legally permitted and reasonably practicable and must use reasonable efforts to limit the extent of the disclosure.",
+      "Where a law obliges the Recipient to hand over Confidential Information it may do so, but it must first warn the Discloser if the law allows a warning and giving one is feasible, and must try in a sensible way to keep what it hands over as narrow as it can.",
     unacceptable:
       "The Recipient may disclose Confidential Information to any government body that asks for it, formally or informally, or whenever the Recipient believes disclosure is advisable, and need not tell the Discloser.",
   },
@@ -89,9 +89,9 @@ const NDA: ClauseSpec[] = [
     rule: "Standard of Care",
     heading: "Protection of information",
     standard:
-      "The Recipient must protect Confidential Information with at least the care it applies to its own information of a similar kind, and in any event no less than reasonable care, using appropriate technical and organisational security measures, and must tell the Discloser promptly if it becomes aware of any unauthorised access to or disclosure of it.",
+      "The Recipient must guard Confidential Information as carefully as it guards its own comparable material, and never below the level a prudent business would apply, with suitable technical and organisational safeguards in place. If it learns that anyone has seen or obtained the material without permission, it must tell the Discloser straight away.",
     fallback:
-      "The Recipient must take reasonable care to keep Confidential Information secure and must notify the Discloser within a reasonable time of any unauthorised disclosure it becomes aware of.",
+      "The Recipient must keep Confidential Information safe with the degree of care a prudent business would use, and must let the Discloser know within a sensible period of any leak it discovers.",
     unacceptable:
       "The Recipient will use commercially reasonable efforts to try to keep Confidential Information secure, is liable only for disclosures caused by its gross negligence or wilful misconduct, and has no duty to report any disclosure.",
   },
@@ -101,7 +101,7 @@ const NDA: ClauseSpec[] = [
     standard:
       "This agreement covers information disclosed during the three years after it is signed. The duties of the Recipient last for five years after this agreement expires or ends, and for trade secrets and personal data they last while the information stays confidential or the Recipient holds it.",
     fallback:
-      "The disclosure period is two years from signing. The Recipient's obligations continue for three years after the disclosure period ends, except that obligations for trade secrets and personal data continue without time limit.",
+      "Information shared during the first two years after signing is covered. The Recipient's duties end three years after that two-year window closes, save that trade secrets and personal data stay protected with no end date.",
     unacceptable:
       "The Recipient's obligations under this agreement end on the date this agreement expires or is terminated, including for any trade secrets.",
   },
@@ -109,9 +109,9 @@ const NDA: ClauseSpec[] = [
     rule: "Return and Destruction",
     heading: "Returning materials",
     standard:
-      "Whenever the Discloser asks, or when the Purpose ends, the Recipient must promptly return or destroy all Confidential Information and every copy of it and confirm to the Discloser in writing that it has done so.",
+      "If the Discloser asks, or once the Purpose is over, the Recipient must without delay hand back or securely erase every item of Confidential Information, including all reproductions, and then certify to the Discloser in a signed note that this has been done.",
     fallback:
-      "On request or when the Purpose ends, the Recipient must return or destroy all Confidential Information, except copies held in routine electronic backups or kept to satisfy a legal requirement, which remain subject to this agreement and must not be accessed for any other purpose until they are deleted in the ordinary course.",
+      "When asked, or when the Purpose ends, the Recipient must hand back or erase the Confidential Information. It need not purge material sitting in automatic system backups or that a statute requires it to keep; that material stays bound by this agreement and may not be opened for anything else until the normal backup cycle overwrites it.",
     unacceptable:
       "The Recipient may keep copies of any Confidential Information indefinitely for its records, and those copies are not subject to the obligations in this agreement. The Recipient has no obligation to return any material.",
   },
@@ -119,7 +119,7 @@ const NDA: ClauseSpec[] = [
     rule: "No Licence or Transfer of IP",
     heading: "Ownership",
     standard:
-      "The Discloser keeps ownership of all of its Confidential Information. Apart from the limited right to use the information for the Purpose, nothing here gives the Recipient any licence or other right under a patent, copyright, trade secret or other intellectual property right.",
+      "The Discloser keeps ownership of everything it shares. Apart from permission to use it for the Purpose, the Recipient acquires no rights of any kind in the Discloser's patents, copyright, know-how or other intangible assets.",
     fallback:
       "All Confidential Information stays the Discloser's property and no intellectual property licence is granted beyond use for the Purpose. Each party acknowledges that the other may independently develop similar products, provided it does not use the other's Confidential Information to do so.",
     unacceptable:
@@ -131,17 +131,17 @@ const NDA: ClauseSpec[] = [
     standard:
       "No right is given to use Confidential Information that a person remembers. The Recipient may not use information retained in the memory of its personnel for anything other than the Purpose.",
     fallback:
-      "Either party may use general skills, ideas and know-how retained in the unaided memory of its personnel who had authorised access, provided there is no deliberate memorising, no licence under any patent or copyright is granted, and this right does not extend to personal data, financial information, product or business plans, source code, security information or trade secrets.",
+      "Staff who properly saw the other side's material may go on using the general expertise and techniques they carry in their heads without notes, provided nobody set out to commit the material to memory. This gives no rights under any patent or copyright, and it never covers data about individuals, figures from accounts, product roadmaps or strategy papers, program code, security details or trade secrets.",
     unacceptable:
-      "Each party may use for any purpose, including developing competing products, any information retained in the memory of its personnel, whether aided or unaided, including specific details of the other party's information.",
+      "Whatever the other side's information its people can recall, with or without notes, including precise particulars, each party may put to any use it likes, building rival products included.",
   },
   {
     rule: "Remedies and Injunctive Relief",
     heading: "Remedies",
     standard:
-      "Each party accepts that money may not be enough to make good a breach of this agreement, so the Discloser may obtain an injunction or other equitable relief without proving actual loss and without giving security or posting a bond, on top of any other remedy.",
+      "Both parties recognise that a money award might not repair a breach of this agreement. The Discloser may therefore ask a court for an order stopping the breach, and need not show it has already suffered harm or lodge any bond or other security first; this sits alongside every other remedy it has.",
     fallback:
-      "Each party acknowledges that equitable relief, including an injunction, is available for a breach or threatened breach of this agreement.",
+      "Either side may go to court for an order to stop or prevent a breach of this agreement.",
     unacceptable:
       "Damages are the only remedy for breach of this agreement and neither party may seek an injunction. Ardent's total liability for any breach of confidentiality is limited to $10,000.",
   },
@@ -159,9 +159,9 @@ const NDA: ClauseSpec[] = [
     rule: "Personal Information",
     heading: "Personal data",
     standard:
-      "Where either party shares personal information, the Recipient may use it solely for the Purpose, must handle it as applicable data protection law requires and with appropriate security, and must tell the Discloser without undue delay of any breach affecting it. Before sharing any personal information beyond business contact details, the parties will sign a data processing agreement.",
+      "Where either party shares details about identifiable people, the Recipient may use them solely for the Purpose, must treat them as privacy legislation requires and keep them secure, and must alert the Discloser without undue delay if they are compromised. Before sharing anything about individuals beyond names and work contact details, the parties will sign a separate processing contract.",
     fallback:
-      "Each party must comply with applicable data protection law in relation to any personal information it receives under this agreement and must notify the other of any breach affecting that information. Only business contact details are expected to be exchanged.",
+      "Whichever party receives details about individuals must follow the privacy laws that govern them and must warn the other party if they are exposed. As only work email addresses and phone numbers are expected to change hands, no separate processing contract is needed for now.",
     unacceptable:
       "Personal information that Ardent discloses about its staff or customers is not Confidential Information, and Corvane may store and transfer it in any country without further safeguards.",
   },
@@ -171,7 +171,7 @@ const NDA: ClauseSpec[] = [
     standard:
       "All Confidential Information is supplied as is, with no warranty of any kind. Neither party has to sign any further agreement or complete any transaction, and no commitment arises unless it is recorded in a separate written agreement that both parties sign.",
     fallback:
-      "Confidential Information is provided without warranty, except that each party confirms it is entitled to disclose the information it discloses. Neither party is bound to proceed with any transaction unless a separate signed agreement says so.",
+      "No promise is given about the quality or accuracy of anything shared, other than each party's confirmation that it is free to share what it shares. Neither side is bound to go ahead with any deal unless both later sign a further document saying so.",
     unacceptable:
       "Ardent warrants that all information it provides is accurate and complete, and for six months after signing Ardent must negotiate exclusively with Corvane about the proposed collaboration.",
   },
@@ -189,9 +189,9 @@ const NDA: ClauseSpec[] = [
     rule: "Assignment",
     heading: "Transfers",
     standard:
-      "Neither party may assign or transfer this agreement without the prior written consent of the other, except that Ardent may transfer it to one of its affiliates or to whoever succeeds to its business.",
+      "Neither side may hand this agreement to anyone else unless the other first agrees in writing, but Ardent may pass it to a company in its group or to whoever takes over its business.",
     fallback:
-      "Neither party may assign this agreement without the other's written consent, which must not be unreasonably withheld.",
+      "Each party needs the other's written agreement before handing this agreement to anyone else, and that agreement may not be refused without good reason.",
     unacceptable:
       "Corvane may assign this agreement to any person, including a competitor of Ardent, without consent, and on assignment Corvane is released from all obligations, including for information already disclosed.",
   },
@@ -202,19 +202,19 @@ const MSA: ClauseSpec[] = [
     rule: "Limitation of Liability Cap",
     heading: "Limits on liability",
     standard:
-      "In each contract year, each party's total aggregate liability is capped at the greater of $2,000,000 and twice the fees paid or payable over the twelve months before the event that gave rise to the claim.",
+      "For every contract year, neither party's combined exposure under this agreement may exceed whichever is higher: $2,000,000, or double the charges invoiced or due over the twelve months before the event that prompted the claim.",
     fallback:
-      "Each party's aggregate liability under this agreement is limited to the greater of $1,000,000 and one and a half times the annual fees.",
+      "Neither side's total exposure under this agreement may exceed $1,000,000 or one and a half years' charges, whichever is higher.",
     unacceptable:
-      "The Supplier's total liability under this agreement is limited to the lower of the fees paid in the three months before the claim and the service credits payable. No cap applies to the Customer, and any fees the Customer owes count towards the Supplier's cap.",
+      "The most the Supplier can ever owe is the smaller of three months' charges and the service credits due; the Customer has no ceiling at all, and charges the Customer owes are counted against the Supplier's ceiling.",
   },
   {
     rule: "Exclusions from the Liability Cap",
     heading: "Unlimited liabilities",
     standard:
-      "None of the liability limits applies to: personal injury or death resulting from negligence; fraud; wilful misconduct or abandonment of the services; breach of confidentiality; breach of data protection or security obligations; the Supplier's intellectual property indemnity; or any liability the law does not allow to be limited.",
+      "The caps above do not protect a party that causes someone's death or injury through carelessness, acts dishonestly or deliberately, walks away from the services, discloses the other's secrets, fails in its privacy or security duties, or owes money under the Supplier's infringement indemnity; nor do they reach any liability the law forbids parties to cap.",
     fallback:
-      "Liability for breach of data protection, security or confidentiality obligations is subject to a separate cap of the greater of $5,000,000 and three times the annual fees, and the Supplier's intellectual property indemnity is unlimited.",
+      "Claims for privacy, security or secrecy failures sit under their own higher ceiling of $5,000,000 or triple a year's charges, whichever is more, while the Supplier's infringement indemnity has no ceiling at all.",
     unacceptable:
       "No exclusions from the liability cap apply except those the law requires. Losses from a data breach and the intellectual property indemnity fall within the general cap, and regulatory fines and breach response costs are treated as consequential loss.",
   },
@@ -222,21 +222,21 @@ const MSA: ClauseSpec[] = [
     rule: "Consequential Loss",
     heading: "Indirect loss",
     standard:
-      "Neither party is liable for indirect or consequential loss, being loss that would not ordinarily flow from the breach. The following count as direct losses and may be recovered: the cost of replacement services, remediation and restoring data, the cost of responding to a breach, regulatory fines where the law allows, and wasted expenditure.",
+      "Remote losses, meaning those that would not ordinarily flow from the breach, cannot be claimed by either side. Even so, a party may always recover what it spends buying substitute services, fixing the problem and rebuilding lost records, handling a security incident, paying regulators where the law lets it pass those penalties on, and money spent for nothing.",
     fallback:
-      "Neither party is liable for loss of profits, revenue or goodwill or for indirect loss, but data restoration costs, breach response costs and the extra cost of obtaining replacement services may always be recovered.",
+      "Lost profit, turnover or reputation and remote losses are excluded for both sides, but rebuilding lost records, handling a security incident and the extra price of a substitute provider can always be claimed.",
     unacceptable:
-      "Neither party is liable for any loss of data or any loss of profits, whether direct or indirect, or for any loss exceeding the fees paid, all of which is treated as consequential loss.",
+      "Corrupted or missing records and every kind of lost profit, however closely they follow from the breach, can never be claimed, and any loss above the amount already invoiced is to be treated as remote and unrecoverable.",
   },
   {
     rule: "IP Ownership of Deliverables",
     heading: "Ownership of work product",
     standard:
-      "The Customer owns all deliverables created specifically for it, and all Customer data and outputs, as soon as they are created. The Supplier keeps its pre-existing intellectual property and generic tools and gives the Customer a perpetual, irrevocable licence, free of royalties, for any of those items built into the deliverables.",
+      "Everything produced specially for the Customer, together with the Customer's records and anything generated from them, belongs to the Customer from the moment it comes into being. The Supplier keeps what it owned beforehand and its general-purpose tooling, and lets the Customer use any of it built into the work product forever, without charge and without any right to withdraw that permission.",
     fallback:
-      "The Supplier owns its platform and any general improvements to it. The Customer owns its data and, once paid for, any bespoke deliverables, and the Supplier licenses any embedded Supplier materials to the Customer perpetually for its business purposes.",
+      "The platform and any general enhancements stay with the Supplier. The Customer's records are the Customer's, and custom work becomes the Customer's once paid for; any Supplier material built into that work may be used by the Customer for its business indefinitely.",
     unacceptable:
-      "The Supplier owns all deliverables, all outputs generated from Customer data and all bespoke work, and may reuse them for other customers, including competitors of the Customer. The Customer's licence to use the deliverables ends when this agreement ends.",
+      "Title to every piece of work product, to anything generated from the Customer's records, and to custom work stays with the Supplier, which may hand the same material to other clients, rivals of the Customer included. The Customer's permission to use the work lapses on expiry or termination.",
   },
   {
     rule: "IP Indemnity",
@@ -252,11 +252,11 @@ const MSA: ClauseSpec[] = [
     rule: "Warranties",
     heading: "Supplier promises",
     standard:
-      "The Supplier warrants that the services will be performed with reasonable skill and care by suitably qualified personnel, will materially conform to the documentation and specifications throughout the term, will comply with applicable law and will be free of malicious code. If it breaches a warranty the Customer may require re-performance, obtain a refund and use its other remedies.",
+      "The Supplier promises that competent, properly trained staff will deliver the services diligently and professionally, that the services will match their written description in all material respects for as long as this agreement lasts, that they will be lawful and that they will carry no viruses or other harmful code. If any promise is broken, the Customer can insist on the work being redone, get its money back and pursue any other remedy.",
     fallback:
-      "The Supplier warrants that one-off deliverables will conform to their specifications for 90 days after delivery, and that the ongoing services will be performed with reasonable skill and care and will not contain malicious code.",
+      "For ninety days after handover, each one-time deliverable will match its specification; throughout, the continuing services will be delivered competently and diligently and will be free of viruses or harmful code.",
     unacceptable:
-      "The services are provided as is. All implied terms and warranties are excluded and none is given in their place. The Supplier may change the documentation at any time, and re-performance is the Customer's sole and exclusive remedy.",
+      "The Supplier makes no promises about the services, every term the law would otherwise imply is excluded, the written description may be cut back whenever the Supplier wishes, and redoing the work is all the Customer can ever ask for.",
   },
   {
     rule: "Service Levels and Service Credits",
@@ -264,7 +264,7 @@ const MSA: ClauseSpec[] = [
     standard:
       "The services must be available for at least 99.9% of each month, the response and resolution times for each severity level in Schedule 3 must be met, and the Supplier must report performance monthly. Service credits are applied automatically and do not limit the Customer's other remedies, and repeated or serious failures entitle the Customer to terminate.",
     fallback:
-      "The Supplier must achieve monthly availability of 99.5%. Service credits are the Customer's sole financial remedy for availability failures, but if availability falls below target three times in any six months the Customer may terminate.",
+      "Uptime must reach 99.5% each month. For missed uptime the credits are the only money the Customer can claim, but three missed months within any half-year let the Customer end this agreement.",
     unacceptable:
       "The Supplier gives no service level commitment. Any service credits it chooses to offer are the Customer's sole and exclusive remedy for every performance failure and must be claimed within five days.",
   },
@@ -272,9 +272,9 @@ const MSA: ClauseSpec[] = [
     rule: "Payment Terms",
     heading: "Invoices",
     standard:
-      "The Customer will pay each valid invoice it does not dispute within 45 days after receipt. It may hold back any amount it disputes in good faith until the dispute is settled, and the Supplier must not suspend the services over a disputed amount.",
+      "A correct, uncontested invoice is due forty-five days after the Customer receives it. Sums the Customer honestly contests may be held back until the disagreement is resolved, and the Supplier may not cut off the services over them.",
     fallback:
-      "Invoices are payable within 30 days of receipt of a valid invoice. The Customer may withhold amounts it disputes in good faith if it notifies the Supplier of the dispute and its reasons.",
+      "A correct invoice falls due thirty days after it arrives. The Customer can hold back any part it honestly contests, so long as it tells the Supplier which part and why.",
     unacceptable:
       "Invoices are payable within 14 days. The Supplier may suspend the services immediately if any amount is late, interest accrues on late amounts at 2% per month, and all future fees for the term become payable at once if the Customer breaches this agreement.",
   },
@@ -282,9 +282,9 @@ const MSA: ClauseSpec[] = [
     rule: "Price Increases",
     heading: "Changes to fees",
     standard:
-      "No fee increase may take effect during the initial term. On renewal the Supplier may raise the fees only after at least 90 days' written notice ahead of the renewal date, and by no more than the lower of 3% and the movement in the consumer price index.",
+      "Charges cannot rise during the first term. When the agreement renews, the Supplier may raise them only after telling the Customer in writing at least ninety days beforehand, and never by more than 3% or the year's inflation figure, whichever is smaller.",
     fallback:
-      "On each renewal the Supplier may increase the fees by no more than the change in the consumer price index plus 2%, on 60 days' notice.",
+      "At each rollover the Supplier may lift its charges by no more than inflation plus two percentage points, after sixty days' warning.",
     unacceptable:
       "The Supplier may change its fees at any time, including during the initial term, by publishing new prices on its website.",
   },
@@ -292,19 +292,19 @@ const MSA: ClauseSpec[] = [
     rule: "Term and Renewal",
     heading: "Duration",
     standard:
-      "This agreement runs for an initial term of three years. After that it renews for one year at a time, but the Customer may opt out by notice given no later than 30 days before any renewal date, and the Supplier must send a renewal reminder at least 60 days in advance.",
+      "The first term lasts three years. Afterwards the agreement rolls over a year at a time, but the Customer may stop any rollover by telling the Supplier no later than thirty days ahead, and the Supplier must send a written reminder no less than sixty days ahead.",
     fallback:
-      "After the initial term, this agreement renews automatically for successive one-year terms unless either party gives at least 60 days' notice of non-renewal, and the Supplier will send a renewal reminder.",
+      "Once the first term ends, the agreement rolls over for twelve months at a time unless one side tells the other it wants out at least sixty days before a rollover; the Supplier will remind the Customer before each rollover.",
     unacceptable:
-      "This agreement renews automatically for successive three-year terms at the Supplier's then-current list prices unless the Customer gives notice at least 180 days before renewal.",
+      "Every rollover is for another three years, charged at whatever the Supplier's price list says at that time, unless the Customer opts out at least 180 days ahead.",
   },
   {
     rule: "Termination for Convenience",
     heading: "Ending without cause",
     standard:
-      "The Customer may end this agreement, or any order under it, for convenience by giving 30 days' written notice. It pays only for services delivered up to the termination date and receives a refund of fees prepaid for any later period. The Supplier has no right to terminate for convenience.",
+      "Without giving any reason, the Customer may end this agreement or a single order by giving thirty days' notice in writing. It owes only for work done up to the end date and gets back anything it paid in advance for later periods. The Supplier cannot end this agreement merely because it chooses to.",
     fallback:
-      "The Customer may terminate this agreement for convenience on 90 days' written notice and will receive a pro-rata refund of any prepaid fees.",
+      "Without giving any reason, the Customer may end this agreement on ninety days' written notice and will be repaid a proportionate share of charges it paid ahead of time.",
     unacceptable:
       "The Supplier may terminate this agreement for convenience on seven days' notice. The Customer may not terminate before the end of the term, and if it does it must pay all fees for the rest of the term and forfeits any prepaid fees.",
   },
@@ -312,9 +312,9 @@ const MSA: ClauseSpec[] = [
     rule: "Termination for Cause",
     heading: "Ending for breach",
     standard:
-      "Either party may end this agreement if the other materially breaches it and fails to fix the breach within 30 days after notice, or immediately if the other becomes insolvent, to the extent the law permits. The Customer may also terminate if the Supplier repeatedly fails the service levels, suffers a serious data or security breach, comes under the control of a competitor of the Customer, or if a regulator directs it.",
+      "Either side may bring this agreement to an end if the other seriously breaches it and does not fix the problem within thirty days of being told, or straight away if the other goes insolvent, so far as the law allows. The Customer may also end it if uptime targets are missed again and again, if the Supplier suffers a grave security or privacy incident, if a rival of the Customer takes control of the Supplier, or if a regulator instructs it to.",
     fallback:
-      "Either party may terminate for a material breach not remedied within 30 days of notice or if the other party becomes insolvent, and the Customer may also terminate for chronic failure to meet the service levels.",
+      "Either side may end this agreement if the other commits a serious breach and leaves it unfixed for thirty days after being told, or if the other goes insolvent; the Customer may also end it if uptime targets are missed again and again.",
     unacceptable:
       "The Supplier may suspend or terminate the services without notice for any breach by the Customer, including non-payment of amounts the Customer disputes. The Supplier has 90 days to remedy any breach of its own, and the Customer has no right to terminate because of a data breach.",
   },
@@ -322,9 +322,9 @@ const MSA: ClauseSpec[] = [
     rule: "Transition Assistance",
     heading: "Exit",
     standard:
-      "When this agreement expires or ends for any reason, the Supplier must provide reasonable transition assistance for up to 12 months at its then-current rates, continue the services on the same terms during that period, and return all Customer data in a usable, standard format at no charge.",
+      "However this agreement ends, the Supplier must help the Customer move to a new provider for up to a year at its prevailing charges, keep the services running on unchanged terms in the meantime, and hand back every Customer record in a common, readable file format for free.",
     fallback:
-      "On termination the Supplier will provide transition assistance for up to six months at the agreed rates and, within 30 days, will export all Customer data in a standard format at no charge.",
+      "However this agreement ends, the Supplier will help with the move to a new provider for up to six months at the rates already agreed, and within a month will hand over all Customer records in a common file format for free.",
     unacceptable:
       "The Supplier will delete all Customer data immediately when this agreement ends. Any data export is available only in the Supplier's proprietary format, for an additional fee, and only once all amounts invoiced, including disputed amounts, have been paid.",
   },
@@ -334,7 +334,7 @@ const MSA: ClauseSpec[] = [
     standard:
       "The Supplier will handle Customer personal data solely as the Customer instructs in writing and to provide the services, under a data processing agreement that complies with applicable law. It will not sell the data or put it to any secondary use, such as training models, will use only approved subprocessors, will notify the Customer of any breach within 48 hours, will help the Customer respond to individuals and regulators, and will return or delete the data at the end.",
     fallback:
-      "The Supplier's standard data processing agreement applies, provided it meets the legal minimum under the governing law, requires breach notification without undue delay and prohibits any secondary use of Customer data.",
+      "The Supplier's usual processing terms will govern personal information, as long as they satisfy the minimum that local privacy law demands, require prompt reporting of any incident and bar the Supplier from putting Customer information to any other use.",
     unacceptable:
       "The Supplier acts as an independent controller of any personal data the Customer provides and may use it to train its models and for analytics it sells to third parties. The Supplier's privacy policy, as updated from time to time, applies instead of any data processing terms.",
   },
@@ -342,9 +342,9 @@ const MSA: ClauseSpec[] = [
     rule: "Processor Terms (EU/UK GDPR)",
     heading: "European processing terms",
     standard:
-      "For personal data subject to the EU or UK GDPR, the data processing agreement includes every term required by Article 28(3): processing only on documented instructions, confidentiality of personnel, Article 32 security, prior authorisation and flow-down for subprocessors, help with data subject rights and with Articles 32 to 36, deletion or return at the end, and audit and information rights. Transfers outside the EEA or UK rely on adequacy, the Standard Contractual Clauses or the UK Addendum, backed by a transfer risk assessment.",
+      "Where European or UK privacy law applies, the processing contract between the parties must contain every term that Article 28(3) lists: acting only on written instructions, keeping staff bound to secrecy, Article 32 safeguards, approving and binding any sub-processors, helping with individuals' requests and with Articles 32 to 36, erasing or handing back the information at the end, and allowing audits and supplying information. Moving that information abroad needs an adequacy finding, the Commission's model clauses or the UK addendum, backed by an assessment of the risks.",
     fallback:
-      "The Supplier's standard data processing agreement applies to EU and UK personal data if it contains every element required by Article 28(3) GDPR. The Customer gives general written authorisation for subprocessors, with 30 days' notice of any new subprocessor and a right to object, and transfers rely on an approved transfer mechanism.",
+      "The Supplier's usual processing contract may be used for European and UK information if nothing that Article 28(3) demands is missing. The Supplier may engage sub-processors under a blanket approval, but must give thirty days' warning of each new one so the Customer can object, and any transfer abroad must use a recognised legal route.",
     unacceptable:
       "The Supplier may appoint new subprocessors without notice and may transfer EU personal data to any country without a transfer mechanism. The Customer has no right to audit the Supplier's processing, and the Supplier may process the data for its own purposes.",
   },
@@ -352,9 +352,9 @@ const MSA: ClauseSpec[] = [
     rule: "Privacy Act Compliance (AU)",
     heading: "Australian privacy",
     standard:
-      "When it handles Customer personal information, the Supplier must meet the Australian Privacy Principles to the same standard as an APP entity, use the information only for the services, not disclose it outside Australia without the Customer's consent and safeguards meeting APP 8, notify any suspected eligible data breach within 48 hours, and return or destroy the information at the end.",
+      "For any personal information it holds for the Customer, the Supplier must follow the Australian Privacy Principles just as a regulated organisation would, use it solely to deliver the services, keep it within Australia unless the Customer agrees and the APP 8 protections are in place, report within two days any incident that may be a notifiable breach, and hand it back or wipe it when the agreement ends.",
     fallback:
-      "The Supplier will comply with the Australian Privacy Principles, notify the Customer of any data breach without undue delay and in any case within 72 hours, and disclose personal information overseas only to the locations listed in Schedule 4.",
+      "The Supplier will follow the Australian Privacy Principles, tell the Customer about any privacy incident promptly and never later than three days after learning of it, and send personal information abroad only to the countries named in Schedule 4.",
     unacceptable:
       "The Supplier relies on the small business exemption under the Privacy Act and accepts no obligations in relation to personal information, which it may store or access from any country and use for direct marketing.",
   },
@@ -362,7 +362,7 @@ const MSA: ClauseSpec[] = [
     rule: "Information Security",
     heading: "Security",
     standard:
-      "The Supplier must maintain a written information security programme certified to ISO/IEC 27001 or reported under SOC 2 Type II, encrypt Customer data both when stored and when transmitted, apply least-privilege access and multi-factor authentication, carry out penetration tests every year and share summaries of the results, notify security incidents within 48 hours, and not reduce its security during the term.",
+      "The Supplier must run a documented security programme certified under ISO/IEC 27001 or covered by a SOC 2 Type II report, encrypt Customer data both when stored and when transmitted, give each person only the access their job needs and require a second login factor, commission an external attack test every year and share a summary of what it found, report any incident within two days, and never weaken these protections while this agreement lasts.",
     fallback:
       "The Supplier will maintain its current ISO/IEC 27001 certification throughout the term and will supply its annual certification and audit report to the Customer on request.",
     unacceptable:
@@ -372,9 +372,9 @@ const MSA: ClauseSpec[] = [
     rule: "Audit Rights",
     heading: "Inspections",
     standard:
-      "The Customer, and any regulator of the Customer, may inspect whether the Supplier is complying with this agreement, including its security and data protection, once a year on reasonable notice and at any time after an incident or regulatory request. Each party bears its own costs, and the Supplier must fix any non-compliance at its own cost.",
+      "Once a year on fair warning, and at any time after an incident or a request from a regulator, the Customer or any authority that oversees it may inspect whether the Supplier is keeping to this agreement, its security and privacy terms included. Each side pays its own way, and the Supplier must put right any shortcoming at its own expense.",
     fallback:
-      "Once a year, on 30 days' notice, the Customer may audit the Supplier's records and systems relevant to the services, and current independent certifications will satisfy routine audits.",
+      "The Customer may inspect the Supplier's books and systems that relate to the services once in any year, after giving thirty days' warning; in a normal year, up-to-date independent certificates will be enough.",
     unacceptable:
       "The Customer has no right to audit the Supplier, and the Supplier will not give access to any regulator of the Customer.",
   },
@@ -382,19 +382,19 @@ const MSA: ClauseSpec[] = [
     rule: "Subcontracting",
     heading: "Use of third parties",
     standard:
-      "The Supplier may subcontract any part of the services only with the Customer's prior written consent. It remains fully responsible for its subcontractors and must impose on them all relevant obligations in this agreement, including those on confidentiality, security and data protection.",
+      "No part of the services may be handed to another firm unless the Customer has first agreed in writing. The Supplier answers for any such firm as if it had done the work itself, and must bind it to every relevant duty here, secrecy, security and privacy included.",
     fallback:
-      "The Supplier may use the subcontractors listed in Schedule 5 and must notify the Customer of any new material subcontractor. The Customer may object on reasonable grounds and, if the objection is not resolved, terminate the affected services without penalty.",
+      "The Supplier may use the firms named in Schedule 5 and must tell the Customer before bringing in any other significant one. If the Customer raises a reasonable objection that cannot be settled, it may end the affected services with no penalty.",
     unacceptable:
-      "The Supplier may subcontract any of its obligations to anyone without notice, is not responsible for the acts of its subcontractors or its hosting providers, and need not bind them to any obligations equivalent to these.",
+      "The Supplier may hand any of its work to any other firm without telling the Customer, does not answer for what those firms or its hosting companies do, and need not hold them to duties like the ones here.",
   },
   {
     rule: "Insurance",
     heading: "Cover",
     standard:
-      "For the term and a reasonable run-off period afterwards, the Supplier must hold professional indemnity or technology errors and omissions insurance, cyber insurance, public and product liability insurance, and statutory workers' compensation cover, each with reputable insurers and limits appropriate to this agreement, and must provide certificates of currency on request.",
+      "While this agreement lasts and for a sensible period afterwards, the Supplier must carry professional negligence (or technology errors) cover, cyber cover, cover for injury and damage to third parties and from its products, and the employee injury cover the law requires, each placed with sound insurers and sized for this deal, and must show proof of cover when asked.",
     fallback:
-      "The Supplier will hold professional indemnity and cyber insurance with limits at least equal to the liability cap and the data breach cap, and will provide certificates on request.",
+      "The Supplier will carry professional negligence and cyber cover for no less than the general cap and the separate data breach cap, and will show proof of cover when asked.",
     unacceptable:
       "The Supplier is not required to hold any insurance. If it does hold insurance, the limits of that cover are the most it is liable to pay, and it may cancel the cover without telling the Customer.",
   },
@@ -402,9 +402,9 @@ const MSA: ClauseSpec[] = [
     rule: "Confidentiality and Publicity",
     heading: "Secrecy and announcements",
     standard:
-      "Each party must keep the other's non-public information secret while this agreement runs and for five years after it ends, with no time limit for trade secrets and personal data. Also, neither party will use the other's name or logo, or announce this relationship, unless the other has first agreed in writing.",
+      "Each side must keep the other's unpublished information to itself while this agreement runs and for five years afterwards, and must protect trade secrets and details about individuals forever. Neither side may mention the other in publicity, show its branding or reveal that they work together unless it has first obtained written permission.",
     fallback:
-      "Each party will treat the other's confidential information as secret while this agreement runs and for three years after it ends, with no time limit for trade secrets and personal data, subject to the usual exceptions and a right to keep copies in routine backups.",
+      "Each side will keep the other's private material to itself while this agreement runs and for three years afterwards, and forever for trade secrets and details about individuals, apart from the normal carve-outs and copies held in routine backups.",
     unacceptable:
       "Only the Supplier's confidential information is protected, and that protection ends when this agreement ends. The Supplier may name the Customer as a client, use its logo and publish case studies about the services without consent.",
   },
@@ -422,19 +422,19 @@ const MSA: ClauseSpec[] = [
     rule: "Assignment and Change of Control",
     heading: "Transfers and ownership changes",
     standard:
-      "The Supplier may not assign, novate or otherwise transfer this agreement unless the Customer first consents in writing. The Customer may transfer it to an affiliate or a successor by giving notice. If control of the Supplier changes, and in particular if a competitor of the Customer acquires it, the Customer may terminate without penalty.",
+      "The Supplier may not pass this agreement, or any part of it, to anyone else unless the Customer first agrees in writing, whereas the Customer may hand it to a group company or to whoever takes over its business by giving notice. If someone new gains control of the Supplier, above all a rival of the Customer, the Customer may end this agreement without any charge.",
     fallback:
-      "Neither party may assign this agreement without the other's consent, which must not be unreasonably withheld. The Customer may terminate without penalty if control of the Supplier changes.",
+      "Each side needs the other's agreement to pass this agreement on, which may not be refused without good reason, and if someone new gains control of the Supplier the Customer may end it without any charge.",
     unacceptable:
-      "The Supplier may assign this agreement to any person without consent. The Customer may not assign it, including within its group, and has no right to terminate if the Supplier is acquired by one of its competitors.",
+      "The Supplier may pass this agreement to whoever it likes without asking. The Customer may never pass it on, not even to another company in its group, and must stay bound even if one of its rivals buys the Supplier.",
   },
   {
     rule: "Force Majeure",
     heading: "Events outside a party's control",
     standard:
-      "A party is excused from performing only while an event outside its reasonable control prevents it, and only if reasonable precautions, including following its business continuity and disaster recovery plans, could not have avoided the event. It must notify the other promptly and mitigate the effects, fees for affected services are suspended, and the Customer may terminate if the event lasts more than 30 days.",
+      "A party is excused only for as long as something outside its control stops it performing, and only if sensible precautions, including following its continuity and recovery plans, could not have avoided the problem. It must tell the other side at once and do what it can to limit the damage; charges for services not delivered are paused, and the Customer may end this agreement if the disruption lasts beyond thirty days.",
     fallback:
-      "Neither party is liable for delay caused by events beyond its reasonable control. Fees are not payable for services not provided, and either party may terminate if the event continues for more than 60 days.",
+      "A delay caused by something neither side could reasonably control gives no claim; no charges are due for services that could not be supplied, and either side may walk away once the disruption has lasted sixty days.",
     unacceptable:
       "Force majeure includes failures of the Supplier's subcontractors, cyber attacks of any kind and strikes by the Supplier's own staff. During such an event the Customer must keep paying the fees in full, the Supplier is relieved of its business continuity obligations, and there is no right to terminate however long the event lasts.",
   },
@@ -444,9 +444,9 @@ const MSA: ClauseSpec[] = [
     standard:
       "Nothing in this agreement prevents the Customer from soliciting or hiring any member of the Supplier's personnel.",
     fallback:
-      "During the term and for six months afterwards, neither party will actively solicit personnel of the other who were directly involved in the services, but general advertisements and unsolicited approaches are not restricted.",
+      "While this agreement lasts and for six months afterwards, neither side will set out to recruit people of the other who worked on the services, although public job adverts and approaches made by the person unprompted are allowed.",
     unacceptable:
-      "During the term and for two years afterwards, the Customer must not hire any employee of the Supplier, including people who apply on their own initiative, and must pay a placement fee of 50% of first-year salary for any person hired in breach.",
+      "Until two years after this agreement ends, the Customer may not take on anyone employed by the Supplier, even someone who applies unprompted, and owes a recruitment charge of half that person's first-year pay for each breach.",
   },
 ];
 
