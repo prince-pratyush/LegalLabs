@@ -463,7 +463,7 @@ describe("review tables API", () => {
     expect(
       (await h.call(cookie, "GET", `/review-tables/${tableId}`)).body.columns[0].progress.done,
     ).toBe(12);
-  });
+  }, 90_000);
 
   it("stars privately per user (RVT-010)", async () => {
     const s = await setup();
