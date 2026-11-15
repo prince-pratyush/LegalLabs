@@ -8,6 +8,7 @@ from legallabs_eval.harnesses.playbook_node import PlaybookNodeHarness
 from legallabs_eval.registry import HARNESSES, SUITES
 from legallabs_eval.runner import Runner
 from legallabs_eval.schemas import HarnessError, HarnessRequest, NonRetryableError, TaskDatum
+from legallabs_eval.suites.playbook_labels import accepted
 from legallabs_eval.suites.playbook_review import PlaybookReview, grade_outcome
 
 FIXTURES = Path(__file__).parent / "fixtures" / "playbook"
@@ -52,25 +53,82 @@ def suite() -> PlaybookReview:
 def test_grade_counts_statuses_gaps_evidence_and_ooxml():
     gold = suite().load_tasks()[0].answer
     m = grade_outcome(gold, recorded("nda"))
-    assert (m["status_correct"], m["status_total"]) == (3, 4)
+    # Mutuality is relabelled: the planted non-compete makes the NDA one-sided.
+    assert (m["status_correct"], m["status_strict_correct"], m["status_total"]) == (2, 3, 4)
+    assert m["status_wrong_unverified"] == 1  # Residuals, downgraded by the verifier
+    assert m["status_wrong_misclassified"] == 1  # Mutuality called acceptable
+    assert m["variant.fallback.correct"] == 1
     assert m["confusion.not_acceptable.needs_review"] == 1
     assert m["gap_recall"] == 1.0
-    # The catch-all gap still counts for recall, but not as the model's own find.
-    assert m["gaps_existing_edit_found"] == 2
-    assert m["gaps_existing_edit_found_by_model"] == 1
+    # The guard's gap counts for the system, not as the model's own find.
+    assert (m["gaps_existing_edit_found"], m["gaps_existing_edit_found_by_model"]) == (2, 1)
+    assert (m["gaps_reported_matching"], m["gaps_reported"]) == (3, 3)
     assert (m["evidence_ok"], m["evidence_total"]) == (2, 3)
     assert (m["ooxml_valid"], m["ooxml_applied"], m["ooxml_anchor_failed"]) == (1, 1, 1)
-    assert m["seconds_per_40_pages"] == pytest.approx(1600)
     assert m["model_calls"] == 7
+
+
+def test_a_gap_of_the_wrong_kind_does_not_count():
+    gold = suite().load_tasks()[0].answer
+    run = recorded("nda")
+    # The model flags the edited paragraph as an uncovered clause, not as the edit.
+    run["outcome"]["gaps"][1]["kind"] = "uncovered_clause"
+    m = grade_outcome(gold, run)
+    assert m["gaps_existing_edit_found_by_model"] == 0
+    assert m["gaps_existing_edit_found"] == 1
+    assert (m["gaps_reported_by_model_matching"], m["gaps_reported_by_model"]) == (1, 2)
 
 
 def test_a_missing_finding_counts_as_wrong():
     gold = suite().load_tasks()[0].answer
     run = recorded("nda")
-    run["outcome"]["results"] = run["outcome"]["results"][:1]
+    run["outcome"]["results"] = run["outcome"]["results"][3:]
     m = grade_outcome(gold, run)
     assert (m["status_correct"], m["status_total"]) == (1, 4)
     assert m["confusion.not_found.missing"] == 1
+
+
+def contract(template, rules, injected=()):
+    return {
+        "template": template,
+        "rules": [{"rule": r, "variant": v, "status": GOLD[v]} for r, v in rules],
+        "injected": [{"key": k, "kind": kind} for k, kind in injected],
+    }
+
+
+GOLD = {
+    "standard": "acceptable",
+    "fallback": "acceptable",
+    "unacceptable": "not_acceptable",
+    "omitted": "not_found",
+}
+
+
+def test_accepted_labels():
+    nda = accepted(contract("nda", [("Residuals", "omitted"), ("Mutuality", "standard")]))
+    assert nda["Residuals"][0] == {"not_found", "acceptable"}
+    # No one-sided term anywhere: a mutual clause is simply acceptable.
+    assert nda["Mutuality"][0] == {"acceptable"}
+    lopsided = accepted(
+        contract("nda", [("Mutuality", "omitted")], [("first_refusal", "uncovered_clause")])
+    )
+    assert lopsided["Mutuality"][0] == {"not_found", "needs_review", "not_acceptable"}
+    msa = accepted(
+        contract(
+            "msa",
+            [
+                ("Data Protection", "fallback"),
+                ("Privacy Act Compliance (AU)", "omitted"),
+                ("Payment Terms", "standard"),
+                ("Warranties", "fallback"),
+            ],
+            [("minimum_commitment", "uncovered_clause")],
+        )
+    )
+    assert msa["Data Protection"][0] == {"acceptable", "needs_review"}  # flagged rule
+    assert msa["Privacy Act Compliance (AU)"][0] == {"not_found", "needs_review"}
+    assert msa["Payment Terms"][0] == {"acceptable", "needs_review", "not_acceptable"}
+    assert msa["Warranties"][0] == {"acceptable"}
 
 
 def test_run_pools_contracts_and_applies_gates(tmp_path):
@@ -82,29 +140,43 @@ def test_run_pools_contracts_and_applies_gates(tmp_path):
     report = summary["report"]
 
     assert summary["completed_tasks"] == 2
-    assert report["playbook.rule_classification_accuracy"]["rate"] == pytest.approx(4 / 5)
+    accuracy = report["playbook.rule_classification_accuracy"]
+    assert (accuracy["hits"], accuracy["n"]) == (3, 5)
+    assert accuracy["strict"]["hits"] == 4
+    assert accuracy["by_variant"]["omitted"]["rate"] == 1.0
+    low, high = accuracy["bootstrap95_over_contracts"]
+    assert low <= 0.6 <= high
     recall = report["playbook.unanticipated_edit_detection_recall"]
-    assert (recall["rate"], recall["n"]) == (0.75, 4)
-    assert recall["uncovered_clause"]["rate"] == 0.5
-    assert recall["existing_edit_by_model"]["rate"] == 0.5
+    assert (recall["system"]["hits"], recall["system"]["n"]) == (3, 4)
+    assert recall["model_only"]["hits"] == 2
+    assert recall["system"]["uncovered_clause"]["rate"] == 0.5
+    assert recall["model_only"]["existing_edit"]["rate"] == 0.5
     assert report["playbook.evidence_verification_rate"]["rate"] == pytest.approx(2 / 3)
     assert report["playbook.ooxml_validity_rate"]["rate"] == 1.0
     assert report["playbook.ooxml_validity_rate"]["anchor_failed"] == 1
-    assert report["latency"]["seconds_per_40_pages_p50"] == pytest.approx(920)
-    assert report["latency"]["wall_seconds_p50_at_35_pages_or_more"] == 240
-    assert report["confusion"]["acceptable"] == {"acceptable": 3}
+    # Only the 40-page contract counts for the latency gate.
+    assert report["latency"]["long_contract_wall_seconds_p50"] == 240
+    assert [c["wall_seconds"] for c in report["latency"]["per_contract"]] == [120, 240]
     assert report["gate"]["checks"] == {
-        "status_accuracy": True,
+        "status_accuracy": False,
         "gap_recall": False,
         "evidence_verification": False,
         "ooxml_validity": True,
-        "latency": False,
+        "latency": True,
     }
     assert report["gate"]["pass"] is False
     # Local models cost nothing, but their tokens are still counted.
     assert summary["cost"]["total_cost_usd"] == 0.0
     assert report["tokens"]["input"] == 40_000
     assert calls[0][4:8] == ["--template", "nda", "--client", "ollama"]
+
+
+def test_latency_without_a_long_contract_is_not_measured(tmp_path):
+    system = {"harness": "playbook-node", "params": {"client": "ollama"}}
+    harness = PlaybookNodeHarness("p", system, run=player([]))
+    summary = Runner("p", system, harness, suite(), tmp_path, "", 1, retry_delay=0).run(limit=1)
+    assert summary["report"]["latency"]["long_contract_wall_seconds_p50"] == "not measured"
+    assert summary["report"]["gate"]["checks"]["latency"] is None
 
 
 def test_paid_clients_are_priced_and_need_their_key(tmp_path, monkeypatch):
