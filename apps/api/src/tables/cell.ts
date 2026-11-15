@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
   type CitationStatus,
-  locateQuote,
   type Sources,
   verifyCitation,
 } from "@legallabs/citations";
