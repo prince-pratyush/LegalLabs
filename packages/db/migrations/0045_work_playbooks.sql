@@ -9,14 +9,20 @@ create table work.playbook (
   name text not null check (char_length(name) between 1 and 200),
   contract_type text not null check (char_length(contract_type) between 1 and 100),
   status text not null default 'unpublished' check (status in ('published', 'unpublished')),
+  -- The latest saved version, which editors work on.
   version_id uuid not null,
+  -- What readers and reviews get: moved only by publishing, so an edit after publishing
+  -- stays a draft until an approver publishes it again.
+  published_version_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  -- Kept, not deleted, so reviews that ran against a version still find it.
+  -- Soft, for the audit trail. Reviews keep their own copy of the rules they ran against,
+  -- so they never need a deleted playbook's versions.
   deleted_at timestamptz,
   deleted_by uuid,
   unique (workspace_id, id),
   check ((deleted_at is null) = (deleted_by is null)),
+  check ((status = 'published') = (published_version_id is not null)),
   foreign key (workspace_id, owner_id) references core."user" (workspace_id, id),
   foreign key (workspace_id, deleted_by) references core."user" (workspace_id, id)
 );
@@ -56,7 +62,9 @@ create table work.playbook_version (
 -- Checked at commit, so a playbook and its first version can be written in one transaction.
 alter table work.playbook
   add foreign key (id, version_id) references work.playbook_version (playbook_id, id)
-    deferrable initially deferred;
+    deferrable initially deferred,
+  add foreign key (id, published_version_id)
+    references work.playbook_version (playbook_id, id);
 
 create table work.playbook_grant (
   workspace_id uuid not null,
@@ -88,15 +96,11 @@ grant select on work.playbook, work.playbook_grant to legallabs_definer;
 create policy definer_read on work.playbook for select to legallabs_definer using (true);
 create policy definer_read on work.playbook_grant for select to legallabs_definer using (true);
 
--- The caller's level on a playbook: manage, edit, view or null (not visible).
---   * playbooks.manage (approver) manages every playbook in the workspace.
---   * The owner edits while they hold playbooks.create, but does not publish their own:
---     an approver does (author/approver split), unless the owner is also an approver.
---   * Grants to the user or a group they are in give that level.
---   * Visibility rule: an unpublished playbook is seen only at edit or manage. Once
---     published, every member with playbooks.use can view it, unless it has any `view`
---     grant: then view grants name its audience and only they (plus edit/manage) see it.
--- Guests never reach playbooks directly; Spaces will add their own path.
+-- The caller's level on a playbook: manage, edit, view or null (not visible). One place for
+-- the rule so every policy agrees. Grants count only with playbooks.use, so taking that
+-- permission away always cuts access. An owner edits but can't publish their own (authors
+-- draft, approvers publish). A published playbook is open to everyone with playbooks.use,
+-- unless it has a view grant: one view grant narrows it to the grantees. Guests never.
 create function work.playbook_level(p_playbook uuid) returns text
 language sql stable security definer set search_path = '' as $$
   with p as (
@@ -115,8 +119,8 @@ language sql stable security definer set search_path = '' as $$
   )
   select case
     when core.has_permission('playbooks.manage') then 'manage'
-    when (select rank from granted) >= 4 then 'manage'
-    when (select rank from granted) >= 3 then 'edit'
+    when (select rank from granted) >= 4 and core.has_permission('playbooks.use') then 'manage'
+    when (select rank from granted) >= 3 and core.has_permission('playbooks.use') then 'edit'
     when p.owner_id = core.current_user_id() and core.has_permission('playbooks.create')
       then 'edit'
     when p.status <> 'published' then null
@@ -134,7 +138,9 @@ grant execute on function work.playbook_level(uuid) to legallabs_app, legallabs_
 create function work.playbook_guard() returns trigger
 language plpgsql set search_path = '' as $$
 begin
-  if (new.status <> old.status or new.deleted_at is distinct from old.deleted_at)
+  if (new.status <> old.status
+      or new.published_version_id is distinct from old.published_version_id
+      or new.deleted_at is distinct from old.deleted_at)
      and work.playbook_level(old.id) is distinct from 'manage' then
     raise exception 'publishing or deleting a playbook needs manage' using errcode = '42501';
   end if;
@@ -149,7 +155,8 @@ create trigger playbook_guard before update on work.playbook
   for each row execute function work.playbook_guard();
 
 grant select, insert on work.playbook to legallabs_app;
-grant update (name, contract_type, status, version_id, owner_id, updated_at)
+grant update (name, contract_type, status, version_id, published_version_id, owner_id,
+              updated_at)
   on work.playbook to legallabs_app;
 create policy playbook_read on work.playbook for select to legallabs_app
   using (core.in_tenant(workspace_id) and deleted_at is null
@@ -159,6 +166,7 @@ create policy playbook_insert on work.playbook for insert to legallabs_app
   with check (core.in_tenant(workspace_id)
               and owner_id = core.current_user_id()
               and status = 'unpublished'
+              and published_version_id is null
               and deleted_at is null
               and core.has_permission('playbooks.create'));
 create policy playbook_update on work.playbook for update to legallabs_app
@@ -184,9 +192,13 @@ alter function work.delete_playbook(uuid) owner to legallabs_definer;
 grant execute on function work.delete_playbook(uuid) to legallabs_app;
 
 grant select, insert on work.playbook_version to legallabs_app;
+-- Editors see every version; readers only the published one, never a draft.
 create policy playbook_version_read on work.playbook_version for select to legallabs_app
   using (core.in_tenant(workspace_id)
-         and exists (select 1 from work.playbook p where p.id = playbook_id));
+         and (work.playbook_level(playbook_id) in ('edit', 'manage')
+              or exists (select 1 from work.playbook p
+                          where p.id = playbook_version.playbook_id
+                            and p.published_version_id = playbook_version.id)));
 -- The playbook row is written first, so even a new playbook's first version is checked here.
 create policy playbook_version_insert on work.playbook_version for insert to legallabs_app
   with check (core.in_tenant(workspace_id)
