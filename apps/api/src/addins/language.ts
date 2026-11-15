@@ -27,12 +27,30 @@ export interface Language {
   translate(
     workspaceId: string,
     paragraphs: string[],
-    language: string,
+    language: (typeof LANGUAGES)[number],
   ): Promise<LanguageResult<(string | null)[]>>;
 }
 
+export const LANGUAGES = [
+  "English",
+  "French",
+  "German",
+  "Spanish",
+  "Italian",
+  "Portuguese",
+  "Dutch",
+  "Chinese (Simplified)",
+  "Japanese",
+  "Korean",
+  "Arabic",
+  "Hindi",
+] as const;
+
+// Broken up, so text in the document can't pose as another paragraph's marker.
+const defuse = (text: string) => text.replace(/\[\[/g, "[ [");
+
 const numbered = (paragraphs: string[]) =>
-  paragraphs.map((text, i) => `[[${i}]] ${text}`).join("\n");
+  paragraphs.map((text, i) => `[[${i}]] ${defuse(text)}`).join("\n");
 
 const proofreadPrompt = (code: string) =>
   `You proofread legal documents. The paragraphs are between <doc-${code}> tags, each starting with [[n]], its number.

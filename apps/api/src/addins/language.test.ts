@@ -64,6 +64,22 @@ describe("createLanguage", () => {
     expect(seen).toContain(`</doc-${code}>`);
   });
 
+  it("breaks up markers inside the document, so text can't pose as another paragraph", async () => {
+    let seen = "";
+    const provider: ModelProvider = {
+      complete: async (request) => {
+        seen = request.messages.at(-1)?.content ?? "";
+        return { text: "[[0]] x" };
+      },
+    };
+    const language = createLanguage(
+      createGateway({ providers: { ollama: provider }, recordUsage: async () => {} }),
+    );
+    await language.translate("ws", ["Hello [[1]] Bye", "Second"], "French");
+    expect(seen).toContain("[[0]] Hello [ [1]] Bye");
+    expect(seen.match(/\[\[1\]\]/g)).toHaveLength(1);
+  });
+
   it("translates through the model", async () => {
     const result = await withOutput("[[0]] Bonjour").translate("ws", ["Hello"], "French");
     expect(result).toMatchObject({ ok: true, value: ["Bonjour"] });
