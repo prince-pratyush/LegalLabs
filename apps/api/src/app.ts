@@ -233,7 +233,7 @@ export function createApp({
     now,
   });
   // Before threads, so a table run's cancel is handled here and a thread run's falls through.
-  if (tables) app.route("/api/v1", tableHttp({ ...tables, clientOf }));
+  if (tables) app.route("/api/v1", tableHttp({ ...tables, clientOf, asks }));
   app.route("/api/v1", threadHttp({ ...threads, asks, clientOf, now }));
   app.route("/api/v1", draftHttp(drafts, clientOf));
   if (vaults) {

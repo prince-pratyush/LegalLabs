@@ -34,7 +34,35 @@ const sentences = (text: string) => text.split(/(?<=\.)\s+/);
  * Stands in for the model: answers from the passages it was shown, quoting the sentence that
  * holds the answer, the way a good model would. "Termination fee" is never in the documents.
  */
+// What the Column Builder model proposes: 35 columns, one of them invalid, so the cap and the
+// schema check both have something to do.
+const PROPOSALS = JSON.stringify({
+  columns: [
+    { label: "Effective date", type: "date", prompt: "When is it dated?", options: {} },
+    { label: "Commitments", type: "currency", prompt: "What are the commitments?", options: {} },
+    {
+      label: "Governing law",
+      type: "classify",
+      prompt: "Which law governs?",
+      options: {
+        options: [
+          { id: "ny", label: "New York", color: "blue" },
+          { id: "ew", label: "England and Wales", color: "purple" },
+        ],
+      },
+    },
+    { label: "Broken", type: "classify", prompt: "No options", options: { options: [] } },
+    ...Array.from({ length: 31 }, (_, i) => ({
+      label: `Term ${i + 1}`,
+      type: "free",
+      prompt: `What is term ${i + 1}?`,
+      options: {},
+    })),
+  ],
+});
+
 function fakeModel(messages: readonly Message[]): string {
+  if (messages[0]?.content.startsWith("You design review tables")) return PROPOSALS;
   const user = messages.find((m) => m.role === "user")?.content ?? "";
   const label = /Column: (.+)/.exec(user)?.[1] ?? "";
   const passages = [
@@ -72,7 +100,7 @@ function fakeModel(messages: readonly Message[]): string {
   });
 }
 
-function harness() {
+function harness(options: { asks?: number } = {}) {
   const store = createMemoryStore();
   const documents = testDocuments(pool, { store });
   const gateway = createGateway({
@@ -92,7 +120,11 @@ function harness() {
   const app = createApp({
     auth: createAuth(pool),
     documents,
-    threads: { ...testThreads(pool, documents), log },
+    threads: {
+      ...testThreads(pool, documents),
+      log,
+      ...(options.asks ? { asksPerWindow: options.asks } : {}),
+    },
     drafts: createDrafts(pool, { gateway }),
     vaults: createVaults(pool, { documents, store }),
     tables,
@@ -183,8 +215,8 @@ const LAW = {
 };
 const FEE = { label: "Termination fee", type: "currency", prompt: "What is the termination fee?" };
 
-async function setup() {
-  const h = harness();
+async function setup(options: { asks?: number } = {}) {
+  const h = harness(options);
   const m = await seedMember(pool);
   const cookie = await h.signIn(m);
   const v = await h.vault(cookie, { "credit.txt": CREDIT, "lease.txt": LEASE });
@@ -548,5 +580,25 @@ describe("review tables API", () => {
       format: "csv",
     });
     expect(res).toMatchObject({ status: 403, body: { code: "EXPORT_DISABLED_BY_SOURCE" } });
+  });
+
+  it("proposes at most 30 schema-valid columns and spends an ask each time", async () => {
+    const s = await setup({ asks: 2 });
+    const generate = () =>
+      s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/columns/generate`, {
+        description: "lender-side credit agreement terms",
+        max_columns: 30,
+      });
+    const res = await generate();
+    expect(res.status).toBe(200);
+    const proposals = res.body.proposals as { type: string; label: string }[];
+    expect(proposals).toHaveLength(30);
+    expect(proposals.map((p) => p.label)).not.toContain("Broken");
+    expect(new Set(proposals.map((p) => p.type))).toEqual(
+      new Set(["date", "currency", "classify", "free"]),
+    );
+    expect((await generate()).status).toBe(200);
+    const limited = await generate();
+    expect(limited).toMatchObject({ status: 429, body: { code: "TOO_MANY_REQUESTS" } });
   });
 });

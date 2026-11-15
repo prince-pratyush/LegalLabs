@@ -21,6 +21,7 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
+import type { Limiter } from "../auth/limiter.js";
 import type { Cells } from "./cells.js";
 import type { Exports } from "./export.js";
 import type { Runner } from "./runner.js";
@@ -34,6 +35,8 @@ export interface TableHttpOptions {
   exports: Exports;
   runner: Runner;
   clientOf: (c: Context) => Client;
+  /** The same budget of model calls as thread questions and playbook drafting. */
+  asks?: Limiter;
 }
 
 const STATUS: Record<TableErrorCode, 400 | 403 | 404 | 409 | 502> = {
@@ -86,7 +89,7 @@ const offsetOf = (cursor: string | undefined) => {
   return Number.isInteger(n) && n >= 0 ? n : null;
 };
 
-export function tableHttp({ tables, cells, exports, runner, clientOf }: TableHttpOptions) {
+export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: TableHttpOptions) {
   const app = new Hono<Env>();
   const limit = bodyLimit({ maxSize: 1024 * 1024, onError: (c) => invalid(c) });
   const p = (c: Context<Env>) => c.get("principal");
@@ -188,6 +191,15 @@ export function tableHttp({ tables, cells, exports, runner, clientOf }: TableHtt
   app.post("/review-tables/:id/columns/generate", limit, async (c) => {
     const parsed = await body(c, GenerateColumnsBody);
     if (!parsed) return invalid(c);
+    // Checked after the body is valid, so a malformed request doesn't use up an ask.
+    const wait = asks?.take(p(c).userId) ?? 0;
+    if (wait > 0) {
+      c.header("Retry-After", String(wait));
+      return c.json(
+        { code: "TOO_MANY_REQUESTS", message: "You've asked a lot just now. Try again shortly." },
+        429,
+      );
+    }
     return send(
       c,
       await cells.generate(p(c), c.req.param("id"), parsed.description, parsed.max_columns),
