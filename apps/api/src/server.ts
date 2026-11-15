@@ -7,6 +7,8 @@ import { createIngest, type Scanner, scannerFromEnv } from "@legallabs/ingest";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
+import { createSignInAudit } from "./addins/audit.js";
+import { createLanguage } from "./addins/language.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
@@ -17,6 +19,8 @@ import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
+import { createLibrary } from "./library/library.js";
+import { createTemplatePort } from "./library/port.js";
 import { createRunLog } from "./runs/log.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
@@ -89,6 +93,8 @@ const gateway = createGateway({
 // The web app's build, when present, so the demo runs from one server on one origin.
 const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
+// The Word add-in's pane, served under /addin/ when built.
+const addinRoot = fileURLToPath(new URL("../../word-addin/dist", import.meta.url));
 const log = createRunLog(pool);
 // Runs live in this process, so any left unfinished by the last one can never finish.
 // One API process per database for now; several would need a lease per run.
@@ -115,10 +121,16 @@ const app = createApp({
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
   viewer: createViewer(pool, store, documents),
-  drafts: createDrafts(pool, { gateway }),
+  drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
+  library: createLibrary(pool),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
+  addin: {
+    language: createLanguage(gateway),
+    recordSignIn: createSignInAudit(pool),
+    ...(existsSync(addinRoot) ? { root: addinRoot } : {}),
+  },
 });
 
 serve({

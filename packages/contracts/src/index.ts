@@ -2,6 +2,19 @@ export { AuditAction, AuditActorType, auditActions } from "./audit.js";
 export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
 export {
+  ExportFormat,
+  fillPrompt,
+  LIBRARY_LIMITS,
+  LibraryGrant,
+  LibraryLevel,
+  PromptInput,
+  promptVariables,
+  type ResolvedTemplate,
+  TemplateChoice,
+  TemplateFields,
+  type TemplatePort,
+} from "./library.js";
+export {
   Action,
   Alternate,
   ApplyAllRequest,
@@ -66,6 +79,7 @@ export {
   RunKind,
   RunStatus,
 } from "./run.js";
+export { STARTERS, StarterPlaybook, starterPlaybook } from "./starters.js";
 export {
   type AuthorityPassage,
   type Caller,

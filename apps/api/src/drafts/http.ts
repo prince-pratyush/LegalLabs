@@ -1,3 +1,4 @@
+import { ExportFormat, TemplateChoice } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
@@ -145,21 +146,30 @@ export function draftHttp(drafts: Drafts, clientOf: (c: Context) => Client) {
   app.get("/drafts/:id/export", async (c) => {
     const raw = c.req.query("tracked_from");
     const tracked = raw === undefined ? null : versionNo.safeParse(raw);
-    if (tracked && !tracked.success) return invalid(c);
+    const format = ExportFormat.safeParse(c.req.query("format") ?? "docx");
+    const template = TemplateChoice.safeParse(c.req.query("template") ?? "default");
+    if ((tracked && !tracked.success) || !format.success || !template.success) return invalid(c);
+    if (tracked && format.data === "pdf") return invalid(c);
     const file = await drafts.export(
       c.get("principal"),
       c.req.param("id"),
-      tracked?.success ? { trackedFrom: tracked.data } : {},
+      {
+        ...(tracked?.success ? { trackedFrom: tracked.data } : {}),
+        format: format.data,
+        template: template.data,
+      },
       clientOf(c),
     );
     if (!file) return notFound(c);
     c.header(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      file.format === "pdf"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );
     c.header(
       "Content-Disposition",
-      `attachment; filename="draft.docx"; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+      `attachment; filename="draft.${file.format}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
     );
     return c.body(file.bytes.slice().buffer as ArrayBuffer);
   });
