@@ -89,6 +89,10 @@ function fixture(
   );
 }
 
+const setPart = (name: string, value: string | Uint8Array) => (parts: Parts) => {
+  parts[name] = value;
+};
+
 const OPTS = { author: "Counsel", date: "2026-11-15T10:00:00Z" };
 
 function parse(xml: string) {
@@ -407,7 +411,7 @@ describe("patchDocx", () => {
 
   it("keeps revision ids unique when a run with w:rPrChange is split", () => {
     const body =
-      "<w:p><w:r><w:rPr><w:b/><w:rPrChange w:id='900' w:author=\"X\" w:date=\"2026-01-01T00:00:00Z\"><w:rPr/></w:rPrChange></w:rPr><w:t>Alpha beta gamma</w:t></w:r></w:p>";
+      '<w:p><w:r><w:rPr><w:b/><w:rPrChange w:id=\'900\' w:author="X" w:date="2026-01-01T00:00:00Z"><w:rPr/></w:rPrChange></w:rPr><w:t>Alpha beta gamma</w:t></w:r></w:p>';
     const result = patchDocx(
       fixture({ body }),
       [replace({ paragraph_index: 0, before: "beta", after: "delta" })],
@@ -494,7 +498,9 @@ describe("untrusted packages", () => {
   };
 
   it("refuses a part that inflates past the limit without inflating it", () => {
-    const bomb = fixture({ edit: (parts) => void (parts["word/media/big.bin"] = new Uint8Array(21 * 1024 * 1024)) });
+    const bomb = fixture({
+      edit: setPart("word/media/big.bin", new Uint8Array(21 * 1024 * 1024)),
+    });
     expect(bomb.length).toBeLessThan(1024 * 1024);
     expect(failure(bomb)).toBe("TOO_LARGE");
     expect(() => readDocx(bomb)).toThrow(expect.objectContaining({ code: "TOO_LARGE" }));
@@ -520,8 +526,10 @@ describe("untrusted packages", () => {
       fixture({ body: deep }),
       fixture({ body: "<w:p><w:r><w:t>&#x110000;</w:t></w:r></w:p>" }),
       fixture({
-        edit: (parts) =>
-          void (parts["word/document.xml"] = `${HEAD}<x:document xmlns:x="${W}"><x:body/></x:document>`),
+        edit: setPart(
+          "word/document.xml",
+          `${HEAD}<x:document xmlns:x="${W}"><x:body/></x:document>`,
+        ),
       }),
     ];
     for (const bytes of cases) expect(failure(bytes)).toBe("OOXML_INVALID");
@@ -568,18 +576,22 @@ describe("untrusted packages", () => {
 
   it("checks the namespace of each part it rewrites", () => {
     const wrongSettings = fixture({
-      edit: (parts) =>
-        void (parts["word/settings.xml"] =
-          `${HEAD}<w:settings xmlns:w="urn:not-word"><w:zoom w:percent="100"/></w:settings>`),
+      edit: setPart(
+        "word/settings.xml",
+        `${HEAD}<w:settings xmlns:w="urn:not-word"><w:zoom w:percent="100"/></w:settings>`,
+      ),
     });
     expect(() => patchDocx(wrongSettings, [replace()], OPTS)).toThrow(
       expect.objectContaining({ code: "OOXML_INVALID" }),
     );
     const wrongRels = fixture({
-      edit: (parts) =>
-        void (parts["word/_rels/document.xml.rels"] = (
-          parts["word/_rels/document.xml.rels"] as string
-        ).replace("package/2006/relationships", "package/2006/other")),
+      edit: (parts) => {
+        const rels = parts["word/_rels/document.xml.rels"] as string;
+        parts["word/_rels/document.xml.rels"] = rels.replace(
+          "package/2006/relationships",
+          "package/2006/other",
+        );
+      },
     });
     expect(() => patchDocx(wrongRels, [replace()], OPTS)).toThrow(
       expect.objectContaining({ code: "OOXML_INVALID" }),

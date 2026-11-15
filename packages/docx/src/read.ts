@@ -354,7 +354,8 @@ export function openPackage(bytes: Uint8Array): Package {
 /** XML part bytes as text, honouring a UTF-16 or UTF-8 byte order mark. */
 export function decodePart(bytes: Uint8Array): string {
   const [a, b] = bytes;
-  const encoding = a === 0xff && b === 0xfe ? "utf-16le" : a === 0xfe && b === 0xff ? "utf-16be" : "utf-8";
+  const encoding =
+    a === 0xff && b === 0xfe ? "utf-16le" : a === 0xfe && b === 0xff ? "utf-16be" : "utf-8";
   return new TextDecoder(encoding, { fatal: true }).decode(bytes);
 }
 
@@ -512,7 +513,9 @@ function loadUnchecked(bytes: Uint8Array): DocModel {
   const isShape = (el: XmlElement) => {
     if (el.name === "wps:wsp") return !child(el, "wps:txbx");
     if (el.name !== "w:pict") return false;
-    return ![...descendants(el)].some((inner) => inner.name === "v:textbox" || inner.name === "v:imagedata");
+    return ![...descendants(el)].some(
+      (inner) => inner.name === "v:textbox" || inner.name === "v:imagedata",
+    );
   };
   for (const el of descendants(
     body,

@@ -5,13 +5,13 @@ import { delXml, insXml, markXml, type RawRun, type Revision, runXml, textXml } 
 import {
   analyseParagraph,
   type DocModel,
+  DocxError,
   type Field,
   type Item,
-  type RunInfo,
-  DocxError,
   loadDocument,
   type Package,
   REL_NS,
+  type RunInfo,
   relationships,
   relType,
   resolveTarget,
@@ -331,7 +331,13 @@ const PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships
 const TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types";
 
 /** A part we rewrite must be the element we expect in the namespace we expect. */
-function expectRoot(part: string, xml: string | undefined, name: string, nsAttr: string, ns: string) {
+function expectRoot(
+  part: string,
+  xml: string | undefined,
+  name: string,
+  nsAttr: string,
+  ns: string,
+) {
   if (xml === undefined) return;
   const root = parseXml(xml);
   if (root.name !== name || root.attrs[nsAttr] !== ns) {
