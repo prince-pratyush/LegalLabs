@@ -74,6 +74,53 @@ export { RuleEditor, RuleEditorSkeleton } from "./components/playbook/rule-edito
 export { VersionList, VersionListSkeleton } from "./components/playbook/version-list.js";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/popover.js";
 export {
+  CustomiseReviewForm,
+  CustomiseReviewFormSkeleton,
+  type ReviewSettings,
+} from "./components/review/customise-review-form.js";
+export {
+  applyEvent,
+  elapsed,
+  FINDING_LABEL,
+  firstParagraph,
+  gapItem,
+  gapsView,
+  type ProgressEvent,
+  type ProgressState,
+  pendingSuggestions,
+  type ReviewItem,
+  type RuleProgress,
+  ruleItem,
+  rulesFinished,
+  rulesView,
+  type SuggestionGroup,
+  startProgress,
+  suggestionOf,
+  suggestionsView,
+  summaryLine,
+} from "./components/review/order.js";
+export {
+  marksByParagraph,
+  ReviewDocument,
+  ReviewDocumentSkeleton,
+  type ReviewParagraph,
+} from "./components/review/review-document.js";
+export { ReviewProgress, ReviewProgressSkeleton } from "./components/review/review-progress.js";
+export { type RailView, ReviewRail, ReviewRailSkeleton } from "./components/review/review-rail.js";
+export {
+  FindingStatusText,
+  GapSeverityText,
+  SuggestionStatusText,
+} from "./components/review/status.js";
+export {
+  type Alternate,
+  type ApplyChoice,
+  type CardActions,
+  SuggestionCard,
+  SuggestionCardSkeleton,
+  titleOf,
+} from "./components/review/suggestion-card.js";
+export {
   Select,
   SelectContent,
   SelectItem,
