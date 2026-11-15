@@ -533,6 +533,10 @@ const PKG_NS = "http://schemas.microsoft.com/office/2006/xmlPackage";
  * `paragraph.insertOoxml(ooxml, "Replace")`; insert_after yields only the new
  * paragraph, for `paragraph.insertOoxml(ooxml, "After")`. The comment is left out:
  * the pane adds it with `range.insertComment` so it attaches to the live range.
+ *
+ * The fragment already carries w:ins/w:del, so the pane must insert it with change
+ * tracking OFF (`changeTrackingMode = off`), then restore the user's mode. With
+ * tracking on, Word would also track the whole replacement and show the edit twice.
  */
 export function paragraphFragment(bytes: Uint8Array, edit: PatchEdit, opts: PatchOptions): string {
   const doc = load(bytes);
