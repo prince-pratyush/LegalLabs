@@ -47,7 +47,8 @@ export const playbookApi = {
   get: async (id: string) => (await call<{ playbook: Playbook }>(p(id))).playbook,
   create: async (input: PlaybookCreate) =>
     (await send<{ playbook: Playbook }>("POST", "/playbooks", input)).playbook,
-  update: async (id: string, patch: PlaybookPatch) =>
+  // base_version_no is the version edited, so the server refuses a save over someone else's.
+  update: async (id: string, patch: PlaybookPatch & { base_version_no: number }) =>
     (await send<{ playbook: Playbook }>("PATCH", p(id), patch)).playbook,
   publish: async (id: string) =>
     (await send<{ playbook: Playbook }>("POST", `${p(id)}/publish`)).playbook,

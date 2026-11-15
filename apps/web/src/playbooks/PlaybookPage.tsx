@@ -9,7 +9,7 @@ import {
   VersionListSkeleton,
 } from "@legallabs/ui";
 import { useCallback, useEffect, useState } from "react";
-import { messageOf } from "../api.js";
+import { ApiError, messageOf } from "../api.js";
 import { playbookApi } from "./api.js";
 import { goPlaybooks } from "./route.js";
 
@@ -37,17 +37,21 @@ export function PlaybookPage({
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
 
   const show = useCallback((p: Playbook) => {
     setPlaybook(p);
     setDraft(toDraft(p));
     setDirty(false);
+    setStale(false);
     playbookApi.versions(p.id).then(setVersions, () => setVersions([]));
   }, []);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
+    setError(null);
     playbookApi.get(playbookId).then(show, (err) => setError(messageOf(err)));
   }, [playbookId, show]);
+  useEffect(reload, [reload]);
 
   const viewing = version !== null && playbook && version !== playbook.version_no ? version : null;
   useEffect(() => {
@@ -66,6 +70,8 @@ export function PlaybookPage({
       show(await work());
       onChanged();
     } catch (err) {
+      // Another save landed first; keep the edits on screen and offer a reload instead.
+      if (err instanceof ApiError && err.code === "STALE") setStale(true);
       setError(messageOf(err));
     } finally {
       setBusy(false);
@@ -96,10 +102,15 @@ export function PlaybookPage({
       busy={busy}
       error={error}
       viewingVersion={viewing}
+      publishedVersionNo={playbook.published_version_no ?? null}
+      unpublishedChanges={playbook.has_unpublished_changes ?? false}
+      stale={stale}
+      onReload={reload}
       onBackToCurrent={() => goPlaybooks({ page: "playbook", playbookId, version: null })}
       onSave={() =>
         act(() =>
           playbookApi.update(playbookId, {
+            base_version_no: playbook.version_no,
             name: draft.name.trim(),
             contract_type: draft.contract_type.trim(),
             guidance: draft.guidance.trim() ? draft.guidance : null,
