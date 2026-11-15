@@ -197,6 +197,16 @@ describe("saved prompts", () => {
       grants: [{ principal_type: "workspace", principal_id: ben.workspaceId, level: "use" }],
     });
     expect(everyone).toMatchObject({ status: 403, body: { code: "SHARING_RESTRICTED" } });
+    const stranger = await h.call(b, "PUT", `/library/prompts/${made.body.prompt.id}/shares`, {
+      grants: [
+        {
+          principal_type: "group",
+          principal_id: "0190a000-0000-7000-8000-00000000abcd",
+          level: "use",
+        },
+      ],
+    });
+    expect(stranger).toMatchObject({ status: 400, body: { code: "INVALID_GRANTS" } });
     expect((await h.call(b, "GET", "/library/abilities")).body).toEqual({
       manage: false,
       draft: true,
@@ -218,6 +228,12 @@ describe("firm templates", () => {
     expect(junk.body.code).toBe("NOT_DOCX");
     const macros = zipSync({ ...unzipSync(firm), "word/vbaProject.bin": strToU8("x") });
     expect((await h.upload(a, "/library/templates", "m.docx", macros)).body.code).toBe("MACROS");
+    const ole = zipSync({ ...unzipSync(firm), "word/embeddings/oleObject1.bin": strToU8("x") });
+    expect((await h.upload(a, "/library/templates", "o.docx", ole)).body.code).toBe(
+      "ACTIVE_CONTENT",
+    );
+    // Refused for lack of permission before the file is even read.
+    expect((await h.upload(b, "/library/templates", "o.docx", ole)).status).toBe(403);
 
     const made = await h.upload(a, "/library/templates", "Firm letter.dotx", firm, {
       name: "Letterhead",
