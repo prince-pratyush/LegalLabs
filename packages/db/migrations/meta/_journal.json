@@ -232,6 +232,13 @@
       "when": 1794009633000,
       "tag": "0034_knowledge_sources",
       "breakpoints": false
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794009634000,
+      "tag": "0045_work_playbooks",
+      "breakpoints": false
     }
   ]
 }
