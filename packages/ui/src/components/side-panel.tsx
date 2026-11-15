@@ -102,10 +102,12 @@ export function SidePanel({
 }) {
   const titleId = useId();
   const ref = useRef<HTMLElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     const opener = document.activeElement;
-    if (!ref.current?.contains(opener)) ref.current?.focus();
+    // The heading takes focus, so a screen reader announces which panel opened.
+    if (!ref.current?.contains(opener)) heading.current?.focus();
     return () => {
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
@@ -134,7 +136,12 @@ export function SidePanel({
         <ResizeHandle value={clampWidth(width)} onChange={onWidthChange} label="Resize panel" />
       )}
       <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-        <h2 id={titleId} className="truncate text-section font-semibold">
+        <h2
+          ref={heading}
+          id={titleId}
+          tabIndex={-1}
+          className="truncate text-section font-semibold"
+        >
           {title}
         </h2>
         <Tooltip content="Close panel" shortcut="Esc">

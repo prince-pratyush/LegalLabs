@@ -383,6 +383,27 @@ describe("a running answer", () => {
   });
 });
 
+describe("side panels", () => {
+  it("move focus to their heading, and back to the button on close", async () => {
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }],
+      [`GET /api/v1/threads/${THREAD_ID}/drafts`]: () => [200, { items: [] }],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    const button = await screen.findByRole("button", { name: "Drafts" });
+    button.focus();
+    fireEvent.click(button);
+    const panel = await screen.findByRole("dialog", { name: "Drafts" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(panel).getByRole("heading", { name: "Drafts" })),
+    );
+    fireEvent.keyDown(panel, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(button));
+  });
+});
+
 describe("sharing", () => {
   it("names the people a thread couldn't be shared with, and why", async () => {
     const sent = serve({
