@@ -130,6 +130,8 @@ const app = createApp({
     log,
     // A local model serves about two calls at once; raise it for a hosted provider.
     parallelism: Number(process.env.LEGALLABS_REVIEW_PARALLELISM) || 2,
+    // A run stops here and keeps what it finished.
+    maxCostUsd: Number(process.env.LEGALLABS_REVIEW_MAX_COST_USD) || 5,
   }),
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
