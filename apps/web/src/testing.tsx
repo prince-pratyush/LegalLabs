@@ -106,6 +106,13 @@ export function serve(routes: Record<string, Handler>) {
     sent.push({ route, body });
     const handler = routes[route];
     const [status, json] = handler ? handler(body) : [404, { code: "NOT_FOUND", message: "No." }];
+    // A Blob is sent as a file with its own type, e.g. a Word export.
+    if (json instanceof Blob) {
+      return new Response(await json.arrayBuffer(), {
+        status,
+        headers: { "content-type": json.type },
+      });
+    }
     return new Response(status === 204 ? null : JSON.stringify(json), {
       status,
       headers: { "content-type": "application/json" },

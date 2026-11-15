@@ -113,13 +113,35 @@ describe("drafts", () => {
     );
     const { sent, panel } = await openDrafts({
       [`GET /api/v1/threads/${THREAD_ID}/drafts`]: () => [200, { items: [draft()] }],
-      [`GET /api/v1/drafts/${DRAFT_ID}/export?tracked_from=1`]: () => [200, {}],
+      [`GET /api/v1/drafts/${DRAFT_ID}/export?tracked_from=1`]: () => [
+        200,
+        new Blob(["PK"], {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+      ],
     });
     fireEvent.click(await within(panel).findByRole("button", { name: "Export to Word" }));
     await waitFor(() => expect(created).toHaveBeenCalled());
     expect(
       sent.some((c) => c.route === `GET /api/v1/drafts/${DRAFT_ID}/export?tracked_from=1`),
     ).toBe(true);
+  });
+
+  it("won't save an export that isn't a Word file", async () => {
+    const created = vi.fn(() => "blob:x");
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }),
+    );
+    const { panel } = await openDrafts({
+      [`GET /api/v1/threads/${THREAD_ID}/drafts`]: () => [200, { items: [draft()] }],
+      [`GET /api/v1/drafts/${DRAFT_ID}/export?tracked_from=1`]: () => [200, { not: "a file" }],
+    });
+    fireEvent.click(await within(panel).findByRole("button", { name: "Export to Word" }));
+    expect((await within(panel).findByRole("alert")).textContent).toBe(
+      "The export didn't come back as a Word file. Try again.",
+    );
+    expect(created).not.toHaveBeenCalled();
   });
 
   it("keeps a shared draft read-only", async () => {

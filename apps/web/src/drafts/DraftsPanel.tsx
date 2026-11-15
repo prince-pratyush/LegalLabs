@@ -17,14 +17,22 @@ import {
 import { type FormEvent, useCallback, useEffect, useId, useState } from "react";
 import { api, type Draft, messageOf } from "../api.js";
 
-/** Hands the browser a file to save, without leaving the page. */
+const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * Hands the browser a file to save, without leaving the page. The link is in the
+ * document while clicked, and the URL lives until the browser has taken the file.
+ */
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 const fileName = (title: string) =>
@@ -134,9 +142,16 @@ export function DraftsPanel({
     setError(null);
     try {
       const from = tracked && latest > 1 ? 1 : undefined;
-      download(await api.exportDraft(draft.id, from), fileName(draft.title));
+      const file = await api.exportDraft(draft.id, from);
+      // Anything else (an error page from a proxy, say) shouldn't be saved as a .docx.
+      if (!file.type.startsWith(DOCX)) throw new Error("NOT_DOCX");
+      download(file, fileName(draft.title));
     } catch (err) {
-      setError(messageOf(err));
+      setError(
+        err instanceof Error && err.message === "NOT_DOCX"
+          ? "The export didn't come back as a Word file. Try again."
+          : messageOf(err),
+      );
     } finally {
       setExporting(false);
     }
