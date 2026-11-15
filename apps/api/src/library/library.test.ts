@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sampleFirmTemplate } from "@legallabs/docx";
+import { sampleFirmTemplate } from "@legallabs/docx/testing";
 import { createGateway } from "@legallabs/model-gateway";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { afterAll, describe, expect, it } from "vitest";
