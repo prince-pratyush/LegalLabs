@@ -130,6 +130,15 @@ export class FakeSource {
   close() {
     this.readyState = 2;
   }
+  /** The browser giving up on the connection, as after a 404 or 429. */
+  drop() {
+    this.readyState = 2;
+    act(() => this.onerror?.());
+  }
+  /** Still open, i.e. neither closed by the page nor dropped. */
+  get open() {
+    return this.readyState !== 2;
+  }
   emit(type: string, seq: number, data: object) {
     const event = new MessageEvent(type, {
       data: JSON.stringify({ seq, ...data }),

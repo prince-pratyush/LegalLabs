@@ -1,4 +1,4 @@
-import { FINISHED, isTerminal } from "@legallabs/contracts";
+import { FINISHED } from "@legallabs/contracts";
 import {
   AnswerText,
   AnswerTextSkeleton,
@@ -11,7 +11,7 @@ import {
   RunProgress,
 } from "@legallabs/ui";
 import { FilePen, Share2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   type AskInput,
@@ -19,7 +19,6 @@ import {
   type Message,
   messageOf,
   type ScopeOptions,
-  streamRun,
   type Thread,
 } from "../api.js";
 import { DraftsPanel } from "../drafts/DraftsPanel.js";
@@ -28,9 +27,10 @@ import { SharePanel } from "../share/SharePanel.js";
 import { Shell } from "../shell.js";
 import { openCitation } from "../viewer/open-citation.js";
 import { toAnswerCitation } from "./compose.js";
-import { type LiveCitation, type LiveRun, reduceRun, startRun } from "./run-state.js";
+import type { LiveCitation, LiveRun } from "./run-state.js";
 import { SourcesPanel } from "./SourcesPanel.js";
 import { ThreadComposer } from "./ThreadComposer.js";
+import { useRunStream } from "./use-run-stream.js";
 
 /** Verified citations open the viewer (or the authority); flagged ones never link. */
 function follow(citation: LiveCitation, all: readonly LiveCitation[]) {
@@ -66,13 +66,11 @@ export function ThreadScreen({
   const [thread, setThread] = useState<Thread | null>(null);
   const [loadError, setLoadError] = useState<ApiError | Error | null>(null);
   const [options, setOptions] = useState<ScopeOptions | null>(null);
-  const [live, setLive] = useState<LiveRun | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [attempt, setAttempt] = useState(0);
   const [planBusy, setPlanBusy] = useState(false);
-  const following = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!threadId) return null;
@@ -93,36 +91,17 @@ export function ThreadScreen({
 
   // Follow whichever run is still going; a reload picks it up again from the start.
   const active = thread?.runs.find((run) => !FINISHED.includes(run.status)) ?? null;
-  const activeId = active?.id ?? null;
-  // Read when the stream starts, so a waiting plan shows before any event replays.
-  const activeRun = useRef(active);
-  activeRun.current = active;
-  useEffect(() => {
-    if (!activeId || following.current === activeId) return;
-    following.current = activeId;
-    const known = activeRun.current;
-    setLive(startRun(activeId, known ? { status: known.status, plan: known.plan } : {}));
-    let settled = false;
-    const close = streamRun(
-      activeId,
-      (event) => {
-        setLive((run) => (run && run.runId === activeId ? reduceRun(run, event) : run));
-        if (isTerminal(event) && !settled) {
-          settled = true;
-          // The saved message replaces the streamed text, with its final citations.
-          load().then(
-            () => setLive((run) => (run?.runId === activeId && !run.error ? null : run)),
-            () => undefined,
-          );
-        }
-      },
-      { onDrop: () => load().catch(() => undefined) },
+  const { live, setLive, lost, resume, reconnect } = useRunStream(active, (runId) =>
+    afterRun(runId),
+  );
+
+  // The saved message replaces the streamed text, with its final citations.
+  const afterRun = (runId: string) => {
+    load().then(
+      () => setLive((run) => (run?.runId === runId && !run.error ? null : run)),
+      () => undefined,
     );
-    return () => {
-      close();
-      following.current = null;
-    };
-  }, [activeId, load]);
+  };
 
   const ask = async (input: AskInput) => {
     setSending(true);
@@ -198,11 +177,12 @@ export function ThreadScreen({
   // While a plan waits, the composer is blocked rather than offering Stop.
   const streaming = sending || (live !== null && !live.finished && !awaiting);
 
-  const decide = async (action: () => Promise<void>) => {
+  const decide = async (action: () => Promise<void>, then?: () => void) => {
     setPlanBusy(true);
     setSendError(null);
     try {
       await action();
+      then?.();
     } catch (err) {
       setSendError(messageOf(err));
     } finally {
@@ -328,8 +308,10 @@ export function ThreadScreen({
                     onCite={(n) => cite(live.runId, live.citations, n)}
                     onRetry={() => retry(message.id)}
                     planBusy={planBusy}
-                    onApprove={() => decide(() => api.approve(live.runId))}
-                    onEditPlan={(text) => decide(() => api.editPlan(live.runId, text))}
+                    onApprove={() => decide(() => api.approve(live.runId), resume)}
+                    onEditPlan={(text) => decide(() => api.editPlan(live.runId, text), resume)}
+                    lost={lost}
+                    onReconnect={reconnect}
                     onCancelPlan={() => decide(() => api.cancel(live.runId))}
                   />
                 )}
@@ -449,6 +431,8 @@ function LiveAnswer({
   onApprove,
   onEditPlan,
   onCancelPlan,
+  lost,
+  onReconnect,
 }: {
   run: LiveRun;
   onCite: (n: number) => void;
@@ -457,6 +441,9 @@ function LiveAnswer({
   onApprove: () => void;
   onEditPlan: (instruction: string) => void;
   onCancelPlan: () => void;
+  /** The stream gave up reconnecting. */
+  lost: boolean;
+  onReconnect: () => void;
 }) {
   // Nothing is read until a person approves the plan and its cost.
   if (run.status === "awaiting_approval" && !run.finished) {
@@ -495,6 +482,17 @@ function LiveAnswer({
       ) : null}
       {run.status === "cancelled" && <p className="text-dense text-fg-muted">Stopped.</p>}
       {run.error && <ErrorCard message={run.error.message} onRetry={onRetry} />}
+      {lost && !run.finished && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3"
+        >
+          <p className="text-ui">Connection lost. The answer may still be running.</p>
+          <Button size="sm" onClick={onReconnect}>
+            Reconnect
+          </Button>
+        </div>
+      )}
     </article>
   );
 }
