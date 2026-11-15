@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { PlaybookPatch, RuleList, STARTERS, StarterTemplate, starterPlaybook } from "./index.js";
+import {
+  PlaybookPatch,
+  RuleList,
+  STARTERS,
+  StarterPlaybook,
+  StarterTemplate,
+  starterPlaybook,
+} from "./index.js";
 
 describe.each(StarterTemplate.options)("%s starter", (template) => {
   const starter = STARTERS[template];
@@ -33,10 +40,35 @@ describe.each(StarterTemplate.options)("%s starter", (template) => {
     expect(starter.rules.some((r) => r.flag)).toBe(true);
   });
 
-  it("returns a copy so callers cannot mutate the shipped starter", () => {
+  it("is frozen, while starterPlaybook returns a mutable copy", () => {
+    expect(Object.isFrozen(starter.rules[0]?.fallbacks)).toBe(true);
+    expect(() => (starter.rules as unknown[]).pop()).toThrow(TypeError);
     const copy = starterPlaybook(template);
     copy.rules.pop();
-    expect(STARTERS[template].rules.length).toBe(copy.rules.length + 1);
+    expect(starter.rules.length).toBe(copy.rules.length + 1);
+  });
+
+  it("uses one placeholder style in sample language", () => {
+    for (const rule of starter.rules) {
+      for (const p of rule.sample_language?.match(/\[[^\]]*\]/g) ?? []) {
+        expect(p, rule.title).toMatch(/^\[[A-Z][a-z]+\]$/);
+      }
+    }
+  });
+});
+
+describe("StarterPlaybook", () => {
+  it("refuses unknown keys and missing guidance", () => {
+    const { guidance: _, ...noGuidance } = starterPlaybook("nda");
+    expect(StarterPlaybook.safeParse(noGuidance).success).toBe(false);
+    expect(StarterPlaybook.safeParse({ ...starterPlaybook("nda"), extra: 1 }).success).toBe(false);
+  });
+
+  it("refuses server-only rule fields", () => {
+    const starter = starterPlaybook("nda");
+    const [first, ...rest] = starter.rules;
+    const withProvenance = { ...starter, rules: [{ ...first, provenance: null }, ...rest] };
+    expect(StarterPlaybook.safeParse(withProvenance).success).toBe(false);
   });
 });
 
