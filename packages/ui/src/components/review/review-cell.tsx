@@ -126,7 +126,8 @@ function Body({
     case "null":
       return (
         <span className="inline-flex items-center gap-1 text-fg-muted">
-          <span aria-label="No answer">—</span>
+          <span aria-hidden>—</span>
+          <span className="sr-only">No answer.</span>
           <button
             type="button"
             tabIndex={-1}
