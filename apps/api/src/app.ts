@@ -21,6 +21,8 @@ import type { Library } from "./library/library.js";
 import { libraryRoutes } from "./library/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
+import { reviewHttp } from "./reviews/http.js";
+import type { Reviews } from "./reviews/reviews.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
@@ -71,6 +73,8 @@ export interface AppOptions {
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
   playbooks?: Playbooks;
+  /** Playbook reviews; mounted only with playbooks. */
+  reviews?: Reviews;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -94,6 +98,7 @@ export function createApp({
   library,
   knowledge,
   playbooks,
+  reviews,
   clientIp,
   now = Date.now,
   webRoot,
@@ -229,6 +234,7 @@ export function createApp({
     app.route("/api/v1/admin/vaults", adminVaultRoutes(vaults, clientOf));
   }
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
+  if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {

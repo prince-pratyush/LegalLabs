@@ -22,6 +22,8 @@ import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
+import { createReviews } from "./reviews/reviews.js";
+import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
@@ -123,6 +125,16 @@ const app = createApp({
   },
   viewer: createViewer(pool, store, documents),
   playbooks: createPlaybooks(pool, { gateway }),
+  reviews: createReviews(pool, {
+    gateway,
+    store,
+    log,
+    // A local model serves about two calls at once; raise it for a hosted provider.
+    parallelism: Number(process.env.LEGALLABS_REVIEW_PARALLELISM) || 2,
+    // A run stops here and keeps what it finished.
+    maxCostUsd: Number(process.env.LEGALLABS_REVIEW_MAX_COST_USD) || 5,
+    validate: validatorFromEnv(process.env),
+  }),
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),

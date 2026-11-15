@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { RunEvent } from "@legallabs/contracts";
+import type { ReviewEvent, RunEvent } from "@legallabs/contracts";
 import type pg from "pg";
 import type { Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
@@ -11,9 +11,12 @@ export type NewEvent = RunEvent extends infer E
     : never
   : never;
 
+// A playbook review streams its own events on the same log (playbooks-word.md §5.3).
+export type LogEvent = NewEvent | ReviewEvent;
+
 export interface RunLog {
   /** Saves an event in order and tells live listeners. */
-  append(principal: Principal, runId: string, event: NewEvent): Promise<RunEvent>;
+  append(principal: Principal, runId: string, event: LogEvent): Promise<RunEvent>;
   /** Saved events after `after`, for a page load or a reconnect. Empty if the run is hidden. */
   replay(principal: Principal, runId: string, after: number): Promise<RunEvent[]>;
   /** Events as they are saved, in this process. */
@@ -31,7 +34,7 @@ export function createRunLog(pool: pg.Pool): RunLog {
   // One write at a time per run, so seq order is save order.
   const queues = new Map<string, Promise<unknown>>();
 
-  async function write(principal: Principal, runId: string, event: NewEvent) {
+  async function write(principal: Principal, runId: string, event: LogEvent) {
     return asApp(pool, principal, async (db) => {
       let seq = next.get(runId);
       if (seq === undefined) {

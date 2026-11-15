@@ -25,7 +25,9 @@
     "@legallabs/ingest": "workspace:*",
     "@legallabs/knowledge": "workspace:*",
     "@legallabs/model-gateway": "workspace:*",
+    "@legallabs/review": "workspace:*",
     "@legallabs/storage": "workspace:*",
+    "fflate": "0.8.3",
     "@node-rs/argon2": "2.2.2",
     "hono": "4.13.17",
     "pg": "8.23.1",
@@ -34,7 +36,6 @@
   "devDependencies": {
     "@types/pg": "8.23.1",
     "aws4fetch": "1.0.20",
-    "fflate": "0.8.3",
     "vitest": "5.1.0"
   }
 }

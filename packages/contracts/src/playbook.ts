@@ -279,6 +279,8 @@ export const Suggestion = z.object({
   decided_by: Id.optional(),
   decided_at: z.string().optional(),
   alternates: z.array(Alternate).max(PLAYBOOK_LIMITS.alternates).optional(),
+  /** Set when a re-run read another document than the review's (Word uploads a fresh one). */
+  source_document_version_id: Id.optional(),
 });
 export type Suggestion = z.infer<typeof Suggestion>;
 
@@ -303,6 +305,8 @@ export const Finding = z.object({
   model: z.string(),
   usage: Usage,
   cost_usd: z.number(),
+  /** Set when a re-run read another document; only the review's owner sees such a finding. */
+  source_document_version_id: Id.optional(),
 });
 export type Finding = z.infer<typeof Finding>;
 
@@ -369,6 +373,8 @@ export const Review = z.object({
   summary: ReviewSummary,
   warnings: z.array(ReviewWarning),
   usage: Usage.extend({ cost_usd: z.number(), models: z.array(z.string()) }),
+  /** The rules the review ran against, in playbook order, for progress lists. */
+  rules: z.array(z.object({ id: Id, title: z.string() })).optional(),
   started_at: z.string(),
   finished_at: z.string().nullable(),
 });
