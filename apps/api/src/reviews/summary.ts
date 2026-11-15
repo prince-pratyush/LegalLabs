@@ -38,10 +38,15 @@ const INVALID = /[^\u{9}\u{A}\u{D}\u{20}-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{1
 // Excel refuses a cell longer than this.
 const MAX_CELL = 32_767;
 
-const esc = (text: string) =>
-  text
-    .replace(INVALID, "")
-    .slice(0, MAX_CELL)
+/** At most `n` UTF-16 units, never ending on half of a surrogate pair. */
+export function cut(text: string, n: number): string {
+  if (text.length <= n) return text;
+  const end = text.charCodeAt(n - 1);
+  return text.slice(0, end >= 0xd800 && end <= 0xdbff ? n - 1 : n);
+}
+
+const esc = (text: string, max = MAX_CELL) =>
+  cut(text.replace(INVALID, ""), max)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -97,10 +102,7 @@ export function buildXlsx(sheets: readonly Sheet[]): Uint8Array {
       .join("")}</Types>`,
     "_rels/.rels": `${HEAD}<Relationships xmlns="${PKG_REL}"><Relationship Id="rId1" Type="${DOC_REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
     "xl/workbook.xml": `${HEAD}<workbook xmlns="${MAIN}" xmlns:r="${DOC_REL}"><sheets>${sheets
-      .map(
-        (s, i) =>
-          `<sheet name="${esc(s.name.slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`,
-      )
+      .map((s, i) => `<sheet name="${esc(s.name, 31)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
       .join("")}</sheets></workbook>`,
     "xl/_rels/workbook.xml.rels": `${HEAD}<Relationships xmlns="${PKG_REL}">${sheets
       .map(
@@ -136,6 +138,9 @@ function tableXml(sheet: Sheet): string {
   return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${["top", "left", "bottom", "right", "insideH", "insideV"].map(border).join("")}</w:tblBorders></w:tblPr><w:tblGrid>${sheet.columns.map(() => "<w:gridCol/>").join("")}</w:tblGrid>${row(sheet.columns, true)}${sheet.rows.map((r) => row(r, false)).join("")}</w:tbl>`;
 }
 
+// The two styles the summary names; without them Word shows the title as body text.
+const STYLES = `${HEAD}<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="20"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="200"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style></w:styles>`;
+
 /** A document with a title, intro lines, then a heading and a table per sheet. */
 export function buildSummaryDocx(
   title: string,
@@ -151,8 +156,10 @@ export function buildSummaryDocx(
   const sect =
     '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1000" w:bottom="1000" w:left="1000" w:header="500" w:footer="500" w:gutter="0"/></w:sectPr>';
   return zip({
-    "[Content_Types].xml": `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${CT}.wordprocessingml.document.main+xml"/></Types>`,
+    "[Content_Types].xml": `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${CT}.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="${CT}.wordprocessingml.styles+xml"/></Types>`,
     "_rels/.rels": `${HEAD}<Relationships xmlns="${PKG_REL}"><Relationship Id="rId1" Type="${DOC_REL}/officeDocument" Target="word/document.xml"/></Relationships>`,
+    "word/_rels/document.xml.rels": `${HEAD}<Relationships xmlns="${PKG_REL}"><Relationship Id="rId1" Type="${DOC_REL}/styles" Target="styles.xml"/></Relationships>`,
+    "word/styles.xml": STYLES,
     "word/document.xml": `${HEAD}<w:document xmlns:w="${W}"><w:body>${body}${sect}</w:body></w:document>`,
   });
 }
