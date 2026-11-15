@@ -88,7 +88,8 @@ describe("a run's stream", () => {
     at(`#/t/${THREAD_ID}`);
     render(<App />);
     await waitFor(() => expect(FakeSource.all).toHaveLength(1));
-    latest().emit("done", 1, {
+    latest().emit("token", 1, { message_id: "m2", delta: "The cap is one." });
+    latest().emit("done", 2, {
       message_id: "m2",
       model: "m",
       response_mode: "answer",
@@ -99,6 +100,8 @@ describe("a run's stream", () => {
     });
     const card = await screen.findByText(/The finished answer couldn't be loaded/);
     expect(gets).toBe(3);
+    // The streamed text cited nothing verified, so it carries the same warning as a saved answer.
+    expect(screen.getByText(/Nothing in this answer was checked/)).toBeTruthy();
     fireEvent.click(
       within(card.parentElement as HTMLElement).getByRole("button", { name: "Retry" }),
     );

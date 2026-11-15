@@ -406,12 +406,7 @@ function SavedAnswer({
   const unsupported = message.model !== null && !message.citations.some((c) => c.status === "ok");
   return (
     <article className="grid gap-2" aria-label="Answer" data-testid={`answer-${message.id}`}>
-      {unsupported && (
-        <p role="note" className="border-l-4 border-warning py-2 pl-3 font-semibold text-warning">
-          Nothing in this answer was checked against your documents. Don't rely on it without
-          reading the source.
-        </p>
-      )}
+      {unsupported && <UnverifiedNote />}
       <AnswerText
         text={message.content}
         citations={message.citations.map(toAnswerCitation)}
@@ -439,6 +434,15 @@ function SavedAnswer({
         )}
       </div>
     </article>
+  );
+}
+
+function UnverifiedNote() {
+  return (
+    <p role="note" className="border-l-4 border-warning py-2 pl-3 font-semibold text-warning">
+      Nothing in this answer was checked against your documents. Don't rely on it without reading
+      the source.
+    </p>
   );
 }
 
@@ -500,6 +504,10 @@ function LiveAnswer({
         <AnswerTextSkeleton />
       ) : null}
       {run.status === "cancelled" && <p className="text-dense text-fg-muted">Stopped.</p>}
+      {/* Same rule as a saved answer, so the streamed text is never shown as checked. */}
+      {run.finished && !run.error && run.text && !run.citations.some((c) => c.status === "ok") && (
+        <UnverifiedNote />
+      )}
       {run.error && <ErrorCard message={run.error.message} onRetry={onRetry} />}
       {lost && !run.finished && (
         <div
