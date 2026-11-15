@@ -113,6 +113,28 @@ describe("a new thread", () => {
   });
 });
 
+describe("the Library and Playbooks", () => {
+  it("seeds the new-thread composer with a prompt from the Library, once", async () => {
+    serve(signedIn);
+    sessionStorage.setItem("legallabs.composer.prefill", "Summarise the indemnities.");
+    render(<App />);
+    const box = await screen.findByRole("textbox", { name: "Ask a question" });
+    expect((box as HTMLTextAreaElement).value).toBe("Summarise the indemnities.");
+    expect(sessionStorage.getItem("legallabs.composer.prefill")).toBeNull();
+    expect(screen.getByRole("button", { name: "Saved prompts" })).toBeTruthy();
+  });
+
+  it("are reachable from the sidebar", async () => {
+    serve(signedIn);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Library" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/library/prompts"));
+    window.location.hash = "";
+    fireEvent.click(await screen.findByRole("button", { name: "Playbooks" }));
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/playbooks/));
+  });
+});
+
 describe("knowledge sources", () => {
   it("picks a source from the list and scopes the question to it", async () => {
     const sent = serve({
