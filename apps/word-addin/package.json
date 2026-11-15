@@ -8,7 +8,8 @@
     "build": "vite build && node scripts/manifest.mjs",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "sideload:mac": "node scripts/sideload-mac.mjs"
   },
   "dependencies": {
     "@legallabs/contracts": "workspace:*",
