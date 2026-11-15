@@ -7,15 +7,17 @@ import {
   numXml,
   PKG_REL,
   R,
+  type RawRun,
   runXml,
   STYLE_DEFS,
+  textXml,
   titleXml,
   W,
 } from "./parts.js";
 import { packIntoTemplate } from "./template.js";
 import { isoSeconds, XML_HEAD, xmlText } from "./xml.js";
 
-export { runXml };
+export { type RawRun, runXml, textXml };
 
 export interface Revision {
   id: () => number;
@@ -23,15 +25,15 @@ export interface Revision {
   date: string;
 }
 
-const revisionAttrs = (rev: Revision) =>
+export const revisionAttrs = (rev: Revision) =>
   `w:id="${rev.id()}" w:author="${xmlText(rev.author)}" w:date="${rev.date}"`;
 
-export const insXml = (runs: readonly TextRun[], rev: Revision) => {
+export const insXml = (runs: readonly RawRun[], rev: Revision) => {
   const body = runs.map((run) => runXml(run)).join("");
   return body ? `<w:ins ${revisionAttrs(rev)}>${body}</w:ins>` : "";
 };
 
-export const delXml = (runs: readonly TextRun[], rev: Revision) => {
+export const delXml = (runs: readonly RawRun[], rev: Revision) => {
   const body = runs.map((run) => runXml(run, true)).join("");
   return body ? `<w:del ${revisionAttrs(rev)}>${body}</w:del>` : "";
 };

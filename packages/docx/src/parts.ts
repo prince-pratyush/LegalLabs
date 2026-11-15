@@ -1,4 +1,4 @@
-import type { Run } from "./markdown.js";
+import type { Run, TextRun } from "./markdown.js";
 import { XML_HEAD, xmlText } from "./xml.js";
 
 // Pieces of a Word package that plain exports and template exports share.
@@ -6,21 +6,30 @@ export const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 export const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 export const PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships";
 
-function textXml(text: string, tag: "w:t" | "w:delText"): string {
-  // Tabs are their own element; a literal tab inside w:t is lost.
+export function textXml(text: string, tag: "w:t" | "w:delText"): string {
+  // Tabs and breaks are their own elements; a literal tab or newline inside w:t is lost.
   return text
-    .split("\t")
-    .map((part) => (part ? `<${tag} xml:space="preserve">${xmlText(part)}</${tag}>` : ""))
-    .join("<w:tab/>");
+    .split("\n")
+    .map((line) =>
+      line
+        .split("\t")
+        .map((part) => (part ? `<${tag} xml:space="preserve">${xmlText(part)}</${tag}>` : ""))
+        .join("<w:tab/>"),
+    )
+    .join("<w:br/>");
 }
 
-export function runXml(run: Run, deleted = false): string {
+/** A text run whose formatting is a whole `w:rPr` element copied from an existing document. */
+export type RawRun = TextRun & { rPr?: string };
+
+export function runXml(run: Run | RawRun, deleted = false): string {
   if ("footnote" in run) {
     return `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="${run.footnote}"/></w:r>`;
   }
-  const props = `${run.bold ? "<w:b/>" : ""}${run.italic ? "<w:i/>" : ""}`;
   const body = textXml(run.text, deleted ? "w:delText" : "w:t");
   if (!body) return "";
+  if ("rPr" in run && run.rPr !== undefined) return `<w:r>${run.rPr}${body}</w:r>`;
+  const props = `${run.bold ? "<w:b/>" : ""}${run.italic ? "<w:i/>" : ""}`;
   return `<w:r>${props ? `<w:rPr>${props}</w:rPr>` : ""}${body}</w:r>`;
 }
 

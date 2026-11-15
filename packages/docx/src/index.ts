@@ -10,6 +10,15 @@ export {
   type TextRun,
 } from "./markdown.js";
 export {
+  type PatchEdit,
+  PatchError,
+  type PatchFailureCode,
+  type PatchOptions,
+  type PatchResult,
+  paragraphFragment,
+  patchDocx,
+} from "./patch.js";
+export {
   buildPdf,
   DEFAULT_LOOK,
   listLabel,
@@ -17,6 +26,16 @@ export {
   type PdfInput,
   pageLook,
 } from "./pdf.js";
+export {
+  type BodyParagraph,
+  type BodyRun,
+  DocxError,
+  type DocxErrorCode,
+  type ExcludedKind,
+  type ExistingEdit,
+  type ReadResult,
+  readDocx,
+} from "./read.js";
 export {
   CONTENT_MARK,
   openTemplate,
