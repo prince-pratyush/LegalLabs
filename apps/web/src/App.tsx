@@ -33,6 +33,8 @@ import { takeComposerPrefill } from "./library/prefill.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
 import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
+import { ReviewsApp } from "./reviews/ReviewsApp.js";
+import { parseReviewRoute } from "./reviews/route.js";
 import { documentStatus, segments } from "./text.js";
 import { go, parseRoute, useHash } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
@@ -61,7 +63,13 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parsePlaybookRoute(hash) ? (
+        {parseReviewRoute(hash) ? (
+          <ReviewsApp
+            onLeave={() => {
+              window.location.hash = "";
+            }}
+          />
+        ) : parsePlaybookRoute(hash) ? (
           <PlaybooksApp
             onLeave={() => {
               window.location.hash = "";

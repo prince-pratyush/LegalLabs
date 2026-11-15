@@ -9,6 +9,7 @@ import {
   VersionListSkeleton,
 } from "@legallabs/ui";
 import { useCallback, useEffect, useState } from "react";
+import { goReviews } from "../reviews/route.js";
 import { messageOf } from "../vaults/shared.js";
 import { playbookApi } from "./api.js";
 import { goPlaybooks } from "./route.js";
@@ -109,6 +110,7 @@ export function PlaybookPage({
       }
       onPublish={() => act(() => playbookApi.publish(playbookId))}
       onUnpublish={() => act(() => playbookApi.unpublish(playbookId))}
+      onReview={() => goReviews({ page: "new", playbookId, documentId: null })}
       aside={
         versions === null ? (
           <VersionListSkeleton />
