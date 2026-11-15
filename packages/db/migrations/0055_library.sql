@@ -56,6 +56,18 @@ create table library.template_version (
   foreign key (workspace_id, created_by) references core."user" (workspace_id, id)
 );
 
+-- Guests reach nothing in the Library, even through a group they belong to.
+create function library.is_member() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from core."user" u
+     where u.id = core.current_user_id()
+       and u.workspace_id = core.current_workspace_id()
+       and u.status = 'active' and u.kind = 'member')
+$$;
+alter function library.is_member() owner to legallabs_definer;
+grant execute on function library.is_member() to legallabs_app, legallabs_definer;
+
 alter table library.prompt enable row level security;
 alter table library.prompt force row level security;
 alter table library.template enable row level security;
@@ -64,14 +76,18 @@ alter table library.template_version enable row level security;
 alter table library.template_version force row level security;
 
 -- Owners and grants edit the words; the owner and sharing change only through functions.
-grant select, insert, delete on library.prompt, library.template to legallabs_app;
+grant select, insert, delete on library.prompt to legallabs_app;
+grant select, delete on library.template to legallabs_app;
+-- Not is_default: the default changes only through library.set_default_template.
+grant insert (id, workspace_id, owner_id, name, description, instructions, created_at, updated_at)
+  on library.template to legallabs_app;
 grant update (name, description, body, updated_at) on library.prompt to legallabs_app;
 grant update (name, description, instructions, updated_at) on library.template to legallabs_app;
 grant select, insert on library.template_version to legallabs_app;
 
 -- library.manage sees and manages everything; others see their own and what's shared.
 create policy prompt_read on library.prompt for select to legallabs_app
-  using (core.in_tenant(workspace_id)
+  using (core.in_tenant(workspace_id) and library.is_member()
          and (owner_id = core.current_user_id()
               or core.has_access('library_item', id, 'view')
               or core.has_permission('library.manage')));
@@ -80,18 +96,18 @@ create policy prompt_insert on library.prompt for insert to legallabs_app
               and owner_id = core.current_user_id()
               and core.has_permission('threads.use'));
 create policy prompt_update on library.prompt for update to legallabs_app
-  using (core.in_tenant(workspace_id)
+  using (core.in_tenant(workspace_id) and library.is_member()
          and (owner_id = core.current_user_id()
               or core.has_access('library_item', id, 'edit')
               or core.has_permission('library.manage')))
   with check (core.in_tenant(workspace_id));
 create policy prompt_delete on library.prompt for delete to legallabs_app
-  using (core.in_tenant(workspace_id)
+  using (core.in_tenant(workspace_id) and library.is_member()
          and (owner_id = core.current_user_id() or core.has_permission('library.manage')));
 
 -- The default template is usable by anyone who can draft, without a share.
 create policy template_read on library.template for select to legallabs_app
-  using (core.in_tenant(workspace_id)
+  using (core.in_tenant(workspace_id) and library.is_member()
          and (owner_id = core.current_user_id()
               or core.has_access('template', id, 'view')
               or core.has_permission('library.manage')
@@ -102,13 +118,13 @@ create policy template_insert on library.template for insert to legallabs_app
               and owner_id = core.current_user_id()
               and core.has_permission('library.manage'));
 create policy template_update on library.template for update to legallabs_app
-  using (core.in_tenant(workspace_id)
+  using (core.in_tenant(workspace_id) and library.is_member()
          and (owner_id = core.current_user_id()
               or core.has_access('template', id, 'edit')
               or core.has_permission('library.manage')))
   with check (core.in_tenant(workspace_id));
 create policy template_delete on library.template for delete to legallabs_app
-  using (core.in_tenant(workspace_id)
+  using (core.in_tenant(workspace_id) and library.is_member()
          and (owner_id = core.current_user_id() or core.has_permission('library.manage')));
 
 create policy template_version_read on library.template_version for select to legallabs_app
