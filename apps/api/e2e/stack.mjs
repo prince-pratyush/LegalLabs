@@ -91,24 +91,26 @@ export async function startStack({ log = () => {} } = {}) {
     }
     const db = await startTestDatabase();
     stops.push(db.stop);
+    // A login role of its own, so stacks sharing a database (CI) never touch each other's
+    // password. It gets its rights only through legallabs_api, like a real deployment.
+    const role = `legallabs_api_${randomBytes(4).toString("hex")}`;
     const apiPassword = randomBytes(18).toString("hex");
-    const owner = new pg.Client({ connectionString: db.url });
-    await owner.connect();
-    await owner.query(`alter role legallabs_api login password '${apiPassword}'`);
-    await owner.end();
-    // A shared database (CI) gets the login switched off again afterwards.
-    stops.push(async () => {
-      const reset = new pg.Client({ connectionString: db.url });
-      await reset.connect();
+    const asOwner = async (sql) => {
+      const owner = new pg.Client({ connectionString: db.url });
+      await owner.connect();
       try {
-        await reset.query("alter role legallabs_api nologin password null");
+        await owner.query(sql);
       } finally {
-        await reset.end();
+        await owner.end();
       }
-    });
+    };
+    await asOwner(
+      `create role ${role} login noinherit password '${apiPassword}'; grant legallabs_api to ${role}`,
+    );
+    stops.push(() => asOwner(`drop role if exists ${role}`));
     // Built field by field: a password in the owner's URL must not be mistaken for the user.
     const api = new URL(db.url);
-    api.username = "legallabs_api";
+    api.username = role;
     api.password = apiPassword;
 
     const workspace = `pilot-${randomBytes(3).toString("hex")}`;
@@ -180,7 +182,8 @@ export async function startStack({ log = () => {} } = {}) {
       if (exited) throw Object.assign(new Error("the API exited at start"), { fatal: true });
       return (await fetch(`${url}/auth/session`)).status === 401;
     }, "the API");
-    return { url, workspace, email, password, stop };
+    // The owner URL lets a test read what the app may not, such as the audit trail.
+    return { url, workspace, email, password, ownerUrl: db.url, stop };
   } catch (err) {
     await stop();
     throw err;
