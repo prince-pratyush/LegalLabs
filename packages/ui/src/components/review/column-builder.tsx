@@ -6,7 +6,7 @@ import { SidePanel } from "../side-panel.js";
 import { Skeleton } from "../status.js";
 import { type NewColumn, TYPE_NAMES } from "./presets.js";
 
-type Proposal = NewColumn & { picked: boolean };
+type Proposal = NewColumn & { picked: boolean; key: string };
 
 /** Describe a review, get proposed columns, tick the ones to add (UX §5.5). */
 export function ColumnBuilder({
@@ -40,7 +40,7 @@ export function ColumnBuilder({
     setError(null);
     try {
       const result = await onGenerate(description.trim());
-      setProposals(result.map((p) => ({ ...p, picked: true })));
+      setProposals(result.map((p, i) => ({ ...p, picked: true, key: `${Date.now()}-${i}` })));
       if (result.length === 0) setError("No columns came back. Try describing it differently.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't propose columns. Try again.");
@@ -53,7 +53,7 @@ export function ColumnBuilder({
     setBusy("add");
     setError(null);
     try {
-      await onAdd(picked.map(({ picked: _, ...column }) => column));
+      await onAdd(picked.map(({ picked: _, key: __, ...column }) => column));
       setProposals(null);
       setDescription("");
     } catch (err) {
