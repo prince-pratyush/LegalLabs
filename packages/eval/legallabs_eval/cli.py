@@ -4,10 +4,12 @@ import sys
 from pathlib import Path
 
 from .config import DEFAULT_SYSTEMS, load_config
+from .io import write_json
 from .registry import SUITES, make_harness, make_suite
 from .runner import Runner
 from .schemas import HarnessError, NonRetryableError
 from .suites.coverage_vdr import DEFAULT_DOCS, DEFAULT_SEED, write_room
+from .suites.playbook_review import rescore
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,11 +26,33 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--runs-dir", type=Path, default=Path("runs"))
     run.add_argument("--no-judge", action="store_true", help="skip paid judge criteria")
     run.add_argument("--spread", action="store_true", help="with --limit, take evenly spaced tasks")
+    run.add_argument(
+        "--fail-on-task-errors",
+        action="store_true",
+        help="exit 1 when any task ends without a graded result",
+    )
+    again = commands.add_parser(
+        "rescore", help="grade saved playbook-review outcomes again, without model calls"
+    )
+    again.add_argument("--gold", type=Path, required=True, help="corpus dir holding gold.json")
+    again.add_argument("--outcomes", type=Path, required=True, help="dir of <contract id>.json")
+    again.add_argument("--out", type=Path, help="write the summary here as well")
     room = commands.add_parser("make-room", help="write a coverage-vdr data room to disk")
     room.add_argument("--out", type=Path, required=True)
     room.add_argument("--docs", type=int, default=DEFAULT_DOCS)
     room.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args(argv)
+
+    if args.command == "rescore":
+        try:
+            summary = rescore(args.gold, args.outcomes)
+        except (OSError, ValueError, KeyError) as err:
+            print(f"failed: {err}", file=sys.stderr)
+            return 2
+        if args.out:
+            write_json(args.out, summary)
+        print(json.dumps(summary, indent=2))
+        return 0
 
     if args.command == "make-room":
         try:
@@ -72,4 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"failed: {err}", file=sys.stderr)
         return 1
     print(json.dumps(summary, indent=2))
+    if args.fail_on_task_errors and summary["total_failed"]:
+        print(f"failed: {summary['total_failed']} task(s) had no result", file=sys.stderr)
+        return 1
     return 0

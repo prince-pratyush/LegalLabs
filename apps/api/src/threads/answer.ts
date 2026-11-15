@@ -137,7 +137,7 @@ export interface AnswerDeps {
 }
 
 /** Passages in order, up to what the window holds. */
-function fit(passages: readonly Passage[], budgetChars: number): Passage[] {
+function fitWindow(passages: readonly Passage[], budgetChars: number): Passage[] {
   const kept: Passage[] = [];
   let room = budgetChars;
   for (const passage of passages) {
@@ -422,7 +422,11 @@ export function createAnswerer(deps: AnswerDeps) {
     const budgetTokens = deps.gateway.contextTokens("synthesize") - MAX_OUTPUT;
     const budgetChars = Math.max(2_000, budgetTokens * CHARS_PER_TOKEN - fixedChars);
     const { passages, authorities, coverage } = input.prepared
-      ? { ...input.prepared, passages: fit(input.prepared.passages, budgetChars), authorities: [] }
+      ? {
+          ...input.prepared,
+          passages: fitWindow(input.prepared.passages, budgetChars),
+          authorities: [],
+        }
       : await gather(deps, input, budgetChars);
     await emit({ type: "coverage", coverage });
     await emit({

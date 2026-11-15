@@ -9,12 +9,14 @@ from .harnesses.legallabs_review_table import LegalLabsReviewTableHarness
 from .harnesses.legallabs_search import LegalLabsSearchHarness
 from .harnesses.legallabs_thread import LegalLabsThreadHarness
 from .harnesses.model import NaiveRagHarness, PlainModelHarness
+from .harnesses.playbook_node import PlaybookNodeHarness
 from .schemas import NonRetryableError
 from .suites.base import Suite
 from .suites.coverage_vdr import CoverageVdr
 from .suites.extract_cuad import ExtractCuad
 from .suites.extract_maud import ExtractMaud
 from .suites.nli_contractnli import NliContractNli
+from .suites.playbook_review import PlaybookReview
 from .suites.retrieval_golden import RetrievalGolden
 from .suites.retrieval_knowledge import SOURCES as KNOWLEDGE_SOURCES
 from .suites.retrieval_knowledge import RetrievalKnowledge
@@ -30,6 +32,7 @@ HARNESSES: dict[str, type[Harness]] = {
     "model": PlainModelHarness,
     "naive-rag": NaiveRagHarness,
     "review-cell": ReviewCellHarness,
+    "playbook-node": PlaybookNodeHarness,
 }
 
 # Each factory takes the judges table, or None to grade without judges.
@@ -43,6 +46,7 @@ SUITES: dict[str, Callable[[dict[str, Any] | None, int], Suite]] = {
     # Graded by rules, not judges: the answers are typed values and checkable quotes.
     "extract-maud": lambda judges, n: ExtractMaud(),
     "review-table-e2e": lambda judges, n: ReviewTableE2e(),
+    "playbook-review": lambda judges, n: PlaybookReview(),
 }
 for _source in KNOWLEDGE_SOURCES:
     SUITES[f"retrieval-golden-{_source}"] = lambda judges, n, s=_source: RetrievalKnowledge(s)

@@ -1,0 +1,24 @@
+{
+  "config_hash": "44364b4a0c40",
+  "dataset_fingerprint": "playbook-v1-7-16-8a93aa67c7fb",
+  "judges": null,
+  "output_schema": null,
+  "run_suffix": "",
+  "schema_version": 1,
+  "suite": "playbook-review",
+  "suite_instructions_sha256": "dab8085df834ae93dd5043a34414fb2897b0848643cab01e14452a175c389172",
+  "system": "playbook-ollama",
+  "system_config": {
+    "harness": "playbook-node",
+    "params": {
+      "call_timeout_ms": 600000,
+      "client": "ollama",
+      "model": "qwen3:4b-instruct",
+      "num_ctx": 8192,
+      "parallelism": 1,
+      "rule_timeout_ms": 600000,
+      "task_timeout_seconds": 14400
+    },
+    "vendor": "ollama"
+  }
+}

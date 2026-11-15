@@ -1,108 +1,31 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import type { Citation, DocumentSummary, Thread } from "./api.js";
-
-const DOCUMENT: DocumentSummary = {
-  id: "0190a000-0000-7000-8000-000000000001",
-  version_id: "0190a000-0000-7000-8000-000000000002",
-  name: "msa.pdf",
-  mime: "application/pdf",
-  size: 1000,
-  status: "indexed",
-  failure_reason: null,
-  page_count: 10,
-  empty_page_count: 2,
-  matter_id: null,
-  created_at: "2026-11-10T00:00:00.000Z",
-};
-
-const source = (n: number, at: number, status: Citation["status"]): Citation => ({
-  n,
+import {
+  ANSWER,
   at,
-  document_id: status === "unresolved" ? null : DOCUMENT.id,
-  version_id: status === "unresolved" ? null : DOCUMENT.version_id,
-  document_name: status === "unresolved" ? null : DOCUMENT.name,
-  page: 3,
-  quote: `quote ${n}`,
-  char_from: status === "ok" ? 0 : null,
-  char_to: status === "ok" ? 7 : null,
-  status,
-});
+  DOC,
+  FakeSource,
+  QUESTION,
+  RUN_ID,
+  run,
+  SCOPE,
+  serve,
+  signedIn,
+  source,
+  THREAD_ID,
+  thread,
+  VERSION,
+} from "./testing.js";
 
-const CONTENT = "The cap is <img src=x onerror=alert(1)> one. Two. Three.";
+// The real viewer draws PDFs, which jsdom can't; this checks only that it opens over the thread.
+vi.mock("./viewer/document-page.js", async (load) => ({
+  ...(await load<typeof import("./viewer/document-page.js")>()),
+  DocumentPage: ({ href }: { href: string }) => <div data-testid="document-page">{href}</div>,
+}));
 
-const THREAD: Thread = {
-  id: "0190a000-0000-7000-8000-000000000003",
-  title: "What is the cap?",
-  matter_id: null,
-  created_at: "2026-11-10T00:00:00.000Z",
-  documents: [
-    {
-      id: DOCUMENT.id,
-      version_id: DOCUMENT.version_id,
-      name: DOCUMENT.name,
-      page_count: 10,
-      empty_page_count: 2,
-    },
-  ],
-  messages: [
-    {
-      id: "m1",
-      role: "user",
-      content: "What is the cap?",
-      model: null,
-      created_at: "2026-11-10T00:00:00.000Z",
-      citations: [],
-    },
-    {
-      id: "m2",
-      role: "assistant",
-      content: CONTENT,
-      model: "anthropic/claude-haiku-5-5",
-      created_at: "2026-11-10T00:00:00.000Z",
-      citations: [
-        source(1, CONTENT.indexOf(" one.") + 4, "ok"),
-        source(2, CONTENT.indexOf(" Two") + 4, "mismatch"),
-        source(3, CONTENT.indexOf(" Three") + 6, "unresolved"),
-      ],
-    },
-  ],
-};
-
-type Handler = (body: unknown) => [number, unknown];
-
-// Answers the page's requests from a table, and records what it was sent.
-function serve(routes: Record<string, Handler>) {
-  const sent: { route: string; body: unknown }[] = [];
-  const fetch = vi.fn(async (input: string, init?: RequestInit) => {
-    const route = `${init?.method ?? "GET"} ${input}`;
-    const body = typeof init?.body === "string" ? JSON.parse(init.body) : init?.body;
-    sent.push({ route, body });
-    const handler = routes[route];
-    const [status, json] = handler ? handler(body) : [404, { code: "NOT_FOUND", message: "No." }];
-    return new Response(status === 204 ? null : JSON.stringify(json), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
-  });
-  vi.stubGlobal("fetch", fetch);
-  return sent;
-}
-
-const signedIn: Record<string, Handler> = {
-  "GET /auth/session": () => [200, { user_id: "u", workspace_id: "w" }],
-  "GET /api/v1/documents": () => [200, { documents: [DOCUMENT] }],
-  "GET /api/v1/threads": () => [200, { threads: [] }],
-};
-
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
-
-describe("the page", () => {
-  it("signs in, then shows the documents and how many pages had no text", async () => {
+describe("signing in", () => {
+  it("signs in, then offers a new thread", async () => {
     let session = false;
     const sent = serve({
       ...signedIn,
@@ -119,8 +42,7 @@ describe("the page", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret pass" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByLabelText(/msa\.pdf/)).toBeTruthy();
-    expect(screen.getByText(/2 of 10 pages had no readable text/)).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "New thread" })).toBeTruthy();
     expect(sent.find((call) => call.route === "POST /auth/login")?.body).toEqual({
       workspace: "acme",
       email: "ana@acme.test",
@@ -142,100 +64,443 @@ describe("the page", () => {
       "Those details didn't match an account.",
     );
   });
+});
 
-  it("asks about the chosen documents and shows each source's check", async () => {
-    const sent = serve({ ...signedIn, "POST /api/v1/threads": () => [201, { thread: THREAD }] });
+describe("a new thread", () => {
+  it("won't send without something to read, and says why", async () => {
+    serve(signedIn);
     render(<App />);
-    fireEvent.click(await screen.findByLabelText(/msa\.pdf/));
-    fireEvent.change(screen.getByLabelText("Question"), {
-      target: { value: "What is the cap?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    const box = await screen.findByRole("textbox", { name: "Ask a question" });
+    fireEvent.change(box, { target: { value: "Cap?" } });
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", true);
+    expect(screen.getByText("Attach a file, a vault or a source to ask about.")).toBeTruthy();
+  });
 
-    const answer = await screen.findByTestId("answer-m2");
-    expect(sent.find((call) => call.route === "POST /api/v1/threads")?.body).toEqual({
-      question: "What is the cap?",
-      document_ids: [DOCUMENT.id],
+  it("asks with a picked vault and opens the new thread", async () => {
+    const sent = serve({
+      ...signedIn,
+      "GET /api/v1/scope-options": () => [
+        200,
+        { ...SCOPE, vaults: [{ id: "vault-1", name: "Leases", file_count: 3 }] },
+      ],
+      "POST /api/v1/threads": () => [
+        202,
+        { thread_id: THREAD_ID, message_id: "m1", run_id: RUN_ID },
+      ],
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }],
     });
+    render(<App />);
+    const box = await screen.findByRole("textbox", { name: "Ask a question" });
+    // Typing a mention picks the vault and sends it as a mention block.
+    fireEvent.change(box, { target: { value: "Cap in @Lea", selectionStart: 11 } });
+    fireEvent.keyDown(await screen.findByRole("textbox", { name: "Ask a question" }), {
+      key: "Enter",
+    });
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe("Cap in @Leases "));
+    fireEvent.change(box, { target: { value: "Cap in @Leases now?", selectionStart: 19 } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await waitFor(() => expect(window.location.hash).toBe(`#/t/${THREAD_ID}`));
+    expect(sent.find((c) => c.route === "POST /api/v1/threads")?.body).toEqual({
+      content: [
+        { type: "text", text: "Cap in " },
+        { type: "mention", ref_type: "vault", ref_id: "vault-1", label: "Leases" },
+        { type: "text", text: " now?" },
+      ],
+      scope: { document_ids: [], vault_ids: [], sources: [] },
+    });
+    expect(await screen.findByTestId("answer-m2")).toBeTruthy();
+  });
+});
+
+describe("the Library and Playbooks", () => {
+  it("seeds the new-thread composer with a prompt from the Library, once", async () => {
+    serve(signedIn);
+    sessionStorage.setItem("legallabs.composer.prefill", "Summarise the indemnities.");
+    render(<App />);
+    const box = await screen.findByRole("textbox", { name: "Ask a question" });
+    expect((box as HTMLTextAreaElement).value).toBe("Summarise the indemnities.");
+    expect(sessionStorage.getItem("legallabs.composer.prefill")).toBeNull();
+    expect(screen.getByRole("button", { name: "Saved prompts" })).toBeTruthy();
+  });
+
+  it("are reachable from the sidebar", async () => {
+    serve(signedIn);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Library" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/library/prompts"));
+    window.location.hash = "";
+    fireEvent.click(await screen.findByRole("button", { name: "Playbooks" }));
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/playbooks/));
+  });
+});
+
+describe("knowledge sources", () => {
+  it("picks a source from the list and scopes the question to it", async () => {
+    const sent = serve({
+      ...signedIn,
+      "GET /api/v1/scope-options": () => [
+        200,
+        {
+          ...SCOPE,
+          sources: [
+            {
+              id: "au-cth-acts",
+              name: "Commonwealth Acts",
+              kind: "legislation",
+              jurisdiction: "AU",
+            },
+          ],
+        },
+      ],
+      "POST /api/v1/threads": () => [
+        202,
+        { thread_id: THREAD_ID, message_id: "m1", run_id: RUN_ID },
+      ],
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }],
+    });
+    render(<App />);
+    const box = await screen.findByRole("textbox", { name: "Ask a question" });
+    fireEvent.click(screen.getByRole("button", { name: "Sources" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Commonwealth Acts/ }));
+    expect(await screen.findByRole("button", { name: "Remove Commonwealth Acts" })).toBeTruthy();
+    fireEvent.change(box, { target: { value: "What is a corporation?", selectionStart: 22 } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(sent.find((c) => c.route === "POST /api/v1/threads")?.body).toMatchObject({
+        scope: { document_ids: [], vault_ids: [], sources: [{ source_id: "au-cth-acts" }] },
+      }),
+    );
+  });
+});
+
+describe("a thread", () => {
+  it("shows answers as text with each source's check, and model and cost", async () => {
+    serve({ ...signedIn, [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }] });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    const answer = await screen.findByTestId("answer-m2");
     // Model text is shown as text, never parsed as markup.
     expect(answer.querySelector("img")).toBeNull();
     expect(answer.textContent).toContain("<img src=x onerror=alert(1)>");
-
-    const verified = within(answer).getByRole("button", { name: "Source 1, verified" });
-    const misquoted = within(answer).getByRole("button", { name: "Source 2, not verified" });
-    expect(within(answer).getByRole("button", { name: "Source 3, not verified" })).toBeTruthy();
-    expect(verified.textContent).toBe("1");
-    expect(misquoted.textContent).toBe("2!");
-
-    const sources = screen.getByRole("region", { name: "Sources" });
-    const items = within(sources).getAllByRole("listitem");
-    expect(items).toHaveLength(3);
-    expect(items[0]?.textContent).toMatch(/msa\.pdf.*page 3.*quote 1.*Verified/);
-    expect(items[1]?.textContent).toMatch(/msa\.pdf.*page 3.*quote 2.*Not verified/);
-    expect(items[1]?.textContent).toContain("quote wasn't found on that page");
-    expect(items[2]?.textContent).toMatch(/Unknown document.*quote 3.*Not verified/);
-    expect(items[2]?.textContent).toContain("couldn't be checked");
-    for (const item of items.slice(1)) expect(item.textContent).not.toMatch(/\bVerified/);
-
-    fireEvent.click(misquoted);
-    await waitFor(() => expect(document.activeElement).toBe(items[1]));
+    expect(within(answer).getByRole("button", { name: "Source 1, verified" }).textContent).toBe(
+      "1",
+    );
+    expect(within(answer).getByRole("button", { name: "Source 2, not verified" }).textContent).toBe(
+      "2!",
+    );
+    expect(answer.textContent).toContain("anthropic/claude-haiku-5-5");
+    expect(answer.textContent).toContain("1,500 tok");
   });
 
-  it("shows the API's message when an answer can't be given", async () => {
+  it("opens a verified citation at its deep link, and a flagged one only in the list", async () => {
+    serve({ ...signedIn, [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }] });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    const answer = await screen.findByTestId("answer-m2");
+    fireEvent.click(within(answer).getByRole("button", { name: "Source 2, not verified" }));
+    expect(window.location.hash).toBe(`#/t/${THREAD_ID}`);
+    const panel = await screen.findByRole("dialog", { name: "Sources" });
+    const flagged = within(panel).getByRole("region", { name: "Source 2" });
+    expect(flagged.textContent).toContain("Couldn't verify on the page");
+    expect(flagged.textContent).toContain("quote 2");
+    // Choosing another flagged source in the list selects it instead of opening anything.
+    fireEvent.click(within(panel).getByRole("button", { name: /\[3\]/ }));
+    expect(within(panel).getByRole("region", { name: "Source 3" }).textContent).toContain(
+      "quote 3",
+    );
+    expect(window.location.hash).toBe(`#/t/${THREAD_ID}`);
+
+    fireEvent.click(within(answer).getByRole("button", { name: "Source 1, verified" }));
+    // Opens the document viewer at the pinned version, page and span.
+    await waitFor(() => expect(window.location.pathname).toBe(`/documents/${DOC}`));
+    expect(window.location.search).toBe(`?v=${VERSION}&page=3&span=0-7`);
+    expect(window.history.state.anchor.quote).toBe("quote 1");
+    // Flagged sources aren't offered to the viewer to step through.
+    expect(window.history.state.context).toHaveLength(1);
+    expect((await screen.findByTestId("document-page")).textContent).toContain(`/documents/${DOC}`);
+    // The thread stays in view behind the citation.
+    expect(screen.getByTestId("answer-m2")).toBeTruthy();
+  });
+
+  it("says when a verified source has no link to open", async () => {
+    const authority = {
+      ...source(1, 4, "ok"),
+      kind: "authority" as const,
+      document_id: null,
+      version_id: null,
+      authority: { id: "a1", citation: "Act s 1", title: "Act", url: "http://insecure.test" },
+      open_url: null,
+    };
     serve({
       ...signedIn,
-      "POST /api/v1/threads": () => [
-        503,
-        { code: "MODEL_UNAVAILABLE", message: "No model could answer just now." },
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [
+        200,
+        { thread: thread({ messages: [QUESTION, { ...ANSWER, citations: [authority] }] }) },
       ],
     });
+    at(`#/t/${THREAD_ID}`);
     render(<App />);
-    fireEvent.click(await screen.findByLabelText(/msa\.pdf/));
-    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "Cap?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    expect((await screen.findByRole("alert")).textContent).toBe("No model could answer just now.");
+    const answer = await screen.findByTestId("answer-m2");
+    fireEvent.click(within(answer).getByRole("button", { name: "Source 1, verified" }));
+    expect(await screen.findByText("Source link unavailable for [1].")).toBeTruthy();
+    expect(window.location.pathname).toBe("/");
   });
 
-  describe("an answer with no checked source", () => {
-    const UNSUPPORTED = /Nothing in this answer was checked against your documents/;
-
-    async function show(answer: Partial<Thread["messages"][number]>) {
-      const [question, reply] = THREAD.messages;
-      if (!question || !reply) throw new Error("fixture changed");
-      const thread = { ...THREAD, messages: [question, { ...reply, ...answer }] };
-      serve({ ...signedIn, "POST /api/v1/threads": () => [201, { thread }] });
-      render(<App />);
-      fireEvent.click(await screen.findByLabelText(/msa\.pdf/));
-      fireEvent.change(screen.getByLabelText("Question"), { target: { value: "Cap?" } });
-      fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-      return screen.findByTestId("answer-m2");
-    }
-
-    it("warns when the model cited nothing", async () => {
-      await show({ content: "The cap is twelve months of fees.", citations: [] });
-      expect(screen.getByText(UNSUPPORTED)).toBeTruthy();
+  it("flags sentences with no verified source", async () => {
+    const flagged = { ...ANSWER, ungrounded: [[0, 6]] as [number, number][] };
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [
+        200,
+        { thread: thread({ messages: [QUESTION, flagged] }) },
+      ],
     });
-
-    it("warns when no citation could be verified", async () => {
-      await show({ citations: [source(1, 0, "mismatch"), source(2, 0, "unresolved")] });
-      expect(screen.getByText(UNSUPPORTED)).toBeTruthy();
-    });
-
-    it("doesn't warn once one source is verified", async () => {
-      await show({});
-      expect(screen.queryByText(UNSUPPORTED)).toBeNull();
-    });
-
-    it("doesn't warn on the fixed not-found reply, which makes no claim", async () => {
-      await show({ model: null, content: "That wasn't found.", citations: [] });
-      expect(screen.queryByText(UNSUPPORTED)).toBeNull();
-    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    const answer = await screen.findByTestId("answer-m2");
+    expect(answer.querySelector("mark")?.textContent).toContain("The ca");
   });
 
-  it("won't ask without a chosen document", async () => {
+  it("warns when nothing in an answer was verified", async () => {
+    const unchecked = { ...ANSWER, citations: [source(1, 0, "mismatch")] };
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [
+        200,
+        { thread: thread({ messages: [QUESTION, unchecked] }) },
+      ],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    expect(await screen.findByText(/Nothing in this answer was checked/)).toBeTruthy();
+  });
+
+  it("hides the composer on a read-only thread and offers a copy", async () => {
+    const sent = serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread({ read_only: true }) }],
+      [`POST /api/v1/threads/${THREAD_ID}/duplicate`]: () => [201, { thread_id: "copy-1" }],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    await screen.findByTestId("answer-m2");
+    expect(screen.queryByRole("textbox", { name: "Ask a question" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate to continue" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/t/copy-1"));
+    expect(sent.some((c) => c.route === `POST /api/v1/threads/${THREAD_ID}/duplicate`)).toBe(true);
+  });
+
+  it("says when a thread doesn't exist, with a way out", async () => {
     serve(signedIn);
+    at("#/t/nope");
     render(<App />);
-    fireEvent.change(await screen.findByLabelText("Question"), { target: { value: "Cap?" } });
-    expect(screen.getByRole("button", { name: "Ask" })).toHaveProperty("disabled", true);
+    expect(await screen.findByText("Thread not found")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Start a new thread" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+  });
+});
+
+describe("a running answer", () => {
+  const running = () => thread({ messages: [QUESTION], runs: [run("running")] });
+
+  it("turns placeholders into markers as citations arrive, then shows the saved answer", async () => {
+    let gets = 0;
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => {
+        gets += 1;
+        return [200, { thread: gets === 1 ? running() : thread() }];
+      },
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    await waitFor(() => expect(FakeSource.all).toHaveLength(1));
+    const stream = FakeSource.all[0];
+    if (!stream) throw new Error("no stream");
+    expect(stream.url).toBe(`/api/v1/runs/${RUN_ID}/events`);
+
+    stream.emit("step", 1, {
+      step_id: "s1",
+      kind: "read",
+      status: "started",
+      title: "Reading msa.pdf",
+    });
+    stream.emit("token", 2, { message_id: "m2", delta: "The cap is one.[[c:1]]" });
+    expect(screen.getByText("Reading msa.pdf")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Source 1, checking" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
+
+    stream.emit("citation", 3, {
+      citation: {
+        message_id: "m2",
+        ordinal: 1,
+        kind: "document",
+        verified: "ok",
+        document: { document_id: DOC, version_id: "v", name: "msa.pdf", page_no: 3 },
+        quote: "one",
+        open_url: `/d/${DOC}/v/1?p=3`,
+      },
+    });
+    expect(screen.queryByRole("img", { name: "Source 1, checking" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Source 1, verified" })).toBeTruthy();
+
+    stream.emit("done", 4, {
+      message_id: "m2",
+      model: "m",
+      response_mode: "answer",
+      usage: { input_tokens: 1, output_tokens: 1 },
+      cost_usd: 0,
+      citations: { total: 1, ok: 1, mismatch: 0, unresolved: 0, ungrounded_sentences: 0 },
+      duration_ms: 5,
+    });
+    expect(stream.readyState).toBe(2);
+    expect(await screen.findByTestId("answer-m2")).toBeTruthy();
+    expect(gets).toBe(2);
+  });
+
+  it("shows an error with Retry, which asks the question again", async () => {
+    const sent = serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: running() }],
+      [`POST /api/v1/threads/${THREAD_ID}/messages`]: () => [
+        202,
+        { thread_id: THREAD_ID, message_id: "m3", run_id: "r2" },
+      ],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    await waitFor(() => expect(FakeSource.all).toHaveLength(1));
+    FakeSource.all[0]?.emit("error", 1, {
+      code: "MODEL_UNAVAILABLE",
+      message: "No model could answer just now.",
+      retryable: false,
+    });
+    const card = await screen.findByRole("alert");
+    expect(card.textContent).toContain("No model could answer just now.");
+    fireEvent.click(within(card).getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(
+        sent.find((c) => c.route === `POST /api/v1/threads/${THREAD_ID}/messages`)?.body,
+      ).toEqual({
+        content: "What is the cap?",
+        scope: { document_ids: [DOC], vault_ids: [], sources: [] },
+      }),
+    );
+  });
+
+  it("stops a run on request", async () => {
+    const sent = serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: running() }],
+      [`POST /api/v1/runs/${RUN_ID}/cancel`]: () => [202, null],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+    await waitFor(() =>
+      expect(sent.some((c) => c.route === `POST /api/v1/runs/${RUN_ID}/cancel`)).toBe(true),
+    );
+  });
+});
+
+describe("side panels", () => {
+  it("move focus to their heading, and back to the button on close", async () => {
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }],
+      [`GET /api/v1/threads/${THREAD_ID}/drafts`]: () => [200, { items: [] }],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    const button = await screen.findByRole("button", { name: "Drafts" });
+    button.focus();
+    fireEvent.click(button);
+    const panel = await screen.findByRole("dialog", { name: "Drafts" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(panel).getByRole("heading", { name: "Drafts" })),
+    );
+    fireEvent.keyDown(panel, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(button));
+  });
+});
+
+describe("sharing", () => {
+  it("names the people a thread couldn't be shared with, and why", async () => {
+    const sent = serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }],
+      "GET /api/v1/members": () => [
+        200,
+        {
+          items: [
+            { id: "u2", name: "Bo Chen", email: "bo@acme.test" },
+            { id: "u3", name: "Cy Diaz", email: "cy@acme.test" },
+          ],
+        },
+      ],
+      [`GET /api/v1/threads/${THREAD_ID}/shares`]: () => [200, { items: [] }],
+      [`POST /api/v1/threads/${THREAD_ID}/shares`]: () => [
+        200,
+        { created: [], rejected: [{ id: "u2", reason: "WALL_DENIED" }] },
+      ],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+    const search = await screen.findByRole("searchbox");
+    fireEvent.change(search, { target: { value: "bo" } });
+    fireEvent.click(screen.getByRole("button", { name: /Bo Chen/ }));
+    const dialog = screen.getByRole("dialog", { name: "Share" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Share" }));
+    const alert = await screen.findByText(/Bo Chen is walled off from this matter/);
+    expect(alert).toBeTruthy();
+    expect(sent.find((c) => c.route === `POST /api/v1/threads/${THREAD_ID}/shares`)?.body).toEqual({
+      user_ids: ["u2"],
+      link: false,
+    });
+  });
+});
+
+describe("history", () => {
+  it("searches on the server and loads more", async () => {
+    const item = (id: string, title: string) => ({
+      id,
+      title,
+      type: "assist",
+      matter_id: null,
+      document_count: 2,
+      model: "m",
+      cost_usd: 0.02,
+      last_activity_at: "2026-11-10T00:00:00.000Z",
+      status: "done",
+      favourite: false,
+      shared: false,
+    });
+    const sent = serve({
+      ...signedIn,
+      "GET /api/v1/history": () => [200, { items: [item("t1", "Lease cap")], next_cursor: "c1" }],
+      "GET /api/v1/history?cursor=c1": () => [
+        200,
+        { items: [item("t2", "Older one")], next_cursor: null },
+      ],
+      "GET /api/v1/history?q=cap": () => [
+        200,
+        { items: [item("t1", "Lease cap")], next_cursor: null },
+      ],
+    });
+    at("#/history");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Load more" })).toBeNull());
+    expect(sent.some((c) => c.route === "GET /api/v1/history?cursor=c1")).toBe(true);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search history" }), {
+      target: { value: "cap" },
+    });
+    await waitFor(() =>
+      expect(sent.some((c) => c.route === "GET /api/v1/history?q=cap")).toBe(true),
+    );
   });
 });

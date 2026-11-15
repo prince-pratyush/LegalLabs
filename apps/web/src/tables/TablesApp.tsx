@@ -2,7 +2,7 @@ import type { CreateTableBody, ReviewTable } from "@legallabs/contracts";
 import { type CreateRequest, CreateTablePanel, TableList, Toaster, toast } from "@legallabs/ui";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type ThreadSummary } from "../api.js";
+import { api } from "../api.js";
 import { vaultApi } from "../vaults/api.js";
 import { useHash } from "../vaults/route.js";
 import { messageOf, tableApi } from "./api.js";
@@ -44,7 +44,7 @@ function ListPage({ threadId, onLeave }: { threadId: string | null; onLeave: () 
   const [starredOnly, setStarredOnly] = useState(false);
   const [creating, setCreating] = useState(threadId !== null);
   const [vaults, setVaults] = useState<{ id: string; name: string }[]>([]);
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [threads, setThreads] = useState<{ id: string; title: string }[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -61,7 +61,11 @@ function ListPage({ threadId, onLeave }: { threadId: string | null; onLeave: () 
   useEffect(() => {
     if (!creating) return;
     vaultApi.list().then(setVaults, () => setVaults([]));
-    api.threads().then(setThreads, () => setThreads([]));
+    // Recent threads, the same list the sidebar shows.
+    api.history().then(
+      (page) => setThreads(page.items.map((t) => ({ id: t.id, title: t.title }))),
+      () => setThreads([]),
+    );
   }, [creating]);
 
   const loadTree = useCallback(async (vaultId: string) => {
