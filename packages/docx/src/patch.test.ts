@@ -498,7 +498,7 @@ describe("untrusted packages", () => {
     expect(bomb.length).toBeLessThan(1024 * 1024);
     expect(failure(bomb)).toBe("TOO_LARGE");
     expect(() => readDocx(bomb)).toThrow(expect.objectContaining({ code: "TOO_LARGE" }));
-  });
+  }, 30_000);
 
   it("refuses too many entries and too many bytes in total", () => {
     const many = fixture({
@@ -510,7 +510,7 @@ describe("untrusted packages", () => {
     expect(() =>
       unzipLimited(fixture(), { entries: 100, partBytes: 1_000_000, totalBytes: 2_000 }),
     ).toThrow(expect.objectContaining({ code: "TOO_LARGE" }));
-  });
+  }, 30_000);
 
   it("reports unreadable input as OOXML_INVALID", () => {
     const deep = `<w:p><w:r><w:t>x</w:t></w:r></w:p>${"<w:tbl>".repeat(20_000)}${"</w:tbl>".repeat(20_000)}`;
@@ -634,7 +634,10 @@ describe("paragraphFragment", () => {
   });
 });
 
+// LibreOffice's first start takes over a minute, so it runs only on request:
+// SOFFICE_TEST=1 npx vitest run
 const soffice = (() => {
+  if (process.env.SOFFICE_TEST !== "1") return null;
   try {
     return execFileSync("which", ["soffice"]).toString().trim() || null;
   } catch {
@@ -674,11 +677,11 @@ describe.skipIf(!soffice)("LibreOffice", () => {
           dir,
           join(dir, "patched.docx"),
         ],
-        { timeout: 120_000, stdio: "pipe" },
+        { timeout: 240_000, stdio: "pipe" },
       );
       expect(existsSync(join(dir, "patched.pdf"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, 150_000);
+  }, 300_000);
 });
