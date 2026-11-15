@@ -368,7 +368,7 @@ export interface ParsedNumber {
 /** The first number, with "%" or the next word as its unit unless the column fixes one. */
 export function parseNumber(
   raw: string,
-  { decimals = 2, unit }: { decimals?: number; unit?: string | undefined } = {},
+  { decimals, unit }: { decimals?: number | undefined; unit?: string | undefined } = {},
 ): ParsedNumber | null {
   const text = raw.replace(/\s+/g, " ").trim();
   const match = new RegExp(`(-)?${NUMBER}${WORD_MULTIPLIER}`, "i").exec(text);
@@ -392,7 +392,8 @@ export function parseNumber(
     ? "%"
     : /^\)? ([A-Za-z][A-Za-z-]{0,19})\b/.exec(rest)?.[1]?.toLowerCase();
   const chosen = unit ?? found;
-  return { value: roundDecimal(value, decimals), ...(chosen ? { unit: chosen } : {}) };
+  const rounded = decimals === undefined ? value : roundDecimal(value, decimals);
+  return { value: rounded, ...(chosen ? { unit: chosen } : {}) };
 }
 
 export function formatNumber({ value, unit }: ParsedNumber): string {
@@ -524,7 +525,7 @@ export function parseTypedValue(
     }
     case "number": {
       const o = options as Partial<ColumnOptionsFor<"number">>;
-      const parsed = parseNumber(text, { decimals: o.decimals ?? 2, unit: o.unit });
+      const parsed = parseNumber(text, { decimals: o.decimals, unit: o.unit });
       if (!parsed) return fail;
       return {
         ok: true,

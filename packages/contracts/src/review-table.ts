@@ -67,9 +67,10 @@ export const CurrencyOptions = z
     decimals: z.number().int().min(0).max(4).default(2),
   })
   .strict();
+// Without decimals, a number keeps the precision it was written with: "90 days" stays 90.
 export const NumberOptions = z
   .object({
-    decimals: z.number().int().min(0).max(4).default(2),
+    decimals: z.number().int().min(0).max(4).optional(),
     unit: text(40).optional(),
   })
   .strict();

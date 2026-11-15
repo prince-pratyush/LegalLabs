@@ -166,7 +166,8 @@ describe("parseCurrency", () => {
 
 describe("parseNumber", () => {
   it("reads a number and its unit", () => {
-    expect(parseNumber("30 days")).toEqual({ value: "30.00", unit: "days" });
+    expect(parseNumber("30 days")).toEqual({ value: "30", unit: "days" });
+    expect(parseNumber("30 days", { decimals: 2 })).toEqual({ value: "30.00", unit: "days" });
     expect(parseNumber("12.5%", { decimals: 1 })).toEqual({ value: "12.5", unit: "%" });
     expect(parseNumber("thirty (30) days", { decimals: 0 })).toEqual({ value: "30", unit: "days" });
   });
