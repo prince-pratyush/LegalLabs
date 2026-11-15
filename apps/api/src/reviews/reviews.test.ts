@@ -7,10 +7,12 @@ import { type Block, buildDocx, buildPdf, readDocx } from "@legallabs/docx";
 import { createGateway, type ModelProvider } from "@legallabs/model-gateway";
 import type { ReviewInput, ReviewOutcome, runReview } from "@legallabs/review";
 import { strFromU8, unzipSync } from "fflate";
+import type pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
 import { hashPassword } from "../auth/password.js";
+import { asApp } from "../db.js";
 import { createDrafts } from "../drafts/drafts.js";
 import { createPlaybooks, uuid7 } from "../playbooks/playbooks.js";
 import { createRunLog } from "../runs/log.js";
@@ -23,6 +25,8 @@ import {
   testPool,
   testThreads,
 } from "../test-db.js";
+import { noKnowledge, noVaults } from "../threads/ports.js";
+import { createThreads } from "../threads/threads.js";
 import { createReviews } from "./reviews.js";
 
 const pool = testPool();
@@ -50,8 +54,21 @@ type Json = any;
 
 /** Stands in for the review engine: one finding per rule, no model calls. */
 const fakeEngine =
-  (opts: { hold?: boolean; gap?: boolean } = {}): Engine =>
+  (
+    opts: {
+      hold?: boolean;
+      holdScoped?: boolean;
+      gap?: boolean;
+      /** Calls the model once per rule, so spend can be capped. */
+      callModel?: boolean;
+      throws?: boolean;
+      seen?: (input: ReviewInput) => void;
+      beforeReturn?: () => Promise<void>;
+    } = {},
+  ): Engine =>
   async (input: ReviewInput, deps) => {
+    opts.seen?.(input);
+    if (opts.throws) throw new Error("engine broke");
     const usage = {
       input_tokens: 10,
       output_tokens: 5,
@@ -68,13 +85,18 @@ const fakeEngine =
       excluded_regions: {},
       warnings: [],
     });
-    if (opts.hold) {
+    // holdScoped holds only re-runs (one rule in scope), so the review itself finishes.
+    if (opts.hold || (opts.holdScoped && scope !== "all")) {
       await new Promise<void>((resolve) =>
         input.signal?.addEventListener("abort", () => resolve()),
       );
     }
     const results: Finding[] = [];
     for (const rule of rules) {
+      if (opts.callModel) {
+        if (input.signal?.aborted) break;
+        await deps.complete({ task: "draft", system: "s", prompt: "p", json: true, maxTokens: 10 });
+      }
       deps.onEvent?.({ type: "review.rule_started", rule_id: rule.id });
       const key = rule.title.toLowerCase().split(" ")[0] ?? "";
       const edit = EDITS[key];
@@ -154,7 +176,8 @@ const fakeEngine =
     const outcome: ReviewOutcome = {
       clause_map: Object.fromEntries(rules.map((r) => [r.id, [0]])),
       uncovered: [],
-      results: aborted ? [] : results,
+      // A capped run keeps the rules it finished; a held one finished none.
+      results: aborted && !opts.callModel ? [] : results,
       gaps: aborted ? [] : gaps,
       summary,
       usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.001, models: ["fake/model"] },
@@ -167,10 +190,15 @@ const fakeEngine =
       warnings: [],
       aborted,
     };
+    await opts.beforeReturn?.();
     return outcome;
   };
 
-function harness(engine: Engine = fakeEngine(), reply: () => string = () => "{}") {
+function harness(
+  engine: Engine = fakeEngine(),
+  reply: () => string = () => "{}",
+  limits: { maxActive?: number; maxCostUsd?: number; asksPerWindow?: number } = {},
+) {
   const provider: ModelProvider = {
     complete: async () => ({ text: reply(), usage: { input_tokens: 10, output_tokens: 10 } }),
   };
@@ -180,13 +208,27 @@ function harness(engine: Engine = fakeEngine(), reply: () => string = () => "{}"
   });
   const documents = testDocuments(pool);
   const log = createRunLog(pool);
-  const threads = { ...testThreads(pool, documents), log };
+  // One log for threads and reviews, as the server has, so /runs/:id/cancel reaches reviews.
+  const threads = {
+    ...testThreads(pool, documents),
+    log,
+    threads: createThreads(pool, {
+      gateway,
+      documents,
+      log,
+      vaults: noVaults,
+      knowledge: noKnowledge,
+    }),
+    ...(limits.asksPerWindow ? { asksPerWindow: limits.asksPerWindow } : {}),
+  };
   const reviews = createReviews(pool, {
     gateway,
     store: documents.store,
     log,
     run: engine,
     now: () => new Date("2026-11-15T10:00:00Z"),
+    ...(limits.maxActive ? { maxActive: limits.maxActive } : {}),
+    ...(limits.maxCostUsd ? { maxCostUsd: limits.maxCostUsd } : {}),
   });
   const app = createApp({
     auth: createAuth(pool),
@@ -307,6 +349,54 @@ const sidOf = (review: Review, title: string) => {
   if (!s) throw new Error(`no suggestion for ${title}`);
   return s.id;
 };
+
+/** Polls a run until it reaches one of the statuses. */
+async function runStatus(runId: string, want: string[]) {
+  for (let i = 0; i < 150; i++) {
+    const { rows } = await pool.query("select status from work.run where id = $1", [runId]);
+    if (want.includes(rows[0]?.status)) return rows[0]?.status as string;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error(`run ${runId} never reached ${want.join("/")}`);
+}
+const runDone = (runId: string) => runStatus(runId, ["done"]);
+
+async function upload(h: Harness, s: { m: Seeded }, name: string, clauses: string[]) {
+  const principal = { sessionId: "s", userId: s.m.userId, workspaceId: s.m.workspaceId };
+  const uploaded = await h.documents.upload(
+    principal,
+    { name, bytes: contractDocx(clauses), matterId: null },
+    { ip: null, userAgent: null },
+  );
+  if (!uploaded.ok) throw new Error(uploaded.reason);
+  return uploaded.document.versionId;
+}
+
+/** Moves the document into a vault the given colleague can view. */
+async function shareInVault(s: { m: Seeded }, documentId: string, userId: string) {
+  const { rows } = await pool.query<{ id: string }>(
+    "insert into content.vault (workspace_id, owner_id, name) values ($1, $2, 'Deals') returning id",
+    [s.m.workspaceId, s.m.userId],
+  );
+  const vaultId = rows[0]?.id;
+  await pool.query("update content.document set vault_id = $2 where id = $1", [
+    documentId,
+    vaultId,
+  ]);
+  await pool.query(
+    `insert into core.share_grant
+       (workspace_id, object_type, object_id, principal_type, principal_id, level, granted_by)
+     values ($1, 'vault', $2, 'user', $3, 'view', $4)`,
+    [s.m.workspaceId, vaultId, userId, s.m.userId],
+  );
+  return vaultId as string;
+}
+
+/** Queries as the given person under RLS, as the API would. */
+const asUser = <T>(
+  who: Pick<Seeded, "userId" | "workspaceId">,
+  work: (db: pg.PoolClient) => Promise<T>,
+) => asApp(pool, { userId: who.userId, workspaceId: who.workspaceId }, work);
 
 describe("playbook reviews", () => {
   it("runs a review, records its steps and events, and audits it", async () => {
@@ -608,45 +698,135 @@ describe("playbook reviews", () => {
     expect(actions).toContain("playbook_review.cancelled");
   });
 
-  it("re-runs one rule against a fresh version and replaces its suggestion", async () => {
+  it("re-runs one rule against the review's own version and replaces its suggestion", async () => {
     const h = harness();
     const s = await setup(h);
     const { review_id } = await started(h, s);
     const review = await waitFor(h, s.cookie, review_id);
     const old = sidOf(review, "Payment");
     const rule = s.playbook.rules.find((r) => r.title === "Payment terms");
-    const principal = { sessionId: "s", userId: s.m.userId, workspaceId: s.m.workspaceId };
-    const fresh = await h.documents.upload(
-      principal,
-      {
-        name: "msa v2.docx",
-        bytes: contractDocx([...CLAUSES, "4. Notices. In writing."]),
-        matterId: null,
-      },
-      { ip: null, userAgent: null },
-    );
-    if (!fresh.ok) throw new Error(fresh.reason);
     const rerun = await h.call(s.cookie, "POST", `/reviews/${review_id}/rules/${rule?.id}/rerun`, {
-      document_version_id: fresh.document.versionId,
+      document_version_id: s.versionId,
     });
     expect(rerun.status).toBe(202);
-    for (let i = 0; i < 100; i++) {
-      const run = await pool.query("select status from work.run where id = $1", [
-        rerun.body.run_id,
-      ]);
-      if (run.rows[0]?.status === "done") break;
-      await new Promise((r) => setTimeout(r, 20));
-    }
+    await runDone(rerun.body.run_id);
     const after = (await h.call(s.cookie, "GET", `/reviews/${review_id}`)).body.review as Review;
-    const now = after.results.find((f) => f.rule_title === "Payment terms")?.suggestion;
-    expect(now?.id).not.toBe(old);
-    expect(now?.status).toBe("pending");
+    const now = after.results.find((f) => f.rule_title === "Payment terms");
+    expect(now?.suggestion?.id).not.toBe(old);
+    expect(now?.source_document_version_id).toBeUndefined();
     const prev = await pool.query("select status from work.review_suggestion where id = $1", [old]);
     expect(prev.rows[0]?.status).toBe("superseded");
+    const steps = await pool.query("select kind from work.run_step where run_id = $1", [
+      rerun.body.run_id,
+    ]);
+    expect(steps.rows.map((r) => r.kind)).toContain("generate");
     const unknown = await h.call(s.cookie, "POST", `/reviews/${review_id}/rules/${uuid7()}/rerun`, {
-      document_version_id: fresh.document.versionId,
+      document_version_id: s.versionId,
     });
     expect(unknown.body.code).toBe("RULE_NOT_FOUND");
+  });
+
+  it("keeps a re-run of another document to the owner, and out of redlines and summaries", async () => {
+    const h = harness();
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    const review = await waitFor(h, s.cookie, review_id);
+    const old = sidOf(review, "Payment");
+    // A colleague who can read the reviewed document (through a vault) but not the new one.
+    const reader = await colleague(s.m, "reader", ["playbooks.use", "threads.use"]);
+    await shareInVault(s, review.document_id, reader.userId);
+    const rc = await h.signIn(reader);
+    expect((await h.call(rc, "GET", `/reviews/${review_id}`)).status).toBe(200);
+
+    // Word uploads the edited contract as a new document and re-runs against it.
+    const fresh = await upload(h, s, "msa from word.docx", [
+      ...CLAUSES.slice(0, 2),
+      "3. Payment. Invoices are payable within 90 days of receipt. SECRET-B",
+    ]);
+    const rule = s.playbook.rules.find((r) => r.title === "Payment terms");
+    // Someone who can't read B can't re-run against it, even on a review they can see.
+    const blocked = await h.call(rc, "POST", `/reviews/${review_id}/rules/${rule?.id}/rerun`, {
+      document_version_id: fresh,
+    });
+    expect([403, 404]).toContain(blocked.status);
+    const rerun = await h.call(s.cookie, "POST", `/reviews/${review_id}/rules/${rule?.id}/rerun`, {
+      document_version_id: fresh,
+    });
+    expect(rerun.status).toBe(202);
+    await runDone(rerun.body.run_id);
+
+    const mine = (await h.call(s.cookie, "GET", `/reviews/${review_id}`)).body.review as Review;
+    const ownFinding = mine.results.find((f) => f.rule_title === "Payment terms");
+    expect(ownFinding?.source_document_version_id).toBe(fresh);
+    expect(ownFinding?.evidence[0]?.quote).toBeDefined();
+    expect(ownFinding?.suggestion?.source_document_version_id).toBe(fresh);
+    expect(ownFinding?.suggestion?.id).not.toBe(old);
+
+    // The colleague still sees the review's own finding, and nothing of B.
+    const theirs = await h.call(rc, "GET", `/reviews/${review_id}`);
+    expect(JSON.stringify(theirs.body)).not.toContain(fresh);
+    expect(JSON.stringify(theirs.body)).not.toContain("SECRET-B");
+    const theirFinding = (theirs.body.review as Review).results.find(
+      (f) => f.rule_title === "Payment terms",
+    );
+    expect(theirFinding?.suggestion?.id).toBe(old);
+    const raw = await asUser(reader, (db) =>
+      db.query(
+        "select 1 from work.review_rerun union all select 1 from work.review_suggestion where source_document_version_id is not null",
+      ),
+    );
+    expect(raw.rows).toEqual([]);
+
+    // The redline and summary are of the reviewed document: B's suggestion stays out.
+    await h.call(s.cookie, "POST", `/reviews/${review_id}/suggestions/apply-all`, {
+      surface: "web",
+    });
+    const redline = await h.raw(s.cookie, "POST", `/reviews/${review_id}/redline`, {
+      include_pending: true,
+    });
+    const read = readDocx(new Uint8Array(await redline.arrayBuffer()));
+    expect(read.paragraphs[2]?.text).toContain("30 days");
+    expect(read.paragraphs.map((p) => p.text).join(" ")).not.toContain("SECRET-B");
+    const exported = await h.raw(s.cookie, "POST", `/reviews/${review_id}/export`, {
+      format: "xlsx",
+    });
+    const sheet = strFromU8(
+      unzipSync(new Uint8Array(await exported.arrayBuffer()))["xl/worksheets/sheet1.xml"] ??
+        new Uint8Array(),
+    );
+    expect(sheet).not.toContain("SECRET-B");
+  });
+
+  it("ends a re-run that the review's cancel stops", async () => {
+    const h = harness(fakeEngine({ holdScoped: true }));
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    await waitFor(h, s.cookie, review_id);
+    const rule = s.playbook.rules[0];
+    const rerun = await h.call(s.cookie, "POST", `/reviews/${review_id}/rules/${rule?.id}/rerun`, {
+      document_version_id: s.versionId,
+    });
+    await runStatus(rerun.body.run_id, ["running"]);
+    expect((await h.raw(s.cookie, "POST", `/reviews/${review_id}/cancel`)).status).toBe(202);
+    expect(await runStatus(rerun.body.run_id, ["cancelled"])).toBe("cancelled");
+    // The finished review itself is untouched.
+    expect((await h.call(s.cookie, "GET", `/reviews/${review_id}`)).body.review.status).toBe(
+      "done",
+    );
+  });
+
+  it("stops a re-run cancelled through the runs endpoint", async () => {
+    const h = harness(fakeEngine({ holdScoped: true }));
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    await waitFor(h, s.cookie, review_id);
+    const rule = s.playbook.rules[0];
+    const rerun = await h.call(s.cookie, "POST", `/reviews/${review_id}/rules/${rule?.id}/rerun`, {
+      document_version_id: s.versionId,
+    });
+    await runStatus(rerun.body.run_id, ["running"]);
+    expect((await h.raw(s.cookie, "POST", `/runs/${rerun.body.run_id}/cancel`)).status).toBe(202);
+    expect(await runStatus(rerun.body.run_id, ["cancelled"])).toBe("cancelled");
   });
 
   it("refuses a document over a million characters", async () => {
@@ -679,6 +859,256 @@ describe("playbook reviews", () => {
     expect(redline).toMatchObject({ status: 422, body: { code: "REDLINE_NEEDS_DOCX" } });
     const doc = await h.call(s.cookie, "GET", `/reviews/${review_id}/document`);
     expect(doc.body.kind).toBe("pdf");
+  });
+});
+
+describe("review lifecycle and limits", () => {
+  it("marks the review running with its run", async () => {
+    const h = harness(fakeEngine({ hold: true }));
+    const s = await setup(h);
+    const { review_id, run_id } = await started(h, s);
+    await runStatus(run_id, ["running"]);
+    const review = (await h.call(s.cookie, "GET", `/reviews/${review_id}`)).body.review;
+    expect(review.status).toBe("running");
+    expect(review.rules.map((r: { title: string }) => r.title)).toEqual(RULES.map((r) => r.title));
+    await h.raw(s.cookie, "POST", `/reviews/${review_id}/cancel`);
+  });
+
+  it("fails both the run and the review when the engine throws", async () => {
+    const h = harness(fakeEngine({ throws: true }));
+    const s = await setup(h);
+    const { review_id, run_id } = await started(h, s);
+    const review = await waitFor(h, s.cookie, review_id);
+    expect(review.status).toBe("failed");
+    // The stored row catches up just after the run, which readers already see as failed.
+    let stored = "";
+    for (let i = 0; i < 100 && stored !== "failed"; i++) {
+      const row = await pool.query("select status from work.playbook_review where id = $1", [
+        review_id,
+      ]);
+      stored = row.rows[0]?.status;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(stored).toBe("failed");
+    expect(await runStatus(run_id, ["failed"])).toBe("failed");
+  });
+
+  it("never overwrites a review cancelled while its results were being saved", async () => {
+    let reviewId = "";
+    const h = harness(
+      fakeEngine({
+        // The engine has finished; the user cancels before the results are written.
+        beforeReturn: async () => {
+          await pool.query("update work.playbook_review set status = 'cancelled' where id = $1", [
+            reviewId,
+          ]);
+        },
+      }),
+    );
+    const s = await setup(h);
+    const { review_id, run_id } = await started(h, s);
+    reviewId = review_id;
+    expect(await runStatus(run_id, ["cancelled", "done"])).toBe("cancelled");
+    const review = (await h.call(s.cookie, "GET", `/reviews/${review_id}`)).body.review as Review;
+    expect(review.status).toBe("cancelled");
+    const kept = await pool.query("select 1 from work.review_suggestion where review_id = $1", [
+      review_id,
+    ]);
+    expect(kept.rows).toEqual([]);
+  });
+
+  it("caps the reviews one person runs at once", async () => {
+    const h = harness(fakeEngine({ hold: true }), undefined, { maxActive: 1 });
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    const second = await h.call(s.cookie, "POST", `/playbooks/${s.playbook.id}/reviews`, {
+      document_version_id: s.versionId,
+      party: "Acme",
+      surface: "web",
+    });
+    expect(second).toMatchObject({ status: 429, body: { code: "TOO_MANY_REVIEWS" } });
+    await h.raw(s.cookie, "POST", `/reviews/${review_id}/cancel`);
+  });
+
+  it("charges the ask budget by the rules in scope", async () => {
+    const h = harness(fakeEngine(), undefined, { asksPerWindow: 2 });
+    const s = await setup(h);
+    // 25 rules cost three asks, more than the two allowed.
+    const many = await h.call(s.cookie, "POST", "/playbooks", {
+      name: "Long",
+      contract_type: "MSA",
+      source: {
+        kind: "scratch",
+        rules: Array.from({ length: 25 }, (_, i) => ({
+          title: `Rule ${i}`,
+          standard_position: "x",
+        })),
+      },
+    });
+    await h.call(s.cookie, "POST", `/playbooks/${many.body.playbook.id}/publish`);
+    const res = await h.raw(s.cookie, "POST", `/playbooks/${many.body.playbook.id}/reviews`, {
+      document_version_id: s.versionId,
+      party: "Acme",
+      surface: "web",
+    });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBeTruthy();
+  });
+
+  it("stops at the cost cap, keeps finished rules and says why", async () => {
+    const h = harness(fakeEngine({ callModel: true }), () => "{}", { maxCostUsd: 1e-9 });
+    const s = await setup(h);
+    const { review_id, run_id } = await started(h, s);
+    const review = await waitFor(h, s.cookie, review_id);
+    expect(review.status).toBe("failed");
+    expect(review.results.map((f) => f.rule_title)).toEqual(["Liability cap"]);
+    let last: unknown;
+    for (let i = 0; i < 100; i++) {
+      const events = await h.log.replay(
+        { sessionId: "s", userId: s.m.userId, workspaceId: s.m.workspaceId },
+        run_id,
+        0,
+      );
+      last = events.at(-1);
+      if ((last as { type?: string })?.type === "error") break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(last).toMatchObject({ type: "error", code: "COST_CAP" });
+    expect(await runStatus(run_id, ["failed"])).toBe("failed");
+  });
+
+  it("reads attached files into the background, under the caller's access", async () => {
+    let extra: string | undefined;
+    const h = harness(
+      fakeEngine({
+        seen: (input) => {
+          extra = input.extraContext;
+        },
+      }),
+    );
+    const s = await setup(h);
+    const principal = { sessionId: "s", userId: s.m.userId, workspaceId: s.m.workspaceId };
+    const attached = await h.documents.upload(
+      principal,
+      {
+        name: "side letter.docx",
+        bytes: contractDocx(["Side letter: fees fixed."]),
+        matterId: null,
+      },
+      { ip: null, userAgent: null },
+    );
+    if (!attached.ok) throw new Error(attached.reason);
+    const { review_id } = await started(h, s, {
+      extra_context: { text: "Renewal deal.", document_ids: [attached.document.id] },
+    });
+    await waitFor(h, s.cookie, review_id);
+    expect(extra).toContain("Renewal deal.");
+    expect(extra).toContain("Side letter: fees fixed.");
+
+    // Someone else's file can't be pulled in.
+    const other = await seedMember(pool);
+    const res = await h.call(s.cookie, "POST", `/playbooks/${s.playbook.id}/reviews`, {
+      document_version_id: s.versionId,
+      party: "Acme",
+      surface: "web",
+      extra_context: { document_ids: [other.userId] },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("starts from a thread only when the caller owns it", async () => {
+    const h = harness();
+    const s = await setup(h);
+    const other = await colleague(s.m, "other", ["threads.use", "playbooks.use"]);
+    const { rows } = await pool.query<{ id: string }>(
+      "insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Theirs') returning id",
+      [s.m.workspaceId, other.userId],
+    );
+    const res = await h.call(s.cookie, "POST", `/playbooks/${s.playbook.id}/reviews`, {
+      document_version_id: s.versionId,
+      party: "Acme",
+      surface: "web",
+      thread_id: rows[0]?.id,
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("review access over time", () => {
+  it("hides a review once a wall shuts the reader out of its document", async () => {
+    const h = harness();
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    const review = await waitFor(h, s.cookie, review_id);
+    const reader = await colleague(s.m, "reader", ["playbooks.use", "threads.use"]);
+    await shareInVault(s, review.document_id, reader.userId);
+    const rc = await h.signIn(reader);
+    expect((await h.call(rc, "GET", `/reviews/${review_id}`)).status).toBe(200);
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into core.matter (workspace_id, client_id, client_name, matter_number, matter_name)
+       values ($1, 'C1', 'Client', 'M1', 'M1') returning id`,
+      [s.m.workspaceId],
+    );
+    await pool.query("update content.document set matter_id = $2 where id = $1", [
+      review.document_id,
+      rows[0]?.id,
+    ]);
+    await pool.query(
+      `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+       values ($1, $2, 'user', $3, 'deny')`,
+      [s.m.workspaceId, rows[0]?.id, reader.userId],
+    );
+    expect((await h.call(rc, "GET", `/reviews/${review_id}`)).status).toBe(404);
+    // The owner is not walled and still sees it.
+    expect((await h.call(s.cookie, "GET", `/reviews/${review_id}`)).status).toBe(200);
+  });
+
+  it("hides a review from a reader who loses the document, and from other workspaces", async () => {
+    const h = harness();
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    const review = await waitFor(h, s.cookie, review_id);
+    const reader = await colleague(s.m, "reader", ["playbooks.use", "threads.use"]);
+    await shareInVault(s, review.document_id, reader.userId);
+    const rc = await h.signIn(reader);
+    expect((await h.call(rc, "GET", `/reviews/${review_id}`)).status).toBe(200);
+    await pool.query("delete from core.share_grant where principal_id = $1", [reader.userId]);
+    expect((await h.call(rc, "GET", `/reviews/${review_id}`)).status).toBe(404);
+
+    const stranger = await seedMember(pool);
+    const sc = await h.signIn(stranger);
+    expect((await h.call(sc, "GET", `/reviews/${review_id}`)).status).toBe(404);
+    expect((await h.call(sc, "GET", "/reviews")).body.reviews).toEqual([]);
+    const redline = await h.call(sc, "POST", `/reviews/${review_id}/redline`, {
+      include_pending: true,
+    });
+    expect(redline.status).toBe(404);
+  });
+
+  it("keeps a review for its owner after the playbook is unpublished or deleted", async () => {
+    const h = harness();
+    const s = await setup(h);
+    const { review_id } = await started(h, s);
+    const review = await waitFor(h, s.cookie, review_id);
+    const reader = await colleague(s.m, "reader", ["playbooks.use", "threads.use"]);
+    await shareInVault(s, review.document_id, reader.userId);
+    const rc = await h.signIn(reader);
+    expect((await h.call(rc, "GET", `/reviews/${review_id}`)).status).toBe(200);
+
+    // Unpublished, the playbook is hidden from a plain reader, and so is the review.
+    await h.call(s.cookie, "POST", `/playbooks/${s.playbook.id}/unpublish`);
+    expect((await h.call(rc, "GET", `/reviews/${review_id}`)).status).toBe(404);
+    expect((await h.call(s.cookie, "GET", `/reviews/${review_id}`)).status).toBe(200);
+
+    // Deleted, the review still holds the rules it ran against.
+    expect((await h.raw(s.cookie, "DELETE", `/playbooks/${s.playbook.id}`)).status).toBe(204);
+    const kept = await h.call(s.cookie, "GET", `/reviews/${review_id}`);
+    expect(kept.status).toBe(200);
+    expect(kept.body.review.rules).toHaveLength(3);
+    const exported = await h.raw(s.cookie, "POST", `/reviews/${review_id}/export`, {
+      format: "xlsx",
+    });
+    expect(exported.status).toBe(200);
   });
 });
 

@@ -15,7 +15,7 @@ import type { Limiter } from "../auth/limiter.js";
 import type { FileOut, ReviewFailure, Reviews } from "./reviews.js";
 
 type Env = { Variables: { principal: Principal } };
-type Status = 403 | 404 | 409 | 422 | 503;
+type Status = 403 | 404 | 409 | 422 | 429 | 503;
 
 const FAILURES: Record<ReviewFailure, { status: Status; message: string }> = {
   NOT_FOUND: { status: 404, message: "That review, playbook or document wasn't found." },
@@ -30,7 +30,14 @@ const FAILURES: Record<ReviewFailure, { status: Status; message: string }> = {
   UNREADABLE: { status: 422, message: "That Word file couldn't be read." },
   REDLINE_NEEDS_DOCX: { status: 422, message: "Redlines need the Word file." },
   DECIDED: { status: 409, message: "That suggestion was already dismissed or replaced." },
-  NOT_FINISHED: { status: 409, message: "The review hasn't finished yet." },
+  TOO_MANY_REQUESTS: {
+    status: 429,
+    message: "You've asked a lot just now. Try again shortly.",
+  },
+  TOO_MANY_REVIEWS: {
+    status: 429,
+    message: "You have several reviews running. Wait for one to finish, or cancel one.",
+  },
   RULE_NOT_FOUND: { status: 404, message: "That rule isn't part of this review." },
   ALTERNATE_NOT_FOUND: { status: 404, message: "That alternate wasn't found." },
   MODEL_UNAVAILABLE: { status: 503, message: "No model could answer. Try again shortly." },
@@ -90,15 +97,21 @@ export function reviewHttp(reviews: Reviews, clientOf: (c: Context) => Client, a
   app.post("/playbooks/:id/reviews", limitBody, async (c) => {
     const body = await parse(c, ReviewRequest);
     if (!("data" in body)) return body.response;
-    const limited = throttled(c);
-    if (limited) return limited;
+    const userId = c.get("principal").userId;
+    let wait = 0;
+    // A review costs asks in proportion to its rules, charged once the rules are known.
+    const charge = (n: number) => {
+      for (let i = 0; i < n && wait === 0; i++) wait = asks?.take(userId) ?? 0;
+      return wait;
+    };
     const result = await reviews.start(
       c.get("principal"),
       c.req.param("id"),
       body.data,
-      { draft: c.req.query("version") === "draft" },
+      { draft: c.req.query("version") === "draft", charge },
       clientOf(c),
     );
+    if (wait > 0) c.header("Retry-After", String(wait));
     return result.ok ? c.json(result.value, 201) : fail(c, result.reason);
   });
 
