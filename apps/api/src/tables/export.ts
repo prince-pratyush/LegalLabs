@@ -2,17 +2,10 @@ import { type ClassifyOption, type ExportBody, RT_LIMITS } from "@legallabs/cont
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
+import { audit } from "./audit.js";
 import { cellJson } from "./cells.js";
 import { rowsSql, UnknownColumn } from "./query.js";
-import {
-  audit,
-  fail,
-  loadColumns,
-  loadTable,
-  type Result,
-  rowsJson,
-  settingsOf,
-} from "./tables.js";
+import { fail, loadColumns, loadTable, type Result, rowsJson, settingsOf } from "./tables.js";
 import { buildXlsx, type XlsxCell } from "./xlsx.js";
 
 // Bigger tables need export jobs, which aren't built yet (spec §3.8: 2,000 cells synchronously).

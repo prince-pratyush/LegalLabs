@@ -18,8 +18,9 @@ import {
 } from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp, RLS_REFUSED } from "../db.js";
+import { audit } from "./audit.js";
 import { setStatus } from "./history.js";
 import { columnProgress } from "./runner.js";
 
@@ -34,24 +35,6 @@ export const fail = (code: TableErrorCode, message?: string, details?: object): 
 });
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export const audit = (
-  db: Db,
-  principal: Principal,
-  client: Client,
-  action: string,
-  tableId: string,
-  details: object = {},
-) =>
-  // Ids and counts only: values and prompts stay out of the audit log.
-  db.query("select admin.append_audit_event($1, 'user', $2, 'table', $3, $4, $5, $6)", [
-    action,
-    principal.userId,
-    tableId,
-    JSON.stringify(details),
-    client.ip,
-    uaHash(client),
-  ]);
 
 export interface TableRow {
   id: string;

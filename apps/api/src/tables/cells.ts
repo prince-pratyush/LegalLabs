@@ -21,11 +21,11 @@ import { type Gateway, GatewayError } from "@legallabs/model-gateway";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
+import { audit } from "./audit.js";
 import { CELL_MAX_OUTPUT } from "./cell.js";
 import { RESTRICTED_SQL, rowsSql, UnknownColumn } from "./query.js";
 import type { Runner } from "./runner.js";
 import {
-  audit,
   type ColumnRow,
   type Db,
   fail,

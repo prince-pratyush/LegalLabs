@@ -1,10 +1,11 @@
 import { RT_LIMITS, type Settings } from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
 import type { RunLog } from "../runs/log.js";
+import { audit } from "./audit.js";
 import {
   type CellColumn,
   type CellDocument,
@@ -71,24 +72,6 @@ function semaphore(size: number) {
     },
   };
 }
-
-const audit = (
-  db: Db,
-  principal: Principal,
-  client: Client,
-  action: string,
-  tableId: string,
-  details: object,
-) =>
-  // Ids and counts only: values and prompts stay out of the audit log.
-  db.query("select admin.append_audit_event($1, 'user', $2, 'table', $3, $4, $5, $6)", [
-    action,
-    principal.userId,
-    tableId,
-    JSON.stringify(details),
-    client.ip,
-    uaHash(client),
-  ]);
 
 export async function columnProgress(db: Db, columnId: string) {
   const { rows } = await db.query<{
