@@ -64,7 +64,9 @@ describe("memory input", () => {
 
 describe("normalising", () => {
   it("ignores case, spacing and closing punctuation", () => {
-    expect(normalizeMemoryText("  Use  UK spelling. ")).toBe(normalizeMemoryText("use uk spelling"));
+    expect(normalizeMemoryText("  Use  UK spelling. ")).toBe(
+      normalizeMemoryText("use uk spelling"),
+    );
     expect(normalizeMemoryText("Use UK spelling")).not.toBe(normalizeMemoryText("Use US spelling"));
   });
 });
