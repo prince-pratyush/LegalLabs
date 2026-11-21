@@ -4,11 +4,13 @@ import {
   CreateColumnBody,
   CreateTableBody,
   DecideTemplateBody,
+  DeleteRowsBody,
   EstimateBody,
   ExportBody,
   GenerateColumnsBody,
   PatchCellBody,
   PatchColumnBody,
+  PatchRowBody,
   PatchTableBody,
   PatchTemplateBody,
   PutSyncBody,
@@ -214,6 +216,21 @@ export function tableHttp({
     const parsed = await body(c, AddRowsBody);
     if (!parsed) return invalid(c);
     return send(c, await tables.addRows(p(c), c.req.param("id"), parsed, clientOf(c)), 201);
+  });
+
+  app.patch("/review-tables/:id/rows/:row", limit, async (c) => {
+    const parsed = await body(c, PatchRowBody);
+    if (!parsed) return invalid(c);
+    return send(
+      c,
+      await tables.updateRow(p(c), c.req.param("id"), c.req.param("row"), parsed, clientOf(c)),
+    );
+  });
+
+  app.delete("/review-tables/:id/rows", limit, async (c) => {
+    const parsed = await body(c, DeleteRowsBody);
+    if (!parsed) return invalid(c);
+    return send(c, await tables.removeRows(p(c), c.req.param("id"), parsed, clientOf(c)), 202);
   });
 
   app.post("/review-tables/:id/columns", limit, async (c) => {

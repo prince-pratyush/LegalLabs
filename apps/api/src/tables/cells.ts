@@ -245,6 +245,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         scope,
         dryRun,
         dependsOn: column.depends_on,
+        contextDocumentId: column.context_document_id,
         labels: Object.fromEntries(columns.map((c) => [c.id, c.label])),
       },
       client,
