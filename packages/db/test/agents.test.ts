@@ -296,3 +296,87 @@ describe("share requests", () => {
     });
   });
 });
+
+describe("sharing functions", () => {
+  it("let only Full access list, grant and revoke shares", async () => {
+    await withTx(async (tx) => {
+      const { s, agent } = await setup(tx);
+      await tx.as(s.ben, s.acme);
+      expect(
+        await tx.error("select work.agent_share($1, 'user', $2, 'run')", [agent.agentId, s.cal]),
+      ).toMatch(/full access/);
+      await tx.as(s.ana, s.acme);
+      const id = (
+        await tx.one<{ g: string }>("select work.agent_share($1, 'user', $2, 'run') g", [
+          agent.agentId,
+          s.ben,
+        ])
+      ).g;
+      expect(
+        await tx.rows("select principal_id from work.agent_shares($1)", [agent.agentId]),
+      ).toEqual([{ principal_id: s.ben }]);
+      await tx.as(s.ben, s.acme);
+      expect(await tx.rows("select title from work.agent")).toHaveLength(1);
+      expect(await tx.rows("select * from work.agent_shares($1)", [agent.agentId])).toEqual([]);
+      await tx.as(s.ana, s.acme);
+      expect(
+        (await tx.one<{ r: boolean }>("select work.agent_unshare($1, $2) r", [agent.agentId, id]))
+          .r,
+      ).toBe(true);
+      await tx.as(s.ben, s.acme);
+      expect(await tx.rows("select title from work.agent")).toEqual([]);
+    });
+  });
+
+  it("report who could hold Edit: members with agents.build only", async () => {
+    await withTx(async (tx) => {
+      const { s } = await setup(tx, { ben: ["agents.use"], cal: ["agents.build"] });
+      await tx.as(s.ana, s.acme);
+      const can = async (u: string) =>
+        (await tx.one<{ r: boolean }>("select work.user_can_build($1) r", [u])).r;
+      expect([await can(s.ana), await can(s.ben), await can(s.cal), await can(s.gia)]).toEqual([
+        true,
+        false,
+        true,
+        false,
+      ]);
+    });
+  });
+
+  it("show a Full-access holder the runs of others, and nobody else", async () => {
+    await withTx(async (tx) => {
+      const { s, agent } = await setup(tx);
+      await tx.asOwner();
+      await tx.rows(
+        `update core."user" set extra_permissions = array['agents.use','threads.use'] where id = $1`,
+        [s.ben],
+      );
+      await grant(tx, s, agent.agentId, s.ben, "run");
+      const { id: thread } = await tx.one<{ id: string }>(
+        `insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'T') returning id`,
+        [s.acme, s.ben],
+      );
+      const { id: q } = await tx.one<{ id: string }>(
+        `insert into work.message (workspace_id, thread_id, role, content)
+         values ($1, $2, 'user', 'go') returning id`,
+        [s.acme, thread],
+      );
+      await tx.as(s.ben, s.acme);
+      const { id: run } = await tx.one<{ id: string }>(
+        `insert into work.run (workspace_id, thread_id, owner_id, kind, status, question_id, subject_id)
+         values ($1, $2, $3, 'agent', 'done', $4, $5) returning id`,
+        [s.acme, thread, s.ben, q, agent.agentId],
+      );
+      await tx.as(s.ana, s.acme);
+      expect(await tx.rows("select id from work.run where id = $1", [run])).toHaveLength(1);
+      await tx.asOwner();
+      await tx.rows(
+        `update core."user" set extra_permissions = array['agents.use'] where id = $1`,
+        [s.cal],
+      );
+      await grant(tx, s, agent.agentId, s.cal, "view");
+      await tx.as(s.cal, s.acme);
+      expect(await tx.rows("select id from work.run where id = $1", [run])).toEqual([]);
+    });
+  });
+});
