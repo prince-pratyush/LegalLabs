@@ -97,7 +97,11 @@ describe("column options", () => {
 
 describe("runs and cells", () => {
   it("defaults a run to every row and leaves verified cells alone", () => {
-    expect(RunColumnBody.parse({})).toEqual({ scope: "all", include_verified: false });
+    expect(RunColumnBody.parse({})).toEqual({
+      scope: "all",
+      include_verified: false,
+      include_dependents: false,
+    });
     expect(RunColumnBody.parse({ scope: { row_ids: [ID] } }).scope).toEqual({ row_ids: [ID] });
   });
 

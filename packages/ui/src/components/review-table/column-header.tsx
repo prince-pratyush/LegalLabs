@@ -3,6 +3,7 @@ import {
   ArrowUp,
   ChevronDown,
   Filter,
+  Link2,
   Pencil,
   Play,
   RotateCcw,
@@ -34,6 +35,7 @@ export function ColumnHeader({
   rowCount,
   sort = null,
   filtered = false,
+  uses = [],
   onRun,
   onRerun,
   onRunRemaining,
@@ -47,6 +49,8 @@ export function ColumnHeader({
   rowCount: number;
   sort?: SortDirection | null;
   filtered?: boolean;
+  /** Labels of the columns this one's prompt refers to. */
+  uses?: readonly string[];
   onRun: () => void;
   onRerun: () => void;
   onRunRemaining: () => void;
@@ -79,6 +83,13 @@ export function ColumnHeader({
         </span>
         <span className="flex min-w-0 items-center gap-1 text-caption font-normal text-fg-muted">
           <span>{TYPE_NAMES[column.type]}</span>
+          {uses.length > 0 && (
+            <Link2
+              role="img"
+              aria-label={`Uses ${uses.join(", ")}`}
+              className="size-3.5 shrink-0 text-fg-muted"
+            />
+          )}
           {line && <span className={cn("truncate", running && "text-accent")}>· {line}</span>}
           {column.dry_run && !running && (
             <Button
