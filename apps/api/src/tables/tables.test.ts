@@ -601,4 +601,13 @@ describe("review tables API", () => {
     const limited = await generate();
     expect(limited).toMatchObject({ status: 429, body: { code: "TOO_MANY_REQUESTS" } });
   });
+
+  it("answers 404, not 500, for ids that aren't ids", async () => {
+    const s = await setup();
+    const base = `/review-tables/${s.tableId}`;
+    expect((await s.h.call(s.cookie, "DELETE", `${base}/columns/nope`)).status).toBe(404);
+    expect((await s.h.call(s.cookie, "POST", "/runs/nope/cancel")).status).toBe(404);
+    expect((await s.h.call(s.cookie, "GET", `${base}/cells/nope`)).status).toBe(404);
+    expect((await s.h.call(s.cookie, "GET", "/review-tables/nope")).status).toBe(404);
+  });
 });

@@ -749,6 +749,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
 
     removeColumn(principal: Principal, tableId: string, columnId: string, client: Client) {
       return withTable(principal, tableId, async (db) => {
+        if (!UUID.test(columnId)) return fail("NOT_FOUND");
         const { rows } = await db.query<{ run_id: string | null; state: string }>(
           `update work.rt_column set deleted_at = now(), updated_at = now()
             where id = $1 and table_id = $2 and deleted_at is null returning run_id, state`,

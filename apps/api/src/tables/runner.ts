@@ -133,6 +133,8 @@ export async function refreshStats(db: Db, tableId: string) {
   );
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
   const { gateway, documents, log } = options;
   const inFlight = semaphore(Math.max(1, options.cellsInFlight ?? 2));
@@ -541,6 +543,8 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     },
 
     async cancel(principal, runId, client) {
+      // Not an id: not a table run, so the caller can fall through to thread runs.
+      if (!UUID.test(runId)) return false;
       const found = await asApp(pool, principal, async (db) => {
         const { rows } = await db.query<{ table_id: string; status: string }>(
           `select table_id, status from work.run
