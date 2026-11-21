@@ -103,12 +103,17 @@ alter table work.agent_document force row level security;
 
 grant select, insert on work.agent, work.agent_version, work.agent_document to legallabs_app;
 grant update (title, description, practice_areas, auto_description, live_version_id,
-              draft_version_id, updated_at, deleted_at, deleted_by) on work.agent
+              draft_version_id, updated_at) on work.agent
   to legallabs_app;
 grant delete on work.agent_document to legallabs_app;
 
 create policy agent_read on work.agent for select to legallabs_app
   using (core.in_tenant(workspace_id) and deleted_at is null and work.agent_level(id) is not null);
+-- A plain column test, so a new row can be returned by the insert that made it: a function
+-- reading the table would not see it yet.
+create policy agent_owner_read on work.agent for select to legallabs_app
+  using (core.in_tenant(workspace_id) and deleted_at is null
+         and owner_id = core.current_user_id());
 -- Admins see every agent's title and owner for reporting; versions stay with those who run it.
 create policy agent_admin_read on work.agent for select to legallabs_app
   using (core.in_tenant(workspace_id) and core.has_permission('agents.admin'));
@@ -117,8 +122,7 @@ create policy agent_insert on work.agent for insert to legallabs_app
               and core.has_permission('agents.build') and deleted_at is null);
 create policy agent_update on work.agent for update to legallabs_app
   using (core.in_tenant(workspace_id) and work.agent_level(id) in ('edit', 'full'))
-  with check (core.in_tenant(workspace_id)
-              and (deleted_at is null or work.agent_level(id) = 'full'));
+  with check (core.in_tenant(workspace_id) and deleted_at is null);
 
 create policy agent_version_read on work.agent_version for select to legallabs_app
   using (core.in_tenant(workspace_id) and work.agent_level(agent_id) in ('view', 'edit', 'full'));

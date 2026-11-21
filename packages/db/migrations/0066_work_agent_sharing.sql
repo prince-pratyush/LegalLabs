@@ -45,6 +45,26 @@ begin
 end
 $$;
 
+-- Deleting is a function because a policy check can't see the row's old level once it is
+-- marked deleted. Only Full access may; the agent's schedules are paused by trigger.
+create function work.agent_delete(p_agent uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  if work.agent_level(p_agent) is distinct from 'full' then
+    raise exception 'deleting needs full access' using errcode = '42501';
+  end if;
+  update work.agent set deleted_at = now(), deleted_by = core.current_user_id()
+   where id = p_agent and deleted_at is null;
+  return found;
+end
+$$;
+alter function work.agent_delete(uuid) owner to legallabs_definer;
+revoke execute on function work.agent_delete(uuid) from public;
+grant execute on function work.agent_delete(uuid) to legallabs_app;
+grant update (deleted_at, deleted_by) on work.agent to legallabs_definer;
+create policy definer_update on work.agent for update to legallabs_definer
+  using (true) with check (true);
+
 -- Whether a person could be given Edit or Full: it needs agents.build as well.
 create function work.user_can_build(p_user uuid) returns boolean
 language sql stable security definer set search_path = '' as $$

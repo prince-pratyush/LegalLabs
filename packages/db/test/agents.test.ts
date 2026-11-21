@@ -185,10 +185,7 @@ describe("schedules", () => {
       await tx.as(s.ben, s.acme);
       await tx.rows(insert, [s.acme, agent.agentId, s.ben]);
       await tx.as(s.ana, s.acme);
-      await tx.rows(`update work.agent set deleted_at = now(), deleted_by = $2 where id = $1`, [
-        agent.agentId,
-        s.ana,
-      ]);
+      await tx.rows("select work.agent_delete($1)", [agent.agentId]);
       await tx.asOwner();
       const rows = await tx.rows(
         "select status, paused_reason from work.agent_schedule where agent_id = $1 order by user_id",
