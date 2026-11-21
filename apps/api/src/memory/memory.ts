@@ -142,6 +142,9 @@ function conflictsOf(rows: readonly MemoryRow[]): Map<string, string[]> {
   return found;
 }
 
+/** Parsed uploads kept per person while they decide what to import. */
+export const MAX_PENDING_IMPORTS = 5;
+
 export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {}): Memories {
   async function attempt<T>(p: Principal, work: (db: Db) => Promise<T>): Promise<Result<T>> {
     try {
@@ -482,6 +485,17 @@ export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {
 
         const ok = rows.filter((r) => r.status === "ok").length;
         const existing = held.rows.length;
+        // A few uploads waiting is plenty: older unfinished ones are dropped, oldest first.
+        await db.query("select pg_advisory_xact_lock(hashtextextended($1, 2))", [
+          `memory-import:${p.userId}`,
+        ]);
+        await db.query(
+          `delete from memory.memory_import
+            where status = 'parsed'
+              and id in (select id from memory.memory_import where status = 'parsed'
+                          order by created_at desc, id desc offset $1)`,
+          [MAX_PENDING_IMPORTS - 1],
+        );
         const { rows: made } = await db.query<{ id: string }>(
           `insert into memory.memory_import (workspace_id, user_id, rows) values ($1, $2, $3)
            returning id`,

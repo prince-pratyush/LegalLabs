@@ -1050,3 +1050,47 @@ describe("personalisation rules", () => {
     expect(plan?.styleId).toBeNull();
   });
 });
+
+describe("import limits", () => {
+  const upload = (h: Harness, cookie: string, n: number) =>
+    h.form(cookie, "/memory/import/parse", {
+      file: new File([`text\nImported note ${n}\n`], "m.csv", { type: "text/csv" }),
+    });
+
+  it("keeps at most five unfinished uploads, dropping the oldest", async () => {
+    const h = harness();
+    const { m, cookie } = await member(h);
+    const ids: string[] = [];
+    for (let n = 1; n <= 7; n++) ids.push((await upload(h, cookie, n)).body.import_id);
+    const left = await pool.query<{ id: string }>(
+      "select id from memory.memory_import where user_id = $1 and status = 'parsed'",
+      [m.userId],
+    );
+    expect(left.rows.map((r) => r.id).sort()).toEqual(ids.slice(2).sort());
+    // The dropped upload can no longer be committed.
+    expect(
+      (await h.call(cookie, "POST", `/memory/import/${ids[0]}/commit`, { rows: [{ line: 2 }] }))
+        .status,
+    ).toBe(404);
+  });
+
+  it("limits how often a person parses uploads or asks for personalised proposals", async () => {
+    const h = harness();
+    const { cookie } = await member(h);
+    for (let n = 1; n <= 10; n++) expect((await upload(h, cookie, n)).status).toBe(200);
+    const blocked = await upload(h, cookie, 11);
+    expect(blocked.status).toBe(429);
+
+    for (let n = 1; n <= 5; n++) {
+      expect(
+        (await h.call(cookie, "POST", "/memory/personalise", { answers: { role: "Partner" } }))
+          .status,
+      ).toBe(200);
+    }
+    const again = await h.call(cookie, "POST", "/memory/personalise", {
+      answers: { role: "Partner" },
+    });
+    expect(again.status).toBe(429);
+    expect(Number(again.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+});

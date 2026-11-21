@@ -261,7 +261,7 @@ export function createApp({
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
   if (memory) {
-    app.route("/api/v1", memoryRoutes(memory.memories, clientOf));
+    app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
     app.route("/api/v1", styleRoutes(memory.styles, clientOf));
   }
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
