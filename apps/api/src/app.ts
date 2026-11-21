@@ -6,6 +6,12 @@ import { z } from "zod";
 import { createCodeStore } from "./addins/codes.js";
 import type { Language } from "./addins/language.js";
 import { addinAuthRoutes, addinRoutes } from "./addins/routes.js";
+import { agentRunHttp } from "./agent-runs/http.js";
+import type { AgentRuns } from "./agent-runs/runs.js";
+import type { Agents } from "./agents/agents.js";
+import type { AgentSharing } from "./agents/config.js";
+import { agentHttp } from "./agents/http.js";
+import type { Nudges } from "./agents/nudges.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
@@ -95,6 +101,14 @@ export interface AppOptions {
   playbooks?: Playbooks;
   /** Playbook reviews; mounted only with playbooks. */
   reviews?: Reviews;
+  /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
+  agentRuns?: AgentRuns;
+  /** Agents: building, sharing, schedules and running. Left out, those endpoints are not mounted. */
+  agents?: Agents;
+  /** Admin switches for share approval; mounted with agents. */
+  agentSharing?: AgentSharing;
+  /** Suggests a shared agent for what someone is typing. */
+  agentNudges?: Nudges;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -124,6 +138,10 @@ export function createApp({
   knowledge,
   playbooks,
   reviews,
+  agentRuns,
+  agents,
+  agentSharing,
+  agentNudges,
   clientIp,
   now = Date.now,
   webRoot,
@@ -262,6 +280,12 @@ export function createApp({
   }
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
+  if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
+  if (agents)
+    app.route(
+      "/api/v1",
+      agentHttp({ agents, runs: agentRuns, sharing: agentSharing, nudges: agentNudges, clientOf }),
+    );
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));

@@ -10,11 +10,21 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "env": ["TEST_DATABASE_URL", "PG_BIN", "TEST_S3_ENDPOINT", "TEST_CLAMD_HOST"]
+      "env": [
+        "TEST_DATABASE_URL",
+        "PG_BIN",
+        "TEST_S3_ENDPOINT",
+        "TEST_CLAMD_HOST",
+        "TEMPORAL_ADDRESS"
+      ]
     },
     "@legallabs/api#test": {
       "dependsOn": ["^build", "@legallabs/db#test"],
       "env": ["TEST_DATABASE_URL", "PG_BIN"]
+    },
+    "@legallabs/runs#test": {
+      "dependsOn": ["^build", "@legallabs/db#test"],
+      "env": ["TEST_DATABASE_URL", "PG_BIN", "TEMPORAL_ADDRESS"]
     }
   }
 }
