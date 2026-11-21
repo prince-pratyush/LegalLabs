@@ -21,6 +21,7 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createMatters } from "./matters/matters.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
@@ -142,6 +143,7 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
+  matters: createMatters(pool),
   tables: createReviewTables(pool, {
     gateway,
     documents,
