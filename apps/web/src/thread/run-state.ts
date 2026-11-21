@@ -76,7 +76,13 @@ function citationOf(event: CitationEvent, at: number): LiveCitation {
   };
 }
 
-const STEP_STATUS = { started: "running", finished: "done", failed: "failed" } as const;
+const STEP_STATUS = {
+  started: "running",
+  finished: "done",
+  failed: "failed",
+  skipped: "skipped",
+  awaiting_user: "running",
+} as const;
 
 /** Folds one streamed event into what the thread shows while a run is live. */
 export function reduceRun(run: LiveRun, event: RunEvent): LiveRun {
