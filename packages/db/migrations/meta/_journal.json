@@ -302,6 +302,13 @@
       "when": 1794009672000,
       "tag": "0082_notify_email_outbox",
       "breakpoints": false
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794009732000,
+      "tag": "0083_notify_email_worker",
+      "breakpoints": false
     }
   ]
 }
