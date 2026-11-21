@@ -468,6 +468,48 @@ export async function seed(tx: Tx) {
     beta: await reviewTable(beta, bob, documents.beta),
   };
 
+  // A Space with a phase, a task, a comment, a shared resource, an activity row, a template and
+  // a request to join, in each workspace.
+  const space = async (ws: string, owner: string, asker: string) => {
+    const spaceId = await id(
+      `insert into work.space (workspace_id, name, created_by) values ($1, 'Deal room', $2) returning id`,
+      [ws, owner],
+    );
+    const phaseId = await id(
+      `insert into work.phase (workspace_id, space_id, ordinal, name) values ($1, $2, 1, 'Diligence') returning id`,
+      [ws, spaceId],
+    );
+    const taskId = await id(
+      `insert into work.task (workspace_id, space_id, phase_id, name, created_by)
+       values ($1, $2, $3, 'Review the MSA', $4) returning id`,
+      [ws, spaceId, phaseId, owner],
+    );
+    await tx.rows(
+      `insert into work.task_comment (workspace_id, space_id, task_id, author_id, body_md)
+       values ($1, $2, $3, $4, 'Started.')`,
+      [ws, spaceId, taskId, owner],
+    );
+    await tx.rows(
+      `insert into work.space_resource (workspace_id, space_id, resource_type, resource_id, access, granted_by)
+       values ($1, $2, 'vault', core.uuid7(), 'view', $3)`,
+      [ws, spaceId, owner],
+    );
+    await tx.rows(
+      `insert into work.space_activity (workspace_id, space_id, actor_id, type) values ($1, $2, $3, 'task.created')`,
+      [ws, spaceId, owner],
+    );
+    await tx.rows(
+      `insert into work.space_template (workspace_id, owner_id, name, definition)
+       values ($1, $2, 'Deal template', '{"schema": "counsel.space-template/1"}')`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into work.space_access_request (workspace_id, space_id, user_id) values ($1, $2, $3)`,
+      [ws, spaceId, asker],
+    );
+    return { spaceId, phaseId, taskId };
+  };
+  const spaces = { acme: await space(acme, ana, ben), beta: await space(beta, bob, bob) };
   // One of each memory table in beta only, so the memory tests start from nothing in acme.
   await tx.rows(
     `insert into memory.memory (workspace_id, user_id, text, source, normalized_hash)
@@ -499,6 +541,7 @@ export async function seed(tx: Tx) {
   return {
     documents,
     vaults,
+    spaces,
     threads,
     playbooks,
     reviews,
