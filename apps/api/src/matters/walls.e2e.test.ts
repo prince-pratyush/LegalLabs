@@ -1,7 +1,7 @@
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { auditTrail } from "../test-db.js";
-import { matterHarness, type Person } from "./testing.js";
+import { matterHarness, type Person } from "../test-matters.js";
 
 // The worked examples and SPC-007 acceptance, driven only through the HTTP API.
 // Room for the 1,000 retrieval queries to run ten at a time.

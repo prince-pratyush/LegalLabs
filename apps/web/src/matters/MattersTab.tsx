@@ -295,7 +295,8 @@ export function ImportMatters({ onApplied }: { onApplied: () => void }) {
     setBusy(true);
     try {
       const result = await matterApi.importApply(preview.token);
-      setReport(result.report_csv);
+      // The server keeps the report, so the browser downloads it like any other file.
+      setReport(matterApi.importReportUrl(preview.token));
       setPreview(null);
       toast.success(
         `Imported: ${result.applied.add} added, ${result.applied.update} updated, ${result.applied.close} closed`,
@@ -370,7 +371,7 @@ export function ImportMatters({ onApplied }: { onApplied: () => void }) {
         <a
           className="text-accent underline"
           download="matter-import-result.csv"
-          href={`data:text/csv;charset=utf-8,${encodeURIComponent(report)}`}
+          href={report}
         >
           Download the result
         </a>

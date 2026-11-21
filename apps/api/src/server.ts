@@ -22,6 +22,9 @@ import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
 import { createMatters } from "./matters/matters.js";
+import { createNotifications } from "./notifications/notifications.js";
+import { createPurgeJob } from "./notifications/purge.js";
+import { registerThreadActions } from "./notifications/register.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
@@ -82,11 +85,18 @@ const worker = createIngestWorker(pool, {
 worker.start();
 const retention = createRetentionJob(pool, { store, log: (line) => console.log(line) });
 retention.start();
+const notifications = createNotifications(pool);
+const notifier = notifications.notifier;
+const notificationPurge = createPurgeJob(notifications, { log: (line) => console.log(line) });
+notificationPurge.start();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   // A job cut off mid-read is picked up again once its lease runs out.
   process.once(
     signal,
-    () => void Promise.all([worker.stop(), retention.stop()]).finally(() => process.exit(0)),
+    () =>
+      void Promise.all([worker.stop(), retention.stop(), notificationPurge.stop()]).finally(() =>
+        process.exit(0),
+      ),
   );
 }
 const gateway = createGateway({
@@ -114,14 +124,16 @@ const cellsInFlight = Number(process.env.LEGALLABS_TABLE_CELLS_IN_FLIGHT);
 const vaults = createVaultPort(pool);
 const knowledgeStore = createKnowledge(pool, { embedder });
 const knowledge = knowledgePort(knowledgeStore);
+const threadService = createThreads(pool, { gateway, documents, log, vaults, knowledge, notifier });
+registerThreadActions(notifications.actions, threadService);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
 const app = createApp({
   auth: createAuth(pool),
   documents,
-  vaults: createVaults(pool, { documents, store }),
+  vaults: createVaults(pool, { documents, store, notifier }),
   threads: {
-    threads: createThreads(pool, { gateway, documents, log, vaults, knowledge }),
+    threads: threadService,
     log,
     gateway,
     vaults,
@@ -130,8 +142,10 @@ const app = createApp({
   },
   viewer: createViewer(pool, store, documents),
   playbooks: createPlaybooks(pool, { gateway }),
+  notifications,
   reviews: createReviews(pool, {
     gateway,
+    notifier,
     store,
     log,
     // A local model serves about two calls at once; raise it for a hosted provider.

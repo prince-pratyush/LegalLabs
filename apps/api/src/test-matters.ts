@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import { createGateway } from "@legallabs/model-gateway";
 import { createMemoryStore } from "@legallabs/storage";
 import type pg from "pg";
-import { createApp } from "../app.js";
-import { createAuth } from "../auth/auth.js";
-import { hashPassword } from "../auth/password.js";
-import { createDrafts } from "../drafts/drafts.js";
-import { PASSWORD, type Seeded, seedMember, testDocuments, testThreads } from "../test-db.js";
-import { createVaults } from "../vaults/vaults.js";
-import { createMatters } from "./matters.js";
+import { createApp } from "./app.js";
+import { createAuth } from "./auth/auth.js";
+import { hashPassword } from "./auth/password.js";
+import { createDrafts } from "./drafts/drafts.js";
+import { createMatters } from "./matters/matters.js";
+import { PASSWORD, type Seeded, seedMember, testDocuments, testThreads } from "./test-db.js";
+import { createVaults } from "./vaults/vaults.js";
 
 export interface Person {
   slug: string;

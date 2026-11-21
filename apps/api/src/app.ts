@@ -21,6 +21,8 @@ import type { Library } from "./library/library.js";
 import { libraryRoutes } from "./library/routes.js";
 import type { Matters } from "./matters/matters.js";
 import { matterRoutes } from "./matters/routes.js";
+import type { Notifications } from "./notifications/notifications.js";
+import { notificationRoutes } from "./notifications/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
 import { reviewHttp } from "./reviews/http.js";
@@ -77,6 +79,8 @@ export interface AppOptions {
   library?: Library;
   /** Matters, walls and their admin screens; optional like vaults. */
   matters?: Matters;
+  /** The notifications hub; optional, like vaults. */
+  notifications?: Notifications;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -106,6 +110,7 @@ export function createApp({
   tables,
   library,
   matters,
+  notifications,
   knowledge,
   playbooks,
   reviews,
@@ -249,6 +254,7 @@ export function createApp({
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
+  if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));

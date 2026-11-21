@@ -160,13 +160,13 @@ export function matterNumberValid(matterNumber: string, idRegex: string | null):
 export const ImportMode = z.enum(["upsert", "replace_missing_as_closed"]);
 export type ImportMode = z.infer<typeof ImportMode>;
 
-export const ImportIssue = z.object({
+export const MatterImportIssue = z.object({
   /** 1-based, counting the header as line 1. */
   line: z.number().int(),
   column: z.string().nullable(),
   message: z.string(),
 });
-export type ImportIssue = z.infer<typeof ImportIssue>;
+export type MatterImportIssue = z.infer<typeof MatterImportIssue>;
 
 export const ImportPreview = z.object({
   token: Id,
@@ -175,7 +175,7 @@ export const ImportPreview = z.object({
   close: z.number().int(),
   unchanged: z.number().int(),
   issue_count: z.number().int(),
-  issues: z.array(ImportIssue).max(MATTER_LIMITS.previewIssues),
+  issues: z.array(MatterImportIssue).max(MATTER_LIMITS.previewIssues),
 });
 export type ImportPreview = z.infer<typeof ImportPreview>;
 
@@ -234,7 +234,7 @@ export const WallCsvPreview = z.object({
   remove: z.array(WallCsvChange),
   unchanged: z.number().int(),
   rows: z.number().int(),
-  unresolved: z.array(ImportIssue),
+  unresolved: z.array(MatterImportIssue),
 });
 export type WallCsvPreview = z.infer<typeof WallCsvPreview>;
 
@@ -257,7 +257,7 @@ export const WallSyncReport = z.object({
   matters: z.number().int(),
   rows_added: z.number().int(),
   rows_removed: z.number().int(),
-  unresolved: z.array(ImportIssue),
+  unresolved: z.array(MatterImportIssue),
 });
 export type WallSyncReport = z.infer<typeof WallSyncReport>;
 

@@ -1,12 +1,12 @@
 import {
   DEFAULT_MATTER_OPTIONS,
   type ImportApplied,
-  type ImportIssue,
   type ImportMode,
   type ImportPreview,
   MATTER_LIMITS,
   type Matter,
   type MatterCreate,
+  type MatterImportIssue,
   type MatterOptions,
   type MatterPatch,
   matterDisplay,
@@ -828,7 +828,7 @@ export function createMatters(pool: pg.Pool): Matters {
         const existing = new Map(
           (await db.query<MatterRow>(MATTER_SQL)).rows.map((row) => [keyOf(row), row]),
         );
-        const issues: ImportIssue[] = [];
+        const issues: MatterImportIssue[] = [];
         const staged: StagedMatterRow[] = [];
         const seen = new Set<string>();
         let add = 0;
@@ -1128,7 +1128,7 @@ export function createMatters(pool: pg.Pool): Matters {
         const byRef = new Map(
           matters.flatMap((m) => (m.external_ref ? [[m.external_ref, m]] : [])),
         );
-        const unresolved: ImportIssue[] = [];
+        const unresolved: MatterImportIssue[] = [];
         const staged: StagedWall[] = [];
         const principalCache = new Map<string, string | null>();
         for (const record of table.records) {
@@ -1330,7 +1330,7 @@ export function createMatters(pool: pg.Pool): Matters {
           finished_at: Date | null;
           status: WallSyncReport["status"];
           stats: { matters?: number; rows_added?: number; rows_removed?: number };
-          unresolved: ImportIssue[];
+          unresolved: MatterImportIssue[];
         }>(
           `select id, provider, started_at, finished_at, status, stats, unresolved
              from core.wall_sync_report order by started_at desc limit 50`,

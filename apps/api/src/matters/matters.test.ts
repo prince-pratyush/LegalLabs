@@ -1,8 +1,8 @@
 import { DEFAULT_MATTER_OPTIONS } from "@legallabs/contracts";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { auditTrail, testPool } from "../test-db.js";
+import { matterHarness, type Person } from "../test-matters.js";
 import { parseCsv, toCsv } from "./csv.js";
-import { matterHarness, type Person } from "./testing.js";
 
 const pool = testPool();
 afterAll(() => pool.end());

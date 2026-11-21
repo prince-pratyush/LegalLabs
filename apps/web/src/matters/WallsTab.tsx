@@ -317,7 +317,7 @@ function WallCsvUpload({ onApplied }: { onApplied: () => void }) {
         </p>
       )}
       {preview && (
-        <div aria-label="Walls preview" role="region" className="grid gap-2">
+        <section aria-label="Walls preview" className="grid gap-2">
           <p>
             {preview.rows} rows over {preview.matters} matters: {preview.add.length} to add,{" "}
             {preview.remove.length} to remove, {preview.unchanged} unchanged,{" "}
@@ -341,7 +341,7 @@ function WallCsvUpload({ onApplied }: { onApplied: () => void }) {
               Apply walls
             </Button>
           )}
-        </div>
+        </section>
       )}
     </section>
   );
