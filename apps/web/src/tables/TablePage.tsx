@@ -3,8 +3,6 @@ import type {
   Column,
   FlagColor,
   PatchCellBody,
-  ReviewTable,
-  Row,
   RowFilter,
   RowSort,
   RunColumnBody,
@@ -35,9 +33,10 @@ import {
 import { ArrowLeft, Blocks, Download, FilterX, Play } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { anchorOf, openCitation } from "../viewer/open-citation.js";
-import { type CellDetail, download, messageOf, type RowsPage, tableApi } from "./api.js";
+import { type CellDetail, download, messageOf, tableApi } from "./api.js";
+import { usePageDialogs } from "./use-page-dialogs.js";
+import { useTableData } from "./use-table-data.js";
 
-const POLL_MS = 2000;
 const FLAG_CYCLE: (FlagColor | null)[] = [
   null,
   "red",
@@ -80,10 +79,6 @@ export function runBody(
   };
 }
 
-const isLive = (columns: Column[], cells: Map<string, Cell>) =>
-  columns.some((c) => c.state === "running") ||
-  [...cells.values()].some((c) => c.status === "queued" || c.status === "running");
-
 function useHeight<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [height, setHeight] = useState(480);
@@ -99,106 +94,24 @@ function useHeight<T extends HTMLElement>() {
   return [ref, height] as const;
 }
 
-type Panel =
-  | { kind: "builder" }
-  | { kind: "filter"; columnId: string }
-  | { kind: "prompt"; columnId: string };
-
 export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => void }) {
-  const [table, setTable] = useState<ReviewTable | null>(null);
-  const [columns, setColumns] = useState<Column[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [cells, setCells] = useState<Map<string, Cell>>(new Map());
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>({});
   const [sort, setSort] = useState<RowSort | null>(null);
   const [active, setActive] = useState<CellRef | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [drawer, setDrawer] = useState(false);
   const [detail, setDetail] = useState<CellDetail | null>(null);
-  const [panel, setPanel] = useState<Panel | null>(null);
-  const [run, setRun] = useState<{ column: Column; rerun: boolean } | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const { panel, setPanel, run, setRun, exporting, setExporting, adding, setAdding } =
+    usePageDialogs();
   const [gridBox, gridHeight] = useHeight<HTMLDivElement>();
 
   const rowFilter = useMemo(() => toRowFilter(filters), [filters]);
+  const { table, columns, rows, cells, loading, now, refresh, loadMore, putCell } = useTableData(
+    tableId,
+    rowFilter,
+    sort,
+  );
   const rowCount = table?.stats.rows ?? rows.length;
-
-  const merge = useCallback((page: RowsPage, into: Map<string, Cell>) => {
-    for (const cell of page.cells) into.set(cellKey(cell.row_id, cell.column_id), cell);
-    return into;
-  }, []);
-
-  const loadMeta = useCallback(async () => {
-    const next = await tableApi.get(tableId);
-    setTable(next.table);
-    setColumns(next.columns);
-  }, [tableId]);
-
-  // Re-reads every loaded page, so polling keeps scrolled-to rows fresh too.
-  const loadRows = useCallback(
-    async (count: number) => {
-      let pageCursor: string | null = null;
-      const nextRows: Row[] = [];
-      const nextCells = new Map<string, Cell>();
-      do {
-        const page: RowsPage = await tableApi.rows(tableId, {
-          cursor: pageCursor,
-          filter: rowFilter,
-          sort,
-        });
-        nextRows.push(...page.rows);
-        merge(page, nextCells);
-        pageCursor = page.next_cursor;
-      } while (pageCursor && nextRows.length < count);
-      setRows(nextRows);
-      setCells(nextCells);
-      setCursor(pageCursor);
-    },
-    [tableId, rowFilter, sort, merge],
-  );
-
-  const refresh = useCallback(
-    () =>
-      Promise.all([loadMeta(), loadRows(rows.length)]).catch((err) => toast.error(messageOf(err))),
-    [loadMeta, loadRows, rows.length],
-  );
-
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([loadMeta(), loadRows(0)])
-      .catch((err) => toast.error(messageOf(err)))
-      .finally(() => setLoading(false));
-  }, [loadMeta, loadRows]);
-
-  const loadMore = useCallback(() => {
-    if (!cursor) return;
-    tableApi.rows(tableId, { cursor, filter: rowFilter, sort }).then(
-      (page) => {
-        setRows((list) => [...list, ...page.rows]);
-        setCells((map) => merge(page, new Map(map)));
-        setCursor(page.next_cursor);
-      },
-      (err) => toast.error(messageOf(err)),
-    );
-  }, [cursor, tableId, rowFilter, sort, merge]);
-
-  // Live progress: poll while anything runs; the clock drives "running 12 s".
-  const live = isLive(columns, cells);
-  const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
-  useEffect(() => {
-    if (!live) return;
-    const poll = setInterval(() => void refreshRef.current(), POLL_MS);
-    const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      clearInterval(poll);
-      clearInterval(tick);
-    };
-  }, [live]);
 
   const activeCell = active ? cells.get(cellKey(active.rowId, active.columnId)) : undefined;
   const activeColumn = columns.find((c) => c.id === active?.columnId);
@@ -222,9 +135,6 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
       current = false;
     };
   }, [drawer, activeId, activeStamp, tableId]);
-
-  const putCell = (cell: Cell) =>
-    setCells((map) => new Map(map).set(cellKey(cell.row_id, cell.column_id), cell));
 
   const patch = async (cell: Cell, body: PatchCellBody) => {
     try {
