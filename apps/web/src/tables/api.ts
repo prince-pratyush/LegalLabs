@@ -31,6 +31,8 @@ const MESSAGES: Record<string, string> = {
   COLUMN_RUNNING: "Three columns are already running. Wait for one to finish.",
   COLUMN_LIMIT: "This table already has 500 columns.",
   MODEL_UNAVAILABLE: "No model is available just now. Try again shortly.",
+  EXPORT_TOO_LARGE:
+    "This table is too big to export at once. Filter the rows or pick fewer columns, then export again.",
 };
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {

@@ -55,6 +55,7 @@ const STATUS: Record<TableErrorCode, 400 | 403 | 404 | 409 | 502> = {
   EXPORT_DISABLED_BY_SOURCE: 403,
   MODEL_NOT_ALLOWED: 403,
   MODEL_UNAVAILABLE: 502,
+  EXPORT_TOO_LARGE: 409,
 };
 
 const MESSAGES: Partial<Record<TableErrorCode, string>> = {

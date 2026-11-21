@@ -618,5 +618,6 @@ export const TableErrorCode = z.enum([
   "EXPORT_DISABLED_BY_SOURCE",
   "MODEL_NOT_ALLOWED",
   "MODEL_UNAVAILABLE",
+  "EXPORT_TOO_LARGE",
 ]);
 export type TableErrorCode = z.infer<typeof TableErrorCode>;

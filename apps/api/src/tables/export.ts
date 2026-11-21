@@ -1,4 +1,4 @@
-import type { ClassifyOption, ExportBody } from "@legallabs/contracts";
+import { type ClassifyOption, type ExportBody, RT_LIMITS } from "@legallabs/contracts";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
@@ -15,8 +15,8 @@ import {
 } from "./tables.js";
 import { buildXlsx, type XlsxCell } from "./xlsx.js";
 
-// Synchronous exports only; bigger tables wait for export jobs.
-export const MAX_EXPORT_CELLS = 20_000;
+// Bigger tables need export jobs, which aren't built yet (spec §3.8: 2,000 cells synchronously).
+export const MAX_EXPORT_CELLS = RT_LIMITS.syncExportCells;
 
 const VERIFIED_FILL = "C6EFCE";
 const COLORS: Record<string, string> = {
@@ -47,7 +47,7 @@ const csvField = (text: string) => {
   return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 };
 
-export function createExports(pool: pg.Pool) {
+export function createExports(pool: pg.Pool, { maxCells = MAX_EXPORT_CELLS as number } = {}) {
   return {
     run(
       principal: Principal,
@@ -93,10 +93,11 @@ export function createExports(pool: pg.Pool) {
           throw err;
         }
         const { rows: rowRecords } = await db.query(built.sql, built.params);
-        if (rowRecords.length * Math.max(columns.length, 1) > MAX_EXPORT_CELLS) {
+        if (rowRecords.length * Math.max(columns.length, 1) > maxCells) {
           return fail(
-            "INVALID_REQUEST",
-            `Exports are limited to ${MAX_EXPORT_CELLS} cells for now.`,
+            "EXPORT_TOO_LARGE",
+            `This export has more than ${maxCells.toLocaleString("en")} cells. Filter the rows or pick fewer columns.`,
+            { limit: maxCells },
           );
         }
         const rows = await rowsJson(db, rowRecords as never);

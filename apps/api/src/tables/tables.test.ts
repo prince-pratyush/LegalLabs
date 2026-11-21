@@ -18,6 +18,7 @@ import {
   testThreads,
 } from "../test-db.js";
 import { createVaults } from "../vaults/vaults.js";
+import { createExports } from "./export.js";
 import { createReviewTables } from "./module.js";
 
 const pool = testPool();
@@ -697,5 +698,23 @@ describe("review tables API", () => {
     };
     expect(status("lease.txt")).toBe("done");
     expect(status("credit.txt")).toBe("pending");
+  });
+
+  it("refuses a synchronous export over the cell limit with EXPORT_TOO_LARGE (RVT-008)", async () => {
+    const s = await setup();
+    await addColumn(s, DATE);
+    const principal = { sessionId: "test", userId: s.m.userId, workspaceId: s.m.workspaceId };
+    const client = { ip: null, userAgent: null };
+    const small = createExports(pool, { maxCells: 1 });
+    expect(await small.run(principal, s.tableId, { format: "csv" } as never, client)).toMatchObject(
+      {
+        ok: false,
+        code: "EXPORT_TOO_LARGE",
+        details: { limit: 1 },
+      },
+    );
+    expect(
+      (await createExports(pool).run(principal, s.tableId, { format: "csv" } as never, client)).ok,
+    ).toBe(true);
   });
 });
