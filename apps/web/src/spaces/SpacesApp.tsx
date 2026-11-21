@@ -279,12 +279,19 @@ function TasksTab({ space }: { space: Space }) {
   const [phaseName, setPhaseName] = useState("");
 
   const load = useCallback(() => {
-    spacesApi.phases(space.id).then(setPhases, () => {});
+    spacesApi.phases(space.id).then(setPhases, (err) => toast.error(messageOf(err)));
     spacesApi.tasks(space.id).then(setTasks, (err) => toast.error(messageOf(err)));
   }, [space.id]);
   useEffect(load, [load]);
   useEffect(() => {
-    spacesApi.members(space.id).then(setMembers, () => {});
+    let current = true;
+    spacesApi.members(space.id).then(
+      (list) => current && setMembers(list),
+      (err) => toast.error(messageOf(err)),
+    );
+    return () => {
+      current = false;
+    };
   }, [space.id]);
 
   const names = new Map(
@@ -292,7 +299,18 @@ function TasksTab({ space }: { space: Space }) {
       .filter((m) => m.principal_type === "user")
       .map((m) => [m.principal_id, m.label ?? "Member"]),
   );
-  const act = (work: Promise<unknown>) => work.then(load, (err) => toast.error(messageOf(err)));
+  // Resolves to whether it worked, so a form clears only when its work succeeded.
+  const act = (work: Promise<unknown>) =>
+    work.then(
+      () => {
+        load();
+        return true;
+      },
+      (err) => {
+        toast.error(messageOf(err));
+        return false;
+      },
+    );
 
   const addTask = async (event: FormEvent) => {
     event.preventDefault();
@@ -303,7 +321,7 @@ function TasksTab({ space }: { space: Space }) {
         : assign
           ? ({ type: "user", user_id: assign } as const)
           : undefined;
-    await act(
+    const worked = await act(
       spacesApi.createTask(space.id, {
         name: name.trim(),
         phase_id: phaseId || null,
@@ -311,8 +329,10 @@ function TasksTab({ space }: { space: Space }) {
         ...(assignee ? { assignee } : {}),
       }),
     );
-    setName("");
-    setGate(false);
+    if (worked) {
+      setName("");
+      setGate(false);
+    }
   };
 
   const columns: { phase: Phase | null; tasks: Task[] }[] = [
@@ -386,8 +406,7 @@ function TasksTab({ space }: { space: Space }) {
           onSubmit={async (e) => {
             e.preventDefault();
             if (!phaseName.trim()) return;
-            await act(spacesApi.createPhase(space.id, phaseName.trim()));
-            setPhaseName("");
+            if (await act(spacesApi.createPhase(space.id, phaseName.trim()))) setPhaseName("");
           }}
         >
           <div className="grid flex-1 gap-1">
@@ -461,7 +480,7 @@ function TaskRow({
   task: Task;
   admin: boolean;
   names: Map<string, string>;
-  act: (work: Promise<unknown>) => Promise<unknown>;
+  act: (work: Promise<unknown>) => Promise<boolean>;
 }) {
   const [rejecting, setRejecting] = useState(false);
   const [why, setWhy] = useState("");
@@ -510,7 +529,12 @@ function TaskRow({
                 size="sm"
                 variant="quiet"
                 disabled={!why.trim()}
-                onClick={() => act(spacesApi.reject(task.id, why.trim()))}
+                onClick={async () => {
+                  if (await act(spacesApi.reject(task.id, why.trim()))) {
+                    setRejecting(false);
+                    setWhy("");
+                  }
+                }}
               >
                 Send back
               </Button>
@@ -531,7 +555,14 @@ function useLoaded<T>(load: () => Promise<T>, key: string) {
   const [data, setData] = useState<T | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the key names what the load is for
   useEffect(() => {
-    load().then(setData, (err) => toast.error(messageOf(err)));
+    let current = true;
+    load().then(
+      (value) => current && setData(value),
+      (err) => toast.error(messageOf(err)),
+    );
+    return () => {
+      current = false;
+    };
   }, [key]);
   return data;
 }
