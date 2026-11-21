@@ -1,11 +1,14 @@
-import type {
-  Cell,
-  Column,
-  FlagColor,
-  PatchCellBody,
-  RowFilter,
-  RowSort,
-  RunColumnBody,
+import {
+  type Cell,
+  type Column,
+  dependentsOf,
+  type FlagColor,
+  type PatchCellBody,
+  promptForDisplay,
+  promptFromDisplay,
+  type RowFilter,
+  type RowSort,
+  type RunColumnBody,
 } from "@legallabs/contracts";
 import {
   AddColumnPopover,
@@ -22,19 +25,33 @@ import {
   ExportDialog,
   FilterPanel,
   formatUsd,
+  type MentionColumn,
+  mentionProblem,
+  PromptField,
   ReviewGrid,
   type RunChoice,
   RunDialog,
+  SaveTemplateDialog,
   SidePanel,
   Skeleton,
-  Textarea,
+  SyncIndicator,
+  SyncPanel,
   toast,
 } from "@legallabs/ui";
-import { ArrowLeft, Blocks, Download, FilterX, Play } from "lucide-react";
+import {
+  ArrowLeft,
+  Blocks,
+  Download,
+  FilterX,
+  LayoutTemplate,
+  Play,
+  RefreshCw,
+} from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { anchorOf, openCitation } from "../viewer/open-citation.js";
 import { type CellDetail, download, messageOf, tableApi } from "./api.js";
 import { usePageDialogs } from "./use-page-dialogs.js";
+import { useSync } from "./use-sync.js";
 import { useTableData } from "./use-table-data.js";
 
 const FLAG_CYCLE: (FlagColor | null)[] = [
@@ -69,8 +86,14 @@ export function runBody(
   sort: RowSort | null,
   filter: RowFilter,
 ): RunColumnBody {
-  if (choice === "pending") return { scope: "pending", include_verified: false };
-  const body: RunColumnBody = { scope: choice.scope, include_verified: choice.include_verified };
+  if (choice === "pending") {
+    return { scope: "pending", include_verified: false, include_dependents: false };
+  }
+  const body: RunColumnBody = {
+    scope: choice.scope,
+    include_verified: choice.include_verified,
+    include_dependents: choice.include_dependents === true,
+  };
   if (choice.scope !== "dry_run") return body;
   return {
     ...body,
@@ -104,6 +127,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
   const { panel, setPanel, run, setRun, exporting, setExporting, adding, setAdding } =
     usePageDialogs();
   const [gridBox, gridHeight] = useHeight<HTMLDivElement>();
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const rowFilter = useMemo(() => toRowFilter(filters), [filters]);
   const { table, columns, rows, cells, loading, now, refresh, loadMore, putCell } = useTableData(
@@ -112,6 +136,13 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
     sort,
   );
   const rowCount = table?.stats.rows ?? rows.length;
+  const {
+    sync,
+    folders,
+    loadFolders,
+    save: saveSync,
+    syncNow,
+  } = useSync(table, () => void refresh());
 
   const activeCell = active ? cells.get(cellKey(active.rowId, active.columnId)) : undefined;
   const activeColumn = columns.find((c) => c.id === active?.columnId);
@@ -169,6 +200,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
         await tableApi.runColumn(tableId, ref.columnId, {
           scope: { row_ids: [ref.rowId] },
           include_verified: false,
+          include_dependents: false,
         });
       await refresh();
     } catch (err) {
@@ -209,8 +241,20 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
     if (anchor) openCitation(anchor, { context: anchors });
   };
 
+  const mentionable = useMemo(() => columns.map((c) => ({ id: c.id, label: c.label })), [columns]);
+  const edges = useMemo(() => new Map(columns.map((c) => [c.id, c.depends_on])), [columns]);
+  const labelsOf = (ids: readonly string[]) =>
+    ids.flatMap((id) => columns.find((c) => c.id === id)?.label ?? []);
+
+  const openSync = () => {
+    setPanel({ kind: "sync" });
+    loadFolders().catch((err) => toast.error(messageOf(err)));
+  };
+
   const panelColumn =
-    panel && panel.kind !== "builder" ? columns.find((c) => c.id === panel.columnId) : undefined;
+    panel && (panel.kind === "filter" || panel.kind === "prompt")
+      ? columns.find((c) => c.id === panel.columnId)
+      : undefined;
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: Esc closes the drawer from anywhere on the page
@@ -236,6 +280,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
         <AddColumnPopover
           open={adding}
           onOpenChange={setAdding}
+          columns={mentionable}
           onAdd={async (column) => {
             try {
               await tableApi.createColumn(tableId, column);
@@ -256,11 +301,38 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
             Clear filters
           </Button>
         )}
+        {sync && (
+          <>
+            <SyncIndicator sync={sync} onClick={openSync} />
+            <Button variant="secondary" onClick={openSync}>
+              <RefreshCw aria-hidden />
+              Sync
+            </Button>
+          </>
+        )}
         <Button variant="secondary" onClick={() => setExporting(true)}>
           <Download aria-hidden />
           Export
         </Button>
+        <Button variant="secondary" onClick={() => setSavingTemplate(true)}>
+          <LayoutTemplate aria-hidden />
+          Save as template
+        </Button>
       </header>
+      <SaveTemplateDialog
+        open={savingTemplate}
+        onOpenChange={setSavingTemplate}
+        defaultName={table?.name ?? ""}
+        columnCount={columns.length}
+        onSave={async (request) => {
+          try {
+            await tableApi.saveTemplate(tableId, request);
+            toast.success("Template saved. Find it under Templates.");
+          } catch (err) {
+            throw new Error(messageOf(err));
+          }
+        }}
+      />
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div ref={gridBox} className="min-h-0 flex-1 p-2">
@@ -278,6 +350,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
                     rowCount={rowCount}
                     sort={sort?.column_id === full.id ? sort.direction : null}
                     filtered={Boolean(filters[full.id])}
+                    uses={labelsOf(full.depends_on)}
                     onRun={() => setRun({ column: full, rerun: false })}
                     onRerun={() => setRun({ column: full, rerun: true })}
                     onRunRemaining={() => void runColumn(full, "pending")}
@@ -378,6 +451,27 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
             }}
           />
         )}
+        {panel?.kind === "sync" && sync && (
+          <SyncPanel
+            sync={sync}
+            folders={folders}
+            onSave={async (settings) => {
+              try {
+                await saveSync(settings);
+              } catch (err) {
+                throw new Error(messageOf(err));
+              }
+            }}
+            onSyncNow={async () => {
+              try {
+                await syncNow();
+              } catch (err) {
+                throw new Error(messageOf(err));
+              }
+            }}
+            onClose={() => setPanel(null)}
+          />
+        )}
         {panel?.kind === "filter" && panelColumn && (
           <SidePanel
             title={`Filter ${panelColumn.label}`}
@@ -394,6 +488,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
         {panel?.kind === "prompt" && panelColumn && (
           <PromptPanel
             column={panelColumn}
+            columns={mentionable.filter((c) => c.id !== panelColumn.id)}
             onClose={() => setPanel(null)}
             onSave={async (prompt) => {
               try {
@@ -441,6 +536,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
           columnLabel={run.column.label}
           rowCount={rowCount}
           rerun={run.rerun}
+          dependents={labelsOf(dependentsOf(edges, [run.column.id]))}
           estimate={estimateRun}
           onRun={(choice) => void runColumn(run.column, choice)}
         />
@@ -467,37 +563,49 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
 
 function PromptPanel({
   column,
+  columns,
   onClose,
   onSave,
 }: {
   column: Column;
+  /** The table's other columns, which the prompt may refer to. */
+  columns: readonly MentionColumn[];
   onClose: () => void;
   onSave: (prompt: string) => void;
 }) {
-  const [prompt, setPrompt] = useState(column.prompt);
+  const shown = promptForDisplay(column.prompt, (id) => columns.find((c) => c.id === id)?.label);
+  const [prompt, setPrompt] = useState(shown);
+  const problem = mentionProblem(prompt, columns);
   return (
     <SidePanel title={`Edit ${column.label}`} onClose={onClose} width={400}>
       <form
         className="grid gap-3"
         onSubmit={(event) => {
           event.preventDefault();
-          onSave(prompt);
+          if (!problem) onSave(promptFromDisplay(prompt, columns).prompt);
         }}
       >
         <label htmlFor="column-prompt" className="text-ui font-medium">
           What to look for
         </label>
-        <Textarea
+        <PromptField
           id="column-prompt"
           rows={6}
-          maxLength={4000}
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          columns={columns}
+          onChange={setPrompt}
+          {...(problem ? { "aria-invalid": true as const } : {})}
         />
+        {problem && (
+          <p role="alert" className="text-caption text-destructive">
+            {problem}
+          </p>
+        )}
         <p className="text-caption text-fg-muted">
-          Saving marks this column's answers stale; re-run to refresh them.
+          Type @ to use another column's answer. Saving marks this column's answers, and those of
+          columns that use it, stale; re-run to refresh them.
         </p>
-        <Button type="submit" disabled={prompt.trim() === "" || prompt === column.prompt}>
+        <Button type="submit" disabled={prompt.trim() === "" || prompt === shown}>
           Save prompt
         </Button>
       </form>

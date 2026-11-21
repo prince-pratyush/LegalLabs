@@ -109,8 +109,14 @@ const v = (id: string) => `/vaults/${encodeURIComponent(id)}`;
 
 export const vaultApi = {
   list: async () => (await call<{ vaults: (Vault & { files: number })[] }>("/vaults")).vaults,
-  create: async (name: string, description: string) =>
-    (await send<{ vault: Vault }>("POST", "/vaults", { name, description })).vault,
+  create: async (name: string, description: string, matterId: string | null = null) =>
+    (
+      await send<{ vault: Vault }>("POST", "/vaults", {
+        name,
+        description,
+        ...(matterId ? { matter_id: matterId } : {}),
+      })
+    ).vault,
   get: (id: string) => call<{ vault: Vault; stats: VaultStats }>(v(id)),
   update: async (
     id: string,

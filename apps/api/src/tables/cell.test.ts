@@ -257,6 +257,18 @@ describe("cellMessages", () => {
     expect(user?.content).toMatch(/amount with its currency/);
   });
 
+  it("hands over earlier answers as fenced data the model must not cite", () => {
+    const [system, user] = cellMessages(
+      { ...input(column()), references: [{ label: 'Gov "law"', value: "New York" }] },
+      PAGES,
+      "abc123",
+    );
+    expect(system?.content).toMatch(/never quote them as evidence/);
+    expect(user?.content).toContain(
+      `<answer-abc123 column="Gov 'law'">\nNew York\n</answer-abc123>`,
+    );
+  });
+
   it("lists classify labels and says whether Other is allowed", () => {
     const options = {
       options: [

@@ -17,6 +17,7 @@ import {
   MAX_FILE_BYTES,
   type UploadResult,
 } from "../documents/documents.js";
+import { type Notifier, noNotifier } from "../notifications/notify.js";
 
 export interface Vault {
   id: string;
@@ -115,7 +116,13 @@ export interface AdminVault extends Vault {
   grants: number;
 }
 
-export type Refusal = "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "MATTER_NOT_FOUND";
+export type Refusal =
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "CONFLICT"
+  | "MATTER_NOT_FOUND"
+  | "MATTER_REQUIRED_FOR_VAULT"
+  | "MATTER_NOT_ALLOWED_FOR_VAULT";
 type Result<T> = { ok: true; value: T } | { ok: false; reason: Refusal };
 
 export interface Vaults {
@@ -176,7 +183,7 @@ export interface Vaults {
     vaultId: string,
     shares: { grants: VaultGrant[]; workspaceView: boolean },
     client: Client,
-  ): Promise<{ deniedByWall: string[] } | null>;
+  ): Promise<{ deniedByWall: string[] } | { blockedCount: number } | null>;
   preflight(p: Principal, vaultId: string, files: ManifestFile[]): Promise<Preflight | null>;
   /** `relativePath` keeps a dropped folder's structure; missing folders are made. */
   upload(
@@ -309,12 +316,26 @@ const UNIQUE_VIOLATION = "23505";
 const CHECK_VIOLATION = "23514";
 const codeOf = (err: unknown) => (err as { code?: string }).code;
 
+// The workspace's matter options say whether a vault needs, allows or refuses a matter.
+const vaultAssociation = async (db: pg.PoolClient) =>
+  (
+    await db.query<{ v: string }>(
+      `select coalesce((select vault_association from core.matter_options
+                         where workspace_id = core.current_workspace_id()), 'optional') v`,
+    )
+  ).rows[0]?.v ?? "optional";
+
 export interface VaultsOptions {
   documents: Documents;
   store: ObjectStore;
+  /** Tells people a vault was shared with them; left out, nobody is told. */
+  notifier?: Notifier;
 }
 
-export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions): Vaults {
+export function createVaults(
+  pool: pg.Pool,
+  { documents, store, notifier = noNotifier }: VaultsOptions,
+): Vaults {
   const audit = (
     db: pg.PoolClient,
     p: Principal,
@@ -384,6 +405,13 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
     async create(p, input, client) {
       try {
         return await asApp(pool, p, async (db) => {
+          const association = await vaultAssociation(db);
+          if (association === "required" && !input.matterId) {
+            return { ok: false as const, reason: "MATTER_REQUIRED_FOR_VAULT" as const };
+          }
+          if (association === "disabled" && input.matterId) {
+            return { ok: false as const, reason: "MATTER_NOT_ALLOWED_FOR_VAULT" as const };
+          }
           const { rows } = await db.query<{ id: string }>(
             `insert into content.vault (workspace_id, owner_id, matter_id, name, description)
              values ($1, $2, $3, $4, $5) returning id`,
@@ -778,8 +806,45 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
 
     async setShares(p, vaultId, shares, client) {
       if (!isId(vaultId)) return null;
-      return asApp(pool, p, async (db) => {
+      const notice: { title: string; matterId: string | null; userIds: string[] } = {
+        title: "",
+        matterId: null,
+        userIds: [],
+      };
+      const result = await asApp(pool, p, async (db) => {
         if (!canManage(await level(db, vaultId))) return null;
+        // A matter that requires walls for sharing refuses the whole change, naming no one.
+        const principals = [
+          ...shares.grants,
+          ...(shares.workspaceView
+            ? [{ principal_type: "workspace", principal_id: p.workspaceId }]
+            : []),
+        ];
+        const { rows: blocked } = await db.query<{ n: number }>(
+          `select core.wall_share_blocked(v.matter_id, $2) n from content.vault v where v.id = $1`,
+          [vaultId, JSON.stringify(principals)],
+        );
+        const blockedCount = blocked[0]?.n ?? 0;
+        if (blockedCount > 0) {
+          await audit(db, p, client, "wall.share_blocked", "vault", vaultId, {
+            object_type: "vault",
+            object_id: vaultId,
+            blocked_count: blockedCount,
+          });
+          return { blockedCount };
+        }
+        const had = new Set<string>();
+        if (notifier !== noNotifier) {
+          const { rows: before } = await db.query<{ user_id: string }>(
+            `select g.principal_id as user_id from core.share_grant g
+              where g.object_type = 'vault' and g.object_id = $1 and g.principal_type = 'user'
+             union
+             select m.user_id from core.share_grant g join core.group_member m on m.group_id = g.principal_id
+              where g.object_type = 'vault' and g.object_id = $1 and g.principal_type = 'group'`,
+            [vaultId],
+          );
+          for (const row of before) had.add(row.user_id);
+        }
         const { rows } = await db.query<{ result: { denied_by_wall: string[] } }>(
           "select content.set_vault_shares($1, $2, $3) result",
           [vaultId, JSON.stringify(shares.grants), shares.workspaceView],
@@ -792,8 +857,46 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
         for (const userId of denied.slice(0, 100)) {
           await audit(db, p, client, "wall.share_blocked", "vault", vaultId, { user_id: userId });
         }
+        if (notifier !== noNotifier) {
+          const named = shares.grants
+            .filter((g) => g.principal_type === "user")
+            .map((g) => g.principal_id);
+          const groups = shares.grants
+            .filter((g) => g.principal_type === "group")
+            .map((g) => g.principal_id);
+          const members =
+            groups.length > 0
+              ? (
+                  await db.query<{ user_id: string }>(
+                    "select user_id from core.group_member where group_id = any($1::uuid[])",
+                    [groups],
+                  )
+                ).rows.map((r) => r.user_id)
+              : [];
+          const vault = (
+            await db.query<{ name: string; matter_id: string | null }>(
+              "select name, matter_id from content.vault where id = $1",
+              [vaultId],
+            )
+          ).rows[0];
+          notice.title = vault?.name ?? "";
+          notice.matterId = vault?.matter_id ?? null;
+          notice.userIds = [...new Set([...named, ...members])].filter((id) => !had.has(id));
+        }
         return { deniedByWall: denied };
       });
+      if (result && notice.userIds.length > 0) {
+        await notifier.notify(p, {
+          kind: "vault.shared",
+          actorId: p.userId,
+          objectType: "vault",
+          objectId: vaultId,
+          objectTitle: notice.title,
+          matterId: notice.matterId,
+          people: { recipients: notice.userIds },
+        });
+      }
+      return result;
     },
 
     async preflight(p, vaultId, files) {

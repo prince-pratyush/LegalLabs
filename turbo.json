@@ -21,6 +21,10 @@
     "@legallabs/api#test": {
       "dependsOn": ["^build", "@legallabs/db#test"],
       "env": ["TEST_DATABASE_URL", "PG_BIN"]
+    },
+    "@legallabs/runs#test": {
+      "dependsOn": ["^build", "@legallabs/db#test"],
+      "env": ["TEST_DATABASE_URL", "PG_BIN", "TEMPORAL_ADDRESS"]
     }
   }
 }

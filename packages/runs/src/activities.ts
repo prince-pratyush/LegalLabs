@@ -92,6 +92,7 @@ export function createActivities(deps: ActivityDeps, ref: RunRef): Activities {
           kind: "ask",
           step_id: existing.id,
           allow_skip: existing.output.allow_skip === true,
+          ...(existing.output.awaiting === "approval" ? { approval: true } : {}),
         };
       }
       const totals = await store.totals();

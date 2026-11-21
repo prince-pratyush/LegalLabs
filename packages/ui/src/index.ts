@@ -81,7 +81,14 @@ export {
   type Evidence,
   type EvidenceStatus,
 } from "./components/evidence.js";
-export { Field, type FieldControlProps, Input, Label, Textarea } from "./components/field.js";
+export {
+  Field,
+  type FieldControlProps,
+  Input,
+  Label,
+  NativeSelect,
+  Textarea,
+} from "./components/field.js";
 export { FolderTree, type TreeFolder } from "./components/folder-tree.js";
 export {
   type LibraryAction,
@@ -181,7 +188,11 @@ export {
   SuggestionCardSkeleton,
   titleOf,
 } from "./components/review/suggestion-card.js";
-export { AddColumnForm, AddColumnPopover } from "./components/review-table/add-column.js";
+export {
+  AddColumnForm,
+  AddColumnPopover,
+  mentionProblem,
+} from "./components/review-table/add-column.js";
 export {
   BulkBar,
   type BulkOp,
@@ -223,6 +234,11 @@ export {
   TYPE_NAMES,
 } from "./components/review-table/presets.js";
 export {
+  type MentionColumn,
+  mentionAt,
+  PromptField,
+} from "./components/review-table/prompt-field.js";
+export {
   elapsedSeconds,
   ReviewCell,
   ReviewCellSkeleton,
@@ -241,7 +257,22 @@ export {
   RunDialog,
   type RunEstimate,
 } from "./components/review-table/run-dialog.js";
+export {
+  SyncIndicator,
+  type SyncInfo,
+  SyncPanel,
+  type SyncSettings,
+} from "./components/review-table/sync-panel.js";
 export { TableList, type TableSummary } from "./components/review-table/table-list.js";
+export {
+  SaveTemplateDialog,
+  type SaveTemplateRequest,
+  STATUS_TEXT as TEMPLATE_STATUS_TEXT,
+  TemplateList,
+  type TemplateStatus,
+  type TemplateSummary,
+  TestTemplatePanel,
+} from "./components/review-table/templates.js";
 export {
   CELL_STATUSES,
   type CellStatus,

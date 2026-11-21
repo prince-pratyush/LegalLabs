@@ -183,7 +183,8 @@ export function createRunStore(pool: pg.Pool, who: Identity, runId: string): Run
       as(async (db) => {
         await db.query(
           `update work.run_step
-              set status = $3, model = $4, routing_class = $5, usage = coalesce($6::jsonb, usage),
+              set status = $3, model = coalesce($4, model),
+                  routing_class = coalesce($5, routing_class), usage = coalesce($6::jsonb, usage),
                   cost_usd = coalesce($7, cost_usd), output = output || $8::jsonb, error = $9,
                   finished_at = case when $3 in ('done', 'failed', 'skipped') then now()
                                      else finished_at end

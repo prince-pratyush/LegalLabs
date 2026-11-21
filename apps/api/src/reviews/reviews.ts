@@ -31,6 +31,7 @@ import type pg from "pg";
 import type { z } from "zod";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp, RLS_REFUSED } from "../db.js";
+import type { Notifier } from "../notifications/notify.js";
 import { uuid7 } from "../playbooks/playbooks.js";
 import type { RunLog } from "../runs/log.js";
 import type { DocxValidator } from "./soffice.js";
@@ -154,6 +155,8 @@ export interface ReviewsOptions {
   maxActive?: number;
   /** Checks a redline opens before it is sent (LibreOffice when configured). */
   validate?: DocxValidator | null;
+  /** Tells the person who ran a review when it finishes; left out, nobody is told. */
+  notifier?: Notifier;
   /** Swapped in tests so a review needs no model. */
   run?: typeof runReview;
   now?: () => Date;
@@ -410,6 +413,34 @@ const audit = (
     client.ip,
     uaHash(client),
   ]);
+
+/** Tells the runner their review finished; a failure to notify never fails the review. */
+async function tellReviewDone(
+  principal: Principal,
+  reviewId: string,
+  notifier: Notifier,
+  pool: pg.Pool,
+) {
+  try {
+    const { rows } = await asApp(pool, principal, (db) =>
+      db.query<{ playbook_name: string }>(
+        "select playbook_name from work.playbook_review where id = $1",
+        [reviewId],
+      ),
+    );
+    if (!rows[0]) return;
+    await notifier.notify(principal, {
+      kind: "playbook.review_completed",
+      actorId: null,
+      objectType: "playbook_review",
+      objectId: reviewId,
+      objectTitle: rows[0].playbook_name,
+      people: { runner: principal.userId },
+    });
+  } catch {
+    // The review is done whether or not anyone is told.
+  }
+}
 
 /** The JSON object in a model reply, even inside a fence or prose. */
 function replyObject(text: string): Record<string, unknown> | null {
@@ -801,6 +832,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
         cost,
       );
     } else if (status === "done" && saved) {
+      if (options.notifier) await tellReviewDone(principal, reviewId, options.notifier, pool);
       await finishRun(principal, runId, "done", cost, outcome.usage.models.at(-1) ?? null);
       await log.append(principal, runId, { type: "status", status: "done" });
     } else {

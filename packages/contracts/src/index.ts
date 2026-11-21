@@ -63,6 +63,35 @@ export {
   TemplateFields,
   type TemplatePort,
 } from "./library.js";
+export * from "./matter.js";
+export {
+  AcceptCandidate,
+  codePoints,
+  IMPORT_COLUMNS,
+  ImportCommit,
+  ImportParsed,
+  ImportRow,
+  ImportRowStatus,
+  MEMORY_ERROR_CODES,
+  MEMORY_LIMITS,
+  Memory,
+  MemoryCandidate,
+  type MemoryErrorCode,
+  MemoryInput,
+  MemoryList,
+  MemorySettings,
+  MemorySettingsPatch,
+  MemorySource,
+  MemoryText,
+  MemoryUse,
+  memoriesConflict,
+  memoryStances,
+  normalizeMemoryText,
+  PERSONALISE_QUESTIONS,
+  PersonaliseInput,
+  SourcePlatform,
+} from "./memory.js";
+export * from "./notification.js";
 export {
   Action,
   Alternate,
@@ -117,6 +146,9 @@ export {
 } from "./playbook.js";
 export { RetrievalScope } from "./retrieval.js";
 export * from "./review-table.js";
+export * from "./review-table-references.js";
+export * from "./review-table-sync.js";
+export * from "./review-table-template.js";
 export * from "./review-table-values.js";
 export {
   CitationCounts,
@@ -131,6 +163,35 @@ export {
   RunKind,
   RunStatus,
 } from "./run.js";
+export {
+  Assignee,
+  CommentInput,
+  MemberInput,
+  PhaseInput,
+  PhasePatch,
+  ResourceInput,
+  renderSpaceContext,
+  type Skipped as SpaceSkipped,
+  SPACE_LIMITS,
+  SpaceContext,
+  SpaceContextInput,
+  SpaceCreate,
+  SpaceCustomisation,
+  SpaceKind,
+  SpaceLevel,
+  SpacePatch,
+  SpaceResourceType,
+  SpaceRole,
+  SpaceTemplateDefinition,
+  TaskCreate,
+  TaskOutput,
+  TaskPatch,
+  type TaskRunPort,
+  type TaskRunStart,
+  type TaskRunState,
+  TaskStatus,
+  TemplateInput,
+} from "./space.js";
 export { STARTERS, StarterPlaybook, starterPlaybook } from "./starters.js";
 export {
   type AuthorityPassage,
@@ -207,3 +268,14 @@ export {
   type WorkflowIssue,
   type WorkflowValidation,
 } from "./workflow.js";
+export {
+  STYLE_LIMITS,
+  StyleInstructions,
+  StyleKind,
+  StyleName,
+  StylePatch,
+  StyleShare,
+  StyleStatus,
+  WritingStyle,
+  WritingStyleList,
+} from "./writing-style.js";

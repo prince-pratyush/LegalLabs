@@ -3,19 +3,28 @@ import {
   BulkCellsBody,
   CreateColumnBody,
   CreateTableBody,
+  DecideTemplateBody,
+  DeleteRowsBody,
   EstimateBody,
   ExportBody,
   GenerateColumnsBody,
   PatchCellBody,
   PatchColumnBody,
+  PatchRowBody,
   PatchTableBody,
+  PatchTemplateBody,
+  PutSyncBody,
+  PutTemplateSharesBody,
   parseSort,
   ReorderColumnsBody,
+  RerunCellBody,
   RowFilter,
   RT_LIMITS,
   RunColumnBody,
   RunTableBody,
+  SaveTemplateBody,
   type TableErrorCode,
+  TestTemplateBody,
 } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -25,7 +34,9 @@ import type { Limiter } from "../auth/limiter.js";
 import type { Cells } from "./cells.js";
 import type { Exports } from "./export.js";
 import type { Runner } from "./runner.js";
+import type { TableSync } from "./sync.js";
 import type { Failure, Result, Tables } from "./tables.js";
+import type { Templates } from "./templates.js";
 
 type Env = { Variables: { principal: Principal } };
 
@@ -34,6 +45,8 @@ export interface TableHttpOptions {
   cells: Cells;
   exports: Exports;
   runner: Runner;
+  sync: TableSync;
+  templates: Templates;
   clientOf: (c: Context) => Client;
   /** The same budget of model calls as thread questions and playbook drafting. */
   asks?: Limiter;
@@ -43,6 +56,14 @@ const STATUS: Record<TableErrorCode, 400 | 403 | 404 | 409 | 502> = {
   INVALID_REQUEST: 400,
   NOT_FOUND: 404,
   FORBIDDEN: 403,
+  COLUMN_CYCLE: 409,
+  COLUMN_REFERENCED: 409,
+  SYNC_ENABLED: 409,
+  SYNC_DISABLED: 409,
+  SYNC_UNAVAILABLE: 409,
+  SOURCE_REMOVED: 409,
+  TEMPLATE_BAD_TRANSITION: 409,
+  TEMPLATE_INVALID: 400,
   SOURCE_LIMIT: 409,
   SOURCE_MISMATCH: 400,
   SOURCE_MIXED: 400,
@@ -85,12 +106,29 @@ async function body<S extends z.ZodType>(c: Context, schema: S): Promise<z.infer
 const send = <T>(c: Context, result: Result<T>, status: 200 | 201 | 202 = 200) =>
   result.ok ? c.json(result.value as object, status) : failure(c, result);
 
+const safeJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
 const offsetOf = (cursor: string | undefined) => {
   const n = Number(cursor ?? 0);
   return Number.isInteger(n) && n >= 0 ? n : null;
 };
 
-export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: TableHttpOptions) {
+export function tableHttp({
+  tables,
+  cells,
+  exports,
+  runner,
+  sync,
+  templates,
+  clientOf,
+  asks,
+}: TableHttpOptions) {
   const app = new Hono<Env>();
   const limit = bodyLimit({ maxSize: 1024 * 1024, onError: (c) => invalid(c) });
   const p = (c: Context<Env>) => c.get("principal");
@@ -98,7 +136,11 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
   app.post("/review-tables", limit, async (c) => {
     const parsed = await body(c, CreateTableBody);
     if (!parsed) return invalid(c);
-    return send(c, await tables.create(p(c), parsed, clientOf(c)), 201);
+    const { template_id: templateId, ...rest } = parsed;
+    if (templateId) {
+      return send(c, await templates.createFrom(p(c), templateId, rest, clientOf(c)), 201);
+    }
+    return send(c, await tables.create(p(c), rest, clientOf(c)), 201);
   });
 
   app.get("/review-tables", async (c) => {
@@ -176,6 +218,21 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
     return send(c, await tables.addRows(p(c), c.req.param("id"), parsed, clientOf(c)), 201);
   });
 
+  app.patch("/review-tables/:id/rows/:row", limit, async (c) => {
+    const parsed = await body(c, PatchRowBody);
+    if (!parsed) return invalid(c);
+    return send(
+      c,
+      await tables.updateRow(p(c), c.req.param("id"), c.req.param("row"), parsed, clientOf(c)),
+    );
+  });
+
+  app.delete("/review-tables/:id/rows", limit, async (c) => {
+    const parsed = await body(c, DeleteRowsBody);
+    if (!parsed) return invalid(c);
+    return send(c, await tables.removeRows(p(c), c.req.param("id"), parsed, clientOf(c)), 202);
+  });
+
   app.post("/review-tables/:id/columns", limit, async (c) => {
     const parsed = await body(c, CreateColumnBody);
     if (!parsed) return invalid(c, "Check the column's label, type, prompt and options.");
@@ -240,7 +297,11 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
         parsed.scope,
         parsed.include_verified,
         clientOf(c),
-        { sort: parsed.sort, filter: parsed.filter },
+        {
+          sort: parsed.sort,
+          filter: parsed.filter,
+          includeDependents: parsed.include_dependents,
+        },
       ),
       202,
     );
@@ -286,8 +347,114 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
     );
   });
 
-  app.post("/review-tables/:id/cells/:cell/rerun", async (c) =>
-    send(c, await cells.rerun(p(c), c.req.param("id"), c.req.param("cell"), clientOf(c)), 202),
+  app.post("/review-tables/:id/cells/:cell/rerun", limit, async (c) => {
+    // The body is optional: a bare POST re-runs the cell alone.
+    const text = await c.req.text();
+    const parsed = RerunCellBody.safeParse(text.trim() === "" ? {} : safeJson(text));
+    if (!parsed.success) return invalid(c);
+    return send(
+      c,
+      await cells.rerun(p(c), c.req.param("id"), c.req.param("cell"), clientOf(c), {
+        includeDependents: parsed.data.include_dependents,
+        includeVerified: parsed.data.include_verified,
+      }),
+      202,
+    );
+  });
+
+  app.post("/review-tables/:id/templates", limit, async (c) => {
+    const parsed = await body(c, SaveTemplateBody);
+    if (!parsed) return invalid(c, "Check the template's name and tags.");
+    const saved = await templates.save(p(c), c.req.param("id"), parsed, clientOf(c));
+    return saved.ok ? c.json({ template: saved.value }, 201) : failure(c, saved);
+  });
+
+  app.get("/review-table-templates", async (c) => {
+    const offset = offsetOf(c.req.query("cursor"));
+    if (offset === null) return invalid(c);
+    const status = c.req.query("filter[status]") ?? c.req.query("status");
+    const q = c.req.query("q");
+    return c.json(
+      await templates.list(p(c), {
+        ...(status ? { status } : {}),
+        ...(q ? { q: q.slice(0, 200) } : {}),
+        offset,
+      }),
+    );
+  });
+
+  app.get("/review-table-templates/:id", async (c) => {
+    const found = await templates.get(p(c), c.req.param("id"));
+    return found.ok ? c.json({ template: found.value }) : failure(c, found);
+  });
+
+  app.patch("/review-table-templates/:id", limit, async (c) => {
+    const parsed = await body(c, PatchTemplateBody);
+    if (!parsed) return invalid(c);
+    const result = await templates.patch(p(c), c.req.param("id"), parsed, clientOf(c));
+    return result.ok ? c.json({ template: result.value }) : failure(c, result);
+  });
+
+  app.delete("/review-table-templates/:id", async (c) => {
+    const result = await templates.remove(p(c), c.req.param("id"), clientOf(c));
+    return result.ok ? c.body(null, 204) : failure(c, result);
+  });
+
+  app.get("/review-table-templates/:id/shares", async (c) => {
+    const result = await templates.shares(p(c), c.req.param("id"));
+    return result.ok ? c.json({ shares: result.value }) : failure(c, result);
+  });
+
+  app.put("/review-table-templates/:id/shares", limit, async (c) => {
+    const parsed = await body(c, PutTemplateSharesBody);
+    if (!parsed) return invalid(c, "Check who the template is shared with.");
+    const result = await templates.setShares(p(c), c.req.param("id"), parsed, clientOf(c));
+    if (!result.ok) return failure(c, result);
+    // Sharing a draft that has been tried out moves it along.
+    await templates.markShared(p(c), c.req.param("id"));
+    return c.json({ shares: result.value });
+  });
+
+  app.post("/review-table-templates/:id/test", limit, async (c) => {
+    const parsed = await body(c, TestTemplateBody);
+    if (!parsed) return invalid(c);
+    return send(c, await templates.test(p(c), c.req.param("id"), parsed, clientOf(c)), 202);
+  });
+
+  app.post("/review-table-templates/:id/publish", async (c) =>
+    send(c, await templates.publish(p(c), c.req.param("id"), clientOf(c)), 202),
+  );
+
+  for (const [action, approve] of [
+    ["approve", true],
+    ["reject", false],
+  ] as const) {
+    app.post(`/admin/review-table-templates/:id/${action}`, limit, async (c) => {
+      const parsed = await body(c, DecideTemplateBody);
+      if (!parsed) return invalid(c);
+      const result = await templates.decide(
+        p(c),
+        c.req.param("id"),
+        approve,
+        parsed.note ?? null,
+        clientOf(c),
+      );
+      return result.ok ? c.json({ template: result.value }) : failure(c, result);
+    });
+  }
+
+  app.get("/review-tables/:id/sync", async (c) =>
+    send(c, await sync.status(p(c), c.req.param("id"))),
+  );
+
+  app.put("/review-tables/:id/sync", limit, async (c) => {
+    const parsed = await body(c, PutSyncBody);
+    if (!parsed) return invalid(c, "Check the sync mode and folders.");
+    return send(c, await sync.configure(p(c), c.req.param("id"), parsed, clientOf(c)));
+  });
+
+  app.post("/review-tables/:id/sync/run", async (c) =>
+    send(c, await sync.run(p(c), c.req.param("id"), clientOf(c))),
   );
 
   app.post("/review-tables/:id/export", limit, async (c) => {

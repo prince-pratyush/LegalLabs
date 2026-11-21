@@ -28,15 +28,27 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createMatters } from "./matters/matters.js";
+import { createMemoryModule } from "./memory/module.js";
+import { createMemoryPurgeJob } from "./memory/purge.js";
+import { createLogEmailProvider } from "./notifications/email-port.js";
+import { createEmailWorker } from "./notifications/email-worker.js";
+import { createNotifications } from "./notifications/notifications.js";
+import { createPurgeJob } from "./notifications/purge.js";
+import { registerThreadActions } from "./notifications/register.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
+import { createSpaceModule } from "./spaces/module.js";
+import { spaceNotifier } from "./spaces/notify.js";
+import { scriptedTaskRuns } from "./spaces/ports.js";
 import { createReviewTables } from "./tables/module.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
 import { createRetentionJob } from "./vaults/retention.js";
 import { createVaults } from "./vaults/vaults.js";
+import { createWorkflows } from "./workflows/workflows.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -88,11 +100,29 @@ const worker = createIngestWorker(pool, {
 worker.start();
 const retention = createRetentionJob(pool, { store, log: (line) => console.log(line) });
 retention.start();
+const notifications = createNotifications(pool);
+const notifier = notifications.notifier;
+const notificationPurge = createPurgeJob(notifications, { log: (line) => console.log(line) });
+notificationPurge.start();
+// Mail goes to the log until a real provider is plugged in; links use the public web address.
+const emailWorker = createEmailWorker(pool, {
+  provider: createLogEmailProvider((line) => console.log(line)),
+  baseUrl: process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173",
+  log: (line) => console.log(line),
+});
+emailWorker.start();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   // A job cut off mid-read is picked up again once its lease runs out.
   process.once(
     signal,
-    () => void Promise.all([worker.stop(), retention.stop()]).finally(() => process.exit(0)),
+    () =>
+      void Promise.all([
+        worker.stop(),
+        retention.stop(),
+        notificationPurge.stop(),
+        memoryPurge.stop(),
+        emailWorker.stop(),
+      ]).finally(() => process.exit(0)),
   );
 }
 const gateway = createGateway({
@@ -120,6 +150,23 @@ const cellsInFlight = Number(process.env.LEGALLABS_TABLE_CELLS_IN_FLIGHT);
 const vaults = createVaultPort(pool);
 const knowledgeStore = createKnowledge(pool, { embedder });
 const knowledge = knowledgePort(knowledgeStore);
+const memory = createMemoryModule(pool, {
+  gateway,
+  // PDF, Word and text samples, read the same way uploaded files are.
+  read: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
+});
+const memoryPurge = createMemoryPurgeJob(memory.memories, { log: (line) => console.log(line) });
+memoryPurge.start();
+const threadService = createThreads(pool, {
+  gateway,
+  documents,
+  log,
+  vaults,
+  knowledge,
+  notifier,
+  personalisation: memory.personalisation,
+});
+registerThreadActions(notifications.actions, threadService);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
 const scheduler = await schedulerFromEnv();
@@ -129,19 +176,44 @@ const agents = createAgents(pool, {
   ...(scheduler ? { scheduler } : {}),
 });
 const agentRuns = createAgentRuns(pool, {
-  engine: await runEngineFromEnv(pool, runHandlers(pool, { gateway, agents })),
+  engine: await runEngineFromEnv(pool, runHandlers(pool, { gateway, agents, documents })),
 });
+
+const tables = createReviewTables(pool, {
+  gateway,
+  documents,
+  log,
+  notifier,
+  syncLog: (line) => console.log(line),
+  ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+});
+// Tables over a vault with sync on pick up new files on this schedule, each as its owner.
+tables.sync.start();
+process.once("SIGTERM", () => void tables.sync.stop());
+process.once("SIGINT", () => void tables.sync.stop());
 
 const app = createApp({
   agentRuns,
+  workflows: createWorkflows(pool, {
+    documents,
+    agentRuns,
+    // Explicit models on a block must be ones this install can actually route to.
+    allowedModels: () => [
+      ...new Set(
+        (["synthesize", "read_extract", "draft_edit"] as const).flatMap((t) =>
+          gateway.models(t).map((m) => m.id),
+        ),
+      ),
+    ],
+  }),
   agents,
   agentSharing: createAgentSharing(pool),
   agentNudges: createNudges(pool),
   auth: createAuth(pool),
   documents,
-  vaults: createVaults(pool, { documents, store }),
+  vaults: createVaults(pool, { documents, store, notifier }),
   threads: {
-    threads: createThreads(pool, { gateway, documents, log, vaults, knowledge }),
+    threads: threadService,
     log,
     gateway,
     vaults,
@@ -150,8 +222,11 @@ const app = createApp({
   },
   viewer: createViewer(pool, store, documents),
   playbooks: createPlaybooks(pool, { gateway }),
+  notifications,
+  memory,
   reviews: createReviews(pool, {
     gateway,
+    notifier,
     store,
     log,
     // A local model serves about two calls at once; raise it for a hosted provider.
@@ -163,12 +238,21 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
-  tables: createReviewTables(pool, {
-    gateway,
-    documents,
-    log,
-    ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+  matters: createMatters(pool),
+  // Tasks given to the assistant or an agent run on the scripted stand-in until the run engine
+  // implements `TaskRunPort`; it calls no model.
+  spaces: createSpaceModule(pool, {
+    runs: scriptedTaskRuns(),
+    notifier: spaceNotifier(notifier),
+    // The workspace may let a Space hold resources from another matter.
+    allowMatterMismatch: async (db) =>
+      (
+        await db.query<{ ok: boolean }>(
+          "select coalesce((select allow_matter_mismatch_in_spaces from core.matter_options), false) as ok",
+        )
+      ).rows[0]?.ok ?? false,
   }),
+  tables,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {
