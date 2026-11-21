@@ -440,6 +440,78 @@ describe("tasks", () => {
     expect(w.runs.runs[0]?.answers).toEqual(["Schedule 2"]);
   });
 
+  it("drops a run that started after the task was handed on", async () => {
+    let hand: (() => Promise<unknown>) | null = null;
+    const w = await world({ duringStart: async () => void (await hand?.()) });
+    const id = await room(w);
+    // While the engine starts the assistant's run, the task is handed to Ben.
+    const taskId = (await w.a("POST", `/spaces/${id}/tasks`, { name: "Existing" })).body.task.id;
+    hand = () =>
+      w.a("PATCH", `/tasks/${taskId}`, { assignee: { type: "user", user_id: w.ben.userId } });
+    const res = await w.a("PATCH", `/tasks/${taskId}`, { assignee: { type: "assistant" } });
+    expect(res.status).toBe(200);
+    const after = (await w.a("GET", `/tasks/${taskId}`)).body.task;
+    expect(after.assignee).toEqual({ type: "user", user_id: w.ben.userId });
+    expect(after.run).toBeNull();
+    expect(w.runs.runs[0]?.cancelled).toBe(true);
+  });
+
+  it("leaves the question standing when the engine can't take an answer", async () => {
+    const w = await world({ failAnswer: true });
+    const id = await room(w);
+    const created = await w.a("POST", `/spaces/${id}/tasks`, {
+      name: "Check",
+      assignee: { type: "assistant" },
+    });
+    w.runs.finish(created.body.task.run.id, { status: "awaiting_input", question: "Which?" });
+    await w.a("GET", `/tasks/${created.body.task.id}`);
+    const res = await w.a("POST", `/tasks/${created.body.task.id}/answer`, { answer: "Two" });
+    expect(res.status).toBe(502);
+    const comments = (await w.a("GET", `/tasks/${created.body.task.id}/comments`)).body.comments;
+    expect(comments.map((c: { body_md: string }) => c.body_md)).toEqual(["Question: Which?"]);
+    expect((await w.a("GET", `/tasks/${created.body.task.id}`)).body.task.run.status).toBe(
+      "awaiting_input",
+    );
+  });
+
+  it("asks a question once, however often the task is read", async () => {
+    const w = await world();
+    const id = await room(w);
+    const created = await w.a("POST", `/spaces/${id}/tasks`, {
+      name: "Check",
+      assignee: { type: "assistant" },
+    });
+    w.runs.finish(created.body.task.run.id, { status: "awaiting_input", question: "Which?" });
+    await w.a("GET", `/tasks/${created.body.task.id}`);
+    await w.a("GET", `/tasks/${created.body.task.id}`);
+    await w.a("GET", `/spaces/${id}/tasks`);
+    const comments = (await w.a("GET", `/tasks/${created.body.task.id}/comments`)).body.comments;
+    expect(comments).toHaveLength(1);
+  });
+
+  it("keeps a task as it was when the engine can't be reached for its status", async () => {
+    const w = await world();
+    const id = await room(w);
+    const created = await w.a("POST", `/spaces/${id}/tasks`, {
+      name: "Check",
+      assignee: { type: "assistant" },
+    });
+    w.runs.runs.length = 0; // the engine has forgotten the run, so status() throws
+    const read = await w.a("GET", `/tasks/${created.body.task.id}`);
+    expect(read.status).toBe(200);
+    expect(read.body.task.assignee).toEqual({ type: "assistant" });
+  });
+
+  it("ignores a finished call for an unknown run", async () => {
+    const w = await world();
+    const done = await w.spaces.tasks.runFinished(
+      { workspaceId: w.ana.workspaceId, userId: w.ana.userId },
+      "not-an-id",
+      { ip: null, userAgent: null },
+    );
+    expect(done).toEqual({ ok: true, value: null });
+  });
+
   it("needs an agent shared into the Space at Run", async () => {
     const w = await world();
     const id = await room(w);

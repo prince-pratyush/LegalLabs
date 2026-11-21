@@ -37,7 +37,7 @@ const info = (row: InfoRow | null): ResourceInfo | null =>
   row ? { name: row.name, ownerId: row.owner_id, matterId: row.matter_id, full: row.full } : null;
 
 /** What exists today. Agents, workflows and scans register themselves when their epics land. */
-export const defaultCatalog: ResourceCatalog = {
+const defaultCatalog: ResourceCatalog = {
   vault: async (db, id) =>
     info(
       await one<InfoRow>(
@@ -81,7 +81,7 @@ export const defaultCatalog: ResourceCatalog = {
 
 /** Resources a person runs rather than edits. */
 const RUNNABLE = new Set<SpaceResourceType>(["agent", "workflow", "playbook", "scan"]);
-export const levelAllowed = (type: SpaceResourceType, level: SpaceLevel) =>
+const levelAllowed = (type: SpaceResourceType, level: SpaceLevel) =>
   RUNNABLE.has(type) || level !== "run";
 
 export interface SpaceView {
@@ -257,7 +257,7 @@ interface SpaceRow {
   open_tasks: number;
 }
 
-export const SPACE_SQL = `
+const SPACE_SQL = `
   select s.id, s.name, s.kind, s.matter_id, s.context, s.customization, s.template_id,
          s.created_by, s.created_at, work.space_role(s.id) as my_role,
          m.client_id, m.client_name, m.matter_number,
@@ -360,7 +360,7 @@ export interface SpacesOptions {
   allowMatterMismatch?: (db: Db) => Promise<boolean>;
 }
 
-export type SpacesModule = Spaces & { kit: Kit; catalog: ResourceCatalog };
+type SpacesModule = Spaces & { kit: Kit; catalog: ResourceCatalog };
 
 export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): SpacesModule {
   const kit = createKit(pool, options.notifier ?? noNotifications);

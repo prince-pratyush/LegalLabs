@@ -287,8 +287,8 @@ export interface TaskRunPort {
   status(caller: Caller, runId: string): Promise<TaskRunState>;
   /** Idempotent; cancelling a finished run is not an error. */
   cancel(caller: Caller, runId: string): Promise<void>;
-  /** Sends an answer to a run that asked a question. */
-  answer?(caller: Caller, runId: string, answer: string): Promise<void>;
+  /** Sends an answer to a run that asked a question; it throws if the run can't take it. */
+  answer(caller: Caller, runId: string, answer: string): Promise<void>;
 }
 
 // --- Space Context injection ------------------------------------------------------------------

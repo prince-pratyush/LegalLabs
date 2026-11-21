@@ -284,7 +284,7 @@ const csvCell = (value: string | null) => {
 
 const NO_CLIENT: Client = { ip: null, userAgent: null };
 
-export interface TasksOptions {
+interface TasksOptions {
   runs: TaskRunPort;
   now?: () => number;
 }
@@ -422,6 +422,13 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
       .join("\n\n");
   };
 
+  /** Stops a run; a failure is logged, since the engine may keep spending on it. */
+  async function cancelRun(p: Principal, runId: string, taskId: string) {
+    await runs.cancel(callerOf(p), runId).catch((err) => {
+      console.error("task run could not be cancelled", { runId, taskId, error: String(err) });
+    });
+  }
+
   /**
    * Starts the run for a task assigned to the assistant or an agent. The engine is called between
    * two short transactions, never inside one, so a slow start holds no locks. If it can't start,
@@ -455,20 +462,32 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
         prompt,
         interactive,
       });
-    } catch {
+    } catch (err) {
+      console.error("task run failed to start", { taskId, error: String(err) });
       started = null;
     }
+    // The engine call took a while; the task may have been handed on or cancelled meanwhile.
+    const unchanged = (t: TaskRow) =>
+      t.run_id === null &&
+      t.status !== "cancelled" &&
+      JSON.stringify(assigneeOf(t)) === JSON.stringify(assignee);
     if (!started) {
       // Committed on its own: a refusal inside the transaction would roll the unassign back.
-      await kit.attempt(p, (db) =>
-        db.query("update work.task set assignee_type = null, assignee_id = null where id = $1", [
-          taskId,
-        ]),
-      );
+      await kit.attempt(p, async (db) => {
+        const now = await loadTask(db, taskId, true);
+        if (unchanged(now)) {
+          await db.query(
+            "update work.task set assignee_type = null, assignee_id = null where id = $1",
+            [taskId],
+          );
+        }
+      });
       return { ok: false, reason: "RUN_START_FAILED" };
     }
     const run = started;
-    return kit.attempt(p, async (db) => {
+    const settled = await kit.attempt(p, async (db) => {
+      const now = await loadTask(db, taskId, true);
+      if (!unchanged(now)) return { stale: true as const };
       await db.query(
         `update work.task
             set run_id = $2, thread_id = $3, run_status = 'running', status = 'in_progress'
@@ -487,8 +506,14 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
         { type: "task", id: taskId },
         { assignee_type: assignee.type },
       );
-      return viewOf(db, taskId);
+      return { stale: false as const };
     });
+    if (!settled.ok) return settled;
+    if (settled.value.stale) {
+      // Someone changed the task while the run started, so the new run belongs to no one.
+      await cancelRun(p, run.runId, taskId);
+    }
+    return kit.attempt(p, (db) => viewOf(db, taskId));
   }
 
   /** Reads a run's state and, when it has ended, hands the task back to whoever made it. */
@@ -499,19 +524,25 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
     let state: Awaited<ReturnType<TaskRunPort["status"]>>;
     try {
       state = await runs.status(callerOf(p), runId);
-    } catch {
+    } catch (err) {
       // The engine is unreachable: the task stays as it was and is read again next time.
+      console.error("task run status unavailable", { runId, taskId, error: String(err) });
       return;
     }
     await kit.attempt(p, async (db, notify) => {
       const task = await loadTask(db, taskId, true);
       // Reassigned or restarted since: this answer is about a run that no longer matters.
       if (task.run_id !== runId || !live(task)) return;
-      if (
-        state.status === "awaiting_input" &&
-        task.run_status !== "awaiting_input" &&
-        state.question
-      ) {
+      const lastNote = await one<{ body_md: string }>(
+        db,
+        `select body_md from work.task_comment
+          where task_id = $1 and author_type = 'assistant' order by created_at desc, id desc limit 1`,
+        [taskId],
+      );
+      const asked = state.question
+        ? `Question: ${state.question}`.slice(0, SPACE_LIMITS.comment)
+        : null;
+      if (state.status === "awaiting_input" && asked && lastNote?.body_md !== asked) {
         await db.query(
           `insert into work.task_comment (workspace_id, space_id, task_id, author_type, body_md)
            values ($1, $2, $3, 'assistant', $4)`,
@@ -706,7 +737,7 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
       // Settle any finished runs first, so the board shows tasks back with their assigner.
       const running = first.value.filter(live).slice(0, 20);
       if (running.length === 0) return first.value.map(taskView);
-      for (const task of running) await sync(p, task.id, NO_CLIENT);
+      await Promise.all(running.map((task) => sync(p, task.id, NO_CLIENT)));
       const again = await query();
       return (again.ok && again.value ? again.value : first.value).map(taskView);
     },
@@ -859,7 +890,7 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
         return viewOf(db, taskId);
       });
       if (!done.ok) return done;
-      if (toCancel) await runs.cancel(callerOf(p), toCancel).catch(() => {});
+      if (toCancel) await cancelRun(p, toCancel, taskId);
       if (needsRun) return startRun(p, taskId, client);
       return done;
     },
@@ -911,20 +942,32 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
     },
 
     async answer(p, taskId, answer, client) {
-      const found = await kit.attempt(p, async (db) => {
+      const waiting = await kit.attempt(p, async (db) => {
         const task = await loadTask(db, taskId);
         await needMember(db, task.space_id);
         if (!task.run_id || task.run_status !== "awaiting_input") throw refusal("NO_RUN");
+        return { runId: task.run_id, spaceId: task.space_id };
+      });
+      if (!waiting.ok) return waiting;
+      // Delivered first: if the engine can't take it, nothing is recorded and the question stands.
+      try {
+        await runs.answer(callerOf(p), waiting.value.runId, answer);
+      } catch (err) {
+        console.error("task run answer failed", { taskId, error: String(err) });
+        return { ok: false, reason: "RUN_UNAVAILABLE" };
+      }
+      const recorded = await kit.attempt(p, async (db) => {
+        // Locked and checked again, so two answers at once record one.
+        const task = await loadTask(db, taskId, true);
+        if (task.run_status !== "awaiting_input" || task.run_id !== waiting.value.runId) return;
         await db.query(
           `insert into work.task_comment (workspace_id, space_id, task_id, author_id, body_md)
            values ($1, $2, $3, $4, $5)`,
           [p.workspaceId, task.space_id, taskId, p.userId, answer.slice(0, SPACE_LIMITS.comment)],
         );
         await db.query("update work.task set run_status = 'running' where id = $1", [taskId]);
-        return task.run_id;
       });
-      if (!found.ok) return found;
-      await runs.answer?.(callerOf(p), found.value, answer);
+      if (!recorded.ok) return recorded;
       await sync(p, taskId, client);
       return kit.attempt(p, (db) => viewOf(db, taskId));
     },
