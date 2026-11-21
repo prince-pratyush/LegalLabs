@@ -13,6 +13,7 @@ import {
   type PageText,
   runCell,
 } from "./cell.js";
+import { setStatus } from "./history.js";
 
 type Db = pg.PoolClient;
 
@@ -555,13 +556,12 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
         if (!run) return null;
         if (run.status === "planned" || run.status === "running") {
           // Queued cells go back to waiting at once; running ones finish and save.
-          await db.query(
-            `update work.rt_cell
-                set status = case when value_text is null then 'pending' else 'stale' end,
-                    stale_since = case when value_text is null then null else now() end,
-                    updated_at = now()
-              where run_id = $1 and status = 'queued'`,
+          await setStatus(
+            db,
+            principal,
+            "c.run_id = $3 and c.status = 'queued'",
             [runId],
+            "case when c.value_text is null then 'pending' else 'stale' end",
           );
           if (!active.has(runId)) {
             await db.query(

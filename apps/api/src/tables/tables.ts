@@ -20,6 +20,7 @@ import type { Gateway } from "@legallabs/model-gateway";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp, RLS_REFUSED } from "../db.js";
+import { setStatus } from "./history.js";
 import { columnProgress } from "./runner.js";
 
 export type Db = pg.PoolClient;
@@ -522,12 +523,13 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
         let stale = 0;
         if (body.instructions !== undefined && body.instructions !== table.instructions) {
           // New instructions change every answer, but nothing re-runs until someone asks.
-          const marked = await db.query(
-            `update work.rt_cell set status = 'stale', stale_since = now(), updated_at = now()
-              where table_id = $1 and status in ('done', 'null')`,
+          stale = await setStatus(
+            db,
+            principal,
+            "c.table_id = $3 and c.status in ('done', 'null')",
             [tableId],
+            "'stale'",
           );
-          stale = marked.rowCount ?? 0;
         }
         await audit(db, principal, client, "table.update", tableId, {
           fields: Object.keys(body),
@@ -728,12 +730,13 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
         ].some((k) => k in body);
         let stale = 0;
         if (changesAnswers) {
-          const marked = await db.query(
-            `update work.rt_cell set status = 'stale', stale_since = now(), updated_at = now()
-              where column_id = $1 and status in ('done', 'null')`,
+          stale = await setStatus(
+            db,
+            principal,
+            "c.column_id = $3 and c.status in ('done', 'null')",
             [columnId],
+            "'stale'",
           );
-          stale = marked.rowCount ?? 0;
         }
         await audit(db, principal, client, "table.column.update", tableId, {
           column_id: columnId,

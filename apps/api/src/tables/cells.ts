@@ -567,37 +567,42 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
               return ["flag", "flag_color = null", "table.cell.flag"];
           }
         })();
-        // Lock and unlock always apply; anything else skips locked cells.
+        // Lock and unlock always apply; anything else skips locked cells and locked rows.
+        // The history keeps old and new; `o` is the snapshot from before this statement.
+        const state = (alias: string) =>
+          field === "verified"
+            ? `to_jsonb(${alias}.verified_at is not null)`
+            : field === "locked"
+              ? `to_jsonb(${alias}.locked)`
+              : `to_jsonb(${alias}.flag_color)`;
         const { rows } = await db.query<{ id: string }>(
           // Every parameter is typed here, as some ops don't use them all.
-          `with p as (select $3::uuid actor, $4::text flag)
-           update work.rt_cell c set ${value}, updated_at = now()
-             from work.rt_row r, p
-            where c.id = any($1::uuid[]) and c.table_id = $2 and r.id = c.row_id and r.deleted_at is null
-              and not ${RESTRICTED_SQL}
-              and ($5 or not c.locked)
-            returning c.id`,
+          `with p as (select $3::uuid actor, $4::text flag),
+           changed as (
+             update work.rt_cell c set ${value}, updated_at = now()
+               from work.rt_row r, p, work.rt_cell o
+              where c.id = any($1::uuid[]) and c.table_id = $2 and r.id = c.row_id
+                and r.deleted_at is null and o.id = c.id
+                and not ${RESTRICTED_SQL}
+                and ($5 or not (c.locked or r.locked))
+             returning c.id, ${state("o")} before, ${state("c")} after
+           ), logged as (
+             insert into work.rt_cell_history
+               (workspace_id, table_id, cell_id, actor_id, field, old, new)
+             select $6, $2, id, $3, $7, before, after from changed
+           )
+           select id from changed`,
           [
             ids,
             tableId,
             principal.userId,
             body.flag_color ?? null,
             body.op === "lock" || body.op === "unlock",
+            principal.workspaceId,
+            field,
           ],
         );
         if (rows.length > 0) {
-          await db.query(
-            `insert into work.rt_cell_history (workspace_id, table_id, cell_id, actor_id, field, new)
-             select $1, $2, unnest($3::uuid[]), $4, $5, $6`,
-            [
-              principal.workspaceId,
-              tableId,
-              rows.map((r) => r.id),
-              principal.userId,
-              field,
-              JSON.stringify(body.op),
-            ],
-          );
           await audit(db, principal, client, action, tableId, { cells: rows.length, bulk: true });
         }
         return {

@@ -610,4 +610,46 @@ describe("review tables API", () => {
     expect((await s.h.call(s.cookie, "GET", `${base}/cells/nope`)).status).toBe(404);
     expect((await s.h.call(s.cookie, "GET", "/review-tables/nope")).status).toBe(404);
   });
+
+  it("records old and new in history for bulk, stale and cancel changes", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    await runAndWait(s, date);
+    const [first, second] = (await rows(s)).cells;
+    // A locked row takes no bulk verify, whatever its cells say.
+    await pool.query("update work.rt_row set locked = true where id = $1", [second.row_id]);
+    const bulk = await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/cells/bulk`, {
+      cell_ids: [first.id, second.id],
+      op: "verify",
+    });
+    expect(bulk.body).toMatchObject({ affected: 1, skipped: 1 });
+    const history = async (cellId: string) =>
+      (await s.h.call(s.cookie, "GET", `/review-tables/${s.tableId}/cells/${cellId}`)).body.history;
+    expect((await history(first.id))[0]).toMatchObject({
+      field: "verified",
+      old: false,
+      new: true,
+    });
+
+    await s.h.call(s.cookie, "PATCH", `/review-tables/${s.tableId}`, { instructions: "Be brief." });
+    expect((await history(first.id))[0]).toMatchObject({
+      field: "status",
+      old: "done",
+      new: "stale",
+    });
+
+    const run = await s.h.call(
+      s.cookie,
+      "POST",
+      `/review-tables/${s.tableId}/columns/${date}/run`,
+      {
+        scope: "all",
+        include_verified: true,
+      },
+    );
+    await s.h.call(s.cookie, "POST", `/runs/${run.body.run_id}/cancel`);
+    await s.h.tables.runner.idle();
+    const fields = (await history(first.id)).map((h: { field: string; new: unknown }) => h.field);
+    expect(fields).toContain("status");
+  });
 });
