@@ -351,6 +351,34 @@
       "when": 1794009900000,
       "tag": "0086_work_review_table_sync",
       "breakpoints": false
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794009901000,
+      "tag": "0087_work_review_table_templates",
+      "breakpoints": false
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794009902000,
+      "tag": "0075_core_matter_options",
+      "breakpoints": false
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794009903000,
+      "tag": "0076_core_wall_providers",
+      "breakpoints": false
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794009904000,
+      "tag": "0077_core_wall_enforcement",
+      "breakpoints": false
     }
   ]
 }

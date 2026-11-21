@@ -360,6 +360,8 @@ export const CreateTableBody = z
   .object({
     name: text(200).pipe(z.string().trim().min(1)).optional(),
     source: TableSource,
+    /** Start with this template's columns, instructions and settings. */
+    template_id: Id.optional(),
     matter_id: Id.nullable().optional(),
   })
   .strict();
@@ -413,6 +415,18 @@ export const PatchColumnBody = z
   })
   .strict();
 export type PatchColumnBody = z.infer<typeof PatchColumnBody>;
+
+/** Flag or lock a row. */
+export const PatchRowBody = z
+  .object({ flag_color: FlagColor.nullable().optional(), locked: z.boolean().optional() })
+  .strict()
+  .refine((b) => b.flag_color !== undefined || b.locked !== undefined, "Nothing to change");
+export type PatchRowBody = z.infer<typeof PatchRowBody>;
+
+export const DeleteRowsBody = z
+  .object({ row_ids: z.array(Id).min(1).max(RT_LIMITS.bulkCells) })
+  .strict();
+export type DeleteRowsBody = z.infer<typeof DeleteRowsBody>;
 
 export const ReorderColumnsBody = z
   .object({ column_ids: z.array(Id).min(1).max(RT_LIMITS.columns) })
@@ -630,5 +644,7 @@ export const TableErrorCode = z.enum([
   "SYNC_DISABLED",
   "SYNC_UNAVAILABLE",
   "SOURCE_REMOVED",
+  "TEMPLATE_BAD_TRANSITION",
+  "TEMPLATE_INVALID",
 ]);
 export type TableErrorCode = z.infer<typeof TableErrorCode>;

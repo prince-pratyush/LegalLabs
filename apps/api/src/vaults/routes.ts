@@ -4,6 +4,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import { MAX_FILE_BYTES, type UploadResult } from "../documents/documents.js";
+import { wallShareBlocked } from "../matters/blocked.js";
 import type {
   BinItem,
   Folder,
@@ -83,7 +84,12 @@ const treeQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
 });
 
-const REFUSALS: Record<Refusal, { status: 403 | 404 | 409; message: string }> = {
+const REFUSALS: Record<Refusal, { status: 400 | 403 | 404 | 409; message: string }> = {
+  MATTER_REQUIRED_FOR_VAULT: { status: 400, message: "Choose a matter for this vault." },
+  MATTER_NOT_ALLOWED_FOR_VAULT: {
+    status: 400,
+    message: "Vaults in this workspace can't be linked to a matter.",
+  },
   NOT_FOUND: { status: 404, message: "That wasn't found." },
   FORBIDDEN: { status: 403, message: "You don't have permission to do that in this vault." },
   CONFLICT: { status: 409, message: "That would put a folder inside itself or clash with a name." },
@@ -368,6 +374,7 @@ export function vaultRoutes(vaults: Vaults, clientOf: (c: Context) => Client) {
       clientOf(c),
     );
     if (!result) return notFound(c);
+    if ("blockedCount" in result) return wallShareBlocked(c, result.blockedCount);
     const shares = await vaults.shares(c.get("principal"), c.req.param("id"));
     return c.json({
       grants: shares?.grants ?? [],

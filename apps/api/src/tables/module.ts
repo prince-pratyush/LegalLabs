@@ -8,6 +8,7 @@ import { createExports } from "./export.js";
 import { createRunner } from "./runner.js";
 import { createTableSync } from "./sync.js";
 import { createTables } from "./tables.js";
+import { createTemplates } from "./templates.js";
 
 /** Everything the review-table routes need, built once per process. */
 export function createReviewTables(
@@ -28,10 +29,12 @@ export function createReviewTables(
 ) {
   const runner = createRunner(pool, deps);
   const cells = createCells(pool, { gateway: deps.gateway, runner });
+  const tables = createTables(pool, deps);
   return {
     runner,
-    tables: createTables(pool, deps),
+    tables,
     cells,
+    templates: createTemplates(pool, { tables, cells }),
     exports: createExports(pool),
     sync: createTableSync(pool, {
       cells,

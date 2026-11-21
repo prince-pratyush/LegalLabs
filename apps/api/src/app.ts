@@ -19,6 +19,8 @@ import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
 import type { Library } from "./library/library.js";
 import { libraryRoutes } from "./library/routes.js";
+import type { Matters } from "./matters/matters.js";
+import { matterRoutes } from "./matters/routes.js";
 import type { MemoryModule } from "./memory/module.js";
 import { memoryRoutes, styleRoutes } from "./memory/routes.js";
 import type { Notifications } from "./notifications/notifications.js";
@@ -79,6 +81,8 @@ export interface AppOptions {
   tables?: ReviewTables;
   /** Optional, like vaults. */
   library?: Library;
+  /** Matters, walls and their admin screens; optional like vaults. */
+  matters?: Matters;
   /** Spaces, their tasks and templates; left out, those endpoints are not mounted. */
   spaces?: SpaceModule;
   /** The notifications hub; optional, like vaults. */
@@ -113,6 +117,7 @@ export function createApp({
   vaults,
   tables,
   library,
+  matters,
   spaces,
   notifications,
   memory,
@@ -258,6 +263,7 @@ export function createApp({
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
+  if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
   if (memory) {

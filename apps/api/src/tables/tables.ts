@@ -5,7 +5,9 @@ import {
   type CreateColumnBody,
   type CreateTableBody,
   DEFAULT_SETTINGS,
+  type DeleteRowsBody,
   type PatchColumnBody,
+  type PatchRowBody,
   type PatchTableBody,
   parseColumnOptions,
   type ReviewTable,
@@ -29,7 +31,8 @@ import {
   resolveReferences,
 } from "./dependencies.js";
 import { setStatus } from "./history.js";
-import { columnProgress } from "./runner.js";
+import { NEWER_SQL, RESTRICTED_SQL } from "./query.js";
+import { columnProgress, refreshStats } from "./runner.js";
 
 export type Db = pg.PoolClient;
 export type Failure = { ok: false; code: TableErrorCode; message?: string; details?: object };
@@ -448,19 +451,21 @@ export function createTables(
   return {
     async create(
       principal: Principal,
-      body: CreateTableBody,
+      body: Omit<CreateTableBody, "template_id">,
       client: Client,
+      /** Set when a template made the table, or it is a try-out of one that goes in a week. */
+      made: { templateId?: string; isTest?: boolean } = {},
     ): Promise<Result<{ table: ReviewTable }>> {
       try {
         return await asApp(pool, principal, async (db) => {
-          const resolved = await resolveSource(db, body, vaultLimit);
+          const resolved = await resolveSource(db, body as CreateTableBody, vaultLimit);
           if (!resolved.ok) return resolved;
           const s = resolved.value;
           const { rows } = await db.query<TableRow>(
             `insert into work.review_table
                (workspace_id, owner_id, name, source_kind, vault_id, folder_ids, thread_id,
-                matter_id, settings)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
+                matter_id, settings, template_id, is_test)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`,
             [
               principal.workspaceId,
               principal.userId,
@@ -471,6 +476,8 @@ export function createTables(
               s.threadId,
               s.matterId ?? body.matter_id ?? null,
               JSON.stringify(DEFAULT_SETTINGS),
+              made.templateId ?? null,
+              made.isTest ?? false,
             ],
           );
           const table = rows[0] as TableRow;
@@ -640,6 +647,89 @@ export function createTables(
           [rowIds],
         );
         return { ok: true, value: { rows: await rowsJson(db, rows) } };
+      });
+    },
+
+    /** Flags or locks a row. A locked row takes no flag until it is unlocked. */
+    updateRow(
+      principal: Principal,
+      tableId: string,
+      rowId: string,
+      body: PatchRowBody,
+      client: Client,
+    ) {
+      return withTable(principal, tableId, async (db) => {
+        if (!UUID.test(rowId)) return fail("NOT_FOUND");
+        const { rows } = await db.query<{
+          id: string;
+          ordinal: number;
+          document_ids: string[];
+          flag_color: string | null;
+          locked: boolean;
+          restricted: boolean;
+          source_removed: boolean;
+          version_no: number | null;
+          newer_version: boolean;
+        }>(
+          `select r.id, r.ordinal, r.document_ids, r.flag_color, r.locked, r.source_removed,
+                  r.version_no, ${NEWER_SQL} newer_version, ${RESTRICTED_SQL} restricted
+             from work.rt_row r
+            where r.id = $1 and r.table_id = $2 and r.deleted_at is null for update of r`,
+          [rowId, tableId],
+        );
+        const row = rows[0];
+        // A row over a hidden document is not shown at all.
+        if (!row || row.restricted) return fail("NOT_FOUND");
+        if (row.locked && body.flag_color !== undefined && body.locked !== false) {
+          return fail("CELL_LOCKED", "This row is locked. Unlock it to change its flag.");
+        }
+        const flag = body.flag_color === undefined ? row.flag_color : body.flag_color;
+        const locked = body.locked ?? row.locked;
+        await db.query("update work.rt_row set flag_color = $2, locked = $3 where id = $1", [
+          rowId,
+          flag,
+          locked,
+        ]);
+        if (flag !== row.flag_color) {
+          await audit(db, principal, client, "table.row.flagged", tableId, { row_id: rowId });
+        }
+        if (locked !== row.locked) {
+          await audit(
+            db,
+            principal,
+            client,
+            locked ? "table.row.locked" : "table.row.unlocked",
+            tableId,
+            { row_id: rowId },
+          );
+        }
+        const [shown] = await rowsJson(db, [{ ...row, flag_color: flag, locked }]);
+        return { ok: true as const, value: { row: shown as Row } };
+      });
+    },
+
+    /** Removes rows from the table; a locked row, or one the caller can't see, stays. */
+    removeRows(principal: Principal, tableId: string, body: DeleteRowsBody, client: Client) {
+      return withTable(principal, tableId, async (db) => {
+        const ids = [...new Set(body.row_ids)];
+        const { rows } = await db.query<{ id: string }>(
+          `update work.rt_row r set deleted_at = now()
+            where r.table_id = $1 and r.id = any($2::uuid[]) and r.deleted_at is null
+              and not r.locked and not ${RESTRICTED_SQL}
+           returning r.id`,
+          [tableId, ids],
+        );
+        if (rows.length > 0) {
+          await refreshStats(db, tableId);
+          await audit(db, principal, client, "table.rows.deleted", tableId, {
+            rows: rows.length,
+            skipped: ids.length - rows.length,
+          });
+        }
+        return {
+          ok: true as const,
+          value: { deleted: rows.length, skipped: ids.length - rows.length },
+        };
       });
     },
 

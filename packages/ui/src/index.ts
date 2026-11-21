@@ -20,7 +20,14 @@ export {
   type Evidence,
   type EvidenceStatus,
 } from "./components/evidence.js";
-export { Field, type FieldControlProps, Input, Label, Textarea } from "./components/field.js";
+export {
+  Field,
+  type FieldControlProps,
+  Input,
+  Label,
+  NativeSelect,
+  Textarea,
+} from "./components/field.js";
 export { FolderTree, type TreeFolder } from "./components/folder-tree.js";
 export {
   type LibraryAction,
@@ -196,6 +203,15 @@ export {
   type SyncSettings,
 } from "./components/review-table/sync-panel.js";
 export { TableList, type TableSummary } from "./components/review-table/table-list.js";
+export {
+  SaveTemplateDialog,
+  type SaveTemplateRequest,
+  STATUS_TEXT as TEMPLATE_STATUS_TEXT,
+  TemplateList,
+  type TemplateStatus,
+  type TemplateSummary,
+  TestTemplatePanel,
+} from "./components/review-table/templates.js";
 export {
   CELL_STATUSES,
   type CellStatus,

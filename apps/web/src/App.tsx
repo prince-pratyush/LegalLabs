@@ -9,6 +9,7 @@ import {
 } from "@legallabs/ui";
 import {
   BookMarked,
+  Briefcase,
   ClipboardList,
   History,
   Library,
@@ -22,6 +23,8 @@ import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
 import { LibraryApp } from "./library/LibraryApp.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
+import { MattersApp } from "./matters/MattersApp.js";
+import { mattersHash, parseMattersRoute } from "./matters/route.js";
 import { NotificationBell } from "./notifications/NotificationHub.js";
 import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
@@ -65,7 +68,9 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseTableRoute(hash) ? (
+        {parseMattersRoute(hash) ? (
+          <MattersApp onLeave={() => navigate(paths.new)} />
+        ) : parseTableRoute(hash) ? (
           <TablesApp onLeave={() => navigate(paths.new)} />
         ) : parseReviewRoute(hash) ? (
           <ReviewsApp onLeave={() => navigate(paths.new)} />
@@ -246,6 +251,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => navigate(libraryHash().slice(1)),
     },
     {
+      id: "matters",
+      kind: "action",
+      group: "Go to",
+      label: "Matters & Walls",
+      run: () => navigate(mattersHash().slice(1)),
+    },
+    {
       id: "settings",
       kind: "action",
       group: "Go to",
@@ -343,6 +355,15 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <BookMarked aria-hidden />
           Library
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => navigate(mattersHash().slice(1))}
+        >
+          <Briefcase aria-hidden />
+          Matters &amp; Walls
         </Button>
         <Button
           variant="quiet"
