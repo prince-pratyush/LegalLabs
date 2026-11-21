@@ -130,7 +130,7 @@ export const auditActions: string[] = [
 
   ...family("knowledge.filter_preset", ["created", "updated", "deleted"]),
 
-  ...family("memory", ["enabled", "disabled", "imported", "exported", "all_deleted"]),
+  ...family("memory", ["enabled", "disabled", "imported", "all_deleted"]),
   ...family("writing_style", ["created", "updated", "deleted", "shared", "unshared"]),
   "notification_settings.updated",
   "workspace_notification_settings.updated",
