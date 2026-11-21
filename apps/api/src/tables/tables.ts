@@ -247,7 +247,11 @@ interface Source {
   defaultName: string;
 }
 
-async function resolveSource(db: Db, body: CreateTableBody): Promise<Result<Source>> {
+async function resolveSource(
+  db: Db,
+  body: CreateTableBody,
+  vaultLimit: number,
+): Promise<Result<Source>> {
   const source = body.source;
   if (source.kind === "vault") {
     const { rows } = await db.query<{ name: string; matter_id: string | null }>(
@@ -283,16 +287,16 @@ async function resolveSource(db: Db, body: CreateTableBody): Promise<Result<Sour
           and ($3::uuid[] is null or d.id = any($3::uuid[]))
         order by lower(d.name), d.id
         limit $4`,
-      [source.vault_id, folders, wanted, RT_LIMITS.vaultDocuments + 1],
+      [source.vault_id, folders, wanted, vaultLimit + 1],
     );
     if (wanted && docs.length !== wanted.length) {
       return fail("SOURCE_MISMATCH", "Some files aren't in this vault.");
     }
-    if (docs.length > RT_LIMITS.vaultDocuments) {
+    if (docs.length > vaultLimit) {
       return fail(
         "SOURCE_LIMIT",
-        "A table holds up to 10,000 files. Choose folders or files instead.",
-        { limit: RT_LIMITS.vaultDocuments },
+        `A table holds up to ${vaultLimit.toLocaleString("en")} files. Choose folders or files instead.`,
+        { limit: vaultLimit },
       );
     }
     return {
@@ -376,7 +380,11 @@ export interface ListOptions {
   offset?: number;
 }
 
-export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
+export function createTables(
+  pool: pg.Pool,
+  deps: { gateway: Gateway; vaultDocumentLimit?: number },
+) {
+  const vaultLimit = deps.vaultDocumentLimit ?? RT_LIMITS.vaultDocuments;
   const withTable = <T>(
     principal: Principal,
     tableId: string,
@@ -409,7 +417,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
     ): Promise<Result<{ table: ReviewTable }>> {
       try {
         return await asApp(pool, principal, async (db) => {
-          const resolved = await resolveSource(db, body);
+          const resolved = await resolveSource(db, body, vaultLimit);
           if (!resolved.ok) return resolved;
           const s = resolved.value;
           const { rows } = await db.query<TableRow>(
@@ -566,7 +574,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
         );
         const have = new Set(present.map((p) => p.id));
         const fresh = docs.map((d) => d.id).filter((id) => !have.has(id));
-        const cap = table.source_kind === "uploads" ? RT_LIMITS.uploads : RT_LIMITS.vaultDocuments;
+        const cap = table.source_kind === "uploads" ? RT_LIMITS.uploads : vaultLimit;
         if (have.size + fresh.length > cap) {
           return fail("SOURCE_LIMIT", `A table of this source holds up to ${cap} files.`, {
             limit: cap,

@@ -10,7 +10,14 @@ import { createTables } from "./tables.js";
 /** Everything the review-table routes need, built once per process. */
 export function createReviewTables(
   pool: pg.Pool,
-  deps: { gateway: Gateway; documents: Documents; log: RunLog; cellsInFlight?: number },
+  deps: {
+    gateway: Gateway;
+    documents: Documents;
+    log: RunLog;
+    cellsInFlight?: number;
+    /** Lowered in tests, so the 10,000-file limit can be reached with a few files. */
+    vaultDocumentLimit?: number;
+  },
 ) {
   const runner = createRunner(pool, deps);
   return {
