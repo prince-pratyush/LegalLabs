@@ -22,6 +22,7 @@ const STATUS: Record<string, { tone: Tone; label: string }> = {
   planned: { tone: "running", label: "Planning" },
   awaiting_approval: { tone: "warning", label: "Waiting for approval" },
   awaiting_input: { tone: "warning", label: "Waiting for an answer" },
+  paused: { tone: "warning", label: "Paused" },
 };
 
 export function RunStatusText({ status }: { status: string }) {

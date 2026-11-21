@@ -14,7 +14,7 @@ export type ImportPreviewData = {
   files: { label: string; name: string; size: number; status: ImportStatus }[];
   refs: { label: string; kind: string; name: string; resolved: boolean }[];
   sources: { label: string; source: string; status: ImportStatus }[];
-  issues: { kind: string; label: string; status: ImportStatus; detail?: string }[];
+  issues: { kind: string; label: string; status: ImportStatus; detail?: string | undefined }[];
 };
 
 const STATUS_TEXT: Record<Exclude<ImportStatus, "ok">, string> = {
