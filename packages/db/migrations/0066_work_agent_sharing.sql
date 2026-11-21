@@ -65,6 +65,51 @@ grant update (deleted_at, deleted_by) on work.agent to legallabs_definer;
 create policy definer_update on work.agent for update to legallabs_definer
   using (true) with check (true);
 
+-- The best shared agent for what someone typed. It reads the title and description text of
+-- versions, which Run access may not read as a whole, so it runs as the definer.
+create function work.agent_nudge(p_prompt text, p_quiet_days integer)
+returns table (id uuid, title text, rank double precision)
+language sql stable security definer set search_path = '' as $$
+  with q as (
+    select nullif(array_to_string(tsvector_to_array(to_tsvector('english', p_prompt)), ' | '), '')
+           as terms
+  )
+  select a.id, a.title, ts_rank_cd(v.tsv, to_tsquery('english', q.terms))::float8 as rank
+    from q
+    join work.agent a on a.deleted_at is null
+                     and a.workspace_id = core.current_workspace_id()
+                     and a.owner_id <> core.current_user_id()
+    join work.agent_version v on v.id = a.live_version_id
+   where q.terms is not null
+     and work.agent_level(a.id) is not null
+     and coalesce((select c.nudges_enabled from work.sharing_config c
+                    where c.workspace_id = a.workspace_id), true)
+     and not exists (select 1 from work.agent_nudge_dismissal d
+                      where d.agent_id = a.id and d.user_id = core.current_user_id()
+                        and d.dismissed_at > now() - make_interval(days => p_quiet_days))
+     and v.tsv @@ to_tsquery('english', q.terms)
+   order by rank desc, a.id
+   limit 1
+$$;
+alter function work.agent_nudge(text, integer) owner to legallabs_definer;
+revoke execute on function work.agent_nudge(text, integer) from public;
+grant execute on function work.agent_nudge(text, integer) to legallabs_app;
+grant select on work.sharing_config, work.agent_nudge_dismissal to legallabs_definer;
+create policy definer_read on work.sharing_config for select to legallabs_definer using (true);
+create policy definer_read on work.agent_nudge_dismissal for select to legallabs_definer using (true);
+
+-- A schedule whose owner lost access can't be changed by that owner's own policy, so the
+-- worker pauses it through this.
+create function work.agent_schedule_pause(p_id uuid, p_reason text) returns void
+language sql security definer set search_path = '' as $$
+  update work.agent_schedule
+     set status = 'paused', paused_reason = left(p_reason, 200), updated_at = now()
+   where id = p_id
+$$;
+alter function work.agent_schedule_pause(uuid, text) owner to legallabs_definer;
+revoke execute on function work.agent_schedule_pause(uuid, text) from public;
+grant execute on function work.agent_schedule_pause(uuid, text) to legallabs_worker;
+
 -- Whether a person could be given Edit or Full: it needs agents.build as well.
 create function work.user_can_build(p_user uuid) returns boolean
 language sql stable security definer set search_path = '' as $$

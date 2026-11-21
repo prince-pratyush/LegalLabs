@@ -327,6 +327,7 @@ create table work.sharing_config (
   require_individual boolean not null default false,
   require_group boolean not null default false,
   require_workspace boolean not null default true,
+  nudges_enabled boolean not null default true,
   updated_at timestamptz not null default now()
 );
 alter table work.sharing_config enable row level security;

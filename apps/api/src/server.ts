@@ -9,9 +9,13 @@ import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createSignInAudit } from "./addins/audit.js";
 import { createLanguage } from "./addins/language.js";
-import { runEngineFromEnv } from "./agent-runs/engine.js";
+import { runEngineFromEnv, schedulerFromEnv } from "./agent-runs/engine.js";
 import { runHandlers } from "./agent-runs/handlers.js";
 import { createAgentRuns } from "./agent-runs/runs.js";
+import { createAgents } from "./agents/agents.js";
+import { createAgentSharing } from "./agents/config.js";
+import { createContextPort } from "./agents/context.js";
+import { createNudges } from "./agents/nudges.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
@@ -118,12 +122,21 @@ const knowledgeStore = createKnowledge(pool, { embedder });
 const knowledge = knowledgePort(knowledgeStore);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
+const scheduler = await schedulerFromEnv();
+const agents = createAgents(pool, {
+  attachments: createContextPort(pool),
+  documents,
+  ...(scheduler ? { scheduler } : {}),
+});
 const agentRuns = createAgentRuns(pool, {
-  engine: await runEngineFromEnv(pool, runHandlers(pool)),
+  engine: await runEngineFromEnv(pool, runHandlers(pool, { gateway, agents })),
 });
 
 const app = createApp({
   agentRuns,
+  agents,
+  agentSharing: createAgentSharing(pool),
+  agentNudges: createNudges(pool),
   auth: createAuth(pool),
   documents,
   vaults: createVaults(pool, { documents, store }),

@@ -18,6 +18,7 @@ import type { AgentRuns } from "../agent-runs/runs.js";
 import type { Client, Principal } from "../auth/auth.js";
 import type { AgentFailure, Agents } from "./agents.js";
 import type { AgentSharing } from "./config.js";
+import type { Nudges } from "./nudges.js";
 
 type Env = { Variables: { principal: Principal } };
 type Status = 400 | 403 | 404 | 409 | 410 | 422 | 503;
@@ -80,6 +81,7 @@ export function agentHttp(options: {
   agents: Agents;
   runs?: AgentRuns | undefined;
   sharing?: AgentSharing | undefined;
+  nudges?: Nudges | undefined;
   clientOf: (c: Context) => Client;
 }) {
   const { agents, runs, clientOf } = options;
@@ -287,6 +289,101 @@ export function agentHttp(options: {
       throw err;
     }
   });
+
+  // Test mode: a run bound to the draft version, kept out of usage counts (§3.4).
+  app.post("/agents/:id/test", limitBody, async (c) => {
+    if (!runs) return fail(c, "NOT_FOUND");
+    const body = await parse(c, AgentRunBody);
+    if (!body) return bad(c);
+    const p = c.get("principal");
+    const found = await agents.get(p, c.req.param("id"));
+    if (!found) return fail(c, "NOT_FOUND");
+    if (found.agent.my_access === "run") return fail(c, "FORBIDDEN");
+    const versionId =
+      body.version_id ?? found.agent.draft_version_id ?? found.agent.live_version_id;
+    if (!versionId) return fail(c, "NO_DRAFT");
+    const started = await runs.start(p, {
+      kind: "agent",
+      subject_id: found.agent.id,
+      agent_version_id: versionId,
+      title: `${found.agent.title} (test)`,
+      ...(body.inputs ? { inputs: body.inputs } : {}),
+      ...(body.thread_id ? { thread_id: body.thread_id } : {}),
+      ...(body.matter_id ? { matter_id: body.matter_id } : {}),
+      path: "page",
+      test_mode: true,
+    });
+    return c.json(started, 202);
+  });
+
+  // The builder thread: describe the outcome; it asks up to five questions, then drafts.
+  app.post("/agents/:id/builder", limitBody, async (c) => {
+    if (!runs) return fail(c, "NOT_FOUND");
+    const body = await parse(
+      c,
+      z.object({
+        message: z.string().trim().min(1).max(5000),
+        thread_id: AgentRunBody.shape.thread_id,
+      }),
+    );
+    if (!body) return bad(c);
+    const p = c.get("principal");
+    const found = await agents.get(p, c.req.param("id"));
+    if (!found) return fail(c, "NOT_FOUND");
+    if (found.agent.my_access === "run" || found.agent.my_access === "view")
+      return fail(c, "FORBIDDEN");
+    const started = await runs.start(p, {
+      kind: "agent_builder",
+      subject_id: found.agent.id,
+      title: found.agent.title,
+      inputs: body.message,
+      ...(body.thread_id ? { thread_id: body.thread_id } : {}),
+      path: "page",
+    });
+    return c.json(started, 202);
+  });
+
+  // "Request changes" from the test tab: revises the draft; the editor hears of it by event.
+  app.post("/agents/:id/test/request-changes", limitBody, async (c) => {
+    if (!runs) return fail(c, "NOT_FOUND");
+    const body = await parse(
+      c,
+      z.object({
+        thread_id: AgentRunBody.shape.thread_id,
+        request: z.string().trim().min(1).max(5000),
+      }),
+    );
+    if (!body) return bad(c);
+    const p = c.get("principal");
+    const found = await agents.get(p, c.req.param("id"));
+    if (!found) return fail(c, "NOT_FOUND");
+    if (found.agent.my_access === "run" || found.agent.my_access === "view")
+      return fail(c, "FORBIDDEN");
+    const started = await runs.start(p, {
+      kind: "agent_builder",
+      subject_id: found.agent.id,
+      title: found.agent.title,
+      inputs: body.request,
+      ...(body.thread_id ? { thread_id: body.thread_id } : {}),
+      path: "page",
+      test_mode: true,
+      interactive: false,
+    });
+    return c.json({ run_id: started.run_id }, 202);
+  });
+
+  if (options.nudges) {
+    const nudges = options.nudges;
+    app.post("/agents/nudge", limitBody, async (c) => {
+      const body = await parse(c, z.object({ prompt: z.string().max(2000) }));
+      if (!body) return bad(c);
+      return c.json({ nudge: await nudges.match(c.get("principal"), body.prompt) });
+    });
+    app.post("/agents/:id/nudge/dismiss", async (c) => {
+      await nudges.dismiss(c.get("principal"), c.req.param("id"));
+      return c.body(null, 204);
+    });
+  }
 
   // ---- sharing ----
 

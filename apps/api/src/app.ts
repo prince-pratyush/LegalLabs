@@ -11,6 +11,7 @@ import type { AgentRuns } from "./agent-runs/runs.js";
 import type { Agents } from "./agents/agents.js";
 import type { AgentSharing } from "./agents/config.js";
 import { agentHttp } from "./agents/http.js";
+import type { Nudges } from "./agents/nudges.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
@@ -90,6 +91,8 @@ export interface AppOptions {
   agents?: Agents;
   /** Admin switches for share approval; mounted with agents. */
   agentSharing?: AgentSharing;
+  /** Suggests a shared agent for what someone is typing. */
+  agentNudges?: Nudges;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -118,6 +121,7 @@ export function createApp({
   agentRuns,
   agents,
   agentSharing,
+  agentNudges,
   clientIp,
   now = Date.now,
   webRoot,
@@ -258,7 +262,10 @@ export function createApp({
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
   if (agents)
-    app.route("/api/v1", agentHttp({ agents, runs: agentRuns, sharing: agentSharing, clientOf }));
+    app.route(
+      "/api/v1",
+      agentHttp({ agents, runs: agentRuns, sharing: agentSharing, nudges: agentNudges, clientOf }),
+    );
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
