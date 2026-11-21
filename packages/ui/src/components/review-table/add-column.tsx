@@ -1,20 +1,35 @@
+import { promptFromDisplay } from "@legallabs/contracts";
 import { Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { cn } from "../../cn.js";
 import { Button } from "../button.js";
-import { Field, Input, Textarea } from "../field.js";
+import { Field, Input } from "../field.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover.js";
 import { columnProblem, type NewColumn, PRESETS, type PresetId, presetColumn } from "./presets.js";
+import { type MentionColumn, PromptField } from "./prompt-field.js";
+
+/** Why `@{Label}` mentions can't be saved, or null when each names exactly one column. */
+export function mentionProblem(prompt: string, columns: readonly MentionColumn[]): string | null {
+  const parsed = promptFromDisplay(prompt, columns);
+  if (parsed.unknown[0]) return `There is no column called ${parsed.unknown[0]}.`;
+  if (parsed.ambiguous[0]) {
+    return `Two columns are called ${parsed.ambiguous[0]}. Rename one to refer to it.`;
+  }
+  return null;
+}
 
 /** The add-column form: pick a friendly type, name it, say what to look for. */
 export function AddColumnForm({
   onAdd,
   busy = false,
   error,
+  columns = [],
 }: {
   onAdd: (column: NewColumn) => void;
   busy?: boolean;
   error?: string | null;
+  /** The table's columns, which the prompt can refer to by typing @. */
+  columns?: readonly MentionColumn[];
 }) {
   const [preset, setPreset] = useState<PresetId>("text");
   const [label, setLabel] = useState("");
@@ -22,12 +37,16 @@ export function AddColumnForm({
   const [labels, setLabels] = useState("");
   const [tried, setTried] = useState(false);
   const list = labels.split(",");
-  const problem = columnProblem(preset, label, prompt, list);
+  const problem =
+    columnProblem(preset, label, prompt, list) ??
+    (preset === "manual" ? null : mentionProblem(prompt, columns));
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setTried(true);
-    if (!problem) onAdd(presetColumn(preset, label, prompt, list));
+    if (!problem) {
+      onAdd(presetColumn(preset, label, promptFromDisplay(prompt, columns).prompt, list));
+    }
   };
 
   return (
@@ -69,14 +88,20 @@ export function AddColumnForm({
         )}
       </Field>
       {preset !== "manual" && (
-        <Field label="What to look for" hint="Asked of each document on its own.">
+        <Field
+          label="What to look for"
+          hint={
+            columns.length > 0
+              ? "Asked of each document on its own. Type @ to use another column's answer."
+              : "Asked of each document on its own."
+          }
+        >
           {(props) => (
-            <Textarea
+            <PromptField
               {...props}
               value={prompt}
-              rows={3}
-              maxLength={4000}
-              onChange={(e) => setPrompt(e.target.value)}
+              columns={columns}
+              onChange={setPrompt}
               placeholder="Which law governs this agreement?"
             />
           )}

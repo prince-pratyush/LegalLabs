@@ -17,6 +17,7 @@ export const RT_LIMITS = {
   bulkCells: 5_000,
   rowsPage: 200,
   syncExportCells: 2_000,
+  references: 20,
 } as const;
 
 const noNul = (text: string) => !text.includes("\0");
@@ -265,6 +266,8 @@ export const Column = z.object({
   model: z.string().nullable(),
   context_document_id: Id.nullable(),
   options: z.record(z.string(), z.unknown()),
+  /** Columns this column's prompt refers to with `@{id}`; its cells wait for theirs. */
+  depends_on: z.array(Id),
   state: ColumnState,
   /** Set when the last run was a dry run, so the header can offer "Run remaining". */
   dry_run: z.boolean(),
@@ -523,11 +526,21 @@ export const RunColumnBody = z
   .object({
     scope: RunScope.default("all"),
     include_verified: z.boolean().default(false),
+    include_dependents: z.boolean().default(false),
     sort: RowSort.optional(),
     filter: RowFilter.optional(),
   })
   .strict();
 export type RunColumnBody = z.infer<typeof RunColumnBody>;
+
+/** Re-running one cell: its dependents can follow it, and verified ones can be included. */
+export const RerunCellBody = z
+  .object({
+    include_dependents: z.boolean().default(false),
+    include_verified: z.boolean().default(false),
+  })
+  .strict();
+export type RerunCellBody = z.infer<typeof RerunCellBody>;
 
 export const ExportBody = z
   .object({
@@ -605,5 +618,7 @@ export const TableErrorCode = z.enum([
   "MODEL_NOT_ALLOWED",
   "MODEL_UNAVAILABLE",
   "EXPORT_TOO_LARGE",
+  "COLUMN_CYCLE",
+  "COLUMN_REFERENCED",
 ]);
 export type TableErrorCode = z.infer<typeof TableErrorCode>;
