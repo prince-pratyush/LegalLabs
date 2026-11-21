@@ -119,3 +119,57 @@ describe("reduceRun", () => {
     expect(run.citations[0]?.openUrl).toBeNull();
   });
 });
+
+describe("reduceRun for agent runs", () => {
+  it("keeps a question until the run moves on", () => {
+    let run = reduceRun(startRun("r"), {
+      type: "question",
+      seq: 1,
+      step_id: "s1",
+      question: {
+        text: "Which playbook?",
+        options: [{ id: "a", label: "NDA" }],
+        allow_text: true,
+        allow_skip: true,
+      },
+    });
+    run = reduceRun(run, { type: "status", seq: 2, status: "awaiting_input" });
+    expect(run.question?.text).toBe("Which playbook?");
+    expect(run.question?.options).toEqual([{ id: "a", label: "NDA" }]);
+    run = reduceRun(run, { type: "status", seq: 3, status: "running" });
+    expect(run.question).toBeNull();
+  });
+
+  it("splits messages, lists outputs and notes the newest draft", () => {
+    let run = startRun("r");
+    run = reduceRun(run, { type: "token", seq: 1, message_id: "m1", delta: "Hi" });
+    run = reduceRun(run, { type: "token", seq: 2, message_id: "m1", delta: " there" });
+    run = reduceRun(run, { type: "output", seq: 3, kind: "message", message_id: "m1" });
+    run = reduceRun(run, { type: "token", seq: 4, message_id: "m2", delta: "Done" });
+    run = reduceRun(run, {
+      type: "draft_updated",
+      seq: 5,
+      agent_id: "a",
+      draft_version_id: "v2",
+    });
+    expect(run.messages).toEqual([
+      { id: "m1", text: "Hi there" },
+      { id: "m2", text: "Done" },
+    ]);
+    expect(run.outputs).toEqual([
+      { kind: "message", messageId: "m1", artifactId: null, title: null },
+    ]);
+    expect(run.draftVersionId).toBe("v2");
+  });
+
+  it("keeps the reason a run stopped", () => {
+    const run = reduceRun(startRun("r"), {
+      type: "status",
+      seq: 1,
+      status: "cancelled",
+      reason: "input_timeout",
+    });
+    expect(run.reason).toBe("input_timeout");
+    expect(run.finished).toBe(true);
+  });
+});

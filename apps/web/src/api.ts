@@ -339,6 +339,9 @@ const EVENT_TYPES: readonly RunEvent["type"][] = [
   "followups",
   "done",
   "error",
+  "question",
+  "output",
+  "draft_updated",
 ];
 
 export interface StreamOptions {
