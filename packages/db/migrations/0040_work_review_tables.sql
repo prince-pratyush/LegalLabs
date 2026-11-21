@@ -204,7 +204,8 @@ create policy rt_column_all on work.rt_column for all to legallabs_app
               and (context_document_id is null or exists (
                 select 1 from content.document d where d.id = context_document_id)));
 
--- A row may only name documents the caller can read now; walls are re-checked on every read.
+-- A row may only name documents the caller can read now. Walls added later are applied by the
+-- API, which hides a row's values once one of its documents is unreadable.
 create policy rt_row_all on work.rt_row for all to legallabs_app
   using (core.in_tenant(workspace_id)
          and exists (select 1 from work.review_table t where t.id = table_id))
