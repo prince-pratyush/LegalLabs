@@ -448,19 +448,21 @@ export function createTables(
   return {
     async create(
       principal: Principal,
-      body: CreateTableBody,
+      body: Omit<CreateTableBody, "template_id">,
       client: Client,
+      /** Set when a template made the table, or it is a try-out of one that goes in a week. */
+      made: { templateId?: string; isTest?: boolean } = {},
     ): Promise<Result<{ table: ReviewTable }>> {
       try {
         return await asApp(pool, principal, async (db) => {
-          const resolved = await resolveSource(db, body, vaultLimit);
+          const resolved = await resolveSource(db, body as CreateTableBody, vaultLimit);
           if (!resolved.ok) return resolved;
           const s = resolved.value;
           const { rows } = await db.query<TableRow>(
             `insert into work.review_table
                (workspace_id, owner_id, name, source_kind, vault_id, folder_ids, thread_id,
-                matter_id, settings)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
+                matter_id, settings, template_id, is_test)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`,
             [
               principal.workspaceId,
               principal.userId,
@@ -471,6 +473,8 @@ export function createTables(
               s.threadId,
               s.matterId ?? body.matter_id ?? null,
               JSON.stringify(DEFAULT_SETTINGS),
+              made.templateId ?? null,
+              made.isTest ?? false,
             ],
           );
           const table = rows[0] as TableRow;
