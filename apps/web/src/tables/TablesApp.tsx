@@ -1,5 +1,12 @@
 import type { CreateTableBody, ReviewTable } from "@legallabs/contracts";
-import { type CreateRequest, CreateTablePanel, TableList, Toaster, toast } from "@legallabs/ui";
+import {
+  Button,
+  type CreateRequest,
+  CreateTablePanel,
+  TableList,
+  Toaster,
+  toast,
+} from "@legallabs/ui";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
@@ -97,14 +104,10 @@ function ListPage({ threadId, onLeave }: { threadId: string | null; onLeave: () 
   return (
     <div className="flex h-dvh">
       <main className="min-w-0 flex-1 overflow-y-auto px-8 py-6">
-        <button
-          type="button"
-          onClick={onLeave}
-          className="mb-4 inline-flex items-center gap-1 rounded-sm text-fg-muted hover:text-fg"
-        >
-          <ArrowLeft aria-hidden className="size-4" />
+        <Button variant="quiet" size="sm" className="mb-4 text-fg-muted" onClick={onLeave}>
+          <ArrowLeft aria-hidden />
           Back to workspace
-        </button>
+        </Button>
         <TableList
           tables={tables ?? []}
           loading={tables === null}

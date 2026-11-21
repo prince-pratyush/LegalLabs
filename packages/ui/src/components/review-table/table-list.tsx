@@ -60,13 +60,14 @@ export function TableList({
       header: "Name",
       sortValue: (t) => t.name.toLowerCase(),
       cell: (t) => (
-        <button
-          type="button"
+        <Button
+          variant="quiet"
+          size="sm"
+          className="h-auto max-w-full justify-start truncate px-0 text-left font-medium hover:underline"
           onClick={() => onOpen(t)}
-          className="truncate rounded-sm text-left font-medium hover:underline"
         >
           {t.name}
-        </button>
+        </Button>
       ),
     },
     {

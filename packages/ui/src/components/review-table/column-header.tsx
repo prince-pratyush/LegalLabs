@@ -81,13 +81,14 @@ export function ColumnHeader({
           <span>{TYPE_NAMES[column.type]}</span>
           {line && <span className={cn("truncate", running && "text-accent")}>· {line}</span>}
           {column.dry_run && !running && (
-            <button
-              type="button"
+            <Button
+              variant="quiet"
+              size="sm"
+              className="h-auto shrink-0 px-0 text-accent underline underline-offset-2"
               onClick={onRunRemaining}
-              className="shrink-0 rounded-sm text-accent underline underline-offset-2"
             >
               Run remaining
-            </button>
+            </Button>
           )}
         </span>
       </div>
