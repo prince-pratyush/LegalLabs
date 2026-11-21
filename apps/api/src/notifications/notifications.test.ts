@@ -197,6 +197,44 @@ describe("the notifications hub", () => {
     expect(((await h.call(anaCookie, "GET", "/notifications")).body as Page).items).toEqual([]);
   });
 
+  it("sends each notification once and closes the stream when the session is revoked", async () => {
+    const h = harness();
+    const ana = await seedMember(pool);
+    const ben = await colleague(ana);
+    const benCookie = await h.signIn(ben);
+    const stream = await h.app.request("/api/v1/notifications/stream", {
+      headers: { cookie: benCookie },
+    });
+    const reading = readEvents(stream, () => false, 1500);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    for (const n of [1, 2]) {
+      await h.notifications.notifier.notify(
+        principal(ana),
+        event({
+          kind: "task.assigned",
+          actorId: ana.userId,
+          objectTitle: `Task ${n}`,
+          people: { assignee: ben.userId },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const events = await reading;
+    expect(events.filter((e) => e.event === "notification")).toHaveLength(2);
+
+    const again = await h.app.request("/api/v1/notifications/stream", {
+      headers: { cookie: benCookie },
+    });
+    const closing = readEvents(again, () => false, 3000);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await pool.query("update core.session set revoked_at = now() where user_id = $1", [ben.userId]);
+    const started = Date.now();
+    h.notifications.hub.publish(ben.userId);
+    await closing;
+    // Ended by the revoked session, not by the read timing out.
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it("merges three comments on one cell within ten minutes into one unread with a count of 3", async () => {
     const h = harness();
     const ana = await seedMember(pool);

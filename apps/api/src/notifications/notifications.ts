@@ -55,7 +55,13 @@ export interface Notifications {
   changes(
     p: Principal,
     since: string | null,
-  ): Promise<{ items: Notification[]; counts: NotificationCounts; high: string }>;
+  ): Promise<{
+    items: Notification[];
+    /** Each item's creation time in microseconds, so a stream can keep a high-water mark. */
+    marks: bigint[];
+    counts: NotificationCounts;
+    high: string;
+  }>;
   settings(p: Principal): Promise<NotificationSettings>;
   patchSettings(
     p: Principal,
@@ -469,18 +475,35 @@ export function createNotifications(
 
     async changes(p, since) {
       return asApp(pool, p, async (db) => {
+        // A stream must not outlive the session or the person's account.
+        const alive = (
+          await db.query<{ ok: boolean }>(
+            `select exists (select 1 from core."user" where id = core.current_user_id()
+                              and status = 'active')
+                    and ($1::text = '' or exists (select 1 from core.session
+                          where id = $1::uuid and revoked_at is null and expires_at > now())) as ok`,
+            [p.sessionId],
+          )
+        ).rows[0]?.ok;
+        if (!alive) throw new Error("SESSION_ENDED");
         const clock = (await db.query<{ now: string }>("select clock_timestamp()::text as now"))
           .rows[0]?.now as string;
         const counts = await countsOf(db);
-        if (since === null) return { items: [], counts, high: clock };
-        const { rows } = await db.query<Row>(
-          `select ${COLUMNS} ${FROM}
+        if (since === null) return { items: [], marks: [], counts, high: clock };
+        const { rows } = await db.query<Row & { micros: string }>(
+          `select ${COLUMNS}, (extract(epoch from n.created_at) * 1000000)::bigint::text as micros
+             ${FROM}
             where n.archived_at is null and n.created_at > $1::timestamptz - interval '5 seconds'
             order by n.created_at, n.id limit 100`,
           [since],
         );
         await refreshAvailability(db, rows);
-        return { items: rows.map(view), counts, high: clock };
+        return {
+          items: rows.map(view),
+          marks: rows.map((r) => BigInt(r.micros)),
+          counts,
+          high: clock,
+        };
       });
     },
 
