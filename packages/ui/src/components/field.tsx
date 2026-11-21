@@ -8,6 +8,11 @@ export function Input({ className, ...props }: ComponentProps<"input">) {
   return <input data-slot="input" className={cn(control, "h-8", className)} {...props} />;
 }
 
+/** The browser's own select, for short fixed lists inside forms. */
+export function NativeSelect({ className, ...props }: ComponentProps<"select">) {
+  return <select data-slot="select" className={cn(control, "h-8", className)} {...props} />;
+}
+
 export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return (
     <textarea

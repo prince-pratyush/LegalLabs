@@ -62,6 +62,7 @@ export {
   TemplateFields,
   type TemplatePort,
 } from "./library.js";
+export * from "./matter.js";
 export {
   AcceptCandidate,
   codePoints,
