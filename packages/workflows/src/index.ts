@@ -1,4 +1,9 @@
 export {
+  CATALOGUE,
+  type CatalogueEntry,
+  catalogueEntry,
+} from "./catalogue/index.js";
+export {
   APPROVAL_DOCUMENTS,
   APPROVAL_STEPS,
   createWorkflowHandler,
