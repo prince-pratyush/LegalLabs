@@ -294,6 +294,12 @@ export const Row = z.object({
   restricted: z.boolean(),
   flag_color: FlagColor.nullable(),
   locked: z.boolean(),
+  /** The file has left the vault: the row keeps its cells but can't be re-run. */
+  source_removed: z.boolean(),
+  /** The version of the file this row read, when sync pinned one. */
+  version_no: z.number().int().nullable(),
+  /** A later version of the same file has a row of its own. */
+  newer_version: z.boolean(),
 });
 export type Row = z.infer<typeof Row>;
 
@@ -620,5 +626,9 @@ export const TableErrorCode = z.enum([
   "EXPORT_TOO_LARGE",
   "COLUMN_CYCLE",
   "COLUMN_REFERENCED",
+  "SYNC_ENABLED",
+  "SYNC_DISABLED",
+  "SYNC_UNAVAILABLE",
+  "SOURCE_REMOVED",
 ]);
 export type TableErrorCode = z.infer<typeof TableErrorCode>;

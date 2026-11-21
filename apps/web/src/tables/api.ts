@@ -12,11 +12,14 @@ import type {
   ExportBody,
   PatchCellBody,
   PatchColumnBody,
+  PutSyncBody,
   ReviewTable,
   Row,
   RowFilter,
   RowSort,
   RunColumnBody,
+  SyncResult,
+  SyncStatus,
 } from "@legallabs/contracts";
 import { RT_LIMITS } from "@legallabs/contracts";
 import { ApiError, FALLBACK, messageOf } from "../api.js";
@@ -29,6 +32,9 @@ const MESSAGES: Record<string, string> = {
   EXPORT_DISABLED_BY_SOURCE: "The source vault doesn't allow downloads, so this can't be exported.",
   COLUMN_RUNNING: "This column is already running. Wait for it to finish or stop it.",
   COLUMN_LIMIT: `This table already has ${RT_LIMITS.columns} columns.`,
+  SYNC_ENABLED: "Rows are added by sync. Turn sync off to add them by hand.",
+  SYNC_UNAVAILABLE: "Only a table over a vault can sync.",
+  SOURCE_REMOVED: "The file has left the vault, so this can't be re-run.",
   SOURCE_LIMIT: `A table holds up to ${RT_LIMITS.vaultDocuments.toLocaleString("en")} vault files or ${RT_LIMITS.uploads} uploads. Choose folders or fewer files.`,
   MODEL_UNAVAILABLE: "No model is available just now. Try again shortly.",
   EXPORT_TOO_LARGE: `Exports hold up to ${RT_LIMITS.syncExportCells.toLocaleString("en")} cells. Filter the rows or pick fewer columns, then export again.`,
@@ -122,6 +128,9 @@ export const tableApi = {
   runColumn: (id: string, columnId: string, body: RunColumnBody) =>
     send<{ run_id: string | null }>("POST", `${col(id, columnId)}/run`, body),
   estimate: (id: string, body: EstimateBody) => send<Estimate>("POST", `${t(id)}/estimate`, body),
+  sync: (id: string) => call<SyncStatus>(`${t(id)}/sync`),
+  putSync: (id: string, body: PutSyncBody) => send<SyncStatus>("PUT", `${t(id)}/sync`, body),
+  syncNow: (id: string) => call<SyncResult>(`${t(id)}/sync/run`, { method: "POST" }),
   cancel: (runId: string) =>
     call<void>(`/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
   cell: (id: string, cellId: string) => call<CellDetail>(c(id, cellId)),

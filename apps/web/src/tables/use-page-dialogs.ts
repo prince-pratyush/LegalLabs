@@ -4,7 +4,8 @@ import { useState } from "react";
 export type Panel =
   | { kind: "builder" }
   | { kind: "filter"; columnId: string }
-  | { kind: "prompt"; columnId: string };
+  | { kind: "prompt"; columnId: string }
+  | { kind: "sync" };
 
 /** Which side panel, run dialog, export dialog or add-column popover is open. */
 export function usePageDialogs() {

@@ -6,6 +6,7 @@ import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { hashPassword } from "./auth/password.js";
 import { createDrafts } from "./drafts/drafts.js";
+import type { Notifier } from "./notifications/notify.js";
 import { createRunLog } from "./runs/log.js";
 import { createReviewTables } from "./tables/module.js";
 import {
@@ -107,6 +108,8 @@ export interface HarnessOptions {
   paid?: boolean;
   /** Answers instead of fakeModel, to script what the provider says. */
   model?: (messages: readonly Message[]) => string;
+  /** Receives what a sync pass reports to an owner who opted in. */
+  notifier?: Notifier;
 }
 
 export function harness(options: HarnessOptions = {}) {
@@ -132,6 +135,7 @@ export function harness(options: HarnessOptions = {}) {
     documents,
     log,
     dependencyPollMs: 20,
+    ...(options.notifier ? { notifier: options.notifier } : {}),
     ...(options.vaultLimit ? { vaultDocumentLimit: options.vaultLimit } : {}),
   });
   const app = createApp({
