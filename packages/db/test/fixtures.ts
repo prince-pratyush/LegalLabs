@@ -438,7 +438,52 @@ export async function seed(tx: Tx) {
     beta: await reviewTable(beta, bob, documents.beta),
   };
 
+  // An agent with a live version, an upload, a schedule, a pending share and a dismissed nudge.
+  const agent = async (ws: string, owner: string, doc: { documentId: string }) => {
+    const agentId = await id("select core.uuid7() as id", []);
+    const versionId = await id("select core.uuid7() as id", []);
+    await tx.rows(
+      `insert into work.agent (id, workspace_id, owner_id, title, live_version_id)
+       values ($1, $2, $3, 'NDA first pass', $4)`,
+      [agentId, ws, owner, versionId],
+    );
+    await tx.rows(
+      `insert into work.agent_version (id, workspace_id, agent_id, no, instructions, details,
+                                       created_by)
+       values ($1, $2, $3, 1, 'Review the NDA.', '{"title":"NDA first pass"}', $4)`,
+      [versionId, ws, agentId, owner],
+    );
+    await tx.rows(
+      `insert into work.agent_document (workspace_id, agent_id, document_id) values ($1, $2, $3)`,
+      [ws, agentId, doc.documentId],
+    );
+    await tx.rows(
+      `insert into work.agent_schedule (workspace_id, agent_id, user_id, rule, params, time_local,
+                                        tz)
+       values ($1, $2, $3, 'weekly', '{"weekdays":[1]}', '08:00', 'UTC')`,
+      [ws, agentId, owner],
+    );
+    await tx.rows(
+      `insert into work.share_request (workspace_id, resource_type, resource_id, principal_type,
+                                       principal_id, level, approver, requested_by)
+       values ($1, 'agent', $2, 'workspace', $1, 'run', 'agents_admin', $3)`,
+      [ws, agentId, owner],
+    );
+    await tx.rows(`insert into work.sharing_config (workspace_id) values ($1)`, [ws]);
+    await tx.rows(
+      `insert into work.agent_nudge_dismissal (workspace_id, user_id, agent_id)
+       values ($1, $2, $3)`,
+      [ws, owner, agentId],
+    );
+    return { agentId, versionId };
+  };
+  const agents = {
+    acme: await agent(acme, ana, documents.acme),
+    beta: await agent(beta, bob, documents.beta),
+  };
+
   return {
+    agents,
     documents,
     vaults,
     threads,
