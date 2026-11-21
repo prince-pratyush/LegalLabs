@@ -1,36 +1,19 @@
 // Shapes the review-table components read. They are structural subsets of the
 // contracts in @legallabs/contracts, so the web app passes API objects straight in.
 
-export const FLAG_COLORS = ["red", "orange", "yellow", "green", "blue", "purple"] as const;
-export type FlagColor = (typeof FLAG_COLORS)[number];
+import { type CellErrorCode, CellStatus, type ColumnType, FlagColor } from "@legallabs/contracts";
 
-export const CELL_STATUSES = [
-  "pending",
-  "queued",
-  "running",
-  "done",
-  "null",
-  "error",
-  "blocked",
-  "stale",
-] as const;
-export type CellStatus = (typeof CELL_STATUSES)[number];
+export type { CellErrorCode, CellStatus, ColumnType, FlagColor };
 
-export type ColumnType =
-  | "date"
-  | "currency"
-  | "number"
-  | "verbatim"
-  | "free"
-  | "classify"
-  | "manual";
+export const FLAG_COLORS = FlagColor.options;
+export const CELL_STATUSES = CellStatus.options;
 
 export interface GridCell {
   id: string;
   row_id: string;
   column_id: string;
   status: CellStatus;
-  error_code: string | null;
+  error_code: CellErrorCode | null;
   value_text: string | null;
   citation_count: number;
   verified_at: string | null;
@@ -79,7 +62,7 @@ export const FLAG_CLASS: Record<FlagColor, { text: string; border: string; bg: s
 export const flagName = (color: FlagColor) => color[0]?.toUpperCase() + color.slice(1);
 
 /** Error codes in words a reviewer can act on. */
-export const ERROR_TEXT: Record<string, string> = {
+export const ERROR_TEXT: Record<CellErrorCode, string> = {
   DOC_NOT_READY: "The document is still being read. Retry when it's ready.",
   CONTEXT_TOO_LARGE: "The document is too long to read in one go.",
   MODEL_ERROR: "The model didn't answer. Retry.",
@@ -88,7 +71,7 @@ export const ERROR_TEXT: Record<string, string> = {
   ACCESS_DENIED: "You can't read this row's document.",
 };
 
-export const errorText = (code: string | null) =>
+export const errorText = (code: CellErrorCode | null) =>
   (code && ERROR_TEXT[code]) || "Something went wrong. Retry.";
 
 export function formatUsd(value: number) {
