@@ -130,7 +130,8 @@ export type AskFailure =
   | "MIXED_MATTERS"
   | "EMPTY_SCOPE"
   | "MODEL_NOT_ALLOWED"
-  | "READ_ONLY";
+  | "READ_ONLY"
+  | "MATTER_REQUIRED";
 
 export type AskResult =
   | {
@@ -146,7 +147,8 @@ export type AskResult =
 export type ShareOutcome = { userId: string; outcome: "created" | "WALL_DENIED" | "NOT_MEMBER" };
 export type ShareResult =
   | { ok: true; outcomes: ShareOutcome[] }
-  | { ok: false; reason: "NOT_FOUND" | "WALL_MISMATCH" };
+  | { ok: false; reason: "NOT_FOUND" | "WALL_MISMATCH" }
+  | { ok: false; reason: "WALL_SHARE_BLOCKED"; blockedCount: number };
 
 export interface Share {
   id: string;
@@ -185,7 +187,7 @@ export interface Threads {
   share(
     principal: Principal,
     threadId: string,
-    input: { userIds: string[]; link: boolean },
+    input: { userIds: string[]; groupIds?: string[]; link: boolean },
     client: Client,
   ): Promise<ShareResult>;
   shares(principal: Principal, threadId: string): Promise<Share[] | null>;
@@ -264,6 +266,15 @@ async function permitted(db: Db): Promise<boolean> {
     "select core.has_permission('threads.use') allowed",
   );
   return rows[0]?.allowed === true;
+}
+
+// The workspace can insist every new thread names a matter.
+async function matterRequired(db: Db): Promise<boolean> {
+  const { rows } = await db.query<{ required: boolean }>(
+    `select coalesce((select require_for_queries from core.matter_options
+                       where workspace_id = core.current_workspace_id()), false) required`,
+  );
+  return rows[0]?.required === true;
 }
 
 /** Newest version of each document the caller can read; missing ids are left out. */
@@ -928,6 +939,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         if (matters.size > 1 || (chosen.length > 0 && !matters.has(matterId))) {
           return "MIXED_MATTERS" as const;
         }
+        if (!existing && matterId === null && (await matterRequired(db))) {
+          return "MATTER_REQUIRED" as const;
+        }
         // Vault files outside the thread's matter stay out, so one wall covers the thread.
         const vaultDocs = (await latestVersions(db, fromVaults)).filter(
           (row) => row.matter_id === matterId,
@@ -1260,13 +1274,43 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       });
     },
 
-    async share(principal, threadId, { userIds, link }, client) {
-      if (!UUID.test(threadId) || !userIds.every((id) => UUID.test(id))) {
+    async share(principal, threadId, { userIds, groupIds = [], link }, client) {
+      if (!UUID.test(threadId) || ![...userIds, ...groupIds].every((id) => UUID.test(id))) {
         return { ok: false, reason: "NOT_FOUND" };
       }
       try {
         return await asApp(pool, principal, async (db) => {
-          const { rows } = await db.query<{
+          // A matter that requires walls for sharing refuses the whole share, naming no one.
+          const { rows: walled } = await db.query<{ n: number }>(
+            `select core.wall_share_blocked(t.matter_id, $2) n
+               from work.thread t where t.id = $1 and t.owner_id = core.current_user_id()`,
+            [
+              threadId,
+              JSON.stringify([
+                ...userIds.map((id) => ({ principal_type: "user", principal_id: id })),
+                ...groupIds.map((id) => ({ principal_type: "group", principal_id: id })),
+              ]),
+            ],
+          );
+          const blockedCount = walled[0]?.n ?? 0;
+          if (blockedCount > 0) {
+            await audit(
+              db,
+              principal,
+              "wall.share_blocked",
+              threadId,
+              { object_type: "thread", object_id: threadId, blocked_count: blockedCount },
+              client,
+            );
+            return { ok: false as const, reason: "WALL_SHARE_BLOCKED" as const, blockedCount };
+          }
+          const { rows: groups } = groupIds.length
+            ? await db.query<{ principal_id: string; outcome: ShareOutcome["outcome"] }>(
+                "select principal_id, outcome from work.share_thread_groups($1, $2::uuid[])",
+                [threadId, [...new Set(groupIds)]],
+              )
+            : { rows: [] };
+          const { rows: people } = await db.query<{
             principal_id: string;
             outcome: ShareOutcome["outcome"];
           }>("select principal_id, outcome from work.share_thread($1, $2::uuid[], $3)", [
@@ -1274,6 +1318,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             [...new Set(userIds)],
             link,
           ]);
+          const rows = [...people, ...groups];
           const created = rows.filter((row) => row.outcome === "created").length;
           if (created > 0) {
             await audit(

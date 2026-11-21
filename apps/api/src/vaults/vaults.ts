@@ -115,7 +115,13 @@ export interface AdminVault extends Vault {
   grants: number;
 }
 
-export type Refusal = "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "MATTER_NOT_FOUND";
+export type Refusal =
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "CONFLICT"
+  | "MATTER_NOT_FOUND"
+  | "MATTER_REQUIRED_FOR_VAULT"
+  | "MATTER_NOT_ALLOWED_FOR_VAULT";
 type Result<T> = { ok: true; value: T } | { ok: false; reason: Refusal };
 
 export interface Vaults {
@@ -176,7 +182,7 @@ export interface Vaults {
     vaultId: string,
     shares: { grants: VaultGrant[]; workspaceView: boolean },
     client: Client,
-  ): Promise<{ deniedByWall: string[] } | null>;
+  ): Promise<{ deniedByWall: string[] } | { blockedCount: number } | null>;
   preflight(p: Principal, vaultId: string, files: ManifestFile[]): Promise<Preflight | null>;
   /** `relativePath` keeps a dropped folder's structure; missing folders are made. */
   upload(
@@ -309,6 +315,15 @@ const UNIQUE_VIOLATION = "23505";
 const CHECK_VIOLATION = "23514";
 const codeOf = (err: unknown) => (err as { code?: string }).code;
 
+// The workspace's matter options say whether a vault needs, allows or refuses a matter.
+const vaultAssociation = async (db: pg.PoolClient) =>
+  (
+    await db.query<{ v: string }>(
+      `select coalesce((select vault_association from core.matter_options
+                         where workspace_id = core.current_workspace_id()), 'optional') v`,
+    )
+  ).rows[0]?.v ?? "optional";
+
 export interface VaultsOptions {
   documents: Documents;
   store: ObjectStore;
@@ -384,6 +399,13 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
     async create(p, input, client) {
       try {
         return await asApp(pool, p, async (db) => {
+          const association = await vaultAssociation(db);
+          if (association === "required" && !input.matterId) {
+            return { ok: false as const, reason: "MATTER_REQUIRED_FOR_VAULT" as const };
+          }
+          if (association === "disabled" && input.matterId) {
+            return { ok: false as const, reason: "MATTER_NOT_ALLOWED_FOR_VAULT" as const };
+          }
           const { rows } = await db.query<{ id: string }>(
             `insert into content.vault (workspace_id, owner_id, matter_id, name, description)
              values ($1, $2, $3, $4, $5) returning id`,
@@ -780,6 +802,26 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
       if (!isId(vaultId)) return null;
       return asApp(pool, p, async (db) => {
         if (!canManage(await level(db, vaultId))) return null;
+        // A matter that requires walls for sharing refuses the whole change, naming no one.
+        const principals = [
+          ...shares.grants,
+          ...(shares.workspaceView
+            ? [{ principal_type: "workspace", principal_id: p.workspaceId }]
+            : []),
+        ];
+        const { rows: blocked } = await db.query<{ n: number }>(
+          `select core.wall_share_blocked(v.matter_id, $2) n from content.vault v where v.id = $1`,
+          [vaultId, JSON.stringify(principals)],
+        );
+        const blockedCount = blocked[0]?.n ?? 0;
+        if (blockedCount > 0) {
+          await audit(db, p, client, "wall.share_blocked", "vault", vaultId, {
+            object_type: "vault",
+            object_id: vaultId,
+            blocked_count: blockedCount,
+          });
+          return { blockedCount };
+        }
         const { rows } = await db.query<{ result: { denied_by_wall: string[] } }>(
           "select content.set_vault_shares($1, $2, $3) result",
           [vaultId, JSON.stringify(shares.grants), shares.workspaceView],
