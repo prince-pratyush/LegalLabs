@@ -47,6 +47,7 @@ export {
   StepStatus,
 } from "./agent-run.js";
 export { AuditAction, AuditActorType, auditActions } from "./audit.js";
+export { type DiffOp, diffList, diffWords, type ListChange } from "./diff.js";
 export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
 export {
