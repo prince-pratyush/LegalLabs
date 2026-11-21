@@ -172,7 +172,7 @@ export function createExports(pool: pg.Pool, { maxCells = MAX_EXPORT_CELLS as nu
           grid.push(line);
         }
 
-        await audit(db, principal, client, "table.export", tableId, {
+        await audit(db, principal, client, "table.exported", tableId, {
           format: body.format,
           rows: rows.length,
           columns: columns.length,

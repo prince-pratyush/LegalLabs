@@ -431,7 +431,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
           );
           const table = rows[0] as TableRow;
           await insertRows(db, principal, table.id, s.documentIds);
-          await audit(db, principal, client, "table.create", table.id, {
+          await audit(db, principal, client, "table.created", table.id, {
             source_kind: s.kind,
             vault_id: s.vaultId,
             thread_id: s.threadId,
@@ -514,7 +514,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
             "'stale'",
           );
         }
-        await audit(db, principal, client, "table.update", tableId, {
+        await audit(db, principal, client, "table.updated", tableId, {
           fields: Object.keys(body),
           stale_cells: stale,
         });
@@ -528,12 +528,12 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
     remove(principal: Principal, tableId: string, client: Client) {
       return withTable(principal, tableId, async (db) => {
         await db.query("update work.review_table set deleted_at = now() where id = $1", [tableId]);
-        await audit(db, principal, client, "table.delete", tableId);
+        await audit(db, principal, client, "table.deleted", tableId);
         return { ok: true, value: null };
       });
     },
 
-    star(principal: Principal, tableId: string, on: boolean) {
+    star(principal: Principal, tableId: string, on: boolean, client: Client) {
       return withTable(principal, tableId, async (db) => {
         await db.query(
           on
@@ -542,6 +542,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
             : "delete from work.rt_star where table_id = $2 and user_id = $3 and workspace_id = $1",
           [principal.workspaceId, tableId, principal.userId],
         );
+        await audit(db, principal, client, "table.starred", tableId, { starred: on });
         return { ok: true, value: null };
       });
     },
@@ -573,7 +574,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
         }
         const rowIds = await insertRows(db, principal, tableId, fresh);
         if (rowIds.length > 0) {
-          await audit(db, principal, client, "table.row.add", tableId, { rows: rowIds.length });
+          await audit(db, principal, client, "table.rows.added", tableId, { rows: rowIds.length });
         }
         const { rows } = await db.query<{
           id: string;
@@ -653,7 +654,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
            select $1, $2, r.id, $3 from work.rt_row r where r.table_id = $2 and r.deleted_at is null`,
           [principal.workspaceId, tableId, column.id],
         );
-        await audit(db, principal, client, "table.column.add", tableId, {
+        await audit(db, principal, client, "table.column.added", tableId, {
           column_id: column.id,
           type: column.type,
         });
@@ -721,7 +722,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
             "'stale'",
           );
         }
-        await audit(db, principal, client, "table.column.update", tableId, {
+        await audit(db, principal, client, "table.column.updated", tableId, {
           column_id: columnId,
           fields: Object.keys(body),
           stale_cells: stale,
@@ -742,7 +743,9 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
           [columnId, tableId],
         );
         if (!rows[0]) return fail("NOT_FOUND");
-        await audit(db, principal, client, "table.column.delete", tableId, { column_id: columnId });
+        await audit(db, principal, client, "table.column.deleted", tableId, {
+          column_id: columnId,
+        });
         return { ok: true, value: { run_id: rows[0].state === "running" ? rows[0].run_id : null } };
       });
     },
@@ -759,7 +762,7 @@ export function createTables(pool: pg.Pool, deps: { gateway: Gateway }) {
              from unnest($1::uuid[]) with ordinality u(id, o) where k.id = u.id`,
           [columnIds],
         );
-        await audit(db, principal, client, "table.column.update", tableId, { reordered: true });
+        await audit(db, principal, client, "table.column.updated", tableId, { reordered: true });
         return { ok: true, value: null };
       });
     },

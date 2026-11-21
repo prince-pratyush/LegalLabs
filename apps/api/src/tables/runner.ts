@@ -573,7 +573,9 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
               [runId],
             );
           }
-          await audit(db, principal, client, "table.run.cancel", run.table_id, { run_id: runId });
+          await audit(db, principal, client, "table.run.cancelled", run.table_id, {
+            run_id: runId,
+          });
         }
         return run;
       });

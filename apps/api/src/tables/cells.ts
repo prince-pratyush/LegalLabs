@@ -469,7 +469,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             field: "value",
             old: { value_text: cell.value_text, status: cell.status },
             new: { value_text: shown },
-            action: "table.cell.edit",
+            action: "table.cell.edited",
           });
           // Citations stay, marked as no longer backing exactly what the cell says.
           await db.query("update work.rt_cell_citation set user_edited = true where cell_id = $1", [
@@ -483,7 +483,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             field: "verified",
             old: cell.verified_at !== null,
             new: body.verified,
-            action: body.verified ? "table.cell.verify" : "table.cell.unverify",
+            action: body.verified ? "table.cell.verified" : "table.cell.unverified",
           });
         }
         if (body.locked !== undefined && body.locked !== cell.locked) {
@@ -492,7 +492,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             field: "locked",
             old: cell.locked,
             new: body.locked,
-            action: body.locked ? "table.cell.lock" : "table.cell.unlock",
+            action: body.locked ? "table.cell.locked" : "table.cell.unlocked",
           });
         }
         if (body.flag_color !== undefined && body.flag_color !== cell.flag_color) {
@@ -501,7 +501,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             field: "flag",
             old: cell.flag_color,
             new: body.flag_color,
-            action: "table.cell.flag",
+            action: "table.cell.flagged",
           });
         }
         if (sets.length > 0) {
@@ -560,18 +560,22 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
               return [
                 "verified",
                 "verified_by = p.actor, verified_at = now()",
-                "table.cell.verify",
+                "table.cell.verified",
               ];
             case "unverify":
-              return ["verified", "verified_by = null, verified_at = null", "table.cell.unverify"];
+              return [
+                "verified",
+                "verified_by = null, verified_at = null",
+                "table.cell.unverified",
+              ];
             case "lock":
-              return ["locked", "locked = true", "table.cell.lock"];
+              return ["locked", "locked = true", "table.cell.locked"];
             case "unlock":
-              return ["locked", "locked = false", "table.cell.unlock"];
+              return ["locked", "locked = false", "table.cell.unlocked"];
             case "flag":
-              return ["flag", "flag_color = p.flag", "table.cell.flag"];
+              return ["flag", "flag_color = p.flag", "table.cell.flagged"];
             default:
-              return ["flag", "flag_color = null", "table.cell.flag"];
+              return ["flag", "flag_color = null", "table.cell.flagged"];
           }
         })();
         // Lock and unlock always apply; anything else skips locked cells and locked rows.

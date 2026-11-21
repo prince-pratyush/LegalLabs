@@ -132,7 +132,7 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
     ["delete", false],
   ] as const) {
     app[method]("/review-tables/:id/star", async (c) => {
-      const result = await tables.star(p(c), c.req.param("id"), on);
+      const result = await tables.star(p(c), c.req.param("id"), on, clientOf(c));
       return result.ok ? c.body(null, 204) : failure(c, result);
     });
   }

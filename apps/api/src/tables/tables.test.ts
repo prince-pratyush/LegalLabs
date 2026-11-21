@@ -273,7 +273,7 @@ describe("review tables API", () => {
       page.rows.map((r: { documents: { name: string }[] }) => r.documents[0]?.name).sort(),
     ).toEqual(["credit.txt", "lease.txt"]);
     const trail = await auditTrail(pool, s.m.workspaceId);
-    expect(trail.some((e) => e.action === "table.create" && e.details.rows === 2)).toBe(true);
+    expect(trail.some((e) => e.action === "table.created" && e.details.rows === 2)).toBe(true);
   });
 
   it("refuses rows from another vault with SOURCE_MISMATCH (RVT-001)", async () => {
@@ -507,6 +507,10 @@ describe("review tables API", () => {
   it("stars privately per user (RVT-010)", async () => {
     const s = await setup();
     expect((await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/star`)).status).toBe(204);
+    const trail = await auditTrail(pool, s.m.workspaceId);
+    expect(trail.some((e) => e.action === "table.starred" && e.details.starred === true)).toBe(
+      true,
+    );
     const starred = await s.h.call(s.cookie, "GET", "/review-tables?filter[starred]=true");
     expect(starred.body.items.map((t: { id: string }) => t.id)).toEqual([s.tableId]);
     const ben = await colleague(s.m);
