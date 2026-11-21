@@ -9,8 +9,6 @@ import type {
 // Deterministic parsers for model output (review-tables.md §9 step 4). No floats touch money:
 // amounts stay decimal strings from the first digit to the stored value.
 
-// Dates ---------------------------------------------------------------------------------------
-
 export type DatePrecision = "day" | "month" | "year";
 export interface ParsedDate {
   iso: string;
@@ -120,8 +118,6 @@ export function formatDate(
   }
 }
 
-// Decimals ------------------------------------------------------------------------------------
-
 /** "1,500,000.50" → "1500000.50"; the last of `.` or `,` is the decimal mark when both appear. */
 export function normalizeDecimal(raw: string): string | null {
   let s = raw.replace(/[\s '’]/g, "");
@@ -224,8 +220,6 @@ const MULTIPLIER = String.raw`(?:\s?(thousand|million|billion|trillion|mio|mn|mm
 const WORD_MULTIPLIER = String.raw`(?:\s(thousand|million|billion|trillion)\b)?`;
 const CURRENCY_WORD = /[$£€¥₹₩]|dollar|euro|pound|sterling|yen|rupee|franc/i;
 
-// Currencies ----------------------------------------------------------------------------------
-
 // Common ISO 4217 codes; a three-letter word outside this list is not taken for money.
 const CODES = new Set(
   "USD EUR GBP JPY CNY AUD CAD CHF HKD SGD NZD SEK NOK DKK INR KRW BRL MXN ZAR AED SAR ILS PLN CZK HUF TRY RUB TWD THB MYR IDR PHP VND".split(
@@ -322,8 +316,6 @@ export function formatCurrency(
     : `${symbol}${group(amount)}`;
 }
 
-// Numbers -------------------------------------------------------------------------------------
-
 const SMALL = [
   "zero",
   "one",
@@ -401,8 +393,6 @@ export function formatNumber({ value, unit }: ParsedNumber): string {
   return unit === "%" ? `${group(value)}%` : `${group(value)} ${unit}`;
 }
 
-// Classify ------------------------------------------------------------------------------------
-
 export interface ParsedClassify {
   option_ids: string[];
   other?: string | undefined;
@@ -471,15 +461,11 @@ export function formatClassify(value: ParsedClassify, options: readonly Classify
   return labels.join(", ");
 }
 
-// Free text -----------------------------------------------------------------------------------
-
 /** Cuts at `maxWords` with an ellipsis, so a long answer is still shown, marked as cut. */
 export function limitWords(text: string, maxWords: number): string {
   const words = text.trim().split(/\s+/);
   return words.length <= maxWords ? text.trim() : `${words.slice(0, maxWords).join(" ")} …`;
 }
-
-// One entry point -----------------------------------------------------------------------------
 
 export type TypedResult =
   | { ok: true; value_typed: ValueTyped; value_text: string }

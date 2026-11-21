@@ -134,8 +134,6 @@ export const Settings = z
 export type Settings = z.infer<typeof Settings>;
 export const DEFAULT_SETTINGS: Settings = Settings.parse({});
 
-// Cells -------------------------------------------------------------------------------------
-
 export const CellStatus = z.enum([
   "pending",
   "queued",
@@ -254,8 +252,6 @@ export const CellHistory = z.object({
 });
 export type CellHistory = z.infer<typeof CellHistory>;
 
-// Columns and rows ---------------------------------------------------------------------------
-
 export const ColumnState = z.enum(["pending", "running", "done", "partial", "stopped"]);
 export type ColumnState = z.infer<typeof ColumnState>;
 
@@ -298,8 +294,6 @@ export const Row = z.object({
 });
 export type Row = z.infer<typeof Row>;
 
-// Tables -------------------------------------------------------------------------------------
-
 export const SourceKind = z.enum(["vault", "uploads"]);
 export type SourceKind = z.infer<typeof SourceKind>;
 
@@ -332,8 +326,6 @@ export const ReviewTable = z.object({
   updated_at: z.string(),
 });
 export type ReviewTable = z.infer<typeof ReviewTable>;
-
-// Request bodies -----------------------------------------------------------------------------
 
 /** One table, one source: a vault (whole, folders or files), loose uploads, or a thread's files. */
 export const TableSource = z.discriminatedUnion("kind", [
@@ -493,8 +485,6 @@ export const BulkCellsBody = z
   });
 export type BulkCellsBody = z.infer<typeof BulkCellsBody>;
 
-// Filters and sort ---------------------------------------------------------------------------
-
 /** One condition on a column's cells; conditions in a filter all hold (AND). */
 export const CellCondition = z
   .object({
@@ -553,8 +543,6 @@ export const ExportBody = z
   .strict();
 export type ExportBody = z.infer<typeof ExportBody>;
 
-// What the model returns for one cell --------------------------------------------------------
-
 /** Lenient on value, since small models vary; the typed parser decides what it means. */
 export const ModelCellOutput = z.object({
   value: z.union([z.string(), z.number(), z.array(z.string()), z.null()]).optional(),
@@ -573,8 +561,6 @@ export const ModelCellOutput = z.object({
   not_found: z.boolean().optional().default(false),
 });
 export type ModelCellOutput = z.infer<typeof ModelCellOutput>;
-
-// Run events (SSE on /runs/{id}/events) -------------------------------------------------------
 
 /** Ids, status and counts only: the log outlives walls, so values are re-read from the cell. */
 export const CellUpdatedData = z.object({

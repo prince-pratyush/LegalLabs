@@ -120,7 +120,6 @@ export {
   SuggestionCardSkeleton,
   titleOf,
 } from "./components/review/suggestion-card.js";
-// Review tables (RVT).
 export { AddColumnForm, AddColumnPopover } from "./components/review-table/add-column.js";
 export {
   BulkBar,
