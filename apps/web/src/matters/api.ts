@@ -95,8 +95,7 @@ export const matterApi = {
     send<MatterOptions>("PUT", "/admin/matters/options", options),
   importPreview: (file: File, mode: ImportMode) =>
     upload<ImportPreview>("/matters/import", file, { mode }),
-  importReportUrl: (token: string) =>
-    `/api/v1/matters/import/${encodeURIComponent(token)}/report`,
+  importReportUrl: (token: string) => `/api/v1/matters/import/${encodeURIComponent(token)}/report`,
   importApply: (token: string) =>
     send<ImportApplied>("POST", `/matters/import/${encodeURIComponent(token)}/apply`),
 

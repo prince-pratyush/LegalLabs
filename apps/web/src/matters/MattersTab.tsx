@@ -368,11 +368,7 @@ export function ImportMatters({ onApplied }: { onApplied: () => void }) {
         </section>
       )}
       {report && (
-        <a
-          className="text-accent underline"
-          download="matter-import-result.csv"
-          href={report}
-        >
+        <a className="text-accent underline" download="matter-import-result.csv" href={report}>
           Download the result
         </a>
       )}
