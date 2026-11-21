@@ -9,6 +9,7 @@ import {
   PatchCellBody,
   PatchColumnBody,
   PatchTableBody,
+  PutSyncBody,
   parseSort,
   ReorderColumnsBody,
   RerunCellBody,
@@ -26,6 +27,7 @@ import type { Limiter } from "../auth/limiter.js";
 import type { Cells } from "./cells.js";
 import type { Exports } from "./export.js";
 import type { Runner } from "./runner.js";
+import type { TableSync } from "./sync.js";
 import type { Failure, Result, Tables } from "./tables.js";
 
 type Env = { Variables: { principal: Principal } };
@@ -35,6 +37,7 @@ export interface TableHttpOptions {
   cells: Cells;
   exports: Exports;
   runner: Runner;
+  sync: TableSync;
   clientOf: (c: Context) => Client;
   /** The same budget of model calls as thread questions and playbook drafting. */
   asks?: Limiter;
@@ -46,6 +49,10 @@ const STATUS: Record<TableErrorCode, 400 | 403 | 404 | 409 | 502> = {
   FORBIDDEN: 403,
   COLUMN_CYCLE: 409,
   COLUMN_REFERENCED: 409,
+  SYNC_ENABLED: 409,
+  SYNC_DISABLED: 409,
+  SYNC_UNAVAILABLE: 409,
+  SOURCE_REMOVED: 409,
   SOURCE_LIMIT: 409,
   SOURCE_MISMATCH: 400,
   SOURCE_MIXED: 400,
@@ -101,7 +108,15 @@ const offsetOf = (cursor: string | undefined) => {
   return Number.isInteger(n) && n >= 0 ? n : null;
 };
 
-export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: TableHttpOptions) {
+export function tableHttp({
+  tables,
+  cells,
+  exports,
+  runner,
+  sync,
+  clientOf,
+  asks,
+}: TableHttpOptions) {
   const app = new Hono<Env>();
   const limit = bodyLimit({ maxSize: 1024 * 1024, onError: (c) => invalid(c) });
   const p = (c: Context<Env>) => c.get("principal");
@@ -315,6 +330,20 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
       202,
     );
   });
+
+  app.get("/review-tables/:id/sync", async (c) =>
+    send(c, await sync.status(p(c), c.req.param("id"))),
+  );
+
+  app.put("/review-tables/:id/sync", limit, async (c) => {
+    const parsed = await body(c, PutSyncBody);
+    if (!parsed) return invalid(c, "Check the sync mode and folders.");
+    return send(c, await sync.configure(p(c), c.req.param("id"), parsed, clientOf(c)));
+  });
+
+  app.post("/review-tables/:id/sync/run", async (c) =>
+    send(c, await sync.run(p(c), c.req.param("id"), clientOf(c))),
+  );
 
   app.post("/review-tables/:id/export", limit, async (c) => {
     const parsed = await body(c, ExportBody);

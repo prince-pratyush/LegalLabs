@@ -14,6 +14,7 @@ import {
   type RowSort,
   RT_LIMITS,
   Settings,
+  type SyncMode,
   type TableErrorCode,
 } from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
@@ -52,6 +53,10 @@ export interface TableRow {
   folder_ids: string[] | null;
   thread_id: string | null;
   matter_id: string | null;
+  sync_mode: SyncMode;
+  sync_folder_ids: string[] | null;
+  sync_notify: boolean;
+  last_synced_at: Date | null;
   instructions: string;
   settings: Record<string, unknown>;
   stats: Record<string, unknown>;
@@ -183,6 +188,9 @@ export async function rowsJson(
     flag_color: string | null;
     locked: boolean;
     restricted: boolean;
+    source_removed: boolean;
+    version_no: number | null;
+    newer_version: boolean;
   }[],
 ): Promise<Row[]> {
   const ids = [...new Set(rows.flatMap((r) => r.document_ids))];
@@ -209,31 +217,51 @@ export async function rowsJson(
     documents: r.document_ids.map((id) => {
       const d = byId.get(id);
       return d
-        ? { id, name: d.name, status: d.status, version_no: d.version_no }
+        ? { id, name: d.name, status: d.status, version_no: r.version_no ?? d.version_no }
         : { id, name: "Restricted document", status: "restricted", version_no: 0 };
     }),
     restricted: r.restricted,
     flag_color: r.flag_color as Row["flag_color"],
     locked: r.locked,
+    source_removed: r.source_removed,
+    version_no: r.version_no,
+    newer_version: r.newer_version,
   }));
 }
 
+/** What sync records on a row it adds: the version it read, and that its columns are due. */
+export interface RowPins {
+  pins: readonly { versionId: string; versionNo: number }[];
+  syncPending: boolean;
+}
+
 /** Rows for documents, after any already in the table; every live column gets a pending cell. */
-async function insertRows(
+export async function insertRows(
   db: Db,
   principal: Principal,
   tableId: string,
   documentIds: readonly string[],
+  options?: RowPins,
 ): Promise<string[]> {
   if (documentIds.length === 0) return [];
   const { rows } = await db.query<{ id: string }>(
-    `insert into work.rt_row (workspace_id, table_id, ordinal, document_ids)
+    `insert into work.rt_row
+       (workspace_id, table_id, ordinal, document_ids, version_id, version_no, sync_pending)
      select $1, $2,
             (select coalesce(max(ordinal) + 1, 0) from work.rt_row where table_id = $2) + u.o - 1,
-            array[u.id]
+            array[u.id], v.version_id, v.version_no, $6
        from unnest($3::uuid[]) with ordinality u(id, o)
+       left join unnest($4::uuid[], $5::int[]) with ordinality v(version_id, version_no, o)
+         on v.o = u.o
      returning id`,
-    [principal.workspaceId, tableId, documentIds],
+    [
+      principal.workspaceId,
+      tableId,
+      documentIds,
+      options?.pins.map((p) => p.versionId) ?? [],
+      options?.pins.map((p) => p.versionNo) ?? [],
+      options?.syncPending ?? false,
+    ],
   );
   const rowIds = rows.map((r) => r.id);
   await db.query(
@@ -565,6 +593,9 @@ export function createTables(
 
     addRows(principal: Principal, tableId: string, body: AddRowsBody, client: Client) {
       return withTable(principal, tableId, async (db, table) => {
+        if (table.sync_mode !== "off") {
+          return fail("SYNC_ENABLED", "Rows are added by sync. Turn sync off to add them by hand.");
+        }
         const wanted = [...new Set(body.document_ids)];
         const { rows: docs } = await db.query<{ id: string }>(
           `select d.id from content.document d
@@ -599,8 +630,12 @@ export function createTables(
           flag_color: string | null;
           locked: boolean;
           restricted: boolean;
+          source_removed: boolean;
+          version_no: number | null;
+          newer_version: boolean;
         }>(
-          `select id, ordinal, document_ids, flag_color, locked, false restricted
+          `select id, ordinal, document_ids, flag_color, locked, false restricted, source_removed,
+                  version_no, false newer_version
              from work.rt_row where id = any($1::uuid[]) order by ordinal`,
           [rowIds],
         );

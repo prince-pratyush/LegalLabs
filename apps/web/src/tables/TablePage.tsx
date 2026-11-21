@@ -33,13 +33,16 @@ import {
   RunDialog,
   SidePanel,
   Skeleton,
+  SyncIndicator,
+  SyncPanel,
   toast,
 } from "@legallabs/ui";
-import { ArrowLeft, Blocks, Download, FilterX, Play } from "lucide-react";
+import { ArrowLeft, Blocks, Download, FilterX, Play, RefreshCw } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { anchorOf, openCitation } from "../viewer/open-citation.js";
 import { type CellDetail, download, messageOf, tableApi } from "./api.js";
 import { usePageDialogs } from "./use-page-dialogs.js";
+import { useSync } from "./use-sync.js";
 import { useTableData } from "./use-table-data.js";
 
 const FLAG_CYCLE: (FlagColor | null)[] = [
@@ -123,6 +126,13 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
     sort,
   );
   const rowCount = table?.stats.rows ?? rows.length;
+  const {
+    sync,
+    folders,
+    loadFolders,
+    save: saveSync,
+    syncNow,
+  } = useSync(table, () => void refresh());
 
   const activeCell = active ? cells.get(cellKey(active.rowId, active.columnId)) : undefined;
   const activeColumn = columns.find((c) => c.id === active?.columnId);
@@ -226,8 +236,15 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
   const labelsOf = (ids: readonly string[]) =>
     ids.flatMap((id) => columns.find((c) => c.id === id)?.label ?? []);
 
+  const openSync = () => {
+    setPanel({ kind: "sync" });
+    loadFolders().catch((err) => toast.error(messageOf(err)));
+  };
+
   const panelColumn =
-    panel && panel.kind !== "builder" ? columns.find((c) => c.id === panel.columnId) : undefined;
+    panel && (panel.kind === "filter" || panel.kind === "prompt")
+      ? columns.find((c) => c.id === panel.columnId)
+      : undefined;
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: Esc closes the drawer from anywhere on the page
@@ -273,6 +290,15 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
             <FilterX aria-hidden />
             Clear filters
           </Button>
+        )}
+        {sync && (
+          <>
+            <SyncIndicator sync={sync} onClick={openSync} />
+            <Button variant="secondary" onClick={openSync}>
+              <RefreshCw aria-hidden />
+              Sync
+            </Button>
+          </>
         )}
         <Button variant="secondary" onClick={() => setExporting(true)}>
           <Download aria-hidden />
@@ -395,6 +421,27 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
                 await refresh();
               }
             }}
+          />
+        )}
+        {panel?.kind === "sync" && sync && (
+          <SyncPanel
+            sync={sync}
+            folders={folders}
+            onSave={async (settings) => {
+              try {
+                await saveSync(settings);
+              } catch (err) {
+                throw new Error(messageOf(err));
+              }
+            }}
+            onSyncNow={async () => {
+              try {
+                await syncNow();
+              } catch (err) {
+                throw new Error(messageOf(err));
+              }
+            }}
+            onClose={() => setPanel(null)}
           />
         )}
         {panel?.kind === "filter" && panelColumn && (

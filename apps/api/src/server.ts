@@ -32,6 +32,9 @@ import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
+import { createSpaceModule } from "./spaces/module.js";
+import { spaceNotifier } from "./spaces/notify.js";
+import { scriptedTaskRuns } from "./spaces/ports.js";
 import { createReviewTables } from "./tables/module.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
@@ -157,6 +160,19 @@ const threadService = createThreads(pool, {
 registerThreadActions(notifications.actions, threadService);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
+const tables = createReviewTables(pool, {
+  gateway,
+  documents,
+  log,
+  notifier,
+  syncLog: (line) => console.log(line),
+  ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+});
+// Tables over a vault with sync on pick up new files on this schedule, each as its owner.
+tables.sync.start();
+process.once("SIGTERM", () => void tables.sync.stop());
+process.once("SIGINT", () => void tables.sync.stop());
+
 const app = createApp({
   auth: createAuth(pool),
   documents,
@@ -187,12 +203,13 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
-  tables: createReviewTables(pool, {
-    gateway,
-    documents,
-    log,
-    ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+  // Tasks given to the assistant or an agent run on the scripted stand-in until the run engine
+  // implements `TaskRunPort`; it calls no model.
+  spaces: createSpaceModule(pool, {
+    runs: scriptedTaskRuns(),
+    notifier: spaceNotifier(notifier),
   }),
+  tables,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {

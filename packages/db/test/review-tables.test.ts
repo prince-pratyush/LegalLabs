@@ -102,4 +102,58 @@ describe("review tables", () => {
       ).toMatch(/COLUMN_REFERENCE_UNKNOWN/);
     });
   });
+
+  it("lets only a vault table sync, and only the worker list the tables due", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { tableId } = s.reviewTables.acme;
+      // Fixture tables are over uploads, which can't sync.
+      expect(
+        await tx.error("update work.review_table set sync_mode = 'entire_vault' where id = $1", [
+          tableId,
+        ]),
+      ).toMatch(/review_table_check/);
+      const vault = await tx.one<{ id: string }>(
+        `insert into content.vault (workspace_id, owner_id, name) values ($1, $2, 'V') returning id`,
+        [s.acme, s.ana],
+      );
+      const synced = await tx.one<{ id: string }>(
+        `insert into work.review_table
+           (workspace_id, owner_id, name, source_kind, vault_id, sync_mode)
+         values ($1, $2, 'Synced', 'vault', $3, 'entire_vault') returning id`,
+        [s.acme, s.ana, vault.id],
+      );
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error("select * from work.rt_sync_due()")).toMatch(/permission denied/);
+      await tx.asOwner();
+      await tx.asWorker();
+      const due = await tx.rows<{ table_id: string; owner_id: string }>(
+        "select table_id, owner_id from work.rt_sync_due()",
+      );
+      expect(due.map((d) => d.table_id)).toContain(synced.id);
+      expect(due.find((d) => d.table_id === synced.id)?.owner_id).toBe(s.ana);
+      // Only the tables with sync on are listed.
+      expect(due.map((d) => d.table_id)).not.toContain(tableId);
+    });
+  });
+
+  it("lets the owner flag a row whose file is out of sight", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { rowId, tableId } = s.reviewTables.acme;
+      await tx.as(s.ana, s.acme);
+      // The document drops out of the owner's view (here, moved to the bin).
+      await tx.asOwner();
+      await tx.rows(
+        "update content.document set deleted_at = now(), deleted_reason = 'user' where id = any(select unnest(document_ids) from work.rt_row where id = $1)",
+        [rowId],
+      );
+      await tx.as(s.ana, s.acme);
+      const flagged = await tx.rows(
+        "update work.rt_row set source_removed = true where id = $1 and table_id = $2 returning id",
+        [rowId, tableId],
+      );
+      expect(flagged).toHaveLength(1);
+    });
+  });
 });

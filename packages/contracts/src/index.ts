@@ -145,6 +145,7 @@ export {
 export { RetrievalScope } from "./retrieval.js";
 export * from "./review-table.js";
 export * from "./review-table-references.js";
+export * from "./review-table-sync.js";
 export * from "./review-table-values.js";
 export {
   CitationCounts,
@@ -159,6 +160,35 @@ export {
   RunKind,
   RunStatus,
 } from "./run.js";
+export {
+  Assignee,
+  CommentInput,
+  MemberInput,
+  PhaseInput,
+  PhasePatch,
+  ResourceInput,
+  renderSpaceContext,
+  type Skipped as SpaceSkipped,
+  SPACE_LIMITS,
+  SpaceContext,
+  SpaceContextInput,
+  SpaceCreate,
+  SpaceCustomisation,
+  SpaceKind,
+  SpaceLevel,
+  SpacePatch,
+  SpaceResourceType,
+  SpaceRole,
+  SpaceTemplateDefinition,
+  TaskCreate,
+  TaskOutput,
+  TaskPatch,
+  type TaskRunPort,
+  type TaskRunStart,
+  type TaskRunState,
+  TaskStatus,
+  TemplateInput,
+} from "./space.js";
 export { STARTERS, StarterPlaybook, starterPlaybook } from "./starters.js";
 export {
   type AuthorityPassage,

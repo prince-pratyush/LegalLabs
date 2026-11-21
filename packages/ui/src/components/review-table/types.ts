@@ -45,6 +45,12 @@ export interface GridRow {
   id: string;
   documents: { id: string; name: string }[];
   restricted: boolean;
+  /** The file has left the vault. */
+  source_removed?: boolean;
+  /** The version sync read, shown as a tag when there is more than one. */
+  version_no?: number | null;
+  /** A later version of the file has a row of its own. */
+  newer_version?: boolean;
 }
 
 /** One key per cell, so a selection survives paging and sorting. */
