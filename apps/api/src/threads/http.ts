@@ -79,6 +79,8 @@ const askBody = z.object({
   model: z.string().min(1).max(200).optional(),
   response_mode: ResponseMode.optional(),
   deep_analysis: z.boolean().optional(),
+  use_memory: z.boolean().optional(),
+  writing_style_id: z.uuid().optional(),
 });
 
 const planEditBody = z.object({ instruction: z.string().trim().min(1).max(4000).refine(noNul) });
@@ -245,6 +247,8 @@ export function threadHttp(options: ThreadHttpOptions) {
         ...(body.model ? { model: body.model } : {}),
         ...(body.response_mode ? { responseMode: body.response_mode } : {}),
         ...(body.deep_analysis ? { deepAnalysis: true } : {}),
+        ...(body.use_memory !== undefined ? { useMemory: body.use_memory } : {}),
+        ...(body.writing_style_id ? { writingStyleId: body.writing_style_id } : {}),
       },
       clientOf(c),
     );

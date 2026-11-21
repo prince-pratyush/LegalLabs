@@ -169,10 +169,3 @@ export function templateOrder(columns: readonly ColumnDef[]): ColumnDef[] | null
   }
   return ordered;
 }
-
-export const TemplateErrorCode = z.enum([
-  "TEMPLATE_NOT_FOUND",
-  "TEMPLATE_BAD_TRANSITION",
-  "TEMPLATE_INVALID",
-]);
-export type TemplateErrorCode = z.infer<typeof TemplateErrorCode>;
