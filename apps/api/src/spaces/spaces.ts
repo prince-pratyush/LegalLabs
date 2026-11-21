@@ -872,9 +872,9 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
       return kit.attempt(p, async (db, notify) => {
         // A Space whose matter walls the caller is not in the directory, so it looks absent.
         const listed = isId(id)
-          ? await one<{ locked: boolean }>(
+          ? await one<{ locked: boolean; name: string }>(
               db,
-              "select locked from work.space_directory() where id = $1",
+              "select locked, name from work.space_directory() where id = $1",
               [id],
             )
           : null;
@@ -894,7 +894,7 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
           kind: "space.access_requested",
           userIds: admins.rows.map((a) => a.id),
           spaceId: id,
-          label: "access request",
+          title: listed.name,
         });
         const row = await one<RequestRow>(db, `${REQUEST_SQL} where r.id = $1`, [added?.id]);
         if (!row) throw refusal("NOT_FOUND");
@@ -952,11 +952,17 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
           id,
           { user_id: row.user_id },
         );
+        const spaceName = await one<{ name: string }>(
+          db,
+          "select name from work.space where id = $1",
+          [id],
+        );
         notify({
           kind: "space.access_decided",
           userIds: [row.user_id],
           spaceId: id,
-          label: decision.accept ? "accepted" : "denied",
+          title: spaceName?.name ?? "a Space",
+          accepted: decision.accept,
         });
         const next = await one<RequestRow>(db, `${REQUEST_SQL} where r.id = $1`, [requestId]);
         if (!next) throw refusal("NOT_FOUND");

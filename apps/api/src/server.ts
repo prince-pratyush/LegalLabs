@@ -29,6 +29,7 @@ import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
 import { createSpaceModule } from "./spaces/module.js";
+import { spaceNotifier } from "./spaces/notify.js";
 import { scriptedTaskRuns } from "./spaces/ports.js";
 import { createReviewTables } from "./tables/module.js";
 import { createThreads } from "./threads/threads.js";
@@ -160,7 +161,10 @@ const app = createApp({
   library: createLibrary(pool),
   // Tasks given to the assistant or an agent run on the scripted stand-in until the run engine
   // implements `TaskRunPort`; it calls no model.
-  spaces: createSpaceModule(pool, { runs: scriptedTaskRuns() }),
+  spaces: createSpaceModule(pool, {
+    runs: scriptedTaskRuns(),
+    notifier: spaceNotifier(notifier),
+  }),
   tables: createReviewTables(pool, {
     gateway,
     documents,
