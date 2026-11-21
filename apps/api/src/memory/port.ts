@@ -118,7 +118,9 @@ export function createPersonalisation(
           );
           const permitted = access.rows[0]?.ok === true;
           const member = await db.query<{ ok: boolean }>("select memory.is_member() as ok");
-          const style = member.rows[0]?.ok ? await styleFor(db, p.userId, input.writingStyleId) : null;
+          const style = member.rows[0]?.ok
+            ? await styleFor(db, p.userId, input.writingStyleId)
+            : null;
 
           // "Remember that ..." makes a memory now, so this very answer can follow it.
           const created: { id: string; text: string }[] = [];

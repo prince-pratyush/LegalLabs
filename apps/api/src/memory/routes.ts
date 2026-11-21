@@ -107,8 +107,11 @@ export function memoryRoutes(
     const failure = MEMORY_FAILURES[reason];
     return c.json({ code: reason, message: failure.message }, failure.status);
   };
-  const respond = <T extends object>(c: Context<Env>, result: Result<T>, status: 200 | 201 = 200) =>
-    result.ok ? c.json(result.value, status) : fail(c, result.reason);
+  const respond = <T extends object>(
+    c: Context<Env>,
+    result: Result<T>,
+    status: 200 | 201 = 200,
+  ) => (result.ok ? c.json(result.value, status) : fail(c, result.reason));
   const noContent = (c: Context<Env>, result: Result<unknown>) =>
     result.ok ? c.body(null, 204) : fail(c, result.reason);
 
@@ -146,10 +149,7 @@ export function memoryRoutes(
     const cid = idParam(c);
     const body = AcceptCandidate.safeParse(await c.req.json().catch(() => ({})));
     if (!cid || !body.success) return invalid(c);
-    return respond(
-      c,
-      await memories.accept(c.get("principal"), cid, body.data.text, clientOf(c)),
-    );
+    return respond(c, await memories.accept(c.get("principal"), cid, body.data.text, clientOf(c)));
   });
   app.post("/memory/candidates/:id/dismiss", async (c) => {
     const cid = idParam(c);
@@ -254,20 +254,13 @@ export function memoryRoutes(
   app.post("/memory", small, async (c) => {
     const body = MemoryInput.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return invalid(c);
-    return respond(
-      c,
-      await memories.create(c.get("principal"), body.data.text, clientOf(c)),
-      201,
-    );
+    return respond(c, await memories.create(c.get("principal"), body.data.text, clientOf(c)), 201);
   });
   app.patch("/memory/:id", small, async (c) => {
     const mid = idParam(c);
     const body = MemoryInput.safeParse(await c.req.json().catch(() => null));
     if (!mid || !body.success) return invalid(c);
-    return respond(
-      c,
-      await memories.update(c.get("principal"), mid, body.data.text, clientOf(c)),
-    );
+    return respond(c, await memories.update(c.get("principal"), mid, body.data.text, clientOf(c)));
   });
   app.delete("/memory/:id", async (c) => {
     const mid = idParam(c);
