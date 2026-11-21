@@ -84,6 +84,11 @@ create index document_workflow_idx on content.document (workflow_id)
 -- A workflow run's form answers, kept on the run so a retried plan reads the same ones.
 alter table work.run
   add column inputs jsonb check (inputs is null or jsonb_typeof(inputs) = 'object');
+-- Each workflow block is one step of kind "block" (spec §4.5, §4.10).
+alter table work.run_step
+  drop constraint run_step_kind_check,
+  add constraint run_step_kind_check check (kind in ('plan', 'retrieve', 'tool', 'generate',
+    'verify', 'ask_user', 'draft', 'block'));
 
 alter table work.workflow enable row level security;
 alter table work.workflow force row level security;
