@@ -203,22 +203,13 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
-<<<<<<< HEAD
-  tables,
-=======
   // Tasks given to the assistant or an agent run on the scripted stand-in until the run engine
   // implements `TaskRunPort`; it calls no model.
   spaces: createSpaceModule(pool, {
     runs: scriptedTaskRuns(),
     notifier: spaceNotifier(notifier),
   }),
-  tables: createReviewTables(pool, {
-    gateway,
-    documents,
-    log,
-    ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
-  }),
->>>>>>> origin/main
+  tables,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {
