@@ -33,6 +33,7 @@ import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
 import { createRetentionJob } from "./vaults/retention.js";
 import { createVaults } from "./vaults/vaults.js";
+import { createWorkflows } from "./workflows/workflows.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -119,11 +120,23 @@ const knowledge = knowledgePort(knowledgeStore);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
 const agentRuns = createAgentRuns(pool, {
-  engine: await runEngineFromEnv(pool, runHandlers(pool)),
+  engine: await runEngineFromEnv(pool, runHandlers(pool, { gateway, documents })),
 });
 
 const app = createApp({
   agentRuns,
+  workflows: createWorkflows(pool, {
+    documents,
+    agentRuns,
+    // Explicit models on a block must be ones this install can actually route to.
+    allowedModels: () => [
+      ...new Set(
+        (["synthesize", "read_extract", "draft_edit"] as const).flatMap((t) =>
+          gateway.models(t).map((m) => m.id),
+        ),
+      ),
+    ],
+  }),
   auth: createAuth(pool),
   documents,
   vaults: createVaults(pool, { documents, store }),

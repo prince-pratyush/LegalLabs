@@ -30,6 +30,8 @@ import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
+import { workflowHttp } from "./workflows/http.js";
+import type { Workflows } from "./workflows/workflows.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -83,6 +85,8 @@ export interface AppOptions {
   reviews?: Reviews;
   /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
   agentRuns?: AgentRuns;
+  /** The Workflow Builder; left out, its endpoints are not mounted. */
+  workflows?: Workflows;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -109,6 +113,7 @@ export function createApp({
   playbooks,
   reviews,
   agentRuns,
+  workflows,
   clientIp,
   now = Date.now,
   webRoot,
@@ -248,6 +253,7 @@ export function createApp({
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
+  if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {

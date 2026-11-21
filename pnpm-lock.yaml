@@ -217,6 +217,9 @@ importers:
       '@legallabs/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@legallabs/workflows':
+        specifier: workspace:*
+        version: link:../../packages/workflows
       '@node-rs/argon2':
         specifier: 2.2.2
         version: 2.2.2

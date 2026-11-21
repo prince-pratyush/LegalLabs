@@ -29,6 +29,7 @@
     "@legallabs/review": "workspace:*",
     "@legallabs/runs": "workspace:*",
     "@legallabs/storage": "workspace:*",
+    "@legallabs/workflows": "workspace:*",
     "fflate": "0.8.3",
     "@node-rs/argon2": "2.2.2",
     "hono": "4.13.17",

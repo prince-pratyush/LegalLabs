@@ -16,6 +16,8 @@ export interface StartRun {
   title: string;
   /** What the person typed or filled in; stored as the thread's first message. */
   inputs?: string;
+  /** A workflow's filled intake form, by input label; the run reads it back at each step. */
+  run_inputs?: Record<string, unknown>;
   thread_id?: string;
   matter_id?: string;
   space_id?: string;
@@ -191,8 +193,8 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
         const { rows } = await db.query<{ id: string }>(
           `insert into work.run (workspace_id, thread_id, owner_id, kind, status, question_id,
                                  subject_id, agent_version_id, workflow_version_id, task_id,
-                                 space_id, matter_id, test_mode, interactive, path)
-           values ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                                 space_id, matter_id, test_mode, interactive, path, inputs)
+           values ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
            returning id`,
           [
             principal.workspaceId,
@@ -209,6 +211,7 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
             req.test_mode ?? false,
             interactive,
             req.path,
+            req.run_inputs ? JSON.stringify(req.run_inputs) : null,
           ],
         );
         const runId = rows[0]?.id as string;
