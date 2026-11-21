@@ -46,9 +46,9 @@ const Columns = z
   .max(RT_LIMITS.columns)
   .refine((list) => new Set(list.map((c) => c.key)).size === list.length, "Keys repeat");
 
-const Tags = z.array(text(TEMPLATE_LIMITS.tagChars).pipe(z.string().trim().min(1))).max(
-  TEMPLATE_LIMITS.tags,
-);
+const Tags = z
+  .array(text(TEMPLATE_LIMITS.tagChars).pipe(z.string().trim().min(1)))
+  .max(TEMPLATE_LIMITS.tags);
 
 export const TemplateAccess = z.enum(["owner", "edit", "use"]);
 export type TemplateAccess = z.infer<typeof TemplateAccess>;
@@ -123,9 +123,7 @@ export const TestTemplateBody = z
   .strict();
 export type TestTemplateBody = z.infer<typeof TestTemplateBody>;
 
-export const DecideTemplateBody = z
-  .object({ note: text(1_000).optional() })
-  .strict();
+export const DecideTemplateBody = z.object({ note: text(1_000).optional() }).strict();
 export type DecideTemplateBody = z.infer<typeof DecideTemplateBody>;
 
 const KEY_MENTION = /@\{([a-z][a-z0-9_]{0,19})\}/g;
@@ -135,9 +133,8 @@ export const columnKeys = (count: number) => Array.from({ length: count }, (_, i
 
 /** A prompt with each `@{column_id}` written as `@{key}`, so it survives being copied. */
 export function templatizePrompt(prompt: string, keyOfId: ReadonlyMap<string, string>): string {
-  return prompt.replace(
-    /@\{([0-9a-fA-F-]{36})\}/g,
-    (whole, id: string) => (keyOfId.has(id.toLowerCase()) ? `@{${keyOfId.get(id.toLowerCase())}}` : whole),
+  return prompt.replace(/@\{([0-9a-fA-F-]{36})\}/g, (whole, id: string) =>
+    keyOfId.has(id.toLowerCase()) ? `@{${keyOfId.get(id.toLowerCase())}}` : whole,
   );
 }
 
@@ -172,10 +169,3 @@ export function templateOrder(columns: readonly ColumnDef[]): ColumnDef[] | null
   }
   return ordered;
 }
-
-export const TemplateErrorCode = z.enum([
-  "TEMPLATE_NOT_FOUND",
-  "TEMPLATE_BAD_TRANSITION",
-  "TEMPLATE_INVALID",
-]);
-export type TemplateErrorCode = z.infer<typeof TemplateErrorCode>;
