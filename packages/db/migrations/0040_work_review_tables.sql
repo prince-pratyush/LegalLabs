@@ -132,7 +132,7 @@ create table work.rt_star (
   foreign key (workspace_id, user_id) references core."user" (workspace_id, id) on delete cascade
 );
 
--- The PRD caps columns per table; checked here so no client can skip it.
+-- Capped at 500 columns per table; checked here so no client can skip it.
 create function work.rt_column_limit() returns trigger
 language plpgsql set search_path = '' as $$
 begin
