@@ -3,8 +3,10 @@ import {
   AdminNotificationSettingsPatch,
   CATEGORY_LABELS,
   EmailCategory,
+  isRelativeLink,
   NOTIFICATION_KINDS,
   NotificationActBody,
+  NotificationActResult,
   NotificationCategory,
   NotificationPatch,
   NotificationQuery,
@@ -98,5 +100,29 @@ describe("notification requests", () => {
         include_content: true,
       }).success,
     ).toBe(true);
+  });
+
+  it("allows only in-app links", () => {
+    for (const ok of ["#/t/abc", "#/", "/d/123?x=1", "#/settings/memory"]) {
+      expect(isRelativeLink(ok), ok).toBe(true);
+    }
+    for (const bad of [
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "https://evil.example/x",
+      "//evil.example",
+      "/\\evil.example",
+      "#javascript:alert(1)",
+      "#/a b",
+      "",
+    ]) {
+      expect(isRelativeLink(bad), bad).toBe(false);
+    }
+    expect(
+      NotificationActResult.safeParse({ result: "redirect", url: "javascript:x" }).success,
+    ).toBe(false);
+    expect(NotificationActResult.safeParse({ result: "redirect", url: "#/t/1" }).success).toBe(
+      true,
+    );
   });
 });
