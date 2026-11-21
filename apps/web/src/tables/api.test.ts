@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "../api.js";
-import { rowsSearch, tableApi } from "./api.js";
+import { ApiError, FALLBACK } from "../api.js";
+import { messageOf, rowsSearch, tableApi } from "./api.js";
 import { parseTableRoute, tableHash } from "./route.js";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -61,6 +61,20 @@ describe("tableApi", () => {
     const error = await tableApi.patchCell(ID, ID, { verified: true }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).message).toBe("That cell is locked. Unlock it to change it.");
+  });
+
+  it("states limits from the shared contract", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ code: "EXPORT_TOO_LARGE" }), { status: 409 }),
+        ),
+    );
+    const error = await tableApi.cell(ID, ID).catch((e: unknown) => e);
+    expect((error as ApiError).message).toMatch(/up to 2,000 cells/);
+    expect(messageOf(new Error("boom"))).toBe(FALLBACK);
   });
 
   it("reads the export filename from the response", async () => {

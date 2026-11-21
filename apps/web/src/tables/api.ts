@@ -18,21 +18,20 @@ import type {
   RowSort,
   RunColumnBody,
 } from "@legallabs/contracts";
-import { ApiError } from "../api.js";
+import { RT_LIMITS } from "@legallabs/contracts";
+import { ApiError, FALLBACK, messageOf } from "../api.js";
 
-const FALLBACK = "Something went wrong. Try again.";
-
-export const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
+export { messageOf };
 
 // Codes the reviewer can act on get plain words; the rest use the server's message.
 const MESSAGES: Record<string, string> = {
   CELL_LOCKED: "That cell is locked. Unlock it to change it.",
   EXPORT_DISABLED_BY_SOURCE: "The source vault doesn't allow downloads, so this can't be exported.",
-  COLUMN_RUNNING: "Three columns are already running. Wait for one to finish.",
-  COLUMN_LIMIT: "This table already has 500 columns.",
+  COLUMN_RUNNING: "This column is already running. Wait for it to finish or stop it.",
+  COLUMN_LIMIT: `This table already has ${RT_LIMITS.columns} columns.`,
+  SOURCE_LIMIT: `A table holds up to ${RT_LIMITS.vaultDocuments.toLocaleString("en")} vault files or ${RT_LIMITS.uploads} uploads. Choose folders or fewer files.`,
   MODEL_UNAVAILABLE: "No model is available just now. Try again shortly.",
-  EXPORT_TOO_LARGE:
-    "This table is too big to export at once. Filter the rows or pick fewer columns, then export again.",
+  EXPORT_TOO_LARGE: `Exports hold up to ${RT_LIMITS.syncExportCells.toLocaleString("en")} cells. Filter the rows or pick fewer columns, then export again.`,
 };
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
