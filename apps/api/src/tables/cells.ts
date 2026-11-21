@@ -545,6 +545,12 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
           const byColumn = new Map<string, string[]>();
           for (const r of rows)
             byColumn.set(r.column_id, [...(byColumn.get(r.column_id) ?? []), r.row_id]);
+          if (rows.length > 0) {
+            await audit(db, principal, client, "table.cell.rerun", tableId, {
+              cells: rows.length,
+              bulk: true,
+            });
+          }
           return { ok: true, value: { kind: "rerun", table, columns, byColumn } };
         }
         const [field, value, action] = ((): [string, string, string] => {

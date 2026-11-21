@@ -652,4 +652,19 @@ describe("review tables API", () => {
     const fields = (await history(first.id)).map((h: { field: string; new: unknown }) => h.field);
     expect(fields).toContain("status");
   });
+
+  it("audits a bulk rerun as a cell rerun", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    await runAndWait(s, date);
+    const ids = (await rows(s)).cells.map((c: { id: string }) => c.id);
+    const res = await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/cells/bulk`, {
+      cell_ids: ids,
+      op: "rerun",
+    });
+    expect(res.body.run_ids).toHaveLength(1);
+    await s.h.tables.runner.idle();
+    const trail = await auditTrail(pool, s.m.workspaceId);
+    expect(trail.some((e) => e.action === "table.cell.rerun" && e.details.cells === 2)).toBe(true);
+  });
 });
