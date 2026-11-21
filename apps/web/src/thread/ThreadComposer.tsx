@@ -1,6 +1,7 @@
 import type { SourceSelection } from "@legallabs/contracts";
 import { type Attachment, Composer, type Mentionable, type ModelOption } from "@legallabs/ui";
 import { useEffect, useMemo, useState } from "react";
+import { AgentNudge } from "../agents/nudge.js";
 import {
   type AskInput,
   api,
@@ -162,6 +163,7 @@ export function ThreadComposer({
 
   return (
     <div className="grid gap-1">
+      <AgentNudge text={draft} threadKey={thread?.id ?? "new"} />
       <Composer
         value={draft}
         onChange={setDraft}

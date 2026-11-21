@@ -31,6 +31,30 @@ export interface LiveRun {
   /** Set by `done`: the saved answer can now be fetched. */
   messageId: string | null;
   finished: boolean;
+  /** Each assistant message's text, in order; agent builders say several things in one run. */
+  messages: { id: string; text: string }[];
+  /** An agent's question waiting for an answer; gone once the run moves on. */
+  question: LiveQuestion | null;
+  outputs: RunOutput[];
+  /** Test mode: the newest draft version the run wrote. */
+  draftVersionId: string | null;
+  /** Why the run stopped or paused, when the server says. */
+  reason: string | null;
+}
+
+export interface LiveQuestion {
+  stepId: string;
+  text: string;
+  options: { id: string; label: string }[];
+  allowText: boolean;
+  allowSkip: boolean;
+}
+
+export interface RunOutput {
+  kind: "message" | "file" | "table";
+  messageId: string | null;
+  artifactId: string | null;
+  title: string | null;
 }
 
 /** `known` is what the thread said about the run, so a reload shows a waiting plan at once. */
@@ -49,6 +73,11 @@ export const startRun = (
   error: null,
   messageId: null,
   finished: false,
+  messages: [],
+  question: null,
+  outputs: [],
+  draftVersionId: null,
+  reason: null,
 });
 
 function citationOf(event: CitationEvent, at: number): LiveCitation {
@@ -92,11 +121,46 @@ export function reduceRun(run: LiveRun, event: RunEvent): LiveRun {
         ...run,
         status: event.status,
         finished: run.finished || FINISHED.includes(event.status),
+        // A question only stands while the run waits for its answer.
+        question: event.status === "awaiting_input" ? run.question : null,
+        reason: event.reason ?? null,
       };
     case "plan":
       return { ...run, plan: event.plan };
-    case "token":
-      return { ...run, text: run.text + event.delta };
+    case "token": {
+      const last = run.messages[run.messages.length - 1];
+      const messages =
+        last?.id === event.message_id
+          ? [...run.messages.slice(0, -1), { id: last.id, text: last.text + event.delta }]
+          : [...run.messages, { id: event.message_id, text: event.delta }];
+      return { ...run, text: run.text + event.delta, messages };
+    }
+    case "question":
+      return {
+        ...run,
+        question: {
+          stepId: event.step_id,
+          text: event.question.text,
+          options: event.question.options,
+          allowText: event.question.allow_text,
+          allowSkip: event.question.allow_skip,
+        },
+      };
+    case "output":
+      return {
+        ...run,
+        outputs: [
+          ...run.outputs,
+          {
+            kind: event.kind,
+            messageId: event.message_id ?? null,
+            artifactId: event.artifact_id ?? null,
+            title: event.title ?? null,
+          },
+        ],
+      };
+    case "draft_updated":
+      return { ...run, draftVersionId: event.draft_version_id };
     case "citation": {
       const next = citationOf(event.citation, run.text.length);
       return { ...run, citations: [...run.citations.filter((c) => c.n !== next.n), next] };
