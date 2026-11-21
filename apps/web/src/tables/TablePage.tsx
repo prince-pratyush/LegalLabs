@@ -31,13 +31,22 @@ import {
   ReviewGrid,
   type RunChoice,
   RunDialog,
+  SaveTemplateDialog,
   SidePanel,
   Skeleton,
   SyncIndicator,
   SyncPanel,
   toast,
 } from "@legallabs/ui";
-import { ArrowLeft, Blocks, Download, FilterX, Play, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  Blocks,
+  Download,
+  FilterX,
+  LayoutTemplate,
+  Play,
+  RefreshCw,
+} from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { anchorOf, openCitation } from "../viewer/open-citation.js";
 import { type CellDetail, download, messageOf, tableApi } from "./api.js";
@@ -118,6 +127,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
   const { panel, setPanel, run, setRun, exporting, setExporting, adding, setAdding } =
     usePageDialogs();
   const [gridBox, gridHeight] = useHeight<HTMLDivElement>();
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const rowFilter = useMemo(() => toRowFilter(filters), [filters]);
   const { table, columns, rows, cells, loading, now, refresh, loadMore, putCell } = useTableData(
@@ -304,7 +314,25 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
           <Download aria-hidden />
           Export
         </Button>
+        <Button variant="secondary" onClick={() => setSavingTemplate(true)}>
+          <LayoutTemplate aria-hidden />
+          Save as template
+        </Button>
       </header>
+      <SaveTemplateDialog
+        open={savingTemplate}
+        onOpenChange={setSavingTemplate}
+        defaultName={table?.name ?? ""}
+        columnCount={columns.length}
+        onSave={async (request) => {
+          try {
+            await tableApi.saveTemplate(tableId, request);
+            toast.success("Template saved. Find it under Templates.");
+          } catch (err) {
+            throw new Error(messageOf(err));
+          }
+        }}
+      />
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div ref={gridBox} className="min-h-0 flex-1 p-2">

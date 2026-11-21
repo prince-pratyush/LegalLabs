@@ -10,8 +10,8 @@ const ID = "0190a000-0000-7000-8000-00000000000a";
 describe("table routes", () => {
   it("round-trips the list, a thread start and a table", () => {
     for (const route of [
-      { page: "list", threadId: null },
-      { page: "list", threadId: "t1" },
+      { page: "list", threadId: null, templateId: null },
+      { page: "list", threadId: "t1", templateId: null },
       { page: "table", tableId: ID },
     ] as const) {
       expect(parseTableRoute(tableHash(route))).toEqual(route);

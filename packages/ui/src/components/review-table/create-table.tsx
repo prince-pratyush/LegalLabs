@@ -18,7 +18,11 @@ export type CreateSource =
 export interface CreateRequest {
   name?: string;
   source: CreateSource;
+  /** Start with this template's columns, instructions and settings. */
+  template_id?: string;
 }
+
+const NO_TEMPLATE = "none";
 
 export interface VaultTree {
   folders: { id: string; name: string }[];
@@ -42,7 +46,12 @@ export function CreateTablePanel({
   onCreate,
   onClose,
   initialThreadId,
+  templates = [],
+  initialTemplateId,
 }: {
+  /** Templates the person can start from. */
+  templates?: { id: string; name: string }[];
+  initialTemplateId?: string;
   vaults: { id: string; name: string }[];
   threads: { id: string; title: string }[];
   loadTree: (vaultId: string) => Promise<VaultTree>;
@@ -52,6 +61,7 @@ export function CreateTablePanel({
 }) {
   const [mode, setMode] = useState<Mode>(initialThreadId ? "thread" : "vault");
   const [name, setName] = useState("");
+  const [templateId, setTemplateId] = useState(initialTemplateId ?? NO_TEMPLATE);
   const [vaultId, setVaultId] = useState("");
   const [tree, setTree] = useState<VaultTree | null>(null);
   const [folders, setFolders] = useState<Set<string>>(new Set());
@@ -105,7 +115,11 @@ export function CreateTablePanel({
     setBusy(true);
     setError(null);
     try {
-      await onCreate({ ...(name.trim() ? { name: name.trim() } : {}), source: picked });
+      await onCreate({
+        ...(name.trim() ? { name: name.trim() } : {}),
+        source: picked,
+        ...(templateId !== NO_TEMPLATE ? { template_id: templateId } : {}),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create the table. Try again.");
     } finally {
@@ -126,6 +140,26 @@ export function CreateTablePanel({
             />
           )}
         </Field>
+        {templates.length > 0 && (
+          <div className="grid gap-1">
+            <span id="template-label" className="text-ui font-medium">
+              Start from a template
+            </span>
+            <Select value={templateId} onValueChange={setTemplateId}>
+              <SelectTrigger aria-labelledby="template-label">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_TEMPLATE}>No template</SelectItem>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <p className="text-caption text-fg-muted">
           One table, one source: rows come from a single vault, upload or thread.
         </p>
