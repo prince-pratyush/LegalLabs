@@ -205,7 +205,7 @@ export function ScheduleForm({
             type="time"
             value={value.timeLocal}
             onChange={(e) => set({ timeLocal: e.target.value })}
-            className="w-32"
+            className="w-36"
           />
         </div>
         <div className="grid min-w-0 flex-1 gap-1">
