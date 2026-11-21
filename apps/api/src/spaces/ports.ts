@@ -26,6 +26,10 @@ export interface ScriptedOptions {
   firstLook?: (input: TaskRunStart) => TaskRunState;
   /** Makes `start` fail, to test that a refused start leaves the task unassigned. */
   failStart?: boolean;
+  /** Runs while `start` is in flight, to test changes that land during a slow start. */
+  duringStart?: () => Promise<void>;
+  /** Makes `answer` throw, as an engine that can't take it would. */
+  failAnswer?: boolean;
 }
 
 /**
@@ -51,6 +55,7 @@ export function scriptedTaskRuns(options: ScriptedOptions = {}): ScriptedTaskRun
     runs,
     async start(caller, input) {
       if (options.failStart) throw new Error("the run engine is down");
+      await options.duringStart?.();
       const run: ScriptedRun = {
         runId: randomUUID(),
         threadId: randomUUID(),
@@ -74,6 +79,7 @@ export function scriptedTaskRuns(options: ScriptedOptions = {}): ScriptedTaskRun
       }
     },
     async answer(_caller, runId, answer) {
+      if (options.failAnswer) throw new Error("the run engine is down");
       const run = find(runId);
       run.answers.push(answer);
       run.state = { status: "running", outputs: [] };

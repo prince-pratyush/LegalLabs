@@ -1,4 +1,5 @@
 import {
+  SPACE_LIMITS,
   type SpaceLevel,
   type SpaceSkipped,
   SpaceTemplateDefinition,
@@ -87,12 +88,18 @@ export async function applyTemplate(
   catalog: ResourceCatalog,
 ): Promise<SpaceSkipped[]> {
   const skipped: SpaceSkipped[] = [];
+  const target = await one<{ matter_id: string | null }>(
+    db,
+    "select matter_id from work.space where id = $1",
+    [spaceId],
+  );
   const start = await one<{ n: number }>(
     db,
     "select coalesce(max(ordinal), 0)::int as n from work.phase where space_id = $1",
     [spaceId],
   );
   let ordinal = start?.n ?? 0;
+  if (ordinal + definition.phases.length > SPACE_LIMITS.phases) throw refusal("TOO_MANY");
   for (const phase of definition.phases) {
     ordinal += 1;
     const made = await one<{ id: string }>(
@@ -143,6 +150,9 @@ export async function applyTemplate(
         link.id,
       ]);
       skipped.push({ kind: "vault", id: link.id, reason: walled?.walled ? "wall" : "not_found" });
+    } else if (target?.matter_id && found.matterId && target.matter_id !== found.matterId) {
+      // Another matter's vault doesn't come along, as when sharing it by hand.
+      skipped.push({ kind: "vault", id: link.id, reason: "not_shared" });
     } else if (!found.full) {
       // The new Space must be able to grant the access, so a vault it can only read is skipped.
       skipped.push({ kind: "vault", id: link.id, reason: "not_shared" });
@@ -296,8 +306,17 @@ export function createTemplates(kit: Kit, catalog: ResourceCatalog): Templates {
     async create(p, input, client) {
       return kit.attempt(p, async (db) => {
         let definition: SpaceTemplateDefinition;
+        let matterId: string | null = null;
         if (input.from_space_id) {
           await needMember(db, input.from_space_id);
+          matterId =
+            (
+              await one<{ matter_id: string | null }>(
+                db,
+                "select matter_id from work.space where id = $1",
+                [input.from_space_id],
+              )
+            )?.matter_id ?? null;
           definition = await skeletonOf(db, input.from_space_id);
         } else if (input.definition) {
           definition = input.definition;
@@ -308,8 +327,8 @@ export function createTemplates(kit: Kit, catalog: ResourceCatalog): Templates {
         const made = await one<{ id: string }>(
           db,
           `insert into work.space_template
-             (workspace_id, owner_id, name, description, definition, shared_to)
-           values ($1, $2, $3, $4, $5, $6) returning id`,
+             (workspace_id, owner_id, matter_id, name, description, definition, shared_to)
+           values ($1, $2, $7, $3, $4, $5, $6) returning id`,
           [
             p.workspaceId,
             p.userId,
@@ -317,6 +336,7 @@ export function createTemplates(kit: Kit, catalog: ResourceCatalog): Templates {
             input.description ?? "",
             JSON.stringify(definition),
             JSON.stringify(input.shared_to ?? { workspace: false, group_ids: [] }),
+            matterId,
           ],
         );
         const id = made?.id ?? "";

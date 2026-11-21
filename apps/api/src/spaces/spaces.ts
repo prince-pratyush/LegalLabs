@@ -37,51 +37,25 @@ const info = (row: InfoRow | null): ResourceInfo | null =>
   row ? { name: row.name, ownerId: row.owner_id, matterId: row.matter_id, full: row.full } : null;
 
 /** What exists today. Agents, workflows and scans register themselves when their epics land. */
-export const defaultCatalog: ResourceCatalog = {
+const defaultCatalog: ResourceCatalog = {
   vault: async (db, id) =>
     info(
       await one<InfoRow>(
         db,
         `select name, owner_id, matter_id,
-                (owner_id = core.current_user_id() or core.has_access('vault', id, 'full')) as full
+                (owner_id = core.current_user_id() or work.has_direct_access('vault', id, 'full')) as full
            from content.vault where id = $1 and deleted_at is null`,
         [id],
       ),
     ),
-  review_table: async (db, id) =>
-    info(
-      await one<InfoRow>(
-        db,
-        `select name, owner_id, matter_id,
-                (owner_id = core.current_user_id() or core.has_access('review_table', id, 'full')) as full
-           from work.review_table where id = $1`,
-        [id],
-      ),
-    ),
-  playbook: async (db, id) =>
-    info(
-      await one<InfoRow>(
-        db,
-        `select name, owner_id, null::uuid as matter_id,
-                (owner_id = core.current_user_id() or core.has_access('playbook', id, 'full')) as full
-           from work.playbook where id = $1`,
-        [id],
-      ),
-    ),
-  thread: async (db, id) =>
-    info(
-      await one<InfoRow>(
-        db,
-        `select title as name, owner_id, matter_id, (owner_id = core.current_user_id()) as full
-           from work.thread where id = $1`,
-        [id],
-      ),
-    ),
+  // Review tables, playbooks and threads are owner-only until their policies honour Space grants.
 };
 
 /** Resources a person runs rather than edits. */
 const RUNNABLE = new Set<SpaceResourceType>(["agent", "workflow", "playbook", "scan"]);
-export const levelAllowed = (type: SpaceResourceType, level: SpaceLevel) =>
+const RANK = { view: 1, run: 2, edit: 3, full: 4 } as const;
+
+const levelAllowed = (type: SpaceResourceType, level: SpaceLevel) =>
   RUNNABLE.has(type) || level !== "run";
 
 export interface SpaceView {
@@ -257,7 +231,7 @@ interface SpaceRow {
   open_tasks: number;
 }
 
-export const SPACE_SQL = `
+const SPACE_SQL = `
   select s.id, s.name, s.kind, s.matter_id, s.context, s.customization, s.template_id,
          s.created_by, s.created_at, work.space_role(s.id) as my_role,
          m.client_id, m.client_name, m.matter_number,
@@ -360,7 +334,7 @@ export interface SpacesOptions {
   allowMatterMismatch?: (db: Db) => Promise<boolean>;
 }
 
-export type SpacesModule = Spaces & { kit: Kit; catalog: ResourceCatalog };
+type SpacesModule = Spaces & { kit: Kit; catalog: ResourceCatalog };
 
 export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): SpacesModule {
   const kit = createKit(pool, options.notifier ?? noNotifications);
@@ -792,6 +766,12 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
         await needAdmin(db, id);
         const row = await find(db, id, resourceId);
         if (!levelAllowed(row.resource_type, access)) throw refusal("INVALID");
+        // Raising a level hands out access the caller must hold on their own, not through a Space.
+        if (RANK[access] > RANK[row.access]) {
+          const lookup = catalog[row.resource_type];
+          const found = lookup ? await lookup(db, row.resource_id) : null;
+          if (!found?.full) throw refusal("FORBIDDEN");
+        }
         await db.query("update work.space_resource set access = $2 where id = $1", [
           resourceId,
           access,

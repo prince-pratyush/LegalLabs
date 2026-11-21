@@ -64,6 +64,7 @@ const FAILURES: Record<Failure, { status: 400 | 403 | 404 | 409 | 502; message: 
   EDIT_WINDOW_CLOSED: { status: 409, message: "A comment can be edited for 15 minutes." },
   TOO_MANY: { status: 409, message: "That is the most there can be." },
   RUN_START_FAILED: { status: 502, message: "The run couldn't be started. Try again." },
+  RUN_UNAVAILABLE: { status: 502, message: "The run couldn't be reached. Try again." },
   NO_RUN: { status: 409, message: "There is no question waiting." },
   ALREADY_REQUESTED: { status: 409, message: "You've already asked to join." },
   ALREADY_DECIDED: { status: 409, message: "That request was already answered." },

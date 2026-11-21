@@ -252,6 +252,31 @@ create policy activity_read on work.space_activity for select to legallabs_app
 create policy activity_insert on work.space_activity for insert to legallabs_app
   with check (core.in_tenant(workspace_id) and work.space_role(space_id) is not null);
 
+-- Direct and group grants only, never a Space's: onward sharing needs access that is the caller's own,
+-- so a level a Space handed out can't be handed to another Space.
+create function work.has_direct_access(object_type text, object_id uuid, level text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from core.share_grant g join core."user" u
+      on u.id = core.current_user_id() and u.workspace_id = g.workspace_id
+     where g.object_type = has_direct_access.object_type
+       and g.object_id = has_direct_access.object_id
+       and g.workspace_id = core.current_workspace_id()
+       and u.status = 'active'
+       and g.suspended_reason is null
+       and (g.expires_at is null or g.expires_at > now())
+       and core.level_rank(g.level) >= core.level_rank(has_direct_access.level)
+       and ((g.principal_type = 'user' and g.principal_id = u.id)
+         or (g.principal_type = 'group' and exists (
+               select 1 from core.group_member m
+                where m.group_id = g.principal_id and m.user_id = u.id
+                  and m.workspace_id = u.workspace_id))
+         or (g.principal_type = 'workspace' and g.principal_id = u.workspace_id
+             and u.kind = 'member')))
+$$;
+alter function work.has_direct_access(text, uuid, text) owner to legallabs_definer;
+grant execute on function work.has_direct_access(text, uuid, text) to legallabs_app;
+
 -- A Space grant adds to direct grants: a member reaches a shared resource at the best level either
 -- gives them. Walls apply twice: the Space is dead to a walled member, and so is the resource.
 create or replace function core.has_access(object_type text, object_id uuid, level text) returns boolean

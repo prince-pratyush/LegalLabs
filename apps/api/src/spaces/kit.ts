@@ -30,6 +30,7 @@ export type Failure =
   | "EDIT_WINDOW_CLOSED"
   | "TOO_MANY"
   | "RUN_START_FAILED"
+  | "RUN_UNAVAILABLE"
   | "NO_RUN"
   | "ALREADY_REQUESTED"
   | "ALREADY_DECIDED";
@@ -63,7 +64,7 @@ const UNIQUE: Record<string, Failure> = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isId = (value: string) => UUID.test(value);
 
-export function failureOf(err: unknown): Failure | null {
+function failureOf(err: unknown): Failure | null {
   if (err instanceof Refused) return err.reason;
   const e = err as { message?: string; code?: string; constraint?: string };
   const message = e.message ?? "";
