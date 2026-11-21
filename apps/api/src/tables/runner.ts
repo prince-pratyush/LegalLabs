@@ -38,6 +38,8 @@ export interface RunRequest {
   dependsOn: readonly string[];
   /** Label of every column of the table, to name a reference to the model. */
   labels: Readonly<Record<string, string>>;
+  /** The column's context file, read into every cell's prompt. */
+  contextDocumentId?: string | null;
 }
 
 export interface Runner {
@@ -220,11 +222,13 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
 
   async function rowDocuments(principal: Principal, rowId: string) {
     return asApp(pool, principal, async (db) => {
-      const { rows } = await db.query<{ document_ids: string[] }>(
-        "select document_ids from work.rt_row where id = $1",
+      const { rows } = await db.query<{ document_ids: string[]; version_id: string | null }>(
+        "select document_ids, version_id from work.rt_row where id = $1",
         [rowId],
       );
       const ids = rows[0]?.document_ids ?? [];
+      // A row sync made reads the version it was made for, even once the file has a newer one.
+      const pinned = rows[0]?.version_id ?? null;
       const found = await db.query<{
         id: string;
         version_id: string;
@@ -237,11 +241,12 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
                 coalesce(j.status, 'indexed') status
            from content.document d
            join lateral (select id, version_no, page_count from content.document_version
-                          where document_id = d.id order by version_no desc limit 1) v on true
+                          where document_id = d.id and ($2::uuid is null or id = $2)
+                          order by version_no desc limit 1) v on true
            left join content.ingest_job j on j.version_id = v.id
           where d.id = any($1::uuid[])
           order by array_position($1::uuid[], d.id)`,
-        [ids],
+        [ids, pinned],
       );
       return { expected: ids.length, documents: found.rows };
     });
@@ -385,12 +390,32 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     return ready;
   }
 
+  /** The newest text of the column's context file, as the runner may read it, or null. */
+  async function contextFileOf(principal: Principal, documentId: string | null | undefined) {
+    if (!documentId) return null;
+    return asApp(pool, principal, async (db) => {
+      const { rows } = await db.query<{ name: string; text: string | null }>(
+        `select d.name, (select left(string_agg(p.text, E'\n\n' order by p.page_no), 60000)
+                           from content.page p where p.version_id = v.id) text
+           from content.document d
+           join lateral (select id from content.document_version
+                          where document_id = d.id order by version_no desc limit 1) v on true
+           left join content.ingest_job j on j.version_id = v.id
+          where d.id = $1 and coalesce(j.status, 'indexed') = 'indexed'`,
+        [documentId],
+      );
+      const found = rows[0];
+      return found?.text ? { name: found.name, text: found.text } : null;
+    });
+  }
+
   async function execute(
     principal: Principal,
     runId: string,
     request: RunRequest,
     target: RunTarget,
     dependents: readonly string[],
+    contextFile: { name: string; text: string } | null,
   ): Promise<number> {
     const emit = (outcome: {
       status: string;
@@ -477,6 +502,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
               prompt: promptForModel(request.column.prompt, (id) => request.labels[id]),
             },
             references,
+            contextFile,
             instructions: request.instructions,
             settings: request.settings,
             documents: docs,
@@ -600,6 +626,8 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     let cells = 0;
     try {
       const runnable = await settleDependencies(principal, runId, request);
+      // Read once for the run: the same file goes into every cell.
+      const contextFile = await contextFileOf(principal, request.contextDocumentId);
       const dependents = dependentsOf(
         await asApp(pool, principal, (db) => loadGraph(db, request.tableId)),
         [request.columnId],
@@ -614,7 +642,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
             await inFlight.take();
             try {
               if (cancelled.has(runId)) return;
-              cost += await execute(principal, runId, request, target, dependents);
+              cost += await execute(principal, runId, request, target, dependents, contextFile);
               cells += 1;
             } catch (err) {
               console.error(`cell ${target.cellId}: ${err instanceof Error ? err.message : err}`);

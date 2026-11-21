@@ -348,21 +348,56 @@
     {
       "idx": 49,
       "version": "7",
-      "when": 1794009764000,
-      "tag": "0060_work_agent_runs",
+      "when": 1794009900000,
+      "tag": "0086_work_review_table_sync",
       "breakpoints": false
     },
     {
       "idx": 50,
       "version": "7",
-      "when": 1794009765000,
-      "tag": "0065_work_agents",
+      "when": 1794009901000,
+      "tag": "0087_work_review_table_templates",
       "breakpoints": false
     },
     {
       "idx": 51,
       "version": "7",
-      "when": 1794009766000,
+      "when": 1794009902000,
+      "tag": "0075_core_matter_options",
+      "breakpoints": false
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794009903000,
+      "tag": "0076_core_wall_providers",
+      "breakpoints": false
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794009904000,
+      "tag": "0077_core_wall_enforcement",
+      "breakpoints": false
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1794009905000,
+      "tag": "0060_work_agent_runs",
+      "breakpoints": false
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1794009906000,
+      "tag": "0065_work_agents",
+      "breakpoints": false
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1794009907000,
       "tag": "0066_work_agent_sharing",
       "breakpoints": false
     },

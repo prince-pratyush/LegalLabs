@@ -15,6 +15,7 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
+import { createLimiter } from "../auth/limiter.js";
 import type { Memories, MemoryFailure, Result } from "./memory.js";
 import type { StyleFailure, WritingStyles } from "./styles.js";
 
@@ -84,25 +85,35 @@ const listQuery = z.object({
 });
 const id = z.uuid();
 
-const memoryJson = (m: object) => m;
+const tooMany = (c: Context, wait: number) => {
+  c.header("Retry-After", String(wait));
+  return c.json(
+    { code: "TOO_MANY_REQUESTS", message: "That's a lot just now. Try again shortly." },
+    429,
+  );
+};
 
-export function memoryRoutes(memories: Memories, clientOf: (c: Context) => Client) {
+export function memoryRoutes(
+  memories: Memories,
+  clientOf: (c: Context) => Client,
+  options: { now?: () => number } = {},
+) {
   const app = new Hono<Env>();
+  // Parsing and personalising are the costly calls, so each person gets a small budget of them.
+  const imports = createLimiter({ limit: 10, windowMs: 60_000, ...options });
+  const personalising = createLimiter({ limit: 5, windowMs: 60_000, ...options });
 
-  const respond = <T>(
+  const fail = (c: Context<Env>, reason: MemoryFailure) => {
+    const failure = MEMORY_FAILURES[reason];
+    return c.json({ code: reason, message: failure.message }, failure.status);
+  };
+  const respond = <T extends object>(
     c: Context<Env>,
     result: Result<T>,
-    json: (v: T) => object,
     status: 200 | 201 = 200,
-  ) => {
-    if (!result.ok) {
-      const failure = MEMORY_FAILURES[result.reason];
-      return c.json({ code: result.reason, message: failure.message }, failure.status);
-    }
-    return c.json(json(result.value), status);
-  };
+  ) => (result.ok ? c.json(result.value, status) : fail(c, result.reason));
   const noContent = (c: Context<Env>, result: Result<unknown>) =>
-    result.ok ? c.body(null, 204) : respond(c, result, () => ({}));
+    result.ok ? c.body(null, 204) : fail(c, result.reason);
 
   const idParam = (c: Context<Env>) => {
     const parsed = id.safeParse(c.req.param("id"));
@@ -121,23 +132,24 @@ export function memoryRoutes(memories: Memories, clientOf: (c: Context) => Clien
     const body = MemorySettingsPatch.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return invalid(c);
     const result = await memories.setUse(c.get("principal"), body.data.use_memory, clientOf(c));
-    return respond(c, result, (s) => ({
+    if (!result.ok) return fail(c, result.reason);
+    const s = result.value;
+    return c.json({
       use_memory: s.useMemory,
       permitted: s.permitted,
       pending_candidates: s.pendingCandidates,
-    }));
+    });
   });
 
   app.get("/memory/candidates", async (c) => {
     const result = await memories.candidates(c.get("principal"));
-    return respond(c, result, (items) => ({ items }));
+    return result.ok ? c.json({ items: result.value }) : fail(c, result.reason);
   });
   app.post("/memory/candidates/:id/accept", small, async (c) => {
     const cid = idParam(c);
     const body = AcceptCandidate.safeParse(await c.req.json().catch(() => ({})));
     if (!cid || !body.success) return invalid(c);
-    const result = await memories.accept(c.get("principal"), cid, body.data.text, clientOf(c));
-    return respond(c, result, memoryJson);
+    return respond(c, await memories.accept(c.get("principal"), cid, body.data.text, clientOf(c)));
   });
   app.post("/memory/candidates/:id/dismiss", async (c) => {
     const cid = idParam(c);
@@ -148,11 +160,17 @@ export function memoryRoutes(memories: Memories, clientOf: (c: Context) => Clien
   app.post("/memory/personalise", small, async (c) => {
     const body = PersonaliseInput.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return invalid(c);
+    const wait = personalising.take(c.get("principal").userId);
+    if (wait > 0) return tooMany(c, wait);
     const result = await memories.personalise(c.get("principal"), body.data);
-    return respond(c, result, (texts) => ({ proposals: texts.map((text) => ({ text })) }));
+    return result.ok
+      ? c.json({ proposals: result.value.map((text) => ({ text })) })
+      : fail(c, result.reason);
   });
 
   app.post("/memory/import/parse", importUpload, async (c) => {
+    const wait = imports.take(c.get("principal").userId);
+    if (wait > 0) return tooMany(c, wait);
     const type = c.req.header("content-type") ?? "";
     let bytes: Uint8Array | null = null;
     if (type.startsWith("text/csv")) {
@@ -178,11 +196,12 @@ export function memoryRoutes(memories: Memories, clientOf: (c: Context) => Clien
       );
     }
     const result = await memories.parseImport(c.get("principal"), text);
-    return respond(c, result, (parsed) => ({
-      import_id: parsed.importId,
-      rows: parsed.rows,
-      would_exceed_cap: parsed.wouldExceedCap,
-    }));
+    if (!result.ok) return fail(c, result.reason);
+    return c.json({
+      import_id: result.value.importId,
+      rows: result.value.rows,
+      would_exceed_cap: result.value.wouldExceedCap,
+    });
   });
   app.post(
     "/memory/import/:id/commit",
@@ -197,13 +216,13 @@ export function memoryRoutes(memories: Memories, clientOf: (c: Context) => Clien
         body.data.rows,
         clientOf(c),
       );
-      return respond(c, result, (r) => r);
+      return respond(c, result);
     },
   );
 
   app.get("/memory/export", async (c) => {
     const result = await memories.exportCsv(c.get("principal"), clientOf(c));
-    if (!result.ok) return respond(c, result, () => ({}));
+    if (!result.ok) return fail(c, result.reason);
     c.header("Content-Type", "text/csv; charset=utf-8");
     c.header("Content-Disposition", 'attachment; filename="memories.csv"');
     return c.body(result.value);
@@ -224,32 +243,24 @@ export function memoryRoutes(memories: Memories, clientOf: (c: Context) => Clien
       ...(query.data.q ? { q: query.data.q } : {}),
       ...(query.data.source ? { source: query.data.source } : {}),
     });
-    return respond(c, result, (l) => ({
-      items: l.items,
-      count: l.count,
+    if (!result.ok) return fail(c, result.reason);
+    return c.json({
+      items: result.value.items,
+      count: result.value.count,
       limit: MEMORY_LIMITS.perUser,
-      enabled: l.enabled,
-    }));
+      enabled: result.value.enabled,
+    });
   });
   app.post("/memory", small, async (c) => {
     const body = MemoryInput.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return invalid(c);
-    return respond(
-      c,
-      await memories.create(c.get("principal"), body.data.text, clientOf(c)),
-      memoryJson,
-      201,
-    );
+    return respond(c, await memories.create(c.get("principal"), body.data.text, clientOf(c)), 201);
   });
   app.patch("/memory/:id", small, async (c) => {
     const mid = idParam(c);
     const body = MemoryInput.safeParse(await c.req.json().catch(() => null));
     if (!mid || !body.success) return invalid(c);
-    return respond(
-      c,
-      await memories.update(c.get("principal"), mid, body.data.text, clientOf(c)),
-      memoryJson,
-    );
+    return respond(c, await memories.update(c.get("principal"), mid, body.data.text, clientOf(c)));
   });
   app.delete("/memory/:id", async (c) => {
     const mid = idParam(c);

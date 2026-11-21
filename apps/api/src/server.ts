@@ -28,6 +28,7 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createMatters } from "./matters/matters.js";
 import { createMemoryModule } from "./memory/module.js";
 import { createMemoryPurgeJob } from "./memory/purge.js";
 import { createLogEmailProvider } from "./notifications/email-port.js";
@@ -178,6 +179,19 @@ const agentRuns = createAgentRuns(pool, {
   engine: await runEngineFromEnv(pool, runHandlers(pool, { gateway, agents, documents })),
 });
 
+const tables = createReviewTables(pool, {
+  gateway,
+  documents,
+  log,
+  notifier,
+  syncLog: (line) => console.log(line),
+  ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+});
+// Tables over a vault with sync on pick up new files on this schedule, each as its owner.
+tables.sync.start();
+process.once("SIGTERM", () => void tables.sync.stop());
+process.once("SIGINT", () => void tables.sync.stop());
+
 const app = createApp({
   agentRuns,
   workflows: createWorkflows(pool, {
@@ -224,18 +238,21 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
+  matters: createMatters(pool),
   // Tasks given to the assistant or an agent run on the scripted stand-in until the run engine
   // implements `TaskRunPort`; it calls no model.
   spaces: createSpaceModule(pool, {
     runs: scriptedTaskRuns(),
     notifier: spaceNotifier(notifier),
+    // The workspace may let a Space hold resources from another matter.
+    allowMatterMismatch: async (db) =>
+      (
+        await db.query<{ ok: boolean }>(
+          "select coalesce((select allow_matter_mismatch_in_spaces from core.matter_options), false) as ok",
+        )
+      ).rows[0]?.ok ?? false,
   }),
-  tables: createReviewTables(pool, {
-    gateway,
-    documents,
-    log,
-    ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
-  }),
+  tables,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {

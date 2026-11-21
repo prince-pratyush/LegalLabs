@@ -377,6 +377,19 @@ export function ReviewGrid({
                       <span className="truncate">
                         {row.documents.map((d) => d.name).join(", ")}
                       </span>
+                      {(row.version_no ?? 1) > 1 && (
+                        <span className="shrink-0 rounded-sm bg-bg-subtle px-1 text-caption text-fg-muted">
+                          v{row.version_no}
+                        </span>
+                      )}
+                      {row.newer_version && (
+                        <span className="shrink-0 text-caption text-fg-muted">
+                          Newer version in table
+                        </span>
+                      )}
+                      {row.source_removed && (
+                        <span className="shrink-0 text-caption text-destructive">File removed</span>
+                      )}
                     </>
                   )}
                 </div>

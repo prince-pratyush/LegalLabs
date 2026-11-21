@@ -14,7 +14,8 @@ import {
 } from "@legallabs/contracts";
 import { type Gateway, GatewayError } from "@legallabs/model-gateway";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { audit } from "../auth/audit.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp, asWorker } from "../db.js";
 import { csvLine, parseCsv } from "./csv.js";
 
@@ -141,27 +142,10 @@ function conflictsOf(rows: readonly MemoryRow[]): Map<string, string[]> {
   return found;
 }
 
-export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {}): Memories {
-  const audit = (
-    db: Db,
-    p: Principal,
-    client: Client,
-    action: string,
-    objectType: string,
-    objectId: string,
-    details: object,
-  ) =>
-    // Ids, counts and the source only; the text of a memory never reaches the audit log.
-    db.query("select admin.append_audit_event($1, 'user', $2, $3, $4, $5, $6, $7)", [
-      action,
-      p.userId,
-      objectType,
-      objectId,
-      JSON.stringify(details),
-      client.ip,
-      uaHash(client),
-    ]);
+/** Parsed uploads kept per person while they decide what to import. */
+export const MAX_PENDING_IMPORTS = 5;
 
+export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {}): Memories {
   async function attempt<T>(p: Principal, work: (db: Db) => Promise<T>): Promise<Result<T>> {
     try {
       return {
@@ -501,6 +485,17 @@ export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {
 
         const ok = rows.filter((r) => r.status === "ok").length;
         const existing = held.rows.length;
+        // A few uploads waiting is plenty: older unfinished ones are dropped, oldest first.
+        await db.query("select pg_advisory_xact_lock(hashtextextended($1, 2))", [
+          `memory-import:${p.userId}`,
+        ]);
+        await db.query(
+          `delete from memory.memory_import
+            where status = 'parsed'
+              and id in (select id from memory.memory_import where status = 'parsed'
+                          order by created_at desc, id desc offset $1)`,
+          [MAX_PENDING_IMPORTS - 1],
+        );
         const { rows: made } = await db.query<{ id: string }>(
           `insert into memory.memory_import (workspace_id, user_id, rows) values ($1, $2, $3)
            returning id`,

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Field, Input, Textarea } from "./field.js";
+import { Field, Input, NativeSelect, Textarea } from "./field.js";
 
 const meta = {
   title: "Kit/Field",
@@ -32,5 +32,17 @@ export const MultiLine: Story = {
     label: "Question",
     hint: "Up to 2,000 characters.",
     children: (props) => <Textarea rows={3} {...props} />,
+  },
+};
+export const Choice: Story = {
+  args: {
+    label: "Vault association",
+    children: (props) => (
+      <NativeSelect defaultValue="optional" {...props}>
+        <option value="disabled">Disabled</option>
+        <option value="optional">Optional</option>
+        <option value="required">Required</option>
+      </NativeSelect>
+    ),
   },
 };
