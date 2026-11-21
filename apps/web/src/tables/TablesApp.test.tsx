@@ -123,6 +123,9 @@ const ROW: Row = {
   restricted: false,
   flag_color: null,
   locked: false,
+  source_removed: false,
+  version_no: null,
+  newer_version: false,
 };
 
 const CELL: Cell = {
@@ -271,6 +274,51 @@ describe("TablePage", () => {
         include_verified: false,
         include_dependents: false,
       }),
+    );
+  });
+
+  it("shows the sync state in the header and turns sync on from its panel", async () => {
+    const status = {
+      mode: "off",
+      folder_ids: null,
+      notify: false,
+      state: "off",
+      pending_rows: 0,
+      removed_rows: 0,
+      last_synced_at: null,
+    };
+    const sent = routes({
+      [`GET /review-tables/${T}/sync`]: () => [200, status],
+      [`GET /vaults/${T}/tree`]: () => [200, { folders: [], files: [], next_cursor: null }],
+      [`PUT /review-tables/${T}/sync`]: (body) => [
+        200,
+        { ...status, ...(body as object), state: "pending", pending_rows: 2 },
+      ],
+    });
+    // The checkbox in the panel measures itself, which jsdom can't.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    render(<TablePage tableId={T} onBack={() => {}} />);
+    // Sync is off, so there is no indicator yet, only the button to open the panel.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Sync" }, { timeout: FIRST_RENDER_MS }),
+    );
+    fireEvent.click(await screen.findByRole("radio", { name: /Entire vault/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(sent.find((s) => s.route === `PUT /review-tables/${T}/sync`)?.body).toEqual({
+        mode: "entire_vault",
+        notify: false,
+      }),
+    );
+    expect((await screen.findByRole("button", { name: "Sync settings" })).textContent).toBe(
+      "Sync pending (2)",
     );
   });
 

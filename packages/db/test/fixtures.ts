@@ -477,7 +477,12 @@ export async function seed(tx: Tx) {
        values ($1, $2, 'rt_column', 'done', $3, $4)`,
       [ws, owner, tableId, columnId],
     );
-    return { tableId, rowId, columnId, cellId };
+    const templateId = await id(
+      `insert into work.rt_template (workspace_id, owner_id, name, columns)
+       values ($1, $2, 'Credit terms', '[]') returning id`,
+      [ws, owner],
+    );
+    return { tableId, rowId, columnId, cellId, templateId };
   };
   const reviewTables = {
     acme: await reviewTable(acme, ana, documents.acme),

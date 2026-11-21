@@ -13,6 +13,7 @@ import {
   ClipboardList,
   History,
   Library,
+  Settings,
   SquarePen,
   Table,
   Users,
@@ -24,11 +25,14 @@ import { LibraryApp } from "./library/LibraryApp.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
 import { MattersApp } from "./matters/MattersApp.js";
 import { mattersHash, parseMattersRoute } from "./matters/route.js";
+import { NotificationBell } from "./notifications/NotificationHub.js";
 import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
 import { ReviewsApp } from "./reviews/ReviewsApp.js";
 import { parseReviewRoute } from "./reviews/route.js";
 import { navigate, parseRoute, paths, useHash } from "./router.js";
+import { parseSettingsRoute, settingsHash } from "./settings/route.js";
+import { SettingsApp } from "./settings/SettingsApp.js";
 import { Shell, ShellContext, type ShellProps } from "./shell.js";
 import { parseSpaceRoute, spacesHash } from "./spaces/route.js";
 import { SpacesApp } from "./spaces/SpacesApp.js";
@@ -72,6 +76,8 @@ export function App() {
           <ReviewsApp onLeave={() => navigate(paths.new)} />
         ) : parsePlaybookRoute(hash) ? (
           <PlaybooksApp onLeave={() => navigate(paths.new)} />
+        ) : parseSettingsRoute(hash) ? (
+          <SettingsApp onLeave={() => navigate(paths.new)} />
         ) : parseSpaceRoute(hash) ? (
           <SpacesApp onLeave={() => navigate(paths.new)} />
         ) : parseLibraryRoute(hash) ? (
@@ -252,6 +258,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => navigate(mattersHash().slice(1)),
     },
     {
+      id: "settings",
+      kind: "action",
+      group: "Go to",
+      label: "Settings",
+      run: () => navigate(settingsHash().slice(1)),
+    },
+    {
       id: "history",
       kind: "action",
       group: "Actions",
@@ -360,6 +373,16 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <Users aria-hidden />
           Spaces
+        </Button>
+        <NotificationBell />
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => navigate(settingsHash().slice(1))}
+        >
+          <Settings aria-hidden />
+          Settings
         </Button>
       </div>
       <section className="grid gap-2" aria-labelledby="recents-heading">
