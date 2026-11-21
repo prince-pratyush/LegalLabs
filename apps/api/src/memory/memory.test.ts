@@ -978,3 +978,75 @@ describe("writing styles", () => {
     expect(JSON.stringify(h.prompts().at(-1))).not.toContain("Secret style words.");
   });
 });
+
+describe("personalisation rules", () => {
+  const principalOf = (m: Seeded): Principal => ({
+    sessionId: randomUUID(),
+    userId: m.userId,
+    workspaceId: m.workspaceId,
+  });
+
+  it("proposes nothing from the conversation while memory is off", async () => {
+    const h = harness(true);
+    const { m, cookie } = await member(h);
+    const on = await h.memory.personalisation.prepare(
+      principalOf(m),
+      { question: "Who is liable?" },
+      client,
+    );
+    expect(on?.inferCandidates).toBe(true);
+    await h.call(cookie, "PATCH", "/memory/settings", { use_memory: false });
+    const off = await h.memory.personalisation.prepare(
+      principalOf(m),
+      { question: "Who is liable?" },
+      client,
+    );
+    expect(off?.inferCandidates).toBe(false);
+    const perAsk = await h.memory.personalisation.prepare(
+      principalOf(m),
+      { question: "Who is liable?", useMemory: false },
+      client,
+    );
+    expect(perAsk?.inferCandidates).toBe(false);
+  });
+
+  it("gives a colleague only the derived instructions of a shared sample style, labelled untrusted", async () => {
+    const h = harness();
+    const { admin, m } = await member(h);
+    const peer = await colleague(admin, MEMBER);
+    const made = await pool.query<{ id: string }>(
+      `insert into memory.writing_style
+         (workspace_id, owner_id, name, kind, derived_instructions, sample_text, shared, status)
+       values ($1, $2, 'Voice', 'sample', 'Short sentences.', 'SAMPLE-ONLY-TEXT here', true, 'ready')
+       returning id`,
+      [m.workspaceId, m.userId],
+    );
+    const id = made.rows[0]?.id;
+    const input = { question: "Who is liable?", writingStyleId: id };
+    const theirs = await h.memory.personalisation.prepare(principalOf(peer), input, client);
+    expect(theirs?.guidance).toContain("Short sentences.");
+    expect(theirs?.guidance).toContain("untrusted style guidance");
+    expect(theirs?.guidance).not.toContain("SAMPLE-ONLY-TEXT");
+    const mine = await h.memory.personalisation.prepare(principalOf(m), input, client);
+    expect(mine?.guidance).toContain("SAMPLE-ONLY-TEXT");
+    expect(mine?.guidance).not.toContain("untrusted style guidance");
+  });
+
+  it("uses nothing from a shared sample style that has no derived instructions yet", async () => {
+    const h = harness();
+    const { admin, m } = await member(h);
+    const peer = await colleague(admin, MEMBER);
+    const made = await pool.query<{ id: string }>(
+      `insert into memory.writing_style (workspace_id, owner_id, name, kind, sample_text, shared)
+       values ($1, $2, 'Raw', 'sample', 'SAMPLE-ONLY-TEXT', true) returning id`,
+      [m.workspaceId, m.userId],
+    );
+    const plan = await h.memory.personalisation.prepare(
+      principalOf(peer),
+      { question: "Who is liable?", writingStyleId: made.rows[0]?.id },
+      client,
+    );
+    expect(JSON.stringify(plan)).not.toContain("SAMPLE-ONLY-TEXT");
+    expect(plan?.styleId).toBeNull();
+  });
+});
