@@ -6,8 +6,10 @@ import {
   type ColumnProposal,
   CreateColumnBody,
   citationPath,
+  dependentsOf,
   type Estimate,
   formatTyped,
+  inRunOrder,
   type PatchCellBody,
   parseClassify,
   parseColumnOptions,
@@ -23,6 +25,7 @@ import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
 import { audit } from "./audit.js";
 import { CELL_MAX_OUTPUT } from "./cell.js";
+import { markDependentsStale } from "./dependencies.js";
 import { RESTRICTED_SQL, rowsSql, UnknownColumn } from "./query.js";
 import type { Runner } from "./runner.js";
 import {
@@ -196,25 +199,29 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
     scope: RunScope,
     includeVerified: boolean,
     dryRun = scope === "dry_run",
+    includeDependents = false,
   ): Promise<
     Result<{
       run_id: string | null;
       cells: number;
       locked_skipped: number;
       verified_skipped: number;
+      dependent_run_ids: string[];
     }>
   > {
     if (column.type === "manual")
       return fail("COLUMN_MANUAL", "Manual columns are typed in, not run.");
     if (column.state === "running")
       return fail("COLUMN_RUNNING", "This column is already running.");
-    const picked = await asApp(pool, principal, (db) =>
-      targets(db, column.id, scope, includeVerified),
-    );
+    const { picked, columns } = await asApp(pool, principal, async (db) => ({
+      picked: await targets(db, column.id, scope, includeVerified),
+      columns: await loadColumns(db, table.id),
+    }));
     const summary = {
       cells: picked.run.length,
       locked_skipped: picked.locked,
       verified_skipped: picked.verified,
+      dependent_run_ids: [] as string[],
     };
     if (picked.run.length === 0) return { ok: true, value: { run_id: null, ...summary } };
     const runId = await runner.start(
@@ -235,10 +242,57 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         targets: picked.run,
         scope,
         dryRun,
+        dependsOn: column.depends_on,
+        labels: Object.fromEntries(columns.map((c) => [c.id, c.label])),
       },
       client,
     );
-    return { ok: true, value: { run_id: runId, ...summary } };
+    const result = { ok: true as const, value: { run_id: runId, ...summary } };
+    return includeDependents
+      ? startDependents(
+          principal,
+          client,
+          table,
+          column,
+          picked.run.map((t) => t.rowId),
+          includeVerified,
+          result,
+        )
+      : result;
+  }
+
+  /**
+   * Columns built on `column` follow it, each after the columns it uses, over the same rows.
+   * Their cells wait for the runs ahead of them; locked cells are skipped, and so are
+   * verified ones unless `includeVerified`.
+   */
+  async function startDependents<T extends { dependent_run_ids: string[] }>(
+    principal: Principal,
+    client: Client,
+    table: TableRow,
+    column: ColumnRow,
+    rowIds: string[],
+    includeVerified: boolean,
+    after: { ok: true; value: T },
+  ): Promise<{ ok: true; value: T }> {
+    const columns = await asApp(pool, principal, (db) => loadColumns(db, table.id));
+    const edges = new Map(columns.map((c) => [c.id, c.depends_on]));
+    const later = new Set(dependentsOf(edges, [column.id]));
+    for (const next of inRunOrder(columns).filter((c) => later.has(c.id))) {
+      if (next.type === "manual" || next.state === "running") continue;
+      const started = await startRun(
+        principal,
+        client,
+        table,
+        next,
+        { row_ids: rowIds },
+        includeVerified,
+      );
+      if (started.ok && started.value.run_id) {
+        after.value.dependent_run_ids.push(started.value.run_id);
+      }
+    }
+    return after;
   }
 
   async function estimateFor(
@@ -475,6 +529,8 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
           await db.query("update work.rt_cell_citation set user_edited = true where cell_id = $1", [
             cellId,
           ]);
+          // Answers that were built on the old value are out of date now.
+          await markDependentsStale(db, principal, tableId, [cell.column_id], [cell.row_id]);
         }
         if (body.verified !== undefined && body.verified !== (cell.verified_at !== null)) {
           set("verified_by", body.verified ? principal.userId : null);
@@ -662,19 +718,48 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
       );
     },
 
-    async rerun(principal: Principal, tableId: string, cellId: string, client: Client) {
+    async rerun(
+      principal: Principal,
+      tableId: string,
+      cellId: string,
+      client: Client,
+      options: { includeDependents?: boolean; includeVerified?: boolean } = {},
+    ) {
       const found = await withTable(principal, tableId, async (db, table) => {
         const cell = await cellOf(db, tableId, cellId);
         if (!cell) return fail("NOT_FOUND");
         if (cell.locked || cell.row_locked) return fail("CELL_LOCKED", "This cell is locked.");
         const column = (await loadColumns(db, tableId)).find((c) => c.id === cell.column_id);
         if (!column) return fail("NOT_FOUND");
-        await audit(db, principal, client, "table.cell.rerun", tableId, { cell_id: cellId });
+        await audit(db, principal, client, "table.cell.rerun", tableId, {
+          cell_id: cellId,
+          dependents: options.includeDependents === true,
+        });
         return { ok: true, value: { table, column, rowId: cell.row_id } };
       });
       if (!found.ok) return found;
       const { table, column, rowId } = found.value;
-      return startRun(principal, client, table, column, { row_ids: [rowId] }, true);
+      // The cell itself always runs, verified or not; the flag is for what follows it.
+      const started = await startRun(
+        principal,
+        client,
+        table,
+        column,
+        { row_ids: [rowId] },
+        true,
+        false,
+        false,
+      );
+      if (!started.ok || !options.includeDependents) return started;
+      return startDependents(
+        principal,
+        client,
+        table,
+        column,
+        [rowId],
+        options.includeVerified === true,
+        started,
+      );
     },
 
     async runColumn(
@@ -684,7 +769,11 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
       scope: RunScope,
       includeVerified: boolean,
       client: Client,
-      view: { sort?: RowSort | undefined; filter?: RowFilter | undefined } = {},
+      view: {
+        sort?: RowSort | undefined;
+        filter?: RowFilter | undefined;
+        includeDependents?: boolean;
+      } = {},
     ) {
       const found = await withTable(principal, tableId, async (db, table) => {
         const columns = await loadColumns(db, tableId);
@@ -728,6 +817,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         effective,
         includeVerified,
         scope === "dry_run",
+        view.includeDependents === true,
       );
       if (!started.ok) return started;
       return { ok: true as const, value: { ...started.value, estimate } };
@@ -745,7 +835,8 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
       }));
       if (!found.ok) return found;
       const runIds: string[] = [];
-      for (const column of found.value.columns) {
+      // Columns others use go first, so the ones that wait on them find their cells queued.
+      for (const column of inRunOrder(found.value.columns)) {
         if (column.type === "manual" || column.state === "running") continue;
         // A dry run of the whole table tries out the columns that have never run.
         if (scope === "dry_run" && column.state !== "pending") continue;
