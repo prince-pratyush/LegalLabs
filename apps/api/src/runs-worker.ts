@@ -1,5 +1,6 @@
 import { createRunWorker } from "@legallabs/runs/temporal";
 import pg from "pg";
+import { runAudit } from "./agent-runs/audit.js";
 import { runHandlers } from "./agent-runs/handlers.js";
 import { assertRestrictedRole } from "./database-role.js";
 
@@ -16,7 +17,7 @@ await assertRestrictedRole(pool);
 const worker = await createRunWorker({
   address,
   ...(process.env.TEMPORAL_NAMESPACE ? { namespace: process.env.TEMPORAL_NAMESPACE } : {}),
-  deps: { pool, handlers: runHandlers(pool) },
+  deps: { pool, handlers: runHandlers(pool), audit: runAudit(pool) },
 });
 process.on("SIGTERM", () => worker.shutdown());
 process.on("SIGINT", () => worker.shutdown());

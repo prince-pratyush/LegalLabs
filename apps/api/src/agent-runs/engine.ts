@@ -1,6 +1,7 @@
 import { createLocalEngine, type HandlerRegistry, type RunEngine } from "@legallabs/runs";
 import { connectClient, createTemporalEngine } from "@legallabs/runs/temporal";
 import type pg from "pg";
+import { runAudit } from "./audit.js";
 
 /**
  * Temporal when the install has one (`TEMPORAL_ADDRESS`), so runs outlive a restart; otherwise
@@ -19,5 +20,5 @@ export async function runEngineFromEnv(
     });
     return createTemporalEngine(client);
   }
-  return createLocalEngine({ pool, handlers });
+  return createLocalEngine({ pool, handlers, audit: runAudit(pool) });
 }
