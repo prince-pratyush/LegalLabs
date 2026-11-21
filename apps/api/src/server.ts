@@ -21,6 +21,8 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createLogEmailProvider } from "./notifications/email-port.js";
+import { createEmailWorker } from "./notifications/email-worker.js";
 import { createNotifications } from "./notifications/notifications.js";
 import { createPurgeJob } from "./notifications/purge.js";
 import { registerThreadActions } from "./notifications/register.js";
@@ -88,14 +90,24 @@ const notifications = createNotifications(pool);
 const notifier = notifications.notifier;
 const notificationPurge = createPurgeJob(notifications, { log: (line) => console.log(line) });
 notificationPurge.start();
+// Mail goes to the log until a real provider is plugged in; links use the public web address.
+const emailWorker = createEmailWorker(pool, {
+  provider: createLogEmailProvider((line) => console.log(line)),
+  baseUrl: process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173",
+  log: (line) => console.log(line),
+});
+emailWorker.start();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   // A job cut off mid-read is picked up again once its lease runs out.
   process.once(
     signal,
     () =>
-      void Promise.all([worker.stop(), retention.stop(), notificationPurge.stop()]).finally(() =>
-        process.exit(0),
-      ),
+      void Promise.all([
+        worker.stop(),
+        retention.stop(),
+        notificationPurge.stop(),
+        emailWorker.stop(),
+      ]).finally(() => process.exit(0)),
   );
 }
 const gateway = createGateway({
