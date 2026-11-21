@@ -17,13 +17,13 @@ node e2e/sandbox.mjs /tmp/stack.json playbook|threads|table                    #
 
 ## Folder protocol
 
-| Path | Meaning |
-| --- | --- |
-| `pending/NNNNN.request.txt` | A header line, then the `SYSTEM` and `USER` turns. Read this. |
-| `pending/NNNNN.request.json` | The exact OpenAI chat body the API sent. |
+| Path                           | Meaning                                                                                                   |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `pending/NNNNN.request.txt`    | A header line, then the `SYSTEM` and `USER` turns. Read this.                                             |
+| `pending/NNNNN.request.json`   | The exact OpenAI chat body the API sent.                                                                  |
 | `responses/NNNNN.response.txt` | Write the assistant message text here. Write to a `.tmp` and `mv`, so the relay never reads half a reply. |
-| `responses/NNNNN.error.txt` | Write an HTTP status (`500`) to fail the call instead. |
-| `done/`, `cancelled/` | Answered requests, and ones the caller gave up on. |
+| `responses/NNNNN.error.txt`    | Write an HTTP status (`500`) to fail the call instead.                                                    |
+| `done/`, `cancelled/`          | Answered requests, and ones the caller gave up on.                                                        |
 
 Streaming and non-streaming calls are both served; the reply is the plain message content.
 Our gateway only sends text (no tool calls or `response_format`), so a reply is just text:
