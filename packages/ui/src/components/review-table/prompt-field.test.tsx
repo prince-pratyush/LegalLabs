@@ -37,25 +37,25 @@ describe("mentionAt", () => {
 describe("PromptField", () => {
   it("lists the columns after @ and narrows them as you type", async () => {
     render(<Harness />);
-    await userEvent.type(screen.getByRole("combobox"), "Same as @");
+    await userEvent.type(screen.getByRole("textbox"), "Same as @");
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Governing law",
       "Term",
     ]);
-    await userEvent.type(screen.getByRole("combobox"), "te");
+    await userEvent.type(screen.getByRole("textbox"), "te");
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Term"]);
   });
 
   it("inserts the column with Enter, and closes the list", async () => {
     render(<Harness />);
-    await userEvent.type(screen.getByRole("combobox"), "Same as @go{Enter}");
+    await userEvent.type(screen.getByRole("textbox"), "Same as @go{Enter}");
     expect(screen.getByTestId("value").textContent).toBe("Same as @{Governing law}");
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
   it("inserts with a click and keeps the text around it", async () => {
     render(<Harness initial="Then " />);
-    const box = screen.getByRole("combobox");
+    const box = screen.getByRole("textbox");
     await userEvent.type(box, "@");
     await userEvent.click(screen.getByRole("option", { name: "Term" }));
     expect(screen.getByTestId("value").textContent).toBe("Then @{Term}");
@@ -63,14 +63,14 @@ describe("PromptField", () => {
 
   it("closes on Escape without changing the text", async () => {
     render(<Harness />);
-    await userEvent.type(screen.getByRole("combobox"), "@{Escape}");
+    await userEvent.type(screen.getByRole("textbox"), "@{Escape}");
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(screen.getByTestId("value").textContent).toBe("@");
   });
 
   it("offers nothing when no column matches", async () => {
     render(<Harness />);
-    await userEvent.type(screen.getByRole("combobox"), "@zzz");
+    await userEvent.type(screen.getByRole("textbox"), "@zzz");
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 });
