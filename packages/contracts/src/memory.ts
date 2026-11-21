@@ -9,7 +9,8 @@ export const MEMORY_LIMITS = {
   candidatesPerTurn: 5,
   pendingCandidates: 20,
   candidateDays: 30,
-  importRows: 1000,
+  /** Rows read from one file. Over the cap is fine: the review shows how many would be skipped. */
+  importRows: 5000,
   /** Memories in the prompt for one turn; more than this and the most relevant are picked. */
   selected: 40,
   /** The system block is capped at 8,000 tokens, at 3 characters a token. */

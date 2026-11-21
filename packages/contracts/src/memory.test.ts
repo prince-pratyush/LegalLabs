@@ -54,7 +54,7 @@ describe("memory input", () => {
     expect(ImportCommit.safeParse({ rows: [{ line: 0 }] }).success).toBe(false);
     expect(
       ImportCommit.safeParse({
-        rows: Array.from({ length: 1001 }, (_, i) => ({ line: i + 2 })),
+        rows: Array.from({ length: 5001 }, (_, i) => ({ line: i + 2 })),
       }).success,
     ).toBe(false);
     expect(PersonaliseInput.safeParse({ answers: { role: "Partner" } }).success).toBe(true);

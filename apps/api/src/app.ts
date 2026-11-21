@@ -19,6 +19,8 @@ import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
 import type { Library } from "./library/library.js";
 import { libraryRoutes } from "./library/routes.js";
+import type { MemoryModule } from "./memory/module.js";
+import { memoryRoutes, styleRoutes } from "./memory/routes.js";
 import type { Notifications } from "./notifications/notifications.js";
 import { notificationRoutes } from "./notifications/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
@@ -77,6 +79,8 @@ export interface AppOptions {
   library?: Library;
   /** The notifications hub; optional, like vaults. */
   notifications?: Notifications;
+  /** Memories and writing styles; optional, like vaults. */
+  memory?: MemoryModule;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -106,6 +110,7 @@ export function createApp({
   tables,
   library,
   notifications,
+  memory,
   knowledge,
   playbooks,
   reviews,
@@ -249,6 +254,10 @@ export function createApp({
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
+  if (memory) {
+    app.route("/api/v1", memoryRoutes(memory.memories, clientOf));
+    app.route("/api/v1", styleRoutes(memory.styles, clientOf));
+  }
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));
