@@ -21,6 +21,12 @@ import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp, RLS_REFUSED } from "../db.js";
 import { audit } from "./audit.js";
+import {
+  dependentColumns,
+  loadGraph,
+  markDependentsStale,
+  resolveReferences,
+} from "./dependencies.js";
 import { setStatus } from "./history.js";
 import { columnProgress } from "./runner.js";
 
@@ -63,6 +69,7 @@ export interface ColumnRow {
   model: string | null;
   context_document_id: string | null;
   options: Record<string, unknown>;
+  depends_on: string[];
   state: Column["state"];
   dry_run: boolean;
   run_id: string | null;
@@ -82,8 +89,8 @@ export async function loadTable(db: Db, tableId: string): Promise<TableRow | nul
 
 export async function loadColumns(db: Db, tableId: string): Promise<ColumnRow[]> {
   const { rows } = await db.query<ColumnRow>(
-    `select id, ordinal, label, type, prompt, language, model, context_document_id, options, state,
-            dry_run, run_id
+    `select id, ordinal, label, type, prompt, language, model, context_document_id, options, depends_on,
+            state, dry_run, run_id
        from work.rt_column where table_id = $1 and deleted_at is null order by ordinal, id`,
     [tableId],
   );
@@ -158,6 +165,7 @@ export async function columnJson(db: Db, column: ColumnRow): Promise<Column> {
     model: column.model,
     context_document_id: column.context_document_id,
     options: column.options,
+    depends_on: column.depends_on,
     state: column.state,
     dry_run: column.dry_run,
     progress: await columnProgress(db, column.id),
@@ -611,6 +619,8 @@ export function createTables(
             "The context file must come from this table's source.",
           );
         }
+        const refs = resolveReferences(await loadGraph(db, tableId), null, body.type, body.prompt);
+        if (!refs.ok) return fail(refs.code, refs.message);
         const { rows: count } = await db.query<{ n: number; next: number }>(
           `select count(*)::int n, coalesce(max(ordinal) + 1, 0)::int next
              from work.rt_column where table_id = $1 and deleted_at is null`,
@@ -635,10 +645,10 @@ export function createTables(
           const { rows } = await db.query<ColumnRow>(
             `insert into work.rt_column
                (workspace_id, table_id, ordinal, label, type, prompt, language, model,
-                context_document_id, options)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                context_document_id, options, depends_on)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              returning id, ordinal, label, type, prompt, language, model, context_document_id,
-                       options, state, dry_run, run_id`,
+                       options, depends_on, state, dry_run, run_id`,
             [
               principal.workspaceId,
               tableId,
@@ -650,6 +660,7 @@ export function createTables(
               body.model ?? null,
               body.context_document_id ?? null,
               JSON.stringify(options.data),
+              refs.dependsOn,
             ],
           );
           column = rows[0] as ColumnRow;
@@ -665,6 +676,7 @@ export function createTables(
         await audit(db, principal, client, "table.column.added", tableId, {
           column_id: column.id,
           type: column.type,
+          depends_on: column.depends_on.length,
         });
         return { ok: true, value: { column: await columnJson(db, column) } };
       });
@@ -692,24 +704,30 @@ export function createTables(
         if (!(await contextFileFits(db, table, body.context_document_id))) {
           return fail("CONTEXT_FILE_SOURCE_MISMATCH");
         }
+        const prompt = body.prompt ?? column.prompt;
+        const refs = resolveReferences(await loadGraph(db, tableId), columnId, type, prompt);
+        if (!refs.ok) {
+          return fail(refs.code, refs.message, refs.path ? { path: refs.path } : undefined);
+        }
         const { rows } = await db.query<ColumnRow>(
           `update work.rt_column
               set label = $2, type = $3, prompt = $4, language = $5, model = $6,
-                  context_document_id = $7, options = $8, updated_at = now()
+                  context_document_id = $7, options = $8, depends_on = $9, updated_at = now()
             where id = $1
            returning id, ordinal, label, type, prompt, language, model, context_document_id,
-                     options, state, dry_run, run_id`,
+                     options, depends_on, state, dry_run, run_id`,
           [
             columnId,
             body.label ?? column.label,
             type,
-            body.prompt ?? column.prompt,
+            prompt,
             body.language ?? column.language,
             body.model !== undefined ? body.model : column.model,
             body.context_document_id !== undefined
               ? body.context_document_id
               : column.context_document_id,
             JSON.stringify(options.data),
+            refs.dependsOn,
           ],
         );
         const changesAnswers = [
@@ -729,6 +747,8 @@ export function createTables(
             [columnId],
             "'stale'",
           );
+          // What was built on these answers is out of date too.
+          stale += await markDependentsStale(db, principal, tableId, [columnId]);
         }
         await audit(db, principal, client, "table.column.updated", tableId, {
           column_id: columnId,
@@ -745,6 +765,14 @@ export function createTables(
     removeColumn(principal: Principal, tableId: string, columnId: string, client: Client) {
       return withTable(principal, tableId, async (db) => {
         if (!UUID.test(columnId)) return fail("NOT_FOUND");
+        const dependents = dependentColumns(await loadGraph(db, tableId), [columnId]);
+        if (dependents.length > 0) {
+          return fail(
+            "COLUMN_REFERENCED",
+            "Other columns use this one. Remove it from their prompts first.",
+            { dependents },
+          );
+        }
         const { rows } = await db.query<{ run_id: string | null; state: string }>(
           `update work.rt_column set deleted_at = now(), updated_at = now()
             where id = $1 and table_id = $2 and deleted_at is null returning run_id, state`,

@@ -11,6 +11,7 @@ import {
   PatchTableBody,
   parseSort,
   ReorderColumnsBody,
+  RerunCellBody,
   RowFilter,
   RT_LIMITS,
   RunColumnBody,
@@ -43,6 +44,8 @@ const STATUS: Record<TableErrorCode, 400 | 403 | 404 | 409 | 502> = {
   INVALID_REQUEST: 400,
   NOT_FOUND: 404,
   FORBIDDEN: 403,
+  COLUMN_CYCLE: 409,
+  COLUMN_REFERENCED: 409,
   SOURCE_LIMIT: 409,
   SOURCE_MISMATCH: 400,
   SOURCE_MIXED: 400,
@@ -84,6 +87,14 @@ async function body<S extends z.ZodType>(c: Context, schema: S): Promise<z.infer
 
 const send = <T>(c: Context, result: Result<T>, status: 200 | 201 | 202 = 200) =>
   result.ok ? c.json(result.value as object, status) : failure(c, result);
+
+const safeJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
 
 const offsetOf = (cursor: string | undefined) => {
   const n = Number(cursor ?? 0);
@@ -240,7 +251,11 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
         parsed.scope,
         parsed.include_verified,
         clientOf(c),
-        { sort: parsed.sort, filter: parsed.filter },
+        {
+          sort: parsed.sort,
+          filter: parsed.filter,
+          includeDependents: parsed.include_dependents,
+        },
       ),
       202,
     );
@@ -286,9 +301,20 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
     );
   });
 
-  app.post("/review-tables/:id/cells/:cell/rerun", async (c) =>
-    send(c, await cells.rerun(p(c), c.req.param("id"), c.req.param("cell"), clientOf(c)), 202),
-  );
+  app.post("/review-tables/:id/cells/:cell/rerun", limit, async (c) => {
+    // The body is optional: a bare POST re-runs the cell alone.
+    const text = await c.req.text();
+    const parsed = RerunCellBody.safeParse(text.trim() === "" ? {} : safeJson(text));
+    if (!parsed.success) return invalid(c);
+    return send(
+      c,
+      await cells.rerun(p(c), c.req.param("id"), c.req.param("cell"), clientOf(c), {
+        includeDependents: parsed.data.include_dependents,
+        includeVerified: parsed.data.include_verified,
+      }),
+      202,
+    );
+  });
 
   app.post("/review-tables/:id/export", limit, async (c) => {
     const parsed = await body(c, ExportBody);

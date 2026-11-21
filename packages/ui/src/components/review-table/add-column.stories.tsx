@@ -18,6 +18,16 @@ export const WithServerError: Story = {
 
 export const Loading: Story = { args: { busy: true } };
 
+/** Type @ in the prompt to use another column's answer. */
+export const WithColumnsToMention: Story = {
+  args: {
+    columns: [
+      { id: "0194f3a0-0000-7000-8000-00000000000a", label: "Governing law" },
+      { id: "0194f3a0-0000-7000-8000-00000000000b", label: "Term" },
+    ],
+  },
+};
+
 export const InPopover: Story = {
   render: () => <AddColumnPopover open onOpenChange={() => {}} onAdd={() => {}} />,
 };
