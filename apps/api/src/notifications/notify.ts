@@ -24,6 +24,7 @@ export function createNotifier(
   pool: pg.Pool,
   hub: Hub,
   log: (line: string) => void = console.error,
+  options: { now?: () => Date } = {},
 ): Notifier {
   return {
     async notify(principal, event) {
@@ -37,8 +38,8 @@ export function createNotifier(
         const body =
           entry.body && event.detail ? [...event.detail].slice(0, BODY_CHARS).join("") : null;
         const made = await asApp(pool, principal, async (db) => {
-          const { rows } = await db.query<{ user_id: string }>(
-            `select user_id from notify.emit($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11,
+          const { rows } = await db.query<{ user_id: string; notification_id: string }>(
+            `select user_id, notification_id from notify.emit($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11,
                $12::uuid[])`,
             [
               event.kind,
@@ -55,9 +56,31 @@ export function createNotifier(
               recipients,
             ],
           );
-          return rows.map((r) => r.user_id);
+          return rows;
         });
-        for (const userId of made) hub.publish(userId);
+        for (const userId of new Set(made.map((r) => r.user_id))) hub.publish(userId);
+        if (entry.email) {
+          // After the notification is committed, so a mail problem never undoes it. The
+          // subject and text are the catalogue's; the comment is sent only as an excerpt the
+          // function keeps when the workspace allows content.
+          try {
+            await asApp(pool, principal, (db) =>
+              db.query("select notify.enqueue_email($1::uuid[], $2, $3, $4, $5, $6, $7)", [
+                made.map((r) => r.notification_id),
+                entry.template.subject(event),
+                entry.template.text(event),
+                entry.body && event.detail ? [...event.detail].slice(0, 300).join("") : null,
+                event.longRunning ?? false,
+                entry.completion,
+                options.now ? options.now().toISOString() : null,
+              ]),
+            );
+          } catch (err) {
+            log(
+              `notify ${event.kind} email failed: ${err instanceof Error ? err.name : "unknown"}`,
+            );
+          }
+        }
       } catch (err) {
         // The kind and error name only: titles and comments stay out of logs.
         log(`notify ${event.kind} failed: ${err instanceof Error ? err.name : "unknown"}`);
