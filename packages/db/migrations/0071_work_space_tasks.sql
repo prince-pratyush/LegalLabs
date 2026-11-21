@@ -90,7 +90,10 @@ language sql stable security definer set search_path = '' as $$
          and prev.ordinal = (select max(p.ordinal) from work.phase p
                               where p.space_id = ph.space_id and p.ordinal < ph.ordinal)
          and t.gate and t.status <> 'cancelled' and t.approved_at is null)
-      from work.phase ph where ph.id = p_phase), false)
+      from work.phase ph
+     where ph.id = p_phase
+       and ph.workspace_id = core.current_workspace_id()
+       and work.space_role(ph.space_id) is not null), false)
 $$;
 alter function work.phase_locked(uuid) owner to legallabs_definer;
 grant execute on function work.phase_locked(uuid) to legallabs_app, legallabs_definer;
@@ -114,6 +117,12 @@ begin
   end if;
   if (new.gate, new.approved_by, new.approved_at) is distinct from (old.gate, old.approved_by, old.approved_at)
      and role <> 'admin' then
+    raise exception 'FORBIDDEN' using errcode = 'insufficient_privilege';
+  end if;
+  -- Cancelling or moving a gate would open the next phase without an approval.
+  if old.gate and role <> 'admin'
+     and (new.phase_id is distinct from old.phase_id
+          or (new.status = 'cancelled' and old.status <> 'cancelled')) then
     raise exception 'FORBIDDEN' using errcode = 'insufficient_privilege';
   end if;
   if new.status is distinct from old.status then

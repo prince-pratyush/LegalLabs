@@ -3,6 +3,8 @@ create table work.space_template (
   id uuid primary key default core.uuid7(),
   workspace_id uuid not null references core.workspace (id) on delete cascade,
   owner_id uuid not null,
+  -- The matter of the Space it was saved from: its task text is that matter's, so walls apply.
+  matter_id uuid,
   name text not null check (char_length(name) between 1 and 120),
   description text not null default '' check (char_length(description) <= 1000),
   -- counsel.space-template/1; the API validates the shape.
@@ -13,7 +15,8 @@ create table work.space_template (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (workspace_id, id),
-  foreign key (workspace_id, owner_id) references core."user" (workspace_id, id)
+  foreign key (workspace_id, owner_id) references core."user" (workspace_id, id),
+  foreign key (workspace_id, matter_id) references core.matter (workspace_id, id)
 );
 
 -- Whether a template is shared with the caller's groups; run as definer so groups can stay private.
@@ -33,7 +36,7 @@ alter table work.space_template enable row level security;
 alter table work.space_template force row level security;
 grant select, insert, update, delete on work.space_template to legallabs_app;
 create policy template_read on work.space_template for select to legallabs_app
-  using (core.in_tenant(workspace_id)
+  using (core.in_tenant(workspace_id) and core.can_access_matter(matter_id)
          and (owner_id = core.current_user_id() or work.template_shared_with_me(shared_to)));
 create policy template_write on work.space_template for all to legallabs_app
   using (core.in_tenant(workspace_id) and owner_id = core.current_user_id()

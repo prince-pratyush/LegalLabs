@@ -437,6 +437,8 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
   async function startRun(p: Principal, taskId: string, client: Client): Promise<Result<TaskView>> {
     const prepared = await kit.attempt(p, async (db) => {
       const task = await loadTask(db, taskId);
+      // A task that can't start can't have a run: refused before the engine hears of it.
+      if (task.locked) throw refusal("PHASE_LOCKED");
       const space = await one<{ interactive: boolean }>(
         db,
         `select coalesce((customization ->> 'agent_runs_interactive')::boolean, true) as interactive
@@ -755,7 +757,10 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
         await needMember(db, spaceId);
         if (input.phase_id) {
           // A locked phase can still be planned: only moving its tasks on is refused.
-          await phaseOf(db, spaceId, input.phase_id);
+          const phase = await phaseOf(db, spaceId, input.phase_id);
+          if (phase.locked && input.assignee && input.assignee.type !== "user") {
+            throw refusal("PHASE_LOCKED");
+          }
           const count = await one<{ n: number }>(
             db,
             "select count(*)::int as n from work.task where phase_id = $1",
@@ -837,6 +842,7 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
             set("assignee_type", type);
             set("assignee_id", assigneeId);
             if (patch.assignee && patch.assignee.type !== "user") {
+              if (task.locked) throw refusal("PHASE_LOCKED");
               needsRun = true;
               sets.push("run_id = null", "thread_id = null", "run_status = null");
             }

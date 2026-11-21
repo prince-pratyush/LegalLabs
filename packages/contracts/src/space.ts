@@ -280,7 +280,8 @@ export interface TaskRunStart {
  * How Spaces starts work for a task. The run engine implements this against Temporal; until it
  * lands, `scriptedTaskRuns` in the API stands in. The engine tells Spaces a run ended by calling
  * `runFinished(runId)`; Spaces then reads `status` once and settles the task, so a missed call
- * heals the next time the task is read.
+ * heals the next time the task is read. The caller is the member whose request led to the call;
+ * the engine authorises the Space and the task, not that individual.
  */
 export interface TaskRunPort {
   start(caller: Caller, input: TaskRunStart): Promise<{ runId: string; threadId: string }>;

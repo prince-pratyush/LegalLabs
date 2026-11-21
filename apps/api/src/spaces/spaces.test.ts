@@ -280,6 +280,42 @@ describe("resources", () => {
     expect(res.body.code).toBe("RESOURCE_NOT_FOUND");
   });
 
+  it("won't let an admin raise a shared resource past what they hold themselves", async () => {
+    const w = await world();
+    const id = await room(w);
+    const v = await vault(w.ana, w.ana.userId);
+    // Ben owns a vault and shares it at view; Ana, a Space admin, can't raise it to full.
+    const bens = await vault(w.ana, w.ben.userId);
+    const added = await w.b("POST", `/spaces/${id}/resources`, {
+      resource_type: "vault",
+      resource_id: bens,
+      access: "view",
+    });
+    expect(added.status).toBe(201);
+    const raised = await w.a("PATCH", `/spaces/${id}/resources/${added.body.resource.id}`, {
+      access: "full",
+    });
+    expect(raised.status).toBe(403);
+    // Lowering is always allowed.
+    await w.b("PATCH", `/spaces/${id}/resources/${added.body.resource.id}`, { access: "edit" });
+    const lowered = await w.a("PATCH", `/spaces/${id}/resources/${added.body.resource.id}`, {
+      access: "view",
+    });
+    expect(lowered.status).toBe(200);
+    expect(v).toBeTruthy();
+  });
+
+  it("doesn't offer types whose own access ignores Space grants", async () => {
+    const w = await world();
+    const id = await room(w);
+    const res = await w.a("POST", `/spaces/${id}/resources`, {
+      resource_type: "review_table",
+      resource_id: await uuid7(),
+      access: "view",
+    });
+    expect(res.body.code).toBe("RESOURCE_UNSUPPORTED");
+  });
+
   it("blocks a resource from a different matter", async () => {
     const w = await world();
     const m1 = await matter(w.ana, "open", "A-1");
@@ -679,6 +715,34 @@ describe("tasks", () => {
     expect(ordinals).toEqual([1, 2]);
   });
 
+  it("does not let a collaborator open the next phase by cancelling or moving the gate", async () => {
+    const w = await world();
+    const id = await room(w);
+    const p1 = (await w.a("POST", `/spaces/${id}/phases`, { name: "One" })).body.phase.id;
+    const p2 = (await w.a("POST", `/spaces/${id}/phases`, { name: "Two" })).body.phase.id;
+    const gate = (await w.a("POST", `/spaces/${id}/tasks`, { name: "G", phase_id: p1, gate: true }))
+      .body.task;
+    expect((await w.b("PATCH", `/tasks/${gate.id}`, { status: "cancelled" })).status).toBe(403);
+    expect((await w.b("PATCH", `/tasks/${gate.id}`, { phase_id: p2 })).status).toBe(403);
+    expect((await w.b("PATCH", `/tasks/${gate.id}`, { phase_id: null })).status).toBe(403);
+    expect((await w.a("GET", `/spaces/${id}/phases`)).body.phases[1].locked).toBe(true);
+  });
+
+  it("refuses to start a run in a locked phase", async () => {
+    const w = await world();
+    const id = await room(w);
+    const p1 = (await w.a("POST", `/spaces/${id}/phases`, { name: "One" })).body.phase.id;
+    const p2 = (await w.a("POST", `/spaces/${id}/phases`, { name: "Two" })).body.phase.id;
+    await w.a("POST", `/spaces/${id}/tasks`, { name: "G", phase_id: p1, gate: true });
+    const res = await w.a("POST", `/spaces/${id}/tasks`, {
+      name: "Locked",
+      phase_id: p2,
+      assignee: { type: "assistant" },
+    });
+    expect(res.body.code).toBe("PHASE_LOCKED");
+    expect(w.runs.runs).toHaveLength(0);
+  });
+
   it("does not let a collaborator reopen an approved task", async () => {
     const w = await world();
     const id = await room(w);
@@ -880,6 +944,26 @@ describe("templates", () => {
     const resources = (await w.b("GET", `/spaces/${forBen.body.space.id}/resources`)).body
       .resources;
     expect(resources).toEqual([]);
+  });
+
+  it("keeps a template saved from a matter's Space behind that matter's wall", async () => {
+    const w = await world();
+    const m = await matter(w.ana, "open", "T-1");
+    const made = await w.a("POST", "/spaces", { name: "Matter source", matter_id: m });
+    await w.a("POST", `/spaces/${made.body.space.id}/phases`, { name: "Secret phase" });
+    const saved = await w.a("POST", "/space-templates", {
+      name: "From a matter",
+      from_space_id: made.body.space.id,
+      shared_to: { workspace: true, group_ids: [] },
+    });
+    expect((await w.b("GET", "/space-templates")).body.templates).toHaveLength(1);
+    await pool.query(
+      `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+       values ($1, $2, 'user', $3, 'deny')`,
+      [w.ana.workspaceId, m, w.ben.userId],
+    );
+    expect((await w.b("GET", "/space-templates")).body.templates).toHaveLength(0);
+    expect((await w.b("GET", `/space-templates/${saved.body.template.id}`)).status).toBe(404);
   });
 
   it("is private to its owner until shared, and applies to an existing Space additively", async () => {

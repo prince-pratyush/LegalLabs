@@ -43,44 +43,18 @@ const defaultCatalog: ResourceCatalog = {
       await one<InfoRow>(
         db,
         `select name, owner_id, matter_id,
-                (owner_id = core.current_user_id() or core.has_access('vault', id, 'full')) as full
+                (owner_id = core.current_user_id() or work.has_direct_access('vault', id, 'full')) as full
            from content.vault where id = $1 and deleted_at is null`,
         [id],
       ),
     ),
-  review_table: async (db, id) =>
-    info(
-      await one<InfoRow>(
-        db,
-        `select name, owner_id, matter_id,
-                (owner_id = core.current_user_id() or core.has_access('review_table', id, 'full')) as full
-           from work.review_table where id = $1`,
-        [id],
-      ),
-    ),
-  playbook: async (db, id) =>
-    info(
-      await one<InfoRow>(
-        db,
-        `select name, owner_id, null::uuid as matter_id,
-                (owner_id = core.current_user_id() or core.has_access('playbook', id, 'full')) as full
-           from work.playbook where id = $1`,
-        [id],
-      ),
-    ),
-  thread: async (db, id) =>
-    info(
-      await one<InfoRow>(
-        db,
-        `select title as name, owner_id, matter_id, (owner_id = core.current_user_id()) as full
-           from work.thread where id = $1`,
-        [id],
-      ),
-    ),
+  // Review tables, playbooks and threads are owner-only until their policies honour Space grants.
 };
 
 /** Resources a person runs rather than edits. */
 const RUNNABLE = new Set<SpaceResourceType>(["agent", "workflow", "playbook", "scan"]);
+const RANK = { view: 1, run: 2, edit: 3, full: 4 } as const;
+
 const levelAllowed = (type: SpaceResourceType, level: SpaceLevel) =>
   RUNNABLE.has(type) || level !== "run";
 
@@ -792,6 +766,12 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
         await needAdmin(db, id);
         const row = await find(db, id, resourceId);
         if (!levelAllowed(row.resource_type, access)) throw refusal("INVALID");
+        // Raising a level hands out access the caller must hold on their own, not through a Space.
+        if (RANK[access] > RANK[row.access]) {
+          const lookup = catalog[row.resource_type];
+          const found = lookup ? await lookup(db, row.resource_id) : null;
+          if (!found?.full) throw refusal("FORBIDDEN");
+        }
         await db.query("update work.space_resource set access = $2 where id = $1", [
           resourceId,
           access,
