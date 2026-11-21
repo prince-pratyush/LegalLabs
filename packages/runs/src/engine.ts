@@ -56,10 +56,16 @@ export function createLocalEngine(deps: ActivityDeps): RunEngine {
     async start(ref) {
       if (running.has(ref.runId)) return;
       const queue = signalQueue();
+      const act = createActivities(deps, ref);
       const done = runLifecycle(
-        { act: createActivities(deps, ref), signals: queue, now: Date.now },
+        { act, signals: queue, now: Date.now },
         { kind: ref.kind, interactive: ref.interactive },
-      );
+      ).catch(async (err): Promise<LifecycleResult> => {
+        // As the Temporal workflow does: an engine failure still ends the run visibly.
+        const message = err instanceof Error ? err.message : "The run engine failed.";
+        await act.finish("failed", { code: "ENGINE_ERROR", message }).catch(() => {});
+        return { status: "failed", code: "ENGINE_ERROR" };
+      });
       running.set(ref.runId, { queue, done });
     },
     async signal(runId, signal) {

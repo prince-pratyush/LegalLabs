@@ -9,6 +9,9 @@ import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createSignInAudit } from "./addins/audit.js";
 import { createLanguage } from "./addins/language.js";
+import { runEngineFromEnv } from "./agent-runs/engine.js";
+import { runHandlers } from "./agent-runs/handlers.js";
+import { createAgentRuns } from "./agent-runs/runs.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { assertRestrictedRole } from "./database-role.js";
@@ -115,7 +118,12 @@ const knowledgeStore = createKnowledge(pool, { embedder });
 const knowledge = knowledgePort(knowledgeStore);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
+const agentRuns = createAgentRuns(pool, {
+  engine: await runEngineFromEnv(pool, runHandlers(pool)),
+});
+
 const app = createApp({
+  agentRuns,
   auth: createAuth(pool),
   documents,
   vaults: createVaults(pool, { documents, store }),

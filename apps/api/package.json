@@ -6,7 +6,8 @@
   "type": "module",
   "bin": {
     "legallabs-admin": "./dist/cli.js",
-    "legallabs-knowledge": "./dist/knowledge/cli.js"
+    "legallabs-knowledge": "./dist/knowledge/cli.js",
+    "legallabs-runs-worker": "./dist/runs-worker.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -26,6 +27,7 @@
     "@legallabs/knowledge": "workspace:*",
     "@legallabs/model-gateway": "workspace:*",
     "@legallabs/review": "workspace:*",
+    "@legallabs/runs": "workspace:*",
     "@legallabs/storage": "workspace:*",
     "fflate": "0.8.3",
     "@node-rs/argon2": "2.2.2",

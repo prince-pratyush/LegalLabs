@@ -6,6 +6,8 @@ import { z } from "zod";
 import { createCodeStore } from "./addins/codes.js";
 import type { Language } from "./addins/language.js";
 import { addinAuthRoutes, addinRoutes } from "./addins/routes.js";
+import { agentRunHttp } from "./agent-runs/http.js";
+import type { AgentRuns } from "./agent-runs/runs.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
@@ -79,6 +81,8 @@ export interface AppOptions {
   playbooks?: Playbooks;
   /** Playbook reviews; mounted only with playbooks. */
   reviews?: Reviews;
+  /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
+  agentRuns?: AgentRuns;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -104,6 +108,7 @@ export function createApp({
   knowledge,
   playbooks,
   reviews,
+  agentRuns,
   clientIp,
   now = Date.now,
   webRoot,
@@ -242,6 +247,7 @@ export function createApp({
   }
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
+  if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
