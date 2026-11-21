@@ -15,8 +15,8 @@ import {
   Library,
   SquarePen,
   Table,
+  Users,
 } from "lucide-react";
-import { BookMarked, ClipboardList, History, Library, SquarePen, Table, Users } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
@@ -351,6 +351,11 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <Briefcase aria-hidden />
           Matters &amp; Walls
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
           onClick={() => navigate(spacesHash().slice(1))}
         >
           <Users aria-hidden />

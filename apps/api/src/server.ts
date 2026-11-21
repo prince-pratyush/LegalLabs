@@ -197,6 +197,13 @@ const app = createApp({
   spaces: createSpaceModule(pool, {
     runs: scriptedTaskRuns(),
     notifier: spaceNotifier(notifier),
+    // The workspace may let a Space hold resources from another matter.
+    allowMatterMismatch: async (db) =>
+      (
+        await db.query<{ ok: boolean }>(
+          "select coalesce((select allow_matter_mismatch_in_spaces from core.matter_options), false) as ok",
+        )
+      ).rows[0]?.ok ?? false,
   }),
   tables: createReviewTables(pool, {
     gateway,
