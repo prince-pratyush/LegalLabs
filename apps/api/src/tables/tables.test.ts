@@ -22,6 +22,9 @@ import { createExports } from "./export.js";
 import { createReviewTables } from "./module.js";
 
 const pool = testPool();
+// Twelve uploads take about 2 s alone, but over 20 s when every API test file shares the
+// test database at once; this is the room that leaves.
+const BUSY_SUITE_MS = 90_000;
 afterAll(() => pool.end());
 
 const CREDIT =
@@ -472,37 +475,43 @@ describe("review tables API", () => {
     ]);
   });
 
-  it("dry runs the first rows only and estimates first (RVT-010)", async () => {
-    const h = harness();
-    const m = await seedMember(pool);
-    const cookie = await h.signIn(m);
-    const files = Object.fromEntries(
-      Array.from({ length: 12 }, (_, i) => [`doc-${String(i).padStart(2, "0")}.txt`, CREDIT]),
-    );
-    const v = await h.vault(cookie, files);
-    const tableId = (
-      await h.call(cookie, "POST", "/review-tables", { source: { kind: "vault", vault_id: v.id } })
-    ).body.table.id;
-    const s = { h, m, cookie, v, tableId };
-    const date = await addColumn(s, DATE);
-    const estimate = await h.call(cookie, "POST", `/review-tables/${tableId}/estimate`, {
-      column_ids: [date],
-      scope: "dry_run",
-    });
-    expect(estimate.body).toMatchObject({ cells: 10, est_cost_usd: 0 });
-    expect(estimate.body.est_tokens).toBeGreaterThan(0);
-    await runAndWait(s, date, "dry_run");
-    const table = (await h.call(cookie, "GET", `/review-tables/${tableId}`)).body;
-    expect(table.columns[0]).toMatchObject({
-      state: "partial",
-      dry_run: true,
-      progress: { done: 10, total: 12 },
-    });
-    await runAndWait(s, date, "pending");
-    expect(
-      (await h.call(cookie, "GET", `/review-tables/${tableId}`)).body.columns[0].progress.done,
-    ).toBe(12);
-  }, 90_000);
+  it(
+    "dry runs the first rows only and estimates first (RVT-010)",
+    async () => {
+      const h = harness();
+      const m = await seedMember(pool);
+      const cookie = await h.signIn(m);
+      const files = Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [`doc-${String(i).padStart(2, "0")}.txt`, CREDIT]),
+      );
+      const v = await h.vault(cookie, files);
+      const tableId = (
+        await h.call(cookie, "POST", "/review-tables", {
+          source: { kind: "vault", vault_id: v.id },
+        })
+      ).body.table.id;
+      const s = { h, m, cookie, v, tableId };
+      const date = await addColumn(s, DATE);
+      const estimate = await h.call(cookie, "POST", `/review-tables/${tableId}/estimate`, {
+        column_ids: [date],
+        scope: "dry_run",
+      });
+      expect(estimate.body).toMatchObject({ cells: 10, est_cost_usd: 0 });
+      expect(estimate.body.est_tokens).toBeGreaterThan(0);
+      await runAndWait(s, date, "dry_run");
+      const table = (await h.call(cookie, "GET", `/review-tables/${tableId}`)).body;
+      expect(table.columns[0]).toMatchObject({
+        state: "partial",
+        dry_run: true,
+        progress: { done: 10, total: 12 },
+      });
+      await runAndWait(s, date, "pending");
+      expect(
+        (await h.call(cookie, "GET", `/review-tables/${tableId}`)).body.columns[0].progress.done,
+      ).toBe(12);
+    },
+    BUSY_SUITE_MS,
+  );
 
   it("stars privately per user (RVT-010)", async () => {
     const s = await setup();

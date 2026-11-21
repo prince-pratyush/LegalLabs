@@ -7,6 +7,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { keyPatch, nextFlag, TablePage, toRowFilter } from "./TablePage.js";
 import { createBody, TablesApp } from "./TablesApp.js";
 
+// A first render takes ~0.2 s alone, but seconds when the whole web suite runs on a busy
+// machine; findBy's default 1 s then fails tests that are fine.
+const FIRST_RENDER_MS = 10_000;
+
 // The real grid and list are virtualised and jsdom lays nothing out, so they draw nothing.
 vi.mock("@legallabs/ui", async (original) => ({
   ...(await original<typeof import("@legallabs/ui")>()),
@@ -228,7 +232,7 @@ describe("TablesApp list", () => {
     window.location.hash = "#/tables";
     render(<TablesApp onLeave={() => {}} />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Star DD table" }, { timeout: 10_000 }),
+      await screen.findByRole("button", { name: "Star DD table" }, { timeout: FIRST_RENDER_MS }),
     );
     await waitFor(() =>
       expect(sent.map((s) => s.route)).toContain(`POST /review-tables/${T}/star`),
@@ -257,7 +261,7 @@ describe("TablePage", () => {
       [`POST /review-tables/${T}/columns/${K}/run`]: () => [202, { run_id: null }],
     });
     render(<TablePage tableId={T} onBack={() => {}} />);
-    const header = await screen.findByRole("columnheader", {}, { timeout: 10_000 });
+    const header = await screen.findByRole("columnheader", {}, { timeout: FIRST_RENDER_MS });
     expect(header.textContent).toContain("Dry run · 1/10 · $0");
     fireEvent.click(within(header).getByRole("button", { name: "Run remaining" }));
     await waitFor(() =>
@@ -277,7 +281,11 @@ describe("TablePage", () => {
     });
     render(<TablePage tableId={T} onBack={() => {}} />);
     fireEvent.click(
-      await screen.findByRole("button", { name: /open .* Governing law/ }, { timeout: 10_000 }),
+      await screen.findByRole(
+        "button",
+        { name: /open .* Governing law/ },
+        { timeout: FIRST_RENDER_MS },
+      ),
     );
     const drawer = await screen.findByRole("region", { name: "Governing law for MSA.pdf" });
     await waitFor(() => expect(drawer.getAttribute("aria-busy")).toBeNull());
