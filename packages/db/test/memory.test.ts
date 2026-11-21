@@ -58,7 +58,8 @@ describe("memory", () => {
         // Ana holds "*", dee holds admin.users, bob is another workspace's admin.
         expect(await count(tx, s.ana, s.acme, table)).toBe(0);
         expect(await count(tx, s.dee, s.acme, table)).toBe(0);
-        expect(await count(tx, s.bob, s.beta, table)).toBe(0);
+        // Bob sees only the one row the fixture gave him in his own workspace.
+        expect(await count(tx, s.bob, s.beta, table)).toBe(1);
       }
       await tx.as(s.ana, s.acme);
       // Nor can she reach it by id, change it or delete it.
@@ -208,9 +209,11 @@ describe("memory", () => {
       await remember(tx, s, s.ben, "Use UK spelling");
       await tx.asOwner();
       await tx.rows(`delete from core."user" where id = $1`, [s.ben]);
-      expect(Number((await tx.one<{ n: string }>("select count(*) n from memory.memory")).n)).toBe(
-        0,
+      const { n } = await tx.one<{ n: string }>(
+        "select count(*) n from memory.memory where user_id = $1",
+        [s.ben],
       );
+      expect(Number(n)).toBe(0);
     });
   });
 });
@@ -233,10 +236,11 @@ describe("memory purge", () => {
 
       await tx.asWorker();
       expect(await tx.rows("select * from memory.purge(now() + interval '29 days')")).toEqual([
-        { candidates: 0, imports: 1 },
+        // Ben's upload and the fixture's, in the other workspace.
+        { candidates: 0, imports: 2 },
       ]);
       expect(await tx.rows("select * from memory.purge(now() + interval '31 days')")).toEqual([
-        { candidates: 1, imports: 0 },
+        { candidates: 2, imports: 0 },
       ]);
     });
   });
