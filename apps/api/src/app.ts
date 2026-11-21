@@ -23,6 +23,8 @@ import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
 import { reviewHttp } from "./reviews/http.js";
 import type { Reviews } from "./reviews/reviews.js";
+import { tableHttp } from "./tables/http.js";
+import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
@@ -67,6 +69,8 @@ export interface AppOptions {
   drafts: Drafts;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
+  /** Optional in the same way as vaults. */
+  tables?: ReviewTables;
   /** Optional, like vaults. */
   library?: Library;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
@@ -95,6 +99,7 @@ export function createApp({
   viewer,
   drafts,
   vaults,
+  tables,
   library,
   knowledge,
   playbooks,
@@ -227,6 +232,8 @@ export function createApp({
     windowMs: ASK_WINDOW_MS,
     now,
   });
+  // Before threads, so a table run's cancel is handled here and a thread run's falls through.
+  if (tables) app.route("/api/v1", tableHttp({ ...tables, clientOf, asks }));
   app.route("/api/v1", threadHttp({ ...threads, asks, clientOf, now }));
   app.route("/api/v1", draftHttp(drafts, clientOf));
   if (vaults) {

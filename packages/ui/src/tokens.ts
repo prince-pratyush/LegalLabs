@@ -20,6 +20,13 @@ export const colors = {
     externalBg: "#FEF3C7",
     destructive: "#B91C1C",
     warning: "#A16207",
+    // Review-table flags: always shown with an icon and the colour's name.
+    flagRed: "#DC2626",
+    flagOrange: "#C2410C",
+    flagYellow: "#A16207",
+    flagGreen: "#15803D",
+    flagBlue: "#2563EB",
+    flagPurple: "#9333EA",
   },
   dark: {
     bg: "#0E1116",
@@ -38,6 +45,12 @@ export const colors = {
     externalBg: "#3B2F0B",
     destructive: "#F87171",
     warning: "#FACC15",
+    flagRed: "#F87171",
+    flagOrange: "#FB923C",
+    flagYellow: "#FACC15",
+    flagGreen: "#4ADE80",
+    flagBlue: "#60A5FA",
+    flagPurple: "#C084FC",
   },
 } as const satisfies Record<Theme, Record<string, `#${string}`>>;
 

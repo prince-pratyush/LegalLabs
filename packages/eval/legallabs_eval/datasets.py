@@ -62,3 +62,11 @@ def load_json(pinned: Pinned, local: Path | None = None) -> Any:
         return json.loads(local.read_text())
     with zipfile.ZipFile(fetch(pinned)) as z:
         return json.loads(z.read(pinned.member))
+
+
+def read_member(pinned: Pinned, local: Path | None = None) -> bytes:
+    """The pinned member as raw bytes, for members that are not JSON (MAUD is CSV)."""
+    if local is not None:
+        return local.read_bytes()
+    with zipfile.ZipFile(fetch(pinned)) as z:
+        return z.read(pinned.member)

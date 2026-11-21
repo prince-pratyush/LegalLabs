@@ -62,6 +62,7 @@ class Runner:
         suffix: str = "",
         concurrency: int = 4,
         retry_delay: float = 5.0,
+        spread: bool = False,
     ) -> None:
         if suite.kind not in harness.kinds:
             raise NonRetryableError(f"{system_name} cannot run {suite.kind} suites")
@@ -69,7 +70,10 @@ class Runner:
         self.suite = suite
         self.concurrency = concurrency
         self.retry_delay = retry_delay
-        self.manifest = make_manifest(system_name, system, suite, suffix, harness.fingerprint())
+        self.spread = spread
+        self.manifest = make_manifest(
+            system_name, system, suite, suffix, spread, harness.fingerprint()
+        )
         self.run_dir = run_dir_for(runs_root, self.manifest)
 
     def run(self, limit: int | None = None) -> dict[str, Any]:
@@ -78,7 +82,14 @@ class Runner:
             raise ValueError("Run manifest mismatch")
         write_json(config_path, self.manifest)
 
-        tasks = self.suite.load_tasks(limit)
+        if self.spread and limit:
+            # Evenly spaced over the whole suite, so a small sample isn't one contract.
+            every = self.suite.load_tasks()
+            step = max(1, len(every) // limit)
+            tasks = every[::step][:limit]
+        else:
+            tasks = self.suite.load_tasks(limit)
+        self.suite.selected(tasks)
         grader = self.suite.make_grader(self.harness.vendors)
         self.harness.prepare(self.suite.corpus())
         try:

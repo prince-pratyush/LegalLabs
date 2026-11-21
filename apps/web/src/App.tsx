@@ -7,7 +7,7 @@ import {
   type PaletteCommand,
   setThemeSetting,
 } from "@legallabs/ui";
-import { BookMarked, ClipboardList, History, Library, SquarePen } from "lucide-react";
+import { BookMarked, ClipboardList, History, Library, SquarePen, Table } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
@@ -19,6 +19,8 @@ import { ReviewsApp } from "./reviews/ReviewsApp.js";
 import { parseReviewRoute } from "./reviews/route.js";
 import { navigate, parseRoute, paths, useHash } from "./router.js";
 import { Shell, ShellContext, type ShellProps } from "./shell.js";
+import { goTables, parseTableRoute } from "./tables/route.js";
+import { TablesApp } from "./tables/TablesApp.js";
 import { ThreadScreen } from "./thread/ThreadScreen.js";
 import { go, parseRoute as parseVaultRoute } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
@@ -49,7 +51,9 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseReviewRoute(hash) ? (
+        {parseTableRoute(hash) ? (
+          <TablesApp onLeave={() => navigate(paths.new)} />
+        ) : parseReviewRoute(hash) ? (
           <ReviewsApp onLeave={() => navigate(paths.new)} />
         ) : parsePlaybookRoute(hash) ? (
           <PlaybooksApp onLeave={() => navigate(paths.new)} />
@@ -203,6 +207,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => goPlaybooks({ page: "list" }),
     },
     {
+      id: "tables",
+      kind: "action",
+      group: "Go to",
+      label: "Review tables",
+      run: () => goTables({ page: "list", threadId: null }),
+    },
+    {
       id: "library",
       kind: "action",
       group: "Go to",
@@ -282,6 +293,15 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <ClipboardList aria-hidden />
           Playbooks
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => goTables({ page: "list", threadId: null })}
+        >
+          <Table aria-hidden />
+          Review tables
         </Button>
         <Button
           variant="quiet"

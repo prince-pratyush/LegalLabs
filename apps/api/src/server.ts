@@ -25,6 +25,7 @@ import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
+import { createReviewTables } from "./tables/module.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
 import { createRetentionJob } from "./vaults/retention.js";
@@ -106,6 +107,9 @@ const orphaned = await asWorker(pool, async (db) => {
   return rows[0]?.n ?? 0;
 });
 if (orphaned > 0) console.log(`marked ${orphaned} unfinished runs as failed`);
+// Cells those runs left queued or running go back to waiting.
+await asWorker(pool, (db) => db.query("select work.rt_reset_orphaned_cells()"));
+const cellsInFlight = Number(process.env.LEGALLABS_TABLE_CELLS_IN_FLIGHT);
 const vaults = createVaultPort(pool);
 const knowledgeStore = createKnowledge(pool, { embedder });
 const knowledge = knowledgePort(knowledgeStore);
@@ -138,6 +142,12 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
+  tables: createReviewTables(pool, {
+    gateway,
+    documents,
+    log,
+    ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+  }),
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {

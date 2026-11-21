@@ -14,6 +14,8 @@ PRICES: dict[str, tuple[float, float]] = {
     "gpt-5.5": (1.25, 10.0),
     "gpt-5.5-mini": (0.25, 2.0),
     "gemini-2.5-pro": (1.25, 10.0),
+    # Runs on this machine through Ollama.
+    "qwen3:4b-instruct": (0.0, 0.0),
 }
 
 

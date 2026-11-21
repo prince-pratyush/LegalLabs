@@ -385,12 +385,66 @@ export async function seed(tx: Tx) {
   };
   const libraryItems = { acme: await library(acme, ana), beta: await library(beta, bob) };
 
+  // A review table with one row, column, cell, citation, history entry, star and run.
+  const reviewTable = async (
+    ws: string,
+    owner: string,
+    doc: { documentId: string; versionId: string },
+  ) => {
+    const tableId = await id(
+      `insert into work.review_table (workspace_id, owner_id, name, source_kind)
+       values ($1, $2, 'Deal review', 'uploads') returning id`,
+      [ws, owner],
+    );
+    const rowId = await id(
+      `insert into work.rt_row (workspace_id, table_id, ordinal, document_ids)
+       values ($1, $2, 0, array[$3::uuid]) returning id`,
+      [ws, tableId, doc.documentId],
+    );
+    const columnId = await id(
+      `insert into work.rt_column (workspace_id, table_id, ordinal, label, type, prompt)
+       values ($1, $2, 0, 'Governing law', 'free', 'Which law governs?') returning id`,
+      [ws, tableId],
+    );
+    const cellId = await id(
+      `insert into work.rt_cell (workspace_id, table_id, row_id, column_id, status, value_text)
+       values ($1, $2, $3, $4, 'done', 'New York') returning id`,
+      [ws, tableId, rowId, columnId],
+    );
+    await tx.rows(
+      `insert into work.rt_cell_citation
+         (workspace_id, table_id, cell_id, ordinal, version_id, quote, status)
+       values ($1, $2, $3, 1, $4, 'governed by New York law', 'unresolved')`,
+      [ws, tableId, cellId, doc.versionId],
+    );
+    await tx.rows(
+      `insert into work.rt_cell_history (workspace_id, table_id, cell_id, actor_id, field, new)
+       values ($1, $2, $3, $4, 'value', '"New York"')`,
+      [ws, tableId, cellId, owner],
+    );
+    await tx.rows(
+      "insert into work.rt_star (workspace_id, table_id, user_id) values ($1, $2, $3)",
+      [ws, tableId, owner],
+    );
+    await tx.rows(
+      `insert into work.run (workspace_id, owner_id, kind, status, table_id, column_id)
+       values ($1, $2, 'rt_column', 'done', $3, $4)`,
+      [ws, owner, tableId, columnId],
+    );
+    return { tableId, rowId, columnId, cellId };
+  };
+  const reviewTables = {
+    acme: await reviewTable(acme, ana, documents.acme),
+    beta: await reviewTable(beta, bob, documents.beta),
+  };
+
   return {
     documents,
     vaults,
     threads,
     playbooks,
     reviews,
+    reviewTables,
     library: libraryItems,
     slugs: { acme: `acme-${tag}`, beta: `beta-${tag}` },
     secrets,

@@ -57,6 +57,32 @@ harness = "naive-rag"
 vendor = "anthropic"
 params = { model = "claude-sonnet-5-5", max_tokens = 2048, top_k = 8 }
 
+# Review tables over HTTP: upload, create a table, add columns, run, read cells back.
+# Same env as above; more than 50 documents need a preloaded vault in LEGALLABS_VAULT_ID.
+[systems.legallabs-review-table]
+harness = "legallabs-review-table"
+vendor = "legallabs"
+vendors = ["legallabs", "ollama"]
+params = { poll_seconds = 2.0, table_timeout_seconds = 7200 }
+
+# The local model, free and offline (Ollama on localhost or OLLAMA_BASE_URL). The
+# window matches the gateway's 4k route, so the cell harness reads what the API would.
+[systems.qwen-plain]
+harness = "model"
+vendor = "ollama"
+params = { model = "qwen3:4b-instruct", max_tokens = 512, context_tokens = 4096, max_context_chars = 10000 }
+
+# Review-table cells without the server: cell prompt, citations, local quote checks.
+[systems.qwen-cell]
+harness = "review-cell"
+vendor = "ollama"
+params = { model = "qwen3:4b-instruct", max_tokens = 512, context_tokens = 4096 }
+
+# The same cell harness on a paid model, with a window big enough to read most contracts whole.
+[systems.claude-cell]
+harness = "review-cell"
+vendor = "anthropic"
+params = { model = "claude-sonnet-5-5", max_tokens = 1024, context_tokens = 100000 }
 # Playbook review (playbook-review suite): node/run.ts per contract, needing Node 22.18+
 # and the workspace packages built (pnpm --filter '@legallabs/eval^...' build).
 # Offline and free: replies are canned, so its scores only prove the pipeline runs. CI runs it.

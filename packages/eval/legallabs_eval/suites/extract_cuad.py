@@ -29,13 +29,33 @@ def category(question: str) -> str:
     return parts[1] if len(parts) > 2 else question
 
 
+def quotes_of(parsed: dict | None) -> list | None:
+    """Quotes from a plain answer, or the citations of one review-table cell."""
+    if not parsed:
+        return None
+    cells = parsed.get("cells")
+    if isinstance(cells, dict) and cells:
+        cell = next(iter(cells.values()))
+        return [c.get("quote", "") for c in cell.get("citations", []) if isinstance(c, dict)]
+    return parsed.get("quotes")
+
+
+def column(question: str) -> dict:
+    """The task as a review-table clause column, for the offline cell harness."""
+    return {
+        "key": "clause",
+        "label": category(question),
+        "type": "verbatim",
+        "prompt": f'Quote the clause of this contract about "{category(question)}", if any.',
+    }
+
+
 class CuadGrader(Grader):
     def __init__(self, judge: Judge | None) -> None:
         self.judge = judge
 
     def grade(self, task: TaskDatum, result: HarnessResult, trace_dir: Path) -> GraderResult:
-        parsed = parse_json(result.answer or "")
-        quotes = parsed.get("quotes") if parsed else None
+        quotes = quotes_of(parse_json(result.answer or ""))
         if not isinstance(quotes, list) or not all(isinstance(q, str) for q in quotes):
             return GraderResult(0.0, {"valid_json": 0.0, "f1": 0.0}, "answer was not valid JSON")
         quotes = [q for q in quotes if q.strip()]
@@ -92,7 +112,11 @@ class ExtractCuad(AnswerSuite):
                             id=qa["id"],
                             problem=qa["question"],
                             answer=gold,
-                            metadata={"category": category(qa["question"]), "title": doc["title"]},
+                            metadata={
+                                "category": category(qa["question"]),
+                                "title": doc["title"],
+                                "columns": [column(qa["question"])],
+                            },
                             context=para["context"],
                         )
                     )

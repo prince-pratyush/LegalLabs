@@ -120,6 +120,82 @@ export {
   SuggestionCardSkeleton,
   titleOf,
 } from "./components/review/suggestion-card.js";
+export { AddColumnForm, AddColumnPopover } from "./components/review-table/add-column.js";
+export {
+  BulkBar,
+  type BulkOp,
+  type BulkRequest,
+  sheetText,
+} from "./components/review-table/bulk-bar.js";
+export {
+  CellDrawer,
+  type DrawerCitation,
+  type DrawerDetail,
+  type DrawerHistory,
+} from "./components/review-table/cell-drawer.js";
+export { ColumnBuilder } from "./components/review-table/column-builder.js";
+export {
+  ColumnHeader,
+  ColumnHeaderSkeleton,
+  progressLine,
+  type SortDirection,
+} from "./components/review-table/column-header.js";
+export {
+  type CreateRequest,
+  type CreateSource,
+  CreateTablePanel,
+  MAX_UPLOADS,
+  type VaultTree,
+} from "./components/review-table/create-table.js";
+export { type ExportChoice, ExportDialog } from "./components/review-table/export-dialog.js";
+export {
+  type ColumnFilter,
+  cleanFilter,
+  FilterPanel,
+} from "./components/review-table/filter-panel.js";
+export {
+  columnProblem,
+  type NewColumn,
+  PRESETS,
+  type PresetId,
+  presetColumn,
+  TYPE_NAMES,
+} from "./components/review-table/presets.js";
+export {
+  elapsedSeconds,
+  ReviewCell,
+  ReviewCellSkeleton,
+} from "./components/review-table/review-cell.js";
+export {
+  type CellKeyOp,
+  type CellRef,
+  moveCell,
+  ReviewGrid,
+  rectangle,
+} from "./components/review-table/review-grid.js";
+export {
+  DRY_RUN_ROWS,
+  estimateLine,
+  type RunChoice,
+  RunDialog,
+  type RunEstimate,
+} from "./components/review-table/run-dialog.js";
+export { TableList, type TableSummary } from "./components/review-table/table-list.js";
+export {
+  CELL_STATUSES,
+  type CellStatus,
+  type ColumnProgress,
+  type ColumnType,
+  cellKey,
+  errorText,
+  FLAG_COLORS,
+  type FlagColor,
+  flagName,
+  formatUsd,
+  type GridCell,
+  type GridColumn,
+  type GridRow,
+} from "./components/review-table/types.js";
 export {
   Select,
   SelectContent,

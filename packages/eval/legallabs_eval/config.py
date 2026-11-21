@@ -35,6 +35,7 @@ def make_manifest(
     system: dict[str, Any],
     suite: "Suite",
     suffix: str = "",
+    spread: bool = False,
     harness_fingerprint: str = "",
 ) -> dict[str, Any]:
     """Anything that changes a score goes in the hash, so old results can't be reused."""
@@ -50,6 +51,8 @@ def make_manifest(
         "judges": suite.judges,
         "run_suffix": suffix,
     }
+    if spread:
+        manifest["sample"] = "spread"
     # Only when set, so systems without one keep their existing hashes and runs.
     if harness_fingerprint:
         manifest["harness_fingerprint"] = harness_fingerprint

@@ -10,7 +10,7 @@ import {
   PlanCardSkeleton,
   RunProgress,
 } from "@legallabs/ui";
-import { FilePen, Share2 } from "lucide-react";
+import { FilePen, Share2, Table } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -26,6 +26,7 @@ import { latestOnly } from "../latest.js";
 import { navigate, paths } from "../router.js";
 import { SharePanel } from "../share/SharePanel.js";
 import { Shell } from "../shell.js";
+import { goTables } from "../tables/route.js";
 import { openCitation } from "../viewer/open-citation.js";
 import { toAnswerCitation } from "./compose.js";
 import type { LiveCitation, LiveRun } from "./run-state.js";
@@ -281,6 +282,14 @@ export function ThreadScreen({
           <header className="flex items-start justify-between gap-4">
             <h1 className="text-title font-semibold">{thread.title}</h1>
             <div className="flex shrink-0 gap-2">
+              <Button
+                variant="quiet"
+                size="sm"
+                onClick={() => goTables({ page: "list", threadId: thread.id })}
+              >
+                <Table aria-hidden />
+                Review table
+              </Button>
               <Button variant="quiet" size="sm" onClick={() => setPanel({ kind: "drafts" })}>
                 <FilePen aria-hidden />
                 Drafts
