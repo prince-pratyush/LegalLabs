@@ -104,26 +104,35 @@ function fakeModel(messages: readonly Message[]): string {
   });
 }
 
-function harness(options: { asks?: number; hold?: Promise<void> } = {}) {
+interface HarnessOptions {
+  asks?: number;
+  hold?: Promise<void>;
+  vaultLimit?: number;
+  /** Answer through a priced route instead of the free local one, so costs add up. */
+  paid?: boolean;
+}
+
+function harness(options: HarnessOptions = {}) {
   const store = createMemoryStore();
   const documents = testDocuments(pool, { store });
-  const gateway = createGateway({
-    providers: {
-      ollama: {
-        complete: async ({ messages }) => {
-          await options.hold;
-          return {
-            text: fakeModel(messages),
-            usage: { input_tokens: 500, output_tokens: 40 },
-          };
-        },
-      },
+  const model = {
+    complete: async ({ messages }: { messages: readonly Message[] }) => {
+      await options.hold;
+      return { text: fakeModel(messages), usage: { input_tokens: 500, output_tokens: 40 } };
     },
+  };
+  const gateway = createGateway({
+    providers: options.paid ? { anthropic: model } : { ollama: model },
     contextWindows: { ollama: 8_192 },
     recordUsage: async () => {},
   });
   const log = createRunLog(pool);
-  const tables = createReviewTables(pool, { gateway, documents, log });
+  const tables = createReviewTables(pool, {
+    gateway,
+    documents,
+    log,
+    ...(options.vaultLimit ? { vaultDocumentLimit: options.vaultLimit } : {}),
+  });
   const app = createApp({
     auth: createAuth(pool),
     documents,
@@ -222,7 +231,7 @@ const LAW = {
 };
 const FEE = { label: "Termination fee", type: "currency", prompt: "What is the termination fee?" };
 
-async function setup(options: { asks?: number; hold?: Promise<void> } = {}) {
+async function setup(options: HarnessOptions = {}) {
   const h = harness(options);
   const m = await seedMember(pool);
   const cookie = await h.signIn(m);
@@ -755,5 +764,162 @@ describe("review tables API", () => {
     release();
     await s.h.tables.runner.idle();
     expect(await statuses()).toEqual(["done", "done", "done", "done"]);
+  });
+
+  it("refuses a vault over the file limit with SOURCE_LIMIT naming it (RVT-001)", async () => {
+    const h = harness({ vaultLimit: 1 });
+    const m = await seedMember(pool);
+    const cookie = await h.signIn(m);
+    const v = await h.vault(cookie, { "a.txt": CREDIT, "b.txt": LEASE });
+    const res = await h.call(cookie, "POST", "/review-tables", {
+      source: { kind: "vault", vault_id: v.id },
+    });
+    expect(res).toMatchObject({
+      status: 409,
+      body: { code: "SOURCE_LIMIT", details: { limit: 1 } },
+    });
+    expect(res.body.message).toMatch(/up to 1 files/);
+  });
+
+  it("makes a table from a thread's files, linked to the thread (RVT-001)", async () => {
+    const s = await setup();
+    const thread = await pool.query<{ id: string }>(
+      `insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Deal') returning id`,
+      [s.m.workspaceId, s.m.userId],
+    );
+    const threadId = thread.rows[0]?.id;
+    await pool.query(
+      `insert into work.thread_document (workspace_id, thread_id, version_id)
+       select $1, $2, v.id from content.document_version v where v.document_id = any($3::uuid[])`,
+      [s.m.workspaceId, threadId, s.v.ids],
+    );
+    const res = await s.h.call(s.cookie, "POST", "/review-tables", {
+      source: { kind: "thread", thread_id: threadId },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.table).toMatchObject({
+      thread_id: threadId,
+      source_kind: "vault",
+      vault_id: s.v.id,
+      stats: { rows: 2 },
+    });
+  });
+
+  it("refuses a context file from another vault (RVT-002)", async () => {
+    const s = await setup();
+    const other = await s.h.vault(s.cookie, { "playbook.txt": CREDIT });
+    const res = await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/columns`, {
+      ...DATE,
+      context_document_id: other.ids[0],
+    });
+    expect(res).toMatchObject({ status: 400, body: { code: "CONTEXT_FILE_SOURCE_MISMATCH" } });
+    const same = await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/columns`, {
+      ...DATE,
+      context_document_id: s.v.ids[0],
+    });
+    expect(same.status).toBe(201);
+  });
+
+  it("refuses the 501st column with COLUMN_LIMIT (RVT-002)", async () => {
+    const s = await setup();
+    await pool.query(
+      `insert into work.rt_column (workspace_id, table_id, ordinal, label, type, prompt)
+       select $1, $2, n, 'C' || n, 'free', 'q' from generate_series(0, 499) n`,
+      [s.m.workspaceId, s.tableId],
+    );
+    const res = await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/columns`, DATE);
+    expect(res).toMatchObject({ status: 409, body: { code: "COLUMN_LIMIT" } });
+  });
+
+  it("sums each cell's cost into the table's stats (RVT-003)", async () => {
+    const s = await setup({ paid: true });
+    const date = await addColumn(s, DATE);
+    await runAndWait(s, date);
+    const cells = (await rows(s)).cells;
+    for (const cell of cells) expect(cell.cost_usd).toBeGreaterThan(0);
+    const total = cells.reduce((sum: number, c: { cost_usd: number }) => sum + c.cost_usd, 0);
+    const table = (await s.h.call(s.cookie, "GET", `/review-tables/${s.tableId}`)).body.table;
+    expect(table.stats.cost_usd).toBeCloseTo(total, 9);
+  });
+
+  it("exports only the filtered rows when asked (RVT-005, RVT-008)", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    await runAndWait(s, date);
+    const page = await rows(s);
+    const lease = page.rows.find(
+      (r: { documents: { name: string }[] }) => r.documents[0]?.name === "lease.txt",
+    );
+    const cell = page.cells.find((c: { row_id: string }) => c.row_id === lease.id);
+    await s.h.call(s.cookie, "PATCH", `/review-tables/${s.tableId}/cells/${cell.id}`, {
+      flag_color: "red",
+    });
+    const res = await s.h.raw(s.cookie, "POST", `/review-tables/${s.tableId}/export`, {
+      format: "csv",
+      only_filtered_rows: { conditions: [{ column_id: date, flag: ["red"], verified: false }] },
+    });
+    const csv = await res.text();
+    expect(csv).toContain("lease.txt");
+    expect(csv).not.toContain("credit.txt");
+  });
+
+  it("hides a walled row's values on read and won't run it (walls)", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    await runAndWait(s, date);
+    // The credit agreement goes to the recycle bin, which hides it like a wall would.
+    await pool.query(
+      `update content.document set deleted_at = now(), deleted_by = $2, deleted_reason = 'user'
+        where id = $1`,
+      [s.v.ids[0], s.m.userId],
+    );
+    const page = await rows(s);
+    const hidden = page.rows.find(
+      (r: { document_ids: string[] }) => r.document_ids[0] === s.v.ids[0],
+    );
+    expect(hidden).toMatchObject({
+      restricted: true,
+      documents: [{ name: "Restricted document" }],
+    });
+    expect(page.cells.some((c: { row_id: string }) => c.row_id === hidden.id)).toBe(false);
+    await runAndWait(s, date, { row_ids: [hidden.id] });
+    const { rows: stored } = await pool.query(
+      "select status, error_code from work.rt_cell where row_id = $1",
+      [hidden.id],
+    );
+    expect(stored[0]).toEqual({ status: "error", error_code: "ACCESS_DENIED" });
+  });
+
+  it("marks a cell DOC_NOT_READY while its document is still being read", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    await pool.query(
+      `update content.ingest_job j set status = 'parsing', reason = null
+         from content.document_version v where j.version_id = v.id and v.document_id = $1`,
+      [s.v.ids[0]],
+    );
+    await runAndWait(s, date);
+    const page = await rows(s);
+    const errors = page.cells.filter(
+      (c: { error_code: string }) => c.error_code === "DOC_NOT_READY",
+    );
+    expect(errors).toHaveLength(1);
+  });
+
+  it("answers 404 to another user for the table, its cells, columns and runs", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    const started = await runAndWait(s, date);
+    const [cell] = (await rows(s)).cells;
+    const ben = await s.h.signIn(await colleague(s.m));
+    const base = `/review-tables/${s.tableId}`;
+    expect((await s.h.call(ben, "GET", base)).status).toBe(404);
+    expect((await s.h.call(ben, "GET", `${base}/cells/${cell.id}`)).status).toBe(404);
+    expect(
+      (await s.h.call(ben, "PATCH", `${base}/cells/${cell.id}`, { locked: true })).status,
+    ).toBe(404);
+    expect((await s.h.call(ben, "DELETE", `${base}/columns/${date}`)).status).toBe(404);
+    expect((await s.h.call(ben, "POST", `/runs/${started.run_id}/cancel`)).status).toBe(404);
+    expect((await s.h.call(ben, "GET", `/runs/${started.run_id}`)).status).toBe(404);
   });
 });
