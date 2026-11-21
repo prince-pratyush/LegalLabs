@@ -89,8 +89,10 @@ export interface NotifyEvent {
   userIds: string[];
   spaceId: string;
   taskId?: string;
-  /** Short, content-free label; never the body of a comment. */
-  label?: string;
+  /** What the notification calls the object: a Space's or a task's name, never a comment's text. */
+  title: string;
+  /** For `space.access_decided`: whether the request was accepted. */
+  accepted?: boolean;
 }
 
 /** Who to tell. The notifications hub supplies the real one; the default tells no one. */

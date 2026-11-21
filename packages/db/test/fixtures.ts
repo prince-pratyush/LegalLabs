@@ -385,6 +385,36 @@ export async function seed(tx: Tx) {
   };
   const libraryItems = { acme: await library(acme, ana), beta: await library(beta, bob) };
 
+  // One of each notification table in beta only, so the notification tests start from nothing
+  // in acme (they check the other workspace stays untouched).
+  await tx.rows(
+    `insert into notify.notification (workspace_id, user_id, kind, category, object_type,
+       object_id, title, url)
+     values ($1, $2, 'thread.shared', 'threads', 'thread', core.uuid7(), 'Shared thread', '#/t/x')`,
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into notify.notification_pref (workspace_id, user_id, category, value) values ($1, $2, 'vault', true)",
+    [beta, bob],
+  );
+  await tx.rows(
+    `insert into notify.notification_quiet_hours (workspace_id, user_id, from_local, to_local, tz)
+     values ($1, $2, '22:00', '07:00', 'UTC')`,
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into notify.workspace_notification_pref (workspace_id, category) values ($1, 'vault')",
+    [beta],
+  );
+  await tx.rows("insert into notify.workspace_notification_setting (workspace_id) values ($1)", [
+    beta,
+  ]);
+  await tx.rows(
+    `insert into notify.email_outbox (workspace_id, user_id, category, batch_key, payload)
+     values ($1, $2, 'threads', 'seed', '{}')`,
+    [beta, bob],
+  );
+
   // A review table with one row, column, cell, citation, history entry, star and run.
   const reviewTable = async (
     ws: string,
@@ -480,6 +510,33 @@ export async function seed(tx: Tx) {
     return { spaceId, phaseId, taskId };
   };
   const spaces = { acme: await space(acme, ana, ben), beta: await space(beta, bob, bob) };
+  // One of each memory table in beta only, so the memory tests start from nothing in acme.
+  await tx.rows(
+    `insert into memory.memory (workspace_id, user_id, text, source, normalized_hash)
+     values ($1, $2, 'Use UK spelling', 'manual', repeat('a', 64))`,
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into memory.memory_candidate (workspace_id, user_id, text) values ($1, $2, 'Be formal')",
+    [beta, bob],
+  );
+  await tx.rows("insert into memory.memory_setting (workspace_id, user_id) values ($1, $2)", [
+    beta,
+    bob,
+  ]);
+  await tx.rows(
+    "insert into memory.memory_import (workspace_id, user_id, rows) values ($1, $2, '[]')",
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into memory.message_use (message_id, workspace_id, user_id) values ($1, $2, $3)",
+    [threads.beta.messageId, beta, bob],
+  );
+  await tx.rows(
+    `insert into memory.writing_style (workspace_id, owner_id, name, kind, instructions)
+     values ($1, $2, 'Terse', 'instructions', 'Short sentences.')`,
+    [beta, bob],
+  );
 
   return {
     documents,

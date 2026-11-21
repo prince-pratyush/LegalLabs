@@ -1,3 +1,51 @@
+export {
+  ACCESS_LEVELS,
+  AccessLevel,
+  AGENT_LIMITS,
+  AgentAttachment,
+  AgentMode,
+  AgentPatch,
+  AgentSource,
+  AgentStatus,
+  AgentVersionInput,
+  ApprovalConfig,
+  type Approver,
+  approvalFor,
+  atLeast,
+  DEFAULT_APPROVAL,
+  firesOn,
+  ImportConfirm,
+  ImportIssue,
+  type LevelRefusal,
+  levelRefusal,
+  NUDGE_SUPPRESS_DAYS,
+  NUDGE_THRESHOLD,
+  nextScheduledRun,
+  Schedule,
+  ShareDecision,
+  SharePrincipalType,
+  ShareRequestBody,
+  ShareScope,
+  SkillManifest,
+  scopeOf,
+} from "./agent.js";
+export {
+  AgentRunBody,
+  AgentRunError,
+  type AgentRunErrorCode,
+  type AgentRunPort,
+  type AgentRunRequest,
+  RoutingClass,
+  RUN_LIMITS,
+  RunPath,
+  RunSignal,
+  type RunSignalName,
+  RunStep,
+  type RunSummary,
+  StepKind,
+  StepQuestion,
+  StepStatus,
+} from "./agent-run.js";
 export { AuditAction, AuditActorType, auditActions } from "./audit.js";
 export { ErrorBody } from "./error.js";
 export { Id } from "./id.js";
@@ -14,6 +62,34 @@ export {
   TemplateFields,
   type TemplatePort,
 } from "./library.js";
+export {
+  AcceptCandidate,
+  codePoints,
+  IMPORT_COLUMNS,
+  ImportCommit,
+  ImportParsed,
+  ImportRow,
+  ImportRowStatus,
+  MEMORY_ERROR_CODES,
+  MEMORY_LIMITS,
+  Memory,
+  MemoryCandidate,
+  type MemoryErrorCode,
+  MemoryInput,
+  MemoryList,
+  MemorySettings,
+  MemorySettingsPatch,
+  MemorySource,
+  MemoryText,
+  MemoryUse,
+  memoriesConflict,
+  memoryStances,
+  normalizeMemoryText,
+  PERSONALISE_QUESTIONS,
+  PersonaliseInput,
+  SourcePlatform,
+} from "./memory.js";
+export * from "./notification.js";
 export {
   Action,
   Alternate,
@@ -68,6 +144,7 @@ export {
 } from "./playbook.js";
 export { RetrievalScope } from "./retrieval.js";
 export * from "./review-table.js";
+export * from "./review-table-references.js";
 export * from "./review-table-values.js";
 export {
   CitationCounts,
@@ -161,3 +238,40 @@ export {
   viewerPaths,
 } from "./viewer.js";
 export { Wall, WallMode } from "./wall.js";
+export {
+  Block,
+  type BlockType,
+  blockTexts,
+  COLUMN_TYPES,
+  descendantsOf,
+  FILE_KINDS,
+  FileKind,
+  FileRef,
+  findRefs,
+  graphOf,
+  type InputBlock,
+  isInput,
+  Label,
+  Ref,
+  refLabel,
+  SOURCE_KINDS,
+  SourceRef,
+  topoOrder,
+  type ValidateOptions,
+  validateWorkflow,
+  WORKFLOW_LIMITS,
+  WorkflowDefinition,
+  type WorkflowIssue,
+  type WorkflowValidation,
+} from "./workflow.js";
+export {
+  STYLE_LIMITS,
+  StyleInstructions,
+  StyleKind,
+  StyleName,
+  StylePatch,
+  StyleShare,
+  StyleStatus,
+  WritingStyle,
+  WritingStyleList,
+} from "./writing-style.js";

@@ -11,7 +11,7 @@ import { createDocuments, type Documents } from "./documents/documents.js";
 import { createIngestWorker, type IngestWorkerOptions } from "./documents/worker.js";
 import { createRunLog } from "./runs/log.js";
 import { noKnowledge, noVaults } from "./threads/ports.js";
-import { createThreads } from "./threads/threads.js";
+import { createThreads, type ThreadsOptions } from "./threads/threads.js";
 
 export const testPool = () => new pg.Pool({ connectionString: inject("databaseUrl"), max: 3 });
 
@@ -100,9 +100,10 @@ export function testThreads(
   providers: GatewayOptions["providers"] = {},
   vaults: VaultPort = noVaults,
   knowledge: KnowledgePort = noKnowledge,
+  extra: Partial<ThreadsOptions> = {},
 ) {
   const gateway = createGateway({ providers, recordUsage: async () => {} });
   const log = createRunLog(pool);
-  const threads = createThreads(pool, { gateway, documents, log, vaults, knowledge });
+  const threads = createThreads(pool, { gateway, documents, log, vaults, knowledge, ...extra });
   return { threads, log, gateway, vaults, knowledge };
 }

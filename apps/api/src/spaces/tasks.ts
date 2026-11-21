@@ -604,7 +604,7 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
         userIds: [task.created_by],
         spaceId: task.space_id,
         taskId,
-        label: task.name,
+        title: task.name,
       });
     });
   }
@@ -941,7 +941,7 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
           userIds: [task.created_by],
           spaceId: task.space_id,
           taskId,
-          label: task.name,
+          title: task.name,
         });
         return viewOf(db, taskId);
       });
@@ -1031,7 +1031,7 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
             userIds: mentions,
             spaceId: task.space_id,
             taskId,
-            label: task.name,
+            title: task.name,
           });
         }
         return commentView(await commentRow(db, taskId, made?.id ?? ""));

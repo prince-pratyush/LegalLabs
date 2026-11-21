@@ -108,6 +108,7 @@ const COLUMN: Column = {
   model: null,
   context_document_id: null,
   options: {},
+  depends_on: [],
   state: "partial",
   dry_run: true,
   progress: { done: 1, total: 10, null: 0, error: 0, cost_usd: 0 },
@@ -268,6 +269,7 @@ describe("TablePage", () => {
       expect(sent.find((s) => s.route.endsWith("/run"))?.body).toEqual({
         scope: "pending",
         include_verified: false,
+        include_dependents: false,
       }),
     );
   });

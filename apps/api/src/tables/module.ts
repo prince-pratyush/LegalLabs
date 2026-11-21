@@ -15,6 +15,7 @@ export function createReviewTables(
     documents: Documents;
     log: RunLog;
     cellsInFlight?: number;
+    dependencyPollMs?: number;
     /** Lowered in tests, so the 10,000-file limit can be reached with a few files. */
     vaultDocumentLimit?: number;
   },
