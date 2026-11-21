@@ -1,13 +1,13 @@
 import {
   inRunOrder,
   type PutSyncBody,
-  type SyncAddedRowsEvent,
   type SyncResult,
   type SyncStatus,
 } from "@legallabs/contracts";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp, asWorker } from "../db.js";
+import type { Notifier } from "../notifications/notify.js";
 import { audit } from "./audit.js";
 import type { Cells } from "./cells.js";
 import {
@@ -20,12 +20,10 @@ import {
   type TableRow,
 } from "./tables.js";
 
-/** Where a pass reports that it added rows, when the owner asked to hear about it. */
-export type SyncEvents = (event: SyncAddedRowsEvent) => void | Promise<void>;
-
 export interface SyncOptions {
   cells: Pick<Cells, "runRows">;
-  events?: SyncEvents;
+  /** Told when a pass adds rows to a table whose owner opted in (`table.sync_added_rows`). */
+  notifier?: Notifier;
   /** How often the background job looks for tables due a pass. */
   intervalMs?: number;
   log?: (line: string) => void;
@@ -67,7 +65,7 @@ async function folderTree(db: Db, vaultId: string, folderIds: readonly string[])
 const REAL_COLUMNS = `k.deleted_at is null and k.type <> 'manual'`;
 
 export function createTableSync(pool: pg.Pool, options: SyncOptions): TableSync {
-  const { cells, events, log } = options;
+  const { cells, notifier, log } = options;
   const INTERVAL_MS = options.intervalMs ?? 30_000;
   let timer: NodeJS.Timeout | null = null;
   let running: Promise<unknown> | null = null;
@@ -248,20 +246,18 @@ export function createTableSync(pool: pg.Pool, options: SyncOptions): TableSync 
     if (!done.ok) return done;
     const { table, added, versions, removed, restored } = done.value;
     const runs = await startColumns(principal, client, tableId);
-    if (added > 0 && table.sync_notify && events) {
-      try {
-        await events({
-          type: "table.sync_added_rows",
-          workspace_id: table.workspace_id,
-          user_id: table.owner_id,
-          table_id: table.id,
-          table_name: table.name,
-          rows: added,
-        });
-      } catch (err) {
-        // A notification that fails must not undo rows that were added.
-        log?.(`sync notification failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    if (added > 0 && table.sync_notify && notifier) {
+      // notify never throws, so a notification that fails can't undo rows that were added.
+      await notifier.notify(principal, {
+        kind: "table.sync_added_rows",
+        actorId: null,
+        objectType: "table",
+        objectId: table.id,
+        objectTitle: table.name,
+        matterId: table.matter_id,
+        people: { optedIn: [table.owner_id] },
+        detail: `${added} new ${added === 1 ? "row" : "rows"}`,
+      });
     }
     return {
       ok: true,

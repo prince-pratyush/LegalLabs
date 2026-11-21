@@ -131,6 +131,7 @@ const tables = createReviewTables(pool, {
   gateway,
   documents,
   log,
+  notifier,
   syncLog: (line) => console.log(line),
   ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
 });

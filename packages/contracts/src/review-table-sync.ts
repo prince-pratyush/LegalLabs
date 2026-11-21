@@ -54,14 +54,3 @@ export const SyncResult = z.object({
   runs: z.number().int(),
 });
 export type SyncResult = z.infer<typeof SyncResult>;
-
-/** The notification the sync pass raises when the owner opted in. */
-export const SyncAddedRowsEvent = z.object({
-  type: z.literal("table.sync_added_rows"),
-  workspace_id: Id,
-  user_id: Id,
-  table_id: Id,
-  table_name: z.string(),
-  rows: z.number().int().min(1),
-});
-export type SyncAddedRowsEvent = z.infer<typeof SyncAddedRowsEvent>;

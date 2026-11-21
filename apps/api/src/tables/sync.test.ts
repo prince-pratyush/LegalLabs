@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import type { SyncAddedRowsEvent } from "@legallabs/contracts";
 import { afterAll, describe, expect, it } from "vitest";
+import type { NotificationEvent, Notifier } from "../notifications/notify.js";
 import { auditTrail } from "../test-db.js";
 import {
   AMOUNT,
@@ -13,7 +13,7 @@ import {
   rows,
   runAndWait,
   setup,
-} from "./harness.js";
+} from "../test-tables.js";
 
 afterAll(() => pool.end());
 
@@ -53,8 +53,9 @@ async function grid(s: S) {
 }
 
 /** A table that has run three columns over two files, with a fourth that never has. */
-async function synced(events: SyncAddedRowsEvent[] = []) {
-  const s = await setup({ syncEvents: (e) => void events.push(e) });
+async function synced(events: NotificationEvent[] = []) {
+  const notifier: Notifier = { notify: async (_, e) => void events.push(e) };
+  const s = await setup({ notifier });
   for (const column of [DATE, AMOUNT, LAW]) await runAndWait(s, await addColumn(s, column));
   await addColumn(s, FEE); // never run: sync must leave it for the user
   return s;
@@ -76,7 +77,7 @@ async function upload(s: S, name: string, text: string) {
 
 describe("vault sync (RVT-007)", () => {
   it("adds rows for new files and runs the columns that have run before", async () => {
-    const events: SyncAddedRowsEvent[] = [];
+    const events: NotificationEvent[] = [];
     const s = await synced(events);
     expect((await enable(s, { mode: "entire_vault", notify: true })).body).toMatchObject({
       mode: "entire_vault",
@@ -109,12 +110,14 @@ describe("vault sync (RVT-007)", () => {
     // The owner opted in, so the notification event went out once, with counts and no values.
     expect(events).toEqual([
       {
-        type: "table.sync_added_rows",
-        workspace_id: s.m.workspaceId,
-        user_id: s.m.userId,
-        table_id: s.tableId,
-        table_name: "Deal review",
-        rows: 1,
+        kind: "table.sync_added_rows",
+        actorId: null,
+        objectType: "table",
+        objectId: s.tableId,
+        objectTitle: "Deal review",
+        matterId: null,
+        people: { optedIn: [s.m.userId] },
+        detail: "1 new row",
       },
     ]);
     const trail = await auditTrail(pool, s.m.workspaceId);
@@ -126,7 +129,7 @@ describe("vault sync (RVT-007)", () => {
   });
 
   it("doesn't notify unless the owner opted in", async () => {
-    const events: SyncAddedRowsEvent[] = [];
+    const events: NotificationEvent[] = [];
     const s = await synced(events);
     await enable(s);
     await upload(s, "loan.txt", LOAN);
