@@ -360,6 +360,8 @@ export const CreateTableBody = z
   .object({
     name: text(200).pipe(z.string().trim().min(1)).optional(),
     source: TableSource,
+    /** Start with this template's columns, instructions and settings. */
+    template_id: Id.optional(),
     matter_id: Id.nullable().optional(),
   })
   .strict();
@@ -630,5 +632,7 @@ export const TableErrorCode = z.enum([
   "SYNC_DISABLED",
   "SYNC_UNAVAILABLE",
   "SOURCE_REMOVED",
+  "TEMPLATE_BAD_TRANSITION",
+  "TEMPLATE_INVALID",
 ]);
 export type TableErrorCode = z.infer<typeof TableErrorCode>;
