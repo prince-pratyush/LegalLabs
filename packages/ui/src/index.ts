@@ -120,7 +120,11 @@ export {
   SuggestionCardSkeleton,
   titleOf,
 } from "./components/review/suggestion-card.js";
-export { AddColumnForm, AddColumnPopover } from "./components/review-table/add-column.js";
+export {
+  AddColumnForm,
+  AddColumnPopover,
+  mentionProblem,
+} from "./components/review-table/add-column.js";
 export {
   BulkBar,
   type BulkOp,
@@ -161,6 +165,11 @@ export {
   presetColumn,
   TYPE_NAMES,
 } from "./components/review-table/presets.js";
+export {
+  type MentionColumn,
+  mentionAt,
+  PromptField,
+} from "./components/review-table/prompt-field.js";
 export {
   elapsedSeconds,
   ReviewCell,

@@ -106,6 +106,31 @@ export const auditActions: string[] = [
     "external_confirmed",
   ]),
   ...family("space", ["member_added", "member_removed", "party_level_changed", "external_access"]),
+  ...family("space", [
+    "context_updated",
+    "matter_attached",
+    "member_role_changed",
+    "resource_added",
+    "resource_removed",
+    "resource_level_changed",
+    "access_requested",
+    "access_accepted",
+    "access_denied",
+    "template_created",
+    "template_shared",
+    "template_applied",
+  ]),
+  ...family("phase", ["created", "renamed", "reordered", "deleted", "unlocked_manually"]),
+  ...family("task", [
+    "assigned",
+    "status_changed",
+    "gate_approved",
+    "gate_rejected",
+    "returned",
+    "comment_added",
+    "comment_edited",
+    "comment_deleted",
+  ]),
   ...family("approval", ["requested", "accepted", "denied"]),
 
   ...family("matter", [
@@ -151,6 +176,12 @@ export const auditActions: string[] = [
   ...family("export", ["user", "matter", "legal_hold", "audit", "analytics", "evidence_pack"]),
 
   ...family("knowledge.filter_preset", ["created", "updated", "deleted"]),
+
+  ...family("memory", ["enabled", "disabled", "imported", "all_deleted"]),
+  ...family("writing_style", ["created", "updated", "deleted", "shared", "unshared"]),
+  "notification_settings.updated",
+  "workspace_notification_settings.updated",
+  "admin.memory_permission_changed",
 ];
 
 export const AuditAction = z.enum(auditActions);
