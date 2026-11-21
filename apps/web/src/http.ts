@@ -1,4 +1,4 @@
-import { ApiError, FALLBACK } from "../api.js";
+import { ApiError, FALLBACK } from "./api.js";
 
 /** One JSON (or multipart, or 204) call under /api/v1; failures become an ApiError with the server's words. */
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -1,4 +1,4 @@
-import { request, send } from "../notifications/http.js";
+import { request, send } from "../http.js";
 
 export interface Memory {
   id: string;

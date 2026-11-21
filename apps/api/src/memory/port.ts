@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { normalizeMemoryText, STYLE_LIMITS } from "@legallabs/contracts";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { audit } from "../auth/audit.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
 import type { Memories } from "./memory.js";
 import {
@@ -71,29 +72,38 @@ export function createPersonalisation(
 
   async function styleFor(
     db: pg.PoolClient,
+    userId: string,
     id: string | null | undefined,
   ): Promise<StyleForPrompt | null> {
     if (!id) return null;
     const { rows } = await db.query<{
+      owner_id: string;
       kind: "instructions" | "sample";
       instructions: string | null;
       derived_instructions: string | null;
       sample_text: string | null;
       status: string;
     }>(
-      `select kind, instructions, derived_instructions, sample_text, status
+      `select owner_id, kind, instructions, derived_instructions, sample_text, status
          from memory.writing_style where id = $1`,
       [id],
     );
     const row = rows[0];
     if (!row) return null;
-    const text = row.derived_instructions ?? row.instructions;
+    const owner = row.owner_id === userId;
+    // A colleague's sample is never quoted: only the instructions drawn from it are used.
+    const text = owner
+      ? (row.derived_instructions ?? row.instructions)
+      : row.kind === "sample"
+        ? row.derived_instructions
+        : row.instructions;
     if (!text) return null;
     return {
       id,
       instructions: text,
+      shared: !owner,
       excerpt:
-        row.kind === "sample" && row.sample_text
+        owner && row.kind === "sample" && row.sample_text
           ? row.sample_text.slice(0, STYLE_LIMITS.excerptChars)
           : null,
     };
@@ -108,7 +118,9 @@ export function createPersonalisation(
           );
           const permitted = access.rows[0]?.ok === true;
           const member = await db.query<{ ok: boolean }>("select memory.is_member() as ok");
-          const style = member.rows[0]?.ok ? await styleFor(db, input.writingStyleId) : null;
+          const style = member.rows[0]?.ok
+            ? await styleFor(db, p.userId, input.writingStyleId)
+            : null;
 
           // "Remember that ..." makes a memory now, so this very answer can follow it.
           const created: { id: string; text: string }[] = [];
@@ -125,19 +137,17 @@ export function createPersonalisation(
               const row = made.rows[0];
               if (!row) continue;
               created.push({ id: row.id, text });
-              await db.query(
-                "select admin.append_audit_event('memory.created', 'user', $1, 'memory', $2, $3, $4, $5)",
-                [p.userId, row.id, JSON.stringify({ source: "asked" }), client.ip, uaHash(client)],
-              );
+              await audit(db, p, client, "memory.created", "memory", row.id, { source: "asked" });
             }
           }
 
           let held: HeldMemory[] = [];
+          let on = false;
           if (permitted) {
             const setting = await db.query<{ use_memory: boolean }>(
               "select use_memory from memory.memory_setting where user_id = core.current_user_id()",
             );
-            const on = input.useMemory ?? setting.rows[0]?.use_memory ?? true;
+            on = input.useMemory ?? setting.rows[0]?.use_memory ?? true;
             if (on) {
               const { rows } = await db.query<MemoryRow>(
                 "select id, text, created_at from memory.memory order by created_at desc, id desc",
@@ -148,7 +158,7 @@ export function createPersonalisation(
           const chosen = selectMemories(held, input.question, style);
           const base = buildGuidance(style, chosen.used);
           const guidance =
-            infer && permitted
+            infer && permitted && on
               ? `${base ?? "Personalisation follows."}\n\n${INFER_INSTRUCTION}`
               : base;
           return {
@@ -157,7 +167,8 @@ export function createPersonalisation(
             notApplied: chosen.notApplied.map((m) => m.id),
             created: created.map((m) => m.id),
             styleId: style?.id ?? null,
-            inferCandidates: infer && permitted,
+            // With memory off nothing is proposed from the conversation either.
+            inferCandidates: infer && permitted && on,
           };
         });
       } catch (err) {

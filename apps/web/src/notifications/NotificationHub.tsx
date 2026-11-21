@@ -1,5 +1,6 @@
 import {
   CATEGORY_LABELS,
+  isRelativeLink,
   type Notification,
   type NotificationCategory,
 } from "@legallabs/contracts";
@@ -17,8 +18,12 @@ const STATES: { value: State; label: string }[] = [
   { value: "archived", label: "Archived" },
 ];
 
-/** A deep link is a hash route; anything else is a real path the server serves. */
+/**
+ * A deep link is a hash route (`#/t/1`) or a same-origin path (`/d/1`). Anything else
+ * (`javascript:`, `data:`, another host) is refused, whatever the server sent.
+ */
 export function openLink(url: string) {
+  if (!isRelativeLink(url)) return;
   if (url.startsWith("#")) window.location.hash = url.slice(1);
   else window.location.assign(url);
 }

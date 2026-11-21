@@ -2,7 +2,7 @@ import type { Notification } from "@legallabs/contracts";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FakeSource, type Handler, serve } from "../testing.js";
-import { NotificationBell } from "./NotificationHub.js";
+import { NotificationBell, openLink } from "./NotificationHub.js";
 
 const ID = (n: number) => `0190a000-0000-7000-8000-0000000001${String(n).padStart(2, "0")}`;
 
@@ -207,6 +207,22 @@ describe("the hub", () => {
     expect(within(list).queryByRole("button", { name: /^Open/ })).toBeNull();
     fireEvent.click(within(list).getByRole("button", { name: "Unread: Item 2" }));
     expect(window.location.hash).toBe("");
+  });
+
+  it("only follows in-app links", () => {
+    window.location.hash = "";
+    for (const bad of [
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "https://evil.example/x",
+      "//evil.example",
+      "#javascript:alert(1)",
+    ]) {
+      openLink(bad);
+      expect(window.location.hash, bad).toBe("");
+    }
+    openLink("#/t/ok");
+    expect(window.location.hash).toBe("#/t/ok");
   });
 
   it("reports a failed load", async () => {
