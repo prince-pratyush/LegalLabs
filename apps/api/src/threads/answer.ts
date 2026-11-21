@@ -81,6 +81,8 @@ export interface AnswerInput {
   prepared?: { passages: Passage[]; coverage: Coverage };
   /** Extra direction for this answer's shape, such as a report. */
   shape?: string;
+  /** Writing style and memories, appended to the system prompt after the citation contract. */
+  guidance?: string | null;
 }
 
 export const MAX_OUTPUT = 1500;
@@ -254,7 +256,10 @@ function prompt(
     ...authorities.map((authority, i) => `${authLabel(i)}: ${safeName(authority.title)}`),
   ];
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: input.guidance ? `${SYSTEM_PROMPT}\n\n${input.guidance}` : SYSTEM_PROMPT,
+    },
     ...input.history,
     {
       role: "user",
@@ -418,7 +423,11 @@ export function createAnswerer(deps: AnswerDeps) {
       title: "Reading the sources",
     });
     const fixedChars =
-      SYSTEM_PROMPT.length + charsOf(input.history) + input.question.length + 2_000;
+      SYSTEM_PROMPT.length +
+      (input.guidance?.length ?? 0) +
+      charsOf(input.history) +
+      input.question.length +
+      2_000;
     const budgetTokens = deps.gateway.contextTokens("synthesize") - MAX_OUTPUT;
     const budgetChars = Math.max(2_000, budgetTokens * CHARS_PER_TOKEN - fixedChars);
     const { passages, authorities, coverage } = input.prepared

@@ -484,6 +484,34 @@ export async function seed(tx: Tx) {
     beta: await reviewTable(beta, bob, documents.beta),
   };
 
+  // One of each memory table in beta only, so the memory tests start from nothing in acme.
+  await tx.rows(
+    `insert into memory.memory (workspace_id, user_id, text, source, normalized_hash)
+     values ($1, $2, 'Use UK spelling', 'manual', repeat('a', 64))`,
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into memory.memory_candidate (workspace_id, user_id, text) values ($1, $2, 'Be formal')",
+    [beta, bob],
+  );
+  await tx.rows("insert into memory.memory_setting (workspace_id, user_id) values ($1, $2)", [
+    beta,
+    bob,
+  ]);
+  await tx.rows(
+    "insert into memory.memory_import (workspace_id, user_id, rows) values ($1, $2, '[]')",
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into memory.message_use (message_id, workspace_id, user_id) values ($1, $2, $3)",
+    [threads.beta.messageId, beta, bob],
+  );
+  await tx.rows(
+    `insert into memory.writing_style (workspace_id, owner_id, name, kind, instructions)
+     values ($1, $2, 'Terse', 'instructions', 'Short sentences.')`,
+    [beta, bob],
+  );
+
   return {
     documents,
     vaults,

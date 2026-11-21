@@ -63,6 +63,33 @@ export {
   type TemplatePort,
 } from "./library.js";
 export * from "./matter.js";
+export {
+  AcceptCandidate,
+  codePoints,
+  IMPORT_COLUMNS,
+  ImportCommit,
+  ImportParsed,
+  ImportRow,
+  ImportRowStatus,
+  MEMORY_ERROR_CODES,
+  MEMORY_LIMITS,
+  Memory,
+  MemoryCandidate,
+  type MemoryErrorCode,
+  MemoryInput,
+  MemoryList,
+  MemorySettings,
+  MemorySettingsPatch,
+  MemorySource,
+  MemoryText,
+  MemoryUse,
+  memoriesConflict,
+  memoryStances,
+  normalizeMemoryText,
+  PERSONALISE_QUESTIONS,
+  PersonaliseInput,
+  SourcePlatform,
+} from "./memory.js";
 export * from "./notification.js";
 export {
   Action,
@@ -209,3 +236,14 @@ export {
   type WorkflowIssue,
   type WorkflowValidation,
 } from "./workflow.js";
+export {
+  STYLE_LIMITS,
+  StyleInstructions,
+  StyleKind,
+  StyleName,
+  StylePatch,
+  StyleShare,
+  StyleStatus,
+  WritingStyle,
+  WritingStyleList,
+} from "./writing-style.js";

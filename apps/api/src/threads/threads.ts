@@ -14,6 +14,7 @@ import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
+import { noPersonalisation, type Personalisation } from "../memory/port.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
 import { type Answer, type Checked, createAnswerer, type ScopeDocument } from "./answer.js";
@@ -123,6 +124,10 @@ export interface AskInput {
   responseMode?: ResponseMode;
   /** Plans a read of the whole scope and waits for approval before spending. */
   deepAnalysis?: boolean;
+  /** Overrides the person's memory setting for this thread; left out, their setting decides. */
+  useMemory?: boolean;
+  /** A writing style of theirs, or one shared with the workspace, for this answer. */
+  writingStyleId?: string;
 }
 
 export type AskFailure =
@@ -209,6 +214,8 @@ export interface ThreadsOptions {
   notifier?: Notifier;
   /** A deep analysis that took longer than this notifies its owner when it finishes. */
   longRunMs?: number;
+  /** Memories and writing styles in answers; left out, answers are not personalised. */
+  personalisation?: Personalisation;
 }
 
 const HISTORY_MESSAGES = 6;
@@ -489,6 +496,7 @@ const RUN_MESSAGES = {
 export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   const { log, vaults } = options;
   const notifier = options.notifier ?? noNotifier;
+  const personalisation: Personalisation = options.personalisation ?? noPersonalisation;
   const longRunMs = options.longRunMs ?? 60_000;
   const answer = createAnswerer({ pool, ...options });
 
@@ -867,8 +875,18 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     active.set(run.id, controller);
     try {
       await emit({ type: "status", status: "running" });
+      // The question as typed, not the history: memories follow this request, not old ones.
+      const plan = await personalisation.prepare(
+        principal,
+        {
+          question: context.question,
+          useMemory: input.useMemory,
+          writingStyleId: input.writingStyleId,
+        },
+        client,
+      );
       // Streamed tokens carry the run id; the saved answer gets its own id at the end.
-      const reply = await answer(
+      const answered = await answer(
         {
           principal,
           documents,
@@ -876,23 +894,33 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           history: context.history,
           question: context.question,
           ...(input.model ? { model: input.model } : {}),
+          ...(plan?.guidance ? { guidance: plan.guidance } : {}),
           emit,
           cancelled: () => cancelled(run.id),
           signal: controller.signal,
         },
         run.id,
       );
-      if (reply === "CANCELLED" || cancelled(run.id)) return;
-      if (typeof reply === "string") {
-        await fail(principal, run.id, reply, RUN_MESSAGES[reply], reply !== "MODEL_NOT_ALLOWED");
+      if (answered === "CANCELLED" || cancelled(run.id)) return;
+      if (typeof answered === "string") {
+        await fail(
+          principal,
+          run.id,
+          answered,
+          RUN_MESSAGES[answered],
+          answered !== "MODEL_NOT_ALLOWED",
+        );
         return;
       }
+      const split = personalisation.split(plan, answered.text);
+      const reply = { ...answered, text: split.text };
       await emit({ type: "status", status: "verifying" });
       let messageId: string;
       try {
         messageId = await asApp(pool, principal, (db) =>
           save(db, principal, run, reply, documents, client),
         );
+        await personalisation.finish(principal, messageId, plan, split.candidates);
       } catch (err) {
         if (err instanceof RunStopped) return;
         // A wall or permission can change while the model is answering.
