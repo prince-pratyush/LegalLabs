@@ -31,7 +31,13 @@ export interface UploadInput {
   matterId: string | null;
   vaultId?: string;
   folderId?: string | null;
+  /** An embedded file of this workflow; only its editors may add one. */
+  workflowId?: string;
 }
+
+export type ReplaceResult =
+  | { ok: true; documentId: string; versionId: string; versionNo: number }
+  | { ok: false; reason: "NOT_FOUND" | "FORBIDDEN" | "UNSUPPORTED_TYPE" | "FILE_TOO_LARGE" };
 
 export type UploadResult =
   | { ok: true; document: Summary }
@@ -75,6 +81,16 @@ export interface Documents {
   list(principal: Principal): Promise<Summary[]>;
   /** Null for anything the caller can't read. */
   get(principal: Principal, documentId: string): Promise<Summary | null>;
+  /**
+   * Stores new content as the document's next version, so everything that names the document
+   * reads the new text from then on. Same file type only.
+   */
+  replace(
+    principal: Principal,
+    documentId: string,
+    input: { name: string; bytes: Uint8Array },
+    client: Client,
+  ): Promise<ReplaceResult>;
   /** Queues a failed file again. False if it isn't the caller's failed file. */
   retry(principal: Principal, documentId: string, client: Client): Promise<boolean>;
   /** Best match first, limited to what the caller may read. */
@@ -171,7 +187,9 @@ const SUMMARY_SQL = `
          coalesce(j.status, 'indexed') status, j.reason, v.page_count,
          v.empty_page_count, d.matter_id, d.created_at
     from content.document d
-    join content.document_version v on v.document_id = d.id
+    join content.document_version v on v.id = (
+      select l.id from content.document_version l
+       where l.document_id = d.id order by l.version_no desc limit 1)
     left join content.ingest_job j on j.version_id = v.id
    where core.has_permission('threads.use')`;
 
@@ -251,9 +269,19 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
       }
       const document = await db.query<{ id: string; created_at: Date }>(
         `insert into content.document
-           (workspace_id, owner_id, matter_id, name, mime, size, vault_id, folder_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, created_at`,
-        [workspaceId, userId, input.matterId, name, mime, input.bytes.length, vaultId, folderId],
+           (workspace_id, owner_id, matter_id, name, mime, size, vault_id, folder_id, workflow_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id, created_at`,
+        [
+          workspaceId,
+          userId,
+          input.matterId,
+          name,
+          mime,
+          input.bytes.length,
+          vaultId,
+          folderId,
+          input.workflowId ?? null,
+        ],
       );
       const row = document.rows[0];
       if (!row) throw new Error("insert returned no document");
@@ -308,9 +336,18 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
                   and ($2::uuid is null
                        or coalesce(content.vault_level($2) in ('owner', 'full', 'edit'), false))
                   and ($3::uuid is null or exists (
-                    select 1 from content.folder f where f.id = $3 and f.vault_id = $2)) allowed,
+                    select 1 from content.folder f where f.id = $3 and f.vault_id = $2))
+                  and ($4::uuid is null
+                       or (core.has_permission('agents.build')
+                           and coalesce(work.workflow_level($4) in ('edit', 'full'), false)))
+                  allowed,
                   core.can_access_matter($1::uuid) reachable`,
-          [input.matterId, vaultId, vaultId ? (input.folderId ?? null) : null],
+          [
+            input.matterId,
+            vaultId,
+            vaultId ? (input.folderId ?? null) : null,
+            vaultId ? null : (input.workflowId ?? null),
+          ],
         );
         return rows[0];
       });
@@ -348,6 +385,68 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
         }
         throw err;
       }
+    },
+
+    async replace(principal, documentId, input, client) {
+      if (!UUID.test(documentId)) return { ok: false, reason: "NOT_FOUND" };
+      const mime = detectType(input.bytes, input.name);
+      const typeLimit = fileTypeLimit(input.name)?.bytes ?? MAX_FILE_BYTES;
+      if (input.bytes.length > Math.min(MAX_FILE_BYTES, typeLimit)) {
+        return { ok: false, reason: "FILE_TOO_LARGE" };
+      }
+      const current = await asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{ mime: string; writable: boolean }>(
+          "select d.mime, content.can_write_document(d.id) writable from content.document d where d.id = $1",
+          [documentId],
+        );
+        return rows[0] ?? null;
+      });
+      if (!current) return { ok: false, reason: "NOT_FOUND" };
+      if (!current.writable) return { ok: false, reason: "FORBIDDEN" };
+      // The document keeps one type, so viewers and citations never meet a surprise.
+      if (mime !== current.mime) return { ok: false, reason: "UNSUPPORTED_TYPE" };
+      const sha256 = createHash("sha256").update(input.bytes).digest();
+      await options.store.putIfAbsent(
+        contentKey(principal.workspaceId, sha256.toString("hex")),
+        input.bytes,
+      );
+      return asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{ id: string; version_no: number }>(
+          `insert into content.document_version
+             (workspace_id, document_id, version_no, sha256, created_by)
+           select $1, $2, coalesce(max(v.version_no), 0) + 1, $3, $4
+             from content.document_version v where v.document_id = $2
+           returning id, version_no`,
+          [principal.workspaceId, documentId, sha256, principal.userId],
+        );
+        const version = rows[0];
+        if (!version) throw new Error("insert returned no version");
+        await db.query(
+          "insert into content.ingest_job (workspace_id, version_id) values ($1, $2)",
+          [principal.workspaceId, version.id],
+        );
+        await db.query(
+          "select admin.append_audit_event('document.version_added', 'user', $1, 'document', $2, $3, $4, $5)",
+          [
+            principal.userId,
+            documentId,
+            JSON.stringify({
+              version_id: version.id,
+              version_no: version.version_no,
+              sha256: sha256.toString("hex"),
+              size: input.bytes.length,
+            }),
+            client.ip,
+            uaHash(client),
+          ],
+        );
+        return {
+          ok: true,
+          documentId,
+          versionId: version.id,
+          versionNo: version.version_no,
+        } as const;
+      });
     },
 
     async get(principal, documentId) {
@@ -501,7 +600,8 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
     async list(principal) {
       return asApp(pool, principal, async (db) => {
         const { rows } = await db.query<SummaryRow>(
-          `${SUMMARY_SQL} and d.vault_id is null order by d.id desc limit $1`,
+          `${SUMMARY_SQL} and d.vault_id is null and d.workflow_id is null
+            order by d.id desc limit $1`,
           [LIST_LIMIT],
         );
         return rows.map(toSummary);

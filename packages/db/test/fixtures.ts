@@ -1,6 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { Tx } from "./db.js";
 
+export const WORKFLOW_DEFINITION = JSON.stringify({
+  schema: "counsel.workflow/1",
+  blocks: [
+    { type: "user_input.text", id: "q", label: "Question", prompt: "Ask" },
+    { type: "response", id: "out", outputs: [{ ref: "@Question" }] },
+  ],
+  edges: [{ from: "q", to: "out" }],
+  embedded_files: [],
+});
+
 // Two workspaces with a row in every table, inserted as the schema owner.
 export async function seed(tx: Tx) {
   await tx.asOwner();
@@ -489,6 +499,25 @@ export async function seed(tx: Tx) {
     beta: await reviewTable(beta, bob, documents.beta),
   };
 
+  // A live workflow in each workspace.
+  const workflow = async (ws: string, owner: string) => {
+    const workflowId = await id(
+      "insert into work.workflow (workspace_id, owner_id, title) values ($1, $2, 'NDA summary') returning id",
+      [ws, owner],
+    );
+    const versionId = await id(
+      `insert into work.workflow_version (workspace_id, workflow_id, no, definition, created_by)
+       values ($1, $2, 1, $3, $4) returning id`,
+      [ws, workflowId, WORKFLOW_DEFINITION, owner],
+    );
+    await tx.rows("update work.workflow set live_version_id = $2, status = 'live' where id = $1", [
+      workflowId,
+      versionId,
+    ]);
+    return { workflowId, versionId };
+  };
+  const workflows = { acme: await workflow(acme, ana), beta: await workflow(beta, bob) };
+
   // An agent with a live version, an upload, a schedule, a pending share and a dismissed nudge.
   const agent = async (ws: string, owner: string, doc: { documentId: string }) => {
     const agentId = await id("select core.uuid7() as id", []);
@@ -604,6 +633,7 @@ export async function seed(tx: Tx) {
   );
 
   return {
+    workflows,
     agents,
     documents,
     vaults,

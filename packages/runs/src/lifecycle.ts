@@ -14,7 +14,9 @@ export type RunStatusName =
 export type StepOutcome =
   | { kind: "continue" }
   | { kind: "done" }
-  | { kind: "ask"; step_id: string; allow_skip: boolean }
+  // `approval`: the step waits as the run's plan does ("Continue with all rows?"), so the run
+  // shows awaiting_approval and approve_plan / reject_plan answer it.
+  | { kind: "ask"; step_id: string; allow_skip: boolean; approval?: boolean }
   | { kind: "fail"; code: string; message: string };
 
 export type Failure = { code: string; message: string };
@@ -151,15 +153,22 @@ export async function runLifecycle(
       ordinal += 1;
       continue;
     }
-    await act.setStatus("awaiting_input");
+    const approval = out.approval === true;
+    await act.setStatus(approval ? "awaiting_approval" : "awaiting_input");
     let answered = false;
     while (!answered) {
-      const next = await waitForPerson(TIMEOUT_MS.input);
+      const next = await waitForPerson(approval ? TIMEOUT_MS.approval : TIMEOUT_MS.input);
       if (next === "timeout") {
-        return end("cancelled", { code: "input_timeout", message: "No one answered in time." });
+        return approval
+          ? end("cancelled", { code: "approval_timeout", message: "No one approved in time." })
+          : end("cancelled", { code: "input_timeout", message: "No one answered in time." });
       }
       if (next.name === "cancel") return cancelled(next.reason);
-      if (next.name === "answer_question" && next.step_id === out.step_id) {
+      if (approval && (next.name === "approve_plan" || next.name === "reject_plan")) {
+        const option_id = next.name === "approve_plan" ? "continue" : "stop";
+        await act.answer(out.step_id, { option_id }, false);
+        answered = true;
+      } else if (next.name === "answer_question" && next.step_id === out.step_id) {
         await act.answer(out.step_id, next.answer, false);
         answered = true;
       }

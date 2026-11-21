@@ -123,6 +123,34 @@ describe("runLifecycle", () => {
     expect(h.calls).toContain("status:awaiting_input");
   });
 
+  it("waits for approval mid-run when a step asks for it", async () => {
+    const h = harness({
+      outcomes: [
+        { kind: "ask", step_id: "rows", allow_skip: true, approval: true },
+        { kind: "done" },
+      ],
+    });
+    h.queue.push({ name: "approve_plan" });
+    expect(await h.run()).toEqual({ status: "done" });
+    expect(h.calls).toContain("status:awaiting_approval");
+    expect(h.calls).toContain('answer:rows:{"option_id":"continue"}:false');
+
+    const stopped = harness({
+      outcomes: [
+        { kind: "ask", step_id: "rows", allow_skip: true, approval: true },
+        { kind: "done" },
+      ],
+    });
+    stopped.queue.push({ name: "reject_plan", reason: "enough" });
+    expect(await stopped.run()).toEqual({ status: "done" });
+    expect(stopped.calls).toContain('answer:rows:{"option_id":"stop"}:false');
+
+    const ignored = harness({
+      outcomes: [{ kind: "ask", step_id: "rows", allow_skip: true, approval: true }],
+    });
+    expect(await ignored.run()).toEqual({ status: "cancelled", code: "approval_timeout" });
+  });
+
   it("cancels a question nobody answers in 72 hours", async () => {
     const h = harness({ outcomes: [{ kind: "ask", step_id: "q1", allow_skip: true }] });
     expect(await h.run()).toEqual({ status: "cancelled", code: "input_timeout" });

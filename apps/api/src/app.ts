@@ -42,6 +42,8 @@ import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
+import { workflowHttp } from "./workflows/http.js";
+import type { Workflows } from "./workflows/workflows.js";
 
 const COOKIE = "sid";
 const COOKIE_PREFIX: "host" = "host";
@@ -103,6 +105,8 @@ export interface AppOptions {
   reviews?: Reviews;
   /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
   agentRuns?: AgentRuns;
+  /** The Workflow Builder; left out, its endpoints are not mounted. */
+  workflows?: Workflows;
   /** Agents: building, sharing, schedules and running. Left out, those endpoints are not mounted. */
   agents?: Agents;
   /** Admin switches for share approval; mounted with agents. */
@@ -139,6 +143,7 @@ export function createApp({
   playbooks,
   reviews,
   agentRuns,
+  workflows,
   agents,
   agentSharing,
   agentNudges,
@@ -281,6 +286,7 @@ export function createApp({
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
+  if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)
     app.route(
       "/api/v1",
