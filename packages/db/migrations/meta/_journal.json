@@ -281,6 +281,13 @@
       "when": 1794009660000,
       "tag": "0043_work_review_table_integrity",
       "breakpoints": false
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794009750000,
+      "tag": "0085_work_review_table_dependencies",
+      "breakpoints": false
     }
   ]
 }
