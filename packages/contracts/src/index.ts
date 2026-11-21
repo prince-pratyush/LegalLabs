@@ -146,6 +146,7 @@ export { RetrievalScope } from "./retrieval.js";
 export * from "./review-table.js";
 export * from "./review-table-references.js";
 export * from "./review-table-sync.js";
+export * from "./review-table-template.js";
 export * from "./review-table-values.js";
 export {
   CitationCounts,

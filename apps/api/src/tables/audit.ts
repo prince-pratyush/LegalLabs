@@ -9,12 +9,14 @@ export const audit = (
   action: string,
   tableId: string,
   details: object = {},
+  objectType: "table" | "template" = "table",
 ) =>
-  db.query("select admin.append_audit_event($1, 'user', $2, 'table', $3, $4, $5, $6)", [
+  db.query("select admin.append_audit_event($1, 'user', $2, $7, $3, $4, $5, $6)", [
     action,
     principal.userId,
     tableId,
     JSON.stringify(details),
     client.ip,
     uaHash(client),
+    objectType,
   ]);

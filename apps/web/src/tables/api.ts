@@ -14,12 +14,16 @@ import type {
   PatchColumnBody,
   PutSyncBody,
   ReviewTable,
+  ReviewTableTemplate,
   Row,
   RowFilter,
   RowSort,
   RunColumnBody,
+  SaveTemplateBody,
   SyncResult,
   SyncStatus,
+  TemplateGrant,
+  TestTemplateBody,
 } from "@legallabs/contracts";
 import { RT_LIMITS } from "@legallabs/contracts";
 import { ApiError, FALLBACK, messageOf } from "../api.js";
@@ -32,6 +36,8 @@ const MESSAGES: Record<string, string> = {
   EXPORT_DISABLED_BY_SOURCE: "The source vault doesn't allow downloads, so this can't be exported.",
   COLUMN_RUNNING: "This column is already running. Wait for it to finish or stop it.",
   COLUMN_LIMIT: `This table already has ${RT_LIMITS.columns} columns.`,
+  TEMPLATE_BAD_TRANSITION:
+    "Test the template first, then ask for approval. A template waiting for approval can't be changed.",
   SYNC_ENABLED: "Rows are added by sync. Turn sync off to add them by hand.",
   SYNC_UNAVAILABLE: "Only a table over a vault can sync.",
   SOURCE_REMOVED: "The file has left the vault, so this can't be re-run.",
@@ -67,6 +73,13 @@ const send = <T>(method: string, path: string, body: unknown) =>
 const t = (id: string) => `/review-tables/${encodeURIComponent(id)}`;
 const c = (id: string, cellId: string) => `${t(id)}/cells/${encodeURIComponent(cellId)}`;
 const col = (id: string, columnId: string) => `${t(id)}/columns/${encodeURIComponent(columnId)}`;
+
+export interface TemplateShare {
+  principal_type: "user" | "group" | "workspace";
+  principal_id: string;
+  label: string;
+  level: "use" | "edit";
+}
 
 export interface RowsPage {
   rows: Row[];
@@ -131,6 +144,46 @@ export const tableApi = {
   sync: (id: string) => call<SyncStatus>(`${t(id)}/sync`),
   putSync: (id: string, body: PutSyncBody) => send<SyncStatus>("PUT", `${t(id)}/sync`, body),
   syncNow: (id: string) => call<SyncResult>(`${t(id)}/sync/run`, { method: "POST" }),
+  templates: async () =>
+    (await call<{ items: ReviewTableTemplate[] }>("/review-table-templates")).items,
+  saveTemplate: async (id: string, body: SaveTemplateBody) =>
+    (await send<{ template: ReviewTableTemplate }>("POST", `${t(id)}/templates`, body)).template,
+  deleteTemplate: (id: string) =>
+    call<void>(`/review-table-templates/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  testTemplate: (id: string, body: TestTemplateBody) =>
+    send<{ table_id: string; run_ids: string[] }>(
+      "POST",
+      `/review-table-templates/${encodeURIComponent(id)}/test`,
+      body,
+    ),
+  publishTemplate: (id: string) =>
+    call<unknown>(`/review-table-templates/${encodeURIComponent(id)}/publish`, { method: "POST" }),
+  decideTemplate: (id: string, approve: boolean, note?: string) =>
+    send<unknown>(
+      "POST",
+      `/admin/review-table-templates/${encodeURIComponent(id)}/${approve ? "approve" : "reject"}`,
+      note ? { note } : {},
+    ),
+  templateShares: async (id: string) =>
+    (
+      await call<{ shares: TemplateShare[] }>(
+        `/review-table-templates/${encodeURIComponent(id)}/shares`,
+      )
+    ).shares,
+  putTemplateShares: async (id: string, grants: TemplateGrant[]) =>
+    (
+      await send<{ shares: TemplateShare[] }>(
+        "PUT",
+        `/review-table-templates/${encodeURIComponent(id)}/shares`,
+        { grants },
+      )
+    ).shares,
+  principals: async (q: string) =>
+    (
+      await call<{ principals: Omit<TemplateShare, "level">[] }>(
+        `/library/principals?q=${encodeURIComponent(q)}`,
+      )
+    ).principals,
   cancel: (runId: string) =>
     call<void>(`/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
   cell: (id: string, cellId: string) => call<CellDetail>(c(id, cellId)),
