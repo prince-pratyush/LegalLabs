@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import type { NotificationEvent, Notifier } from "../notifications/notify.js";
 import { auditTrail } from "../test-db.js";
 import {
@@ -16,6 +16,9 @@ import {
 } from "../test-tables.js";
 
 afterAll(() => pool.end());
+// Each case runs three columns over a few files; that takes seconds alone and over 20 s when every
+// API test file shares the test database at once.
+vi.setConfig({ testTimeout: 90_000 });
 
 const GONE = "0194f3a0-0000-7000-8000-00000000dead";
 const LOAN =
