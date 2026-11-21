@@ -9,6 +9,7 @@ import {
 } from "@legallabs/ui";
 import { Vault as VaultIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { MatterPicker } from "../matters/MatterPicker.js";
 import { type Vault, vaultApi } from "./api.js";
 import { go } from "./route.js";
 import { ACCESS_LABEL, formatDate, messageOf } from "./shared.js";
@@ -22,6 +23,7 @@ export function VaultList({
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [matterId, setMatterId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export function VaultList({
     setBusy(true);
     setError(null);
     try {
-      const vault = await vaultApi.create(name.trim(), description.trim());
+      const vault = await vaultApi.create(name.trim(), description.trim(), matterId);
       onChanged();
       go({ page: "vault", vaultId: vault.id, folderId: null });
     } catch (err) {
@@ -95,6 +97,7 @@ export function VaultList({
               />
             )}
           </Field>
+          <MatterPicker value={matterId} onChange={(m) => setMatterId(m?.id ?? null)} />
           {error && (
             <p role="alert" className="text-destructive">
               {error}

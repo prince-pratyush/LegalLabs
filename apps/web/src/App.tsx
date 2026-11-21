@@ -7,12 +7,22 @@ import {
   type PaletteCommand,
   setThemeSetting,
 } from "@legallabs/ui";
-import { BookMarked, ClipboardList, History, Library, SquarePen, Table } from "lucide-react";
+import {
+  BookMarked,
+  Briefcase,
+  ClipboardList,
+  History,
+  Library,
+  SquarePen,
+  Table,
+} from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
 import { LibraryApp } from "./library/LibraryApp.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
+import { MattersApp } from "./matters/MattersApp.js";
+import { mattersHash, parseMattersRoute } from "./matters/route.js";
 import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
 import { ReviewsApp } from "./reviews/ReviewsApp.js";
@@ -51,7 +61,9 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseTableRoute(hash) ? (
+        {parseMattersRoute(hash) ? (
+          <MattersApp onLeave={() => navigate(paths.new)} />
+        ) : parseTableRoute(hash) ? (
           <TablesApp onLeave={() => navigate(paths.new)} />
         ) : parseReviewRoute(hash) ? (
           <ReviewsApp onLeave={() => navigate(paths.new)} />
@@ -221,6 +233,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => navigate(libraryHash().slice(1)),
     },
     {
+      id: "matters",
+      kind: "action",
+      group: "Go to",
+      label: "Matters & Walls",
+      run: () => navigate(mattersHash().slice(1)),
+    },
+    {
       id: "history",
       kind: "action",
       group: "Actions",
@@ -311,6 +330,15 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <BookMarked aria-hidden />
           Library
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => navigate(mattersHash().slice(1))}
+        >
+          <Briefcase aria-hidden />
+          Matters &amp; Walls
         </Button>
       </div>
       <section className="grid gap-2" aria-labelledby="recents-heading">
