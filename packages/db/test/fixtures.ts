@@ -100,6 +100,22 @@ export async function seed(tx: Tx) {
      values ($1, $2, $3, 1), ($4, $5, $6, 1)`,
     [acme, ana, m2, beta, bob, mb],
   );
+  for (const [ws, admin] of [
+    [acme, ana],
+    [beta, bob],
+  ] as const) {
+    await tx.rows("insert into core.matter_options (workspace_id) values ($1)", [ws]);
+    await tx.rows("insert into core.wall_provider (workspace_id) values ($1)", [ws]);
+    await tx.rows(
+      "insert into core.wall_sync_report (workspace_id, provider, status) values ($1, 'csv', 'ok')",
+      [ws],
+    );
+    await tx.rows(
+      `insert into core.matter_import (workspace_id, kind, mode, rows, preview, created_by)
+       values ($1, 'matters', 'upsert', '[]', '{}', $2)`,
+      [ws, admin],
+    );
+  }
 
   // Objects arrive in later modules; a share only needs a type and an id.
   const t1 = await id("select core.uuid7() as id", []);
