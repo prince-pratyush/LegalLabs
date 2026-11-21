@@ -124,12 +124,14 @@ export function serve(routes: Record<string, Handler>) {
 
 // Stands in for the browser's EventSource, so a test can play a run's events.
 export class FakeSource {
+  /** Run streams only; the notification stream is in `bell`, so run tests count their own. */
   static all: FakeSource[] = [];
+  static bell: FakeSource[] = [];
   readyState = 1;
   onerror: (() => void) | null = null;
   private listeners = new Map<string, ((event: MessageEvent) => void)[]>();
   constructor(readonly url: string) {
-    FakeSource.all.push(this);
+    (url.includes("/notifications/stream") ? FakeSource.bell : FakeSource.all).push(this);
   }
   addEventListener(type: string, listener: (event: MessageEvent) => void) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
@@ -177,6 +179,7 @@ export class NoResize {
 
 beforeEach(() => {
   FakeSource.all = [];
+  FakeSource.bell = [];
   vi.stubGlobal("EventSource", FakeSource);
   vi.stubGlobal("ResizeObserver", NoResize);
 });
