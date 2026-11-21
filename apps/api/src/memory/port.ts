@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { normalizeMemoryText, STYLE_LIMITS } from "@legallabs/contracts";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { audit } from "../auth/audit.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
 import type { Memories } from "./memory.js";
 import {
@@ -125,10 +126,7 @@ export function createPersonalisation(
               const row = made.rows[0];
               if (!row) continue;
               created.push({ id: row.id, text });
-              await db.query(
-                "select admin.append_audit_event('memory.created', 'user', $1, 'memory', $2, $3, $4, $5)",
-                [p.userId, row.id, JSON.stringify({ source: "asked" }), client.ip, uaHash(client)],
-              );
+              await audit(db, p, client, "memory.created", "memory", row.id, { source: "asked" });
             }
           }
 

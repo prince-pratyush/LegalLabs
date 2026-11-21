@@ -207,7 +207,8 @@ describe("the notifications hub", () => {
         principal(ana),
         event({
           kind: "table.cell_commented",
-          objectType: "table",
+          // An object type the hub doesn't re-check, so the made-up id stays available.
+          objectType: "task",
           objectId: object,
           actorId: ana.userId,
           detail: text,
@@ -421,7 +422,8 @@ describe("the notifications hub", () => {
         principal(ana),
         event({
           kind,
-          objectType: "run",
+          // Not a real run, so use a type the hub doesn't re-check for visibility.
+          objectType: "task",
           objectId: kind === "thread.run.awaiting_approval" ? run : randomUUID(),
           url: `#/t/${thread}`,
           people: { runner: ana.userId },
@@ -611,6 +613,138 @@ describe("the notifications hub", () => {
       }),
     );
     expect(((await h.call(cookie, "GET", "/notifications")).body as Page).items).toHaveLength(1);
+  });
+
+  it("hides what an unavailable item was, and refuses to act on it", async () => {
+    const h = harness();
+    const ana = await seedMember(pool);
+    const ben = await colleague(ana);
+    const one = async (sql: string, params: unknown[]) =>
+      (await pool.query<{ id: string }>(sql, params)).rows[0]?.id ?? "";
+    const matter = await one(
+      `insert into core.matter (workspace_id, client_id, client_name, matter_number, matter_name, wall_mode)
+       values ($1, 'C1', 'Client', 'M-2', 'Matter', 'open') returning id`,
+      [ana.workspaceId],
+    );
+    const thread = await one(
+      "insert into work.thread (workspace_id, owner_id, title, matter_id) values ($1, $2, 'Secret title', $3) returning id",
+      [ana.workspaceId, ben.userId, matter],
+    );
+    await h.notifications.notifier.notify(
+      principal(ana),
+      event({
+        kind: "thread.shared",
+        objectType: "thread",
+        objectId: thread,
+        objectTitle: "Secret title",
+        actorId: ana.userId,
+        matterId: matter,
+        people: { recipients: [ben.userId] },
+      }),
+    );
+    const cookie = await h.signIn(ben);
+    const [item] = ((await h.call(cookie, "GET", "/notifications")).body as Page).items;
+    expect(item?.title).toContain("Secret title");
+    await pool.query(
+      `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+       values ($1, $2, 'user', $3, 'deny')`,
+      [ana.workspaceId, matter, ben.userId],
+    );
+    const gone = (await h.call(cookie, "GET", `/notifications/${item?.id}`)).body.notification;
+    expect(gone).toMatchObject({
+      available: false,
+      title: "Item no longer available",
+      url: "#/unavailable",
+    });
+    expect(gone.body).toBeUndefined();
+    expect(gone.actor).toBeUndefined();
+    expect(gone.actions).toBeUndefined();
+    const acted = await h.call(cookie, "POST", `/notifications/${item?.id}/act`, {
+      action: "open",
+    });
+    expect(acted.status).toBe(409);
+    expect(acted.body.code).toBe("UNAVAILABLE");
+  });
+
+  it("refuses to act twice, on archived items, on oversized payloads, and off-app redirects", async () => {
+    const h = harness();
+    const ana = await seedMember(pool);
+    const ben = await colleague(ana);
+    h.notifications.actions.register("agent.share_requested", "accept", async () => ({
+      result: "done",
+    }));
+    h.notifications.actions.register("agent.share_requested", "deny", async () => ({
+      result: "redirect",
+      url: "javascript:alert(1)",
+    }));
+    const make = async () => {
+      await h.notifications.notifier.notify(
+        principal(ana),
+        event({
+          kind: "agent.share_requested",
+          objectType: "agent",
+          actorId: ana.userId,
+          people: { approvers: [ben.userId] },
+        }),
+      );
+      const items = ((await h.call(cookie, "GET", "/notifications")).body as Page).items;
+      return items[0] as Notification;
+    };
+    const cookie = await h.signIn(ben);
+    const first = await make();
+    const big = await h.call(cookie, "POST", `/notifications/${first.id}/act`, {
+      action: "accept",
+      payload: { text: "x".repeat(5000) },
+    });
+    expect(big.status).toBe(400);
+    const array = await h.call(cookie, "POST", `/notifications/${first.id}/act`, {
+      action: "accept",
+      payload: [1],
+    });
+    expect(array.status).toBe(400);
+    expect(
+      (await h.call(cookie, "POST", `/notifications/${first.id}/act`, { action: "accept" })).status,
+    ).toBe(200);
+    const again = await h.call(cookie, "POST", `/notifications/${first.id}/act`, {
+      action: "accept",
+    });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("ALREADY_DONE");
+
+    const second = await make();
+    expect(second.id).not.toBe(first.id);
+    const redirect = await h.call(cookie, "POST", `/notifications/${second.id}/act`, {
+      action: "deny",
+    });
+    expect(redirect.body.url).toBe(second.url);
+    await h.call(cookie, "PATCH", `/notifications/${second.id}`, { archived: true });
+    const archived = await h.call(cookie, "POST", `/notifications/${second.id}/act`, {
+      action: "deny",
+    });
+    expect(archived.status).toBe(409);
+    expect(archived.body.code).toBe("ARCHIVED");
+  });
+
+  it("drops an event whose link leaves the app", async () => {
+    const lines: string[] = [];
+    const notifications = createNotifications(pool, { log: (line) => lines.push(line) });
+    const ana = await seedMember(pool);
+    const ben = await colleague(ana);
+    for (const url of ["https://evil.example/x", "javascript:alert(1)", "//evil.example"]) {
+      await notifications.notifier.notify(
+        principal(ana),
+        event({
+          kind: "task.assigned",
+          actorId: ana.userId,
+          url,
+          people: { assignee: ben.userId },
+        }),
+      );
+    }
+    expect(lines).toHaveLength(3);
+    expect(
+      await notifications.list(principal(ben), { tab: "all", state: "unread_read" }),
+    ).toMatchObject({ items: [] });
   });
 
   it("returns 404 for another person's notification", async () => {

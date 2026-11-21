@@ -2,6 +2,7 @@ import {
   type AdminNotificationSettings,
   type AdminNotificationSettingsPatch,
   EmailCategory,
+  isRelativeLink,
   NOTIFICATION_LIMITS,
   type Notification,
   type NotificationActBody,
@@ -11,9 +12,11 @@ import {
   type NotificationQuery,
   type NotificationSettings,
   type NotificationSettingsPatch,
+  UNAVAILABLE_LINK,
 } from "@legallabs/contracts";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { audit } from "../auth/audit.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp, asWorker } from "../db.js";
 import { ActionRefused, type ActionRegistry, createActionRegistry } from "./actions.js";
 import { createHub, type Hub } from "./hub.js";
@@ -101,7 +104,29 @@ const FROM = `from notify.notification n left join core."user" u on u.id = n.act
 
 const iso = (d: Date | null) => (d ? d.toISOString() : undefined);
 
-const view = (row: Row): Notification => ({
+/** What a recipient sees once the object is gone: no title, body, actor or actions of the item. */
+export const UNAVAILABLE_TITLE = "Item no longer available";
+
+const view = (row: Row): Notification => (row.available ? visible(row) : hidden(row));
+
+const hidden = (row: Row): Notification => ({
+  id: row.id,
+  kind: row.kind,
+  category: row.category,
+  object_type: row.object_type,
+  object_id: row.object_id,
+  title: UNAVAILABLE_TITLE,
+  action_required: false,
+  url: UNAVAILABLE_LINK,
+  created_at: row.created_at.toISOString(),
+  ...(row.read_at ? { read_at: iso(row.read_at) as string } : {}),
+  ...(row.archived_at ? { archived_at: iso(row.archived_at) as string } : {}),
+  ...(row.done_at ? { done_at: iso(row.done_at) as string } : {}),
+  count: row.count,
+  available: false,
+});
+
+const visible = (row: Row): Notification => ({
   id: row.id,
   kind: row.kind,
   category: row.category,
@@ -114,7 +139,8 @@ const view = (row: Row): Notification => ({
     : {}),
   action_required: row.action_required,
   ...(row.actions && row.actions.length > 0 ? { actions: row.actions } : {}),
-  url: row.url,
+  // Rows written before links were checked may hold anything; the API never hands one out.
+  url: isRelativeLink(row.url) ? row.url : "#/",
   created_at: row.created_at.toISOString(),
   ...(row.read_at ? { read_at: iso(row.read_at) as string } : {}),
   ...(row.archived_at ? { archived_at: iso(row.archived_at) as string } : {}),
@@ -178,6 +204,25 @@ const validZone = (tz: string) => {
   }
 };
 
+const MAX_PAYLOAD_CHARS = 4096;
+const refused = (
+  status: 400 | 403 | 404 | 409,
+  code: string,
+  message: string,
+): {
+  ok: false;
+  reason: "REFUSED";
+  status: 400 | 403 | 404 | 409;
+  code: string;
+  message: string;
+} => ({
+  ok: false,
+  reason: "REFUSED",
+  status,
+  code,
+  message,
+});
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createNotifications(
@@ -187,24 +232,6 @@ export function createNotifications(
   const hub = createHub();
   const actions = createActionRegistry();
   const notifier = createNotifier(pool, hub, options.log, options.now ? { now: options.now } : {});
-
-  const audit = (
-    db: Db,
-    p: Principal,
-    client: Client,
-    action: string,
-    objectType: "user" | "workspace",
-    details: object,
-  ) =>
-    db.query("select admin.append_audit_event($1, 'user', $2, $3, $4, $5, $6, $7)", [
-      action,
-      p.userId,
-      objectType,
-      objectType === "user" ? p.userId : p.workspaceId,
-      JSON.stringify(details),
-      client.ip,
-      uaHash(client),
-    ]);
 
   const countsOf = async (db: Db): Promise<NotificationCounts> => {
     const { rows } = await db.query<{ unread: string; action_required: string }>(
@@ -373,13 +400,26 @@ export function createNotifications(
 
     async act(p, id, body, client) {
       if (!UUID.test(id)) return { ok: false, reason: "NOT_FOUND" };
-      const row = await asApp(pool, p, (db) => one(db, id));
+      if (JSON.stringify(body.payload ?? {}).length > MAX_PAYLOAD_CHARS) {
+        return refused(400, "INVALID_REQUEST", "That action's details are too large.");
+      }
+      const row = await asApp(pool, p, async (db) => {
+        const found = await one(db, id);
+        if (found) await refreshAvailability(db, [found]);
+        return found;
+      });
       if (!row) return { ok: false, reason: "NOT_FOUND" };
+      // An item that is finished, put away or whose object is gone can't be acted on.
+      if (row.done_at) return refused(409, "ALREADY_DONE", "That's already been dealt with.");
+      if (row.archived_at) return refused(409, "ARCHIVED", "That notification is archived.");
+      if (!row.available) {
+        return refused(409, "UNAVAILABLE", "That item is no longer available to you.");
+      }
       const offered = (row.actions ?? []).some((a) => a.id === body.action);
       if (!offered) return { ok: false, reason: "UNKNOWN_ACTION" };
       let result: NotificationActResult;
       if (body.action === "open") {
-        result = { result: "redirect", url: row.url };
+        result = { result: "redirect", url: isRelativeLink(row.url) ? row.url : "#/" };
       } else {
         const handler = actions.find(row.kind, body.action);
         if (!handler) return { ok: false, reason: "NO_HANDLER" };
@@ -408,6 +448,10 @@ export function createNotifications(
           }
           throw err;
         }
+      }
+      // Whatever a handler returns, a redirect never leaves the app.
+      if (result.result === "redirect" && !(result.url && isRelativeLink(result.url))) {
+        result = { result: "redirect", url: isRelativeLink(row.url) ? row.url : "#/" };
       }
       const notification = await asApp(pool, p, async (db) => {
         await db.query(
@@ -470,7 +514,7 @@ export function createNotifications(
             [p.workspaceId, p.userId, q.from, q.to, q.tz],
           );
         }
-        await audit(db, p, client, "notification_settings.updated", "user", {
+        await audit(db, p, client, "notification_settings.updated", "user", p.userId, {
           categories: (patch.categories ?? []).map((c) => c.category),
           quiet_hours:
             patch.quiet_hours === undefined
@@ -523,10 +567,15 @@ export function createNotifications(
           contentChanged = true;
         }
         if (changed.length > 0 || contentChanged) {
-          await audit(db, p, client, "workspace_notification_settings.updated", "workspace", {
-            categories: changed,
-            include_content_changed: contentChanged,
-          });
+          await audit(
+            db,
+            p,
+            client,
+            "workspace_notification_settings.updated",
+            "workspace",
+            p.workspaceId,
+            { categories: changed, include_content_changed: contentChanged },
+          );
         }
         return adminOf(db);
       });

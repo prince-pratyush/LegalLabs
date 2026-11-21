@@ -14,7 +14,8 @@ import {
 } from "@legallabs/contracts";
 import { type Gateway, GatewayError } from "@legallabs/model-gateway";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { audit } from "../auth/audit.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp, asWorker } from "../db.js";
 import { csvLine, parseCsv } from "./csv.js";
 
@@ -142,26 +143,6 @@ function conflictsOf(rows: readonly MemoryRow[]): Map<string, string[]> {
 }
 
 export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {}): Memories {
-  const audit = (
-    db: Db,
-    p: Principal,
-    client: Client,
-    action: string,
-    objectType: string,
-    objectId: string,
-    details: object,
-  ) =>
-    // Ids, counts and the source only; the text of a memory never reaches the audit log.
-    db.query("select admin.append_audit_event($1, 'user', $2, $3, $4, $5, $6, $7)", [
-      action,
-      p.userId,
-      objectType,
-      objectId,
-      JSON.stringify(details),
-      client.ip,
-      uaHash(client),
-    ]);
-
   async function attempt<T>(p: Principal, work: (db: Db) => Promise<T>): Promise<Result<T>> {
     try {
       return {
