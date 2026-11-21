@@ -501,7 +501,8 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
     async list(principal) {
       return asApp(pool, principal, async (db) => {
         const { rows } = await db.query<SummaryRow>(
-          `${SUMMARY_SQL} and d.vault_id is null order by d.id desc limit $1`,
+          `${SUMMARY_SQL} and d.vault_id is null and d.workflow_id is null
+            order by d.id desc limit $1`,
           [LIST_LIMIT],
         );
         return rows.map(toSummary);
