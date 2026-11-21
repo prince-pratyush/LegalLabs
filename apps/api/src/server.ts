@@ -28,6 +28,7 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createMatters } from "./matters/matters.js";
 import { createMemoryModule } from "./memory/module.js";
 import { createMemoryPurgeJob } from "./memory/purge.js";
 import { createLogEmailProvider } from "./notifications/email-port.js";
@@ -224,11 +225,19 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
+  matters: createMatters(pool),
   // Tasks given to the assistant or an agent run on the scripted stand-in until the run engine
   // implements `TaskRunPort`; it calls no model.
   spaces: createSpaceModule(pool, {
     runs: scriptedTaskRuns(),
     notifier: spaceNotifier(notifier),
+    // The workspace may let a Space hold resources from another matter.
+    allowMatterMismatch: async (db) =>
+      (
+        await db.query<{ ok: boolean }>(
+          "select coalesce((select allow_matter_mismatch_in_spaces from core.matter_options), false) as ok",
+        )
+      ).rows[0]?.ok ?? false,
   }),
   tables,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,

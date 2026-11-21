@@ -15,6 +15,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import { createLimiter, type Limiter } from "../auth/limiter.js";
+import { wallShareBlocked } from "../matters/blocked.js";
 import type { RunLog } from "../runs/log.js";
 import type {
   AskFailure,
@@ -55,6 +56,7 @@ const FAILURES: Record<AskFailure, { status: 400 | 403 | 404 | 409; message: str
   EMPTY_SCOPE: { status: 400, message: "Attach a file, a vault or a source to ask about." },
   MODEL_NOT_ALLOWED: { status: 403, message: "That model isn't available to you." },
   READ_ONLY: { status: 409, message: "This thread was shared with you, so it's read-only." },
+  MATTER_REQUIRED: { status: 400, message: "Choose the matter you're working on first." },
 };
 
 const noNul = (text: string) => !text.includes("\0");
@@ -94,6 +96,7 @@ const shownPlan = (plan: unknown) => {
 
 const shareBody = z.object({
   user_ids: z.array(z.uuid()).max(50).default([]),
+  group_ids: z.array(z.uuid()).max(50).default([]),
   link: z.boolean().default(false),
 });
 
@@ -312,10 +315,11 @@ export function threadHttp(options: ThreadHttpOptions) {
     const result = await threads.share(
       c.get("principal"),
       c.req.param("id"),
-      { userIds: parsed.data.user_ids, link: parsed.data.link },
+      { userIds: parsed.data.user_ids, groupIds: parsed.data.group_ids, link: parsed.data.link },
       clientOf(c),
     );
     if (!result.ok) {
+      if (result.reason === "WALL_SHARE_BLOCKED") return wallShareBlocked(c, result.blockedCount);
       return result.reason === "NOT_FOUND"
         ? notFound(c)
         : c.json(

@@ -122,6 +122,18 @@ export const NOTIFICATION_LIMITS = {
   emailExcerpt: 300,
 } as const;
 
+/**
+ * An in-app link: a hash route (`#/t/123`) or a same-origin path (`/d/123`). Schemes
+ * (`javascript:`, `data:`, `https:`), protocol-relative `//host` and backslashes are refused,
+ * so a notification can never carry a link that leaves the app.
+ */
+export const RELATIVE_LINK = /^(#\/|\/(?![/\\]))[^\s\\]*$/;
+export const isRelativeLink = (url: string) => url.length <= 2000 && RELATIVE_LINK.test(url);
+export const RelativeLink = z.string().max(2000).regex(RELATIVE_LINK, "must be a relative link");
+
+/** Where an item whose object is gone points; the web app shows a plain "no longer available" page. */
+export const UNAVAILABLE_LINK = "#/unavailable";
+
 export const NotificationAction = z.object({
   id: z.string().min(1).max(40),
   label: z.string().min(1).max(60),
@@ -140,7 +152,7 @@ export const Notification = z.object({
   actor: z.object({ id: z.uuid(), name: z.string() }).optional(),
   action_required: z.boolean(),
   actions: z.array(NotificationAction).optional(),
-  url: z.string(),
+  url: RelativeLink,
   created_at: z.string(),
   read_at: z.string().optional(),
   archived_at: z.string().optional(),
@@ -184,7 +196,7 @@ export type NotificationActBody = z.infer<typeof NotificationActBody>;
 
 export const NotificationActResult = z.object({
   result: z.enum(["done", "redirect"]),
-  url: z.string().optional(),
+  url: RelativeLink.optional(),
 });
 export type NotificationActResult = z.infer<typeof NotificationActResult>;
 

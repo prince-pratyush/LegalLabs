@@ -978,3 +978,119 @@ describe("writing styles", () => {
     expect(JSON.stringify(h.prompts().at(-1))).not.toContain("Secret style words.");
   });
 });
+
+describe("personalisation rules", () => {
+  const principalOf = (m: Seeded): Principal => ({
+    sessionId: randomUUID(),
+    userId: m.userId,
+    workspaceId: m.workspaceId,
+  });
+
+  it("proposes nothing from the conversation while memory is off", async () => {
+    const h = harness(true);
+    const { m, cookie } = await member(h);
+    const on = await h.memory.personalisation.prepare(
+      principalOf(m),
+      { question: "Who is liable?" },
+      client,
+    );
+    expect(on?.inferCandidates).toBe(true);
+    await h.call(cookie, "PATCH", "/memory/settings", { use_memory: false });
+    const off = await h.memory.personalisation.prepare(
+      principalOf(m),
+      { question: "Who is liable?" },
+      client,
+    );
+    expect(off?.inferCandidates).toBe(false);
+    const perAsk = await h.memory.personalisation.prepare(
+      principalOf(m),
+      { question: "Who is liable?", useMemory: false },
+      client,
+    );
+    expect(perAsk?.inferCandidates).toBe(false);
+  });
+
+  it("gives a colleague only the derived instructions of a shared sample style, labelled untrusted", async () => {
+    const h = harness();
+    const { admin, m } = await member(h);
+    const peer = await colleague(admin, MEMBER);
+    const made = await pool.query<{ id: string }>(
+      `insert into memory.writing_style
+         (workspace_id, owner_id, name, kind, derived_instructions, sample_text, shared, status)
+       values ($1, $2, 'Voice', 'sample', 'Short sentences.', 'SAMPLE-ONLY-TEXT here', true, 'ready')
+       returning id`,
+      [m.workspaceId, m.userId],
+    );
+    const id = made.rows[0]?.id;
+    const input = { question: "Who is liable?", writingStyleId: id };
+    const theirs = await h.memory.personalisation.prepare(principalOf(peer), input, client);
+    expect(theirs?.guidance).toContain("Short sentences.");
+    expect(theirs?.guidance).toContain("untrusted style guidance");
+    expect(theirs?.guidance).not.toContain("SAMPLE-ONLY-TEXT");
+    const mine = await h.memory.personalisation.prepare(principalOf(m), input, client);
+    expect(mine?.guidance).toContain("SAMPLE-ONLY-TEXT");
+    expect(mine?.guidance).not.toContain("untrusted style guidance");
+  });
+
+  it("uses nothing from a shared sample style that has no derived instructions yet", async () => {
+    const h = harness();
+    const { admin, m } = await member(h);
+    const peer = await colleague(admin, MEMBER);
+    const made = await pool.query<{ id: string }>(
+      `insert into memory.writing_style (workspace_id, owner_id, name, kind, sample_text, shared)
+       values ($1, $2, 'Raw', 'sample', 'SAMPLE-ONLY-TEXT', true) returning id`,
+      [m.workspaceId, m.userId],
+    );
+    const plan = await h.memory.personalisation.prepare(
+      principalOf(peer),
+      { question: "Who is liable?", writingStyleId: made.rows[0]?.id },
+      client,
+    );
+    expect(JSON.stringify(plan)).not.toContain("SAMPLE-ONLY-TEXT");
+    expect(plan?.styleId).toBeNull();
+  });
+});
+
+describe("import limits", () => {
+  const upload = (h: Harness, cookie: string, n: number) =>
+    h.form(cookie, "/memory/import/parse", {
+      file: new File([`text\nImported note ${n}\n`], "m.csv", { type: "text/csv" }),
+    });
+
+  it("keeps at most five unfinished uploads, dropping the oldest", async () => {
+    const h = harness();
+    const { m, cookie } = await member(h);
+    const ids: string[] = [];
+    for (let n = 1; n <= 7; n++) ids.push((await upload(h, cookie, n)).body.import_id);
+    const left = await pool.query<{ id: string }>(
+      "select id from memory.memory_import where user_id = $1 and status = 'parsed'",
+      [m.userId],
+    );
+    expect(left.rows.map((r) => r.id).sort()).toEqual(ids.slice(2).sort());
+    // The dropped upload can no longer be committed.
+    expect(
+      (await h.call(cookie, "POST", `/memory/import/${ids[0]}/commit`, { rows: [{ line: 2 }] }))
+        .status,
+    ).toBe(404);
+  });
+
+  it("limits how often a person parses uploads or asks for personalised proposals", async () => {
+    const h = harness();
+    const { cookie } = await member(h);
+    for (let n = 1; n <= 10; n++) expect((await upload(h, cookie, n)).status).toBe(200);
+    const blocked = await upload(h, cookie, 11);
+    expect(blocked.status).toBe(429);
+
+    for (let n = 1; n <= 5; n++) {
+      expect(
+        (await h.call(cookie, "POST", "/memory/personalise", { answers: { role: "Partner" } }))
+          .status,
+      ).toBe(200);
+    }
+    const again = await h.call(cookie, "POST", "/memory/personalise", {
+      answers: { role: "Partner" },
+    });
+    expect(again.status).toBe(429);
+    expect(Number(again.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+});
