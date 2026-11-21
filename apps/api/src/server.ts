@@ -21,6 +21,8 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createMemoryModule } from "./memory/module.js";
+import { createMemoryPurgeJob } from "./memory/purge.js";
 import { createLogEmailProvider } from "./notifications/email-port.js";
 import { createEmailWorker } from "./notifications/email-worker.js";
 import { createNotifications } from "./notifications/notifications.js";
@@ -106,6 +108,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         worker.stop(),
         retention.stop(),
         notificationPurge.stop(),
+        memoryPurge.stop(),
         emailWorker.stop(),
       ]).finally(() => process.exit(0)),
   );
@@ -135,7 +138,22 @@ const cellsInFlight = Number(process.env.LEGALLABS_TABLE_CELLS_IN_FLIGHT);
 const vaults = createVaultPort(pool);
 const knowledgeStore = createKnowledge(pool, { embedder });
 const knowledge = knowledgePort(knowledgeStore);
-const threadService = createThreads(pool, { gateway, documents, log, vaults, knowledge, notifier });
+const memory = createMemoryModule(pool, {
+  gateway,
+  // PDF, Word and text samples, read the same way uploaded files are.
+  read: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
+});
+const memoryPurge = createMemoryPurgeJob(memory.memories, { log: (line) => console.log(line) });
+memoryPurge.start();
+const threadService = createThreads(pool, {
+  gateway,
+  documents,
+  log,
+  vaults,
+  knowledge,
+  notifier,
+  personalisation: memory.personalisation,
+});
 registerThreadActions(notifications.actions, threadService);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
@@ -154,6 +172,7 @@ const app = createApp({
   viewer: createViewer(pool, store, documents),
   playbooks: createPlaybooks(pool, { gateway }),
   notifications,
+  memory,
   reviews: createReviews(pool, {
     gateway,
     notifier,
