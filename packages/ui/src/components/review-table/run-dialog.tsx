@@ -16,7 +16,12 @@ export interface RunEstimate {
   est_minutes: number;
 }
 
-export type RunChoice = { scope: "dry_run" | "all"; include_verified: boolean };
+export type RunChoice = {
+  scope: "dry_run" | "all";
+  include_verified: boolean;
+  /** Re-run the columns that use this one after it, in order. */
+  include_dependents?: boolean;
+};
 
 export function estimateLine(e: RunEstimate) {
   const minutes = e.est_minutes < 1 ? "under a minute" : `~${Math.ceil(e.est_minutes)} min`;
@@ -41,6 +46,7 @@ export function RunDialog({
   columnLabel,
   rowCount,
   rerun = false,
+  dependents = [],
   estimate,
   onRun,
 }: {
@@ -49,6 +55,8 @@ export function RunDialog({
   columnLabel: string;
   rowCount: number;
   rerun?: boolean;
+  /** Labels of the columns built on this one, directly or through others. */
+  dependents?: readonly string[];
   estimate: (choice: RunChoice) => Promise<RunEstimate>;
   onRun: (choice: RunChoice) => void;
 }) {
@@ -56,6 +64,7 @@ export function RunDialog({
     rowCount > DRY_RUN_ROWS ? "dry_run" : "all",
   );
   const [includeVerified, setIncludeVerified] = useState(false);
+  const [includeDependents, setIncludeDependents] = useState(false);
   const [result, setResult] = useState<RunEstimate | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -138,6 +147,18 @@ export function RunDialog({
               <label htmlFor="include-verified">Also re-run verified cells</label>
             </span>
           )}
+          {rerun && dependents.length > 0 && (
+            <span className="flex items-center gap-1 text-ui">
+              <Checkbox
+                id="include-dependents"
+                checked={includeDependents}
+                onCheckedChange={(value) => setIncludeDependents(value === true)}
+              />
+              <label htmlFor="include-dependents">
+                Also refresh columns that use it ({dependents.join(", ")})
+              </label>
+            </span>
+          )}
           <p aria-live="polite" className="min-h-5 text-dense text-fg-muted">
             {failed ? (
               "Couldn't estimate the cost. You can still run it."
@@ -156,7 +177,11 @@ export function RunDialog({
             </Dialog.Close>
             <Button
               onClick={() => {
-                onRun({ scope, include_verified: includeVerified });
+                onRun({
+                  scope,
+                  include_verified: includeVerified,
+                  ...(includeDependents ? { include_dependents: true } : {}),
+                });
                 onOpenChange(false);
               }}
             >

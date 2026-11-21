@@ -60,4 +60,44 @@ describe("RunDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Run" }));
     expect(onRun).toHaveBeenCalledWith({ scope: "all", include_verified: false });
   });
+
+  it("offers to refresh the columns built on this one when re-running", async () => {
+    const onRun = vi.fn();
+    render(
+      <RunDialog
+        open
+        onOpenChange={() => {}}
+        columnLabel="Governing law"
+        rowCount={8}
+        rerun
+        dependents={["Position", "Risk"]}
+        estimate={vi.fn().mockResolvedValue(estimate)}
+        onRun={onRun}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /Also refresh columns that use it \(Position, Risk\)/ }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(onRun).toHaveBeenCalledWith({
+      scope: "all",
+      include_verified: false,
+      include_dependents: true,
+    });
+  });
+
+  it("offers nothing about dependents when none use the column", () => {
+    render(
+      <RunDialog
+        open
+        onOpenChange={() => {}}
+        columnLabel="Fee"
+        rowCount={8}
+        rerun
+        estimate={vi.fn().mockResolvedValue(estimate)}
+        onRun={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("checkbox", { name: /Also refresh columns/ })).toBeNull();
+  });
 });

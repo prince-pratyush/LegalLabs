@@ -8,6 +8,10 @@ import type { Language } from "./addins/language.js";
 import { addinAuthRoutes, addinRoutes } from "./addins/routes.js";
 import { agentRunHttp } from "./agent-runs/http.js";
 import type { AgentRuns } from "./agent-runs/runs.js";
+import type { Agents } from "./agents/agents.js";
+import type { AgentSharing } from "./agents/config.js";
+import { agentHttp } from "./agents/http.js";
+import type { Nudges } from "./agents/nudges.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
@@ -21,10 +25,16 @@ import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
 import type { Library } from "./library/library.js";
 import { libraryRoutes } from "./library/routes.js";
+import type { MemoryModule } from "./memory/module.js";
+import { memoryRoutes, styleRoutes } from "./memory/routes.js";
+import type { Notifications } from "./notifications/notifications.js";
+import { notificationRoutes } from "./notifications/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
 import { reviewHttp } from "./reviews/http.js";
 import type { Reviews } from "./reviews/reviews.js";
+import { spaceHttp } from "./spaces/http.js";
+import type { SpaceModule } from "./spaces/module.js";
 import { tableHttp } from "./tables/http.js";
 import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
@@ -77,6 +87,12 @@ export interface AppOptions {
   tables?: ReviewTables;
   /** Optional, like vaults. */
   library?: Library;
+  /** Spaces, their tasks and templates; left out, those endpoints are not mounted. */
+  spaces?: SpaceModule;
+  /** The notifications hub; optional, like vaults. */
+  notifications?: Notifications;
+  /** Memories and writing styles; optional, like vaults. */
+  memory?: MemoryModule;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -87,6 +103,12 @@ export interface AppOptions {
   agentRuns?: AgentRuns;
   /** The Workflow Builder; left out, its endpoints are not mounted. */
   workflows?: Workflows;
+  /** Agents: building, sharing, schedules and running. Left out, those endpoints are not mounted. */
+  agents?: Agents;
+  /** Admin switches for share approval; mounted with agents. */
+  agentSharing?: AgentSharing;
+  /** Suggests a shared agent for what someone is typing. */
+  agentNudges?: Nudges;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -109,11 +131,17 @@ export function createApp({
   vaults,
   tables,
   library,
+  spaces,
+  notifications,
+  memory,
   knowledge,
   playbooks,
   reviews,
   agentRuns,
   workflows,
+  agents,
+  agentSharing,
+  agentNudges,
   clientIp,
   now = Date.now,
   webRoot,
@@ -254,7 +282,18 @@ export function createApp({
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
+  if (agents)
+    app.route(
+      "/api/v1",
+      agentHttp({ agents, runs: agentRuns, sharing: agentSharing, nudges: agentNudges, clientOf }),
+    );
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
+  if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
+  if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
+  if (memory) {
+    app.route("/api/v1", memoryRoutes(memory.memories, clientOf));
+    app.route("/api/v1", styleRoutes(memory.styles, clientOf));
+  }
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));

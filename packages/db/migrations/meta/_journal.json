@@ -285,14 +285,91 @@
     {
       "idx": 40,
       "version": "7",
-      "when": 1794009700000,
-      "tag": "0060_work_agent_runs",
+      "when": 1794009670000,
+      "tag": "0080_notify_notifications",
       "breakpoints": false
     },
     {
       "idx": 41,
       "version": "7",
-      "when": 1794009702000,
+      "when": 1794009671000,
+      "tag": "0081_notify_prefs",
+      "breakpoints": false
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794009672000,
+      "tag": "0082_notify_email_outbox",
+      "breakpoints": false
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794009732000,
+      "tag": "0083_notify_email_worker",
+      "breakpoints": false
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794009750000,
+      "tag": "0085_work_review_table_dependencies",
+      "breakpoints": false
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794009760000,
+      "tag": "0084_memory",
+      "breakpoints": false
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794009761000,
+      "tag": "0070_work_spaces",
+      "breakpoints": false
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794009762000,
+      "tag": "0071_work_space_tasks",
+      "breakpoints": false
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794009763000,
+      "tag": "0072_work_space_templates",
+      "breakpoints": false
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794009764000,
+      "tag": "0060_work_agent_runs",
+      "breakpoints": false
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794009765000,
+      "tag": "0065_work_agents",
+      "breakpoints": false
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794009766000,
+      "tag": "0066_work_agent_sharing",
+      "breakpoints": false
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794009767000,
       "tag": "0062_work_workflows",
       "breakpoints": false
     }

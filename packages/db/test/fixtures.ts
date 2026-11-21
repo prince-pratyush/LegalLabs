@@ -395,6 +395,36 @@ export async function seed(tx: Tx) {
   };
   const libraryItems = { acme: await library(acme, ana), beta: await library(beta, bob) };
 
+  // One of each notification table in beta only, so the notification tests start from nothing
+  // in acme (they check the other workspace stays untouched).
+  await tx.rows(
+    `insert into notify.notification (workspace_id, user_id, kind, category, object_type,
+       object_id, title, url)
+     values ($1, $2, 'thread.shared', 'threads', 'thread', core.uuid7(), 'Shared thread', '#/t/x')`,
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into notify.notification_pref (workspace_id, user_id, category, value) values ($1, $2, 'vault', true)",
+    [beta, bob],
+  );
+  await tx.rows(
+    `insert into notify.notification_quiet_hours (workspace_id, user_id, from_local, to_local, tz)
+     values ($1, $2, '22:00', '07:00', 'UTC')`,
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into notify.workspace_notification_pref (workspace_id, category) values ($1, 'vault')",
+    [beta],
+  );
+  await tx.rows("insert into notify.workspace_notification_setting (workspace_id) values ($1)", [
+    beta,
+  ]);
+  await tx.rows(
+    `insert into notify.email_outbox (workspace_id, user_id, category, batch_key, payload)
+     values ($1, $2, 'threads', 'seed', '{}')`,
+    [beta, bob],
+  );
+
   // A review table with one row, column, cell, citation, history entry, star and run.
   const reviewTable = async (
     ws: string,
@@ -467,10 +497,126 @@ export async function seed(tx: Tx) {
   };
   const workflows = { acme: await workflow(acme, ana), beta: await workflow(beta, bob) };
 
+  // An agent with a live version, an upload, a schedule, a pending share and a dismissed nudge.
+  const agent = async (ws: string, owner: string, doc: { documentId: string }) => {
+    const agentId = await id("select core.uuid7() as id", []);
+    const versionId = await id("select core.uuid7() as id", []);
+    await tx.rows(
+      `insert into work.agent (id, workspace_id, owner_id, title, live_version_id)
+       values ($1, $2, $3, 'NDA first pass', $4)`,
+      [agentId, ws, owner, versionId],
+    );
+    await tx.rows(
+      `insert into work.agent_version (id, workspace_id, agent_id, no, instructions, details,
+                                       created_by)
+       values ($1, $2, $3, 1, 'Review the NDA.', '{"title":"NDA first pass"}', $4)`,
+      [versionId, ws, agentId, owner],
+    );
+    await tx.rows(
+      `insert into work.agent_document (workspace_id, agent_id, document_id) values ($1, $2, $3)`,
+      [ws, agentId, doc.documentId],
+    );
+    await tx.rows(
+      `insert into work.agent_schedule (workspace_id, agent_id, user_id, rule, params, time_local,
+                                        tz)
+       values ($1, $2, $3, 'weekly', '{"weekdays":[1]}', '08:00', 'UTC')`,
+      [ws, agentId, owner],
+    );
+    await tx.rows(
+      `insert into work.share_request (workspace_id, resource_type, resource_id, principal_type,
+                                       principal_id, level, approver, requested_by)
+       values ($1, 'agent', $2, 'workspace', $1, 'run', 'agents_admin', $3)`,
+      [ws, agentId, owner],
+    );
+    await tx.rows(`insert into work.sharing_config (workspace_id) values ($1)`, [ws]);
+    await tx.rows(
+      `insert into work.agent_nudge_dismissal (workspace_id, user_id, agent_id)
+       values ($1, $2, $3)`,
+      [ws, owner, agentId],
+    );
+    return { agentId, versionId };
+  };
+  const agents = {
+    acme: await agent(acme, ana, documents.acme),
+    beta: await agent(beta, bob, documents.beta),
+  };
+
+  // A Space with a phase, a task, a comment, a shared resource, an activity row, a template and
+  // a request to join, in each workspace.
+  const space = async (ws: string, owner: string, asker: string) => {
+    const spaceId = await id(
+      `insert into work.space (workspace_id, name, created_by) values ($1, 'Deal room', $2) returning id`,
+      [ws, owner],
+    );
+    const phaseId = await id(
+      `insert into work.phase (workspace_id, space_id, ordinal, name) values ($1, $2, 1, 'Diligence') returning id`,
+      [ws, spaceId],
+    );
+    const taskId = await id(
+      `insert into work.task (workspace_id, space_id, phase_id, name, created_by)
+       values ($1, $2, $3, 'Review the MSA', $4) returning id`,
+      [ws, spaceId, phaseId, owner],
+    );
+    await tx.rows(
+      `insert into work.task_comment (workspace_id, space_id, task_id, author_id, body_md)
+       values ($1, $2, $3, $4, 'Started.')`,
+      [ws, spaceId, taskId, owner],
+    );
+    await tx.rows(
+      `insert into work.space_resource (workspace_id, space_id, resource_type, resource_id, access, granted_by)
+       values ($1, $2, 'vault', core.uuid7(), 'view', $3)`,
+      [ws, spaceId, owner],
+    );
+    await tx.rows(
+      `insert into work.space_activity (workspace_id, space_id, actor_id, type) values ($1, $2, $3, 'task.created')`,
+      [ws, spaceId, owner],
+    );
+    await tx.rows(
+      `insert into work.space_template (workspace_id, owner_id, name, definition)
+       values ($1, $2, 'Deal template', '{"schema": "counsel.space-template/1"}')`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into work.space_access_request (workspace_id, space_id, user_id) values ($1, $2, $3)`,
+      [ws, spaceId, asker],
+    );
+    return { spaceId, phaseId, taskId };
+  };
+  const spaces = { acme: await space(acme, ana, ben), beta: await space(beta, bob, bob) };
+  // One of each memory table in beta only, so the memory tests start from nothing in acme.
+  await tx.rows(
+    `insert into memory.memory (workspace_id, user_id, text, source, normalized_hash)
+     values ($1, $2, 'Use UK spelling', 'manual', repeat('a', 64))`,
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into memory.memory_candidate (workspace_id, user_id, text) values ($1, $2, 'Be formal')",
+    [beta, bob],
+  );
+  await tx.rows("insert into memory.memory_setting (workspace_id, user_id) values ($1, $2)", [
+    beta,
+    bob,
+  ]);
+  await tx.rows(
+    "insert into memory.memory_import (workspace_id, user_id, rows) values ($1, $2, '[]')",
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into memory.message_use (message_id, workspace_id, user_id) values ($1, $2, $3)",
+    [threads.beta.messageId, beta, bob],
+  );
+  await tx.rows(
+    `insert into memory.writing_style (workspace_id, owner_id, name, kind, instructions)
+     values ($1, $2, 'Terse', 'instructions', 'Short sentences.')`,
+    [beta, bob],
+  );
+
   return {
     workflows,
+    agents,
     documents,
     vaults,
+    spaces,
     threads,
     playbooks,
     reviews,

@@ -1,11 +1,14 @@
-import type {
-  Cell,
-  Column,
-  FlagColor,
-  PatchCellBody,
-  RowFilter,
-  RowSort,
-  RunColumnBody,
+import {
+  type Cell,
+  type Column,
+  dependentsOf,
+  type FlagColor,
+  type PatchCellBody,
+  promptForDisplay,
+  promptFromDisplay,
+  type RowFilter,
+  type RowSort,
+  type RunColumnBody,
 } from "@legallabs/contracts";
 import {
   AddColumnPopover,
@@ -22,12 +25,14 @@ import {
   ExportDialog,
   FilterPanel,
   formatUsd,
+  type MentionColumn,
+  mentionProblem,
+  PromptField,
   ReviewGrid,
   type RunChoice,
   RunDialog,
   SidePanel,
   Skeleton,
-  Textarea,
   toast,
 } from "@legallabs/ui";
 import { ArrowLeft, Blocks, Download, FilterX, Play } from "lucide-react";
@@ -69,8 +74,14 @@ export function runBody(
   sort: RowSort | null,
   filter: RowFilter,
 ): RunColumnBody {
-  if (choice === "pending") return { scope: "pending", include_verified: false };
-  const body: RunColumnBody = { scope: choice.scope, include_verified: choice.include_verified };
+  if (choice === "pending") {
+    return { scope: "pending", include_verified: false, include_dependents: false };
+  }
+  const body: RunColumnBody = {
+    scope: choice.scope,
+    include_verified: choice.include_verified,
+    include_dependents: choice.include_dependents === true,
+  };
   if (choice.scope !== "dry_run") return body;
   return {
     ...body,
@@ -169,6 +180,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
         await tableApi.runColumn(tableId, ref.columnId, {
           scope: { row_ids: [ref.rowId] },
           include_verified: false,
+          include_dependents: false,
         });
       await refresh();
     } catch (err) {
@@ -209,6 +221,11 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
     if (anchor) openCitation(anchor, { context: anchors });
   };
 
+  const mentionable = useMemo(() => columns.map((c) => ({ id: c.id, label: c.label })), [columns]);
+  const edges = useMemo(() => new Map(columns.map((c) => [c.id, c.depends_on])), [columns]);
+  const labelsOf = (ids: readonly string[]) =>
+    ids.flatMap((id) => columns.find((c) => c.id === id)?.label ?? []);
+
   const panelColumn =
     panel && panel.kind !== "builder" ? columns.find((c) => c.id === panel.columnId) : undefined;
 
@@ -236,6 +253,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
         <AddColumnPopover
           open={adding}
           onOpenChange={setAdding}
+          columns={mentionable}
           onAdd={async (column) => {
             try {
               await tableApi.createColumn(tableId, column);
@@ -278,6 +296,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
                     rowCount={rowCount}
                     sort={sort?.column_id === full.id ? sort.direction : null}
                     filtered={Boolean(filters[full.id])}
+                    uses={labelsOf(full.depends_on)}
                     onRun={() => setRun({ column: full, rerun: false })}
                     onRerun={() => setRun({ column: full, rerun: true })}
                     onRunRemaining={() => void runColumn(full, "pending")}
@@ -394,6 +413,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
         {panel?.kind === "prompt" && panelColumn && (
           <PromptPanel
             column={panelColumn}
+            columns={mentionable.filter((c) => c.id !== panelColumn.id)}
             onClose={() => setPanel(null)}
             onSave={async (prompt) => {
               try {
@@ -441,6 +461,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
           columnLabel={run.column.label}
           rowCount={rowCount}
           rerun={run.rerun}
+          dependents={labelsOf(dependentsOf(edges, [run.column.id]))}
           estimate={estimateRun}
           onRun={(choice) => void runColumn(run.column, choice)}
         />
@@ -467,37 +488,49 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
 
 function PromptPanel({
   column,
+  columns,
   onClose,
   onSave,
 }: {
   column: Column;
+  /** The table's other columns, which the prompt may refer to. */
+  columns: readonly MentionColumn[];
   onClose: () => void;
   onSave: (prompt: string) => void;
 }) {
-  const [prompt, setPrompt] = useState(column.prompt);
+  const shown = promptForDisplay(column.prompt, (id) => columns.find((c) => c.id === id)?.label);
+  const [prompt, setPrompt] = useState(shown);
+  const problem = mentionProblem(prompt, columns);
   return (
     <SidePanel title={`Edit ${column.label}`} onClose={onClose} width={400}>
       <form
         className="grid gap-3"
         onSubmit={(event) => {
           event.preventDefault();
-          onSave(prompt);
+          if (!problem) onSave(promptFromDisplay(prompt, columns).prompt);
         }}
       >
         <label htmlFor="column-prompt" className="text-ui font-medium">
           What to look for
         </label>
-        <Textarea
+        <PromptField
           id="column-prompt"
           rows={6}
-          maxLength={4000}
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          columns={columns}
+          onChange={setPrompt}
+          {...(problem ? { "aria-invalid": true as const } : {})}
         />
+        {problem && (
+          <p role="alert" className="text-caption text-destructive">
+            {problem}
+          </p>
+        )}
         <p className="text-caption text-fg-muted">
-          Saving marks this column's answers stale; re-run to refresh them.
+          Type @ to use another column's answer. Saving marks this column's answers, and those of
+          columns that use it, stale; re-run to refresh them.
         </p>
-        <Button type="submit" disabled={prompt.trim() === "" || prompt === column.prompt}>
+        <Button type="submit" disabled={prompt.trim() === "" || prompt === shown}>
           Save prompt
         </Button>
       </form>

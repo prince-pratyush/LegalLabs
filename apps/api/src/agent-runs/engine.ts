@@ -1,6 +1,12 @@
 import { createLocalEngine, type HandlerRegistry, type RunEngine } from "@legallabs/runs";
-import { connectClient, createTemporalEngine } from "@legallabs/runs/temporal";
+import {
+  connectClient,
+  createTemporalEngine,
+  createTemporalScheduler,
+} from "@legallabs/runs/temporal";
 import type pg from "pg";
+import type { SchedulePort } from "../agents/ports.js";
+import { runAudit } from "./audit.js";
 
 /**
  * Temporal when the install has one (`TEMPORAL_ADDRESS`), so runs outlive a restart; otherwise
@@ -19,5 +25,18 @@ export async function runEngineFromEnv(
     });
     return createTemporalEngine(client);
   }
-  return createLocalEngine({ pool, handlers });
+  return createLocalEngine({ pool, handlers, audit: runAudit(pool) });
+}
+
+/** Temporal Schedules, so a schedule keeps firing while the API is down; none without Temporal. */
+export async function schedulerFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<SchedulePort | null> {
+  const address = env.TEMPORAL_ADDRESS;
+  if (!address) return null;
+  const client = await connectClient({
+    address,
+    ...(env.TEMPORAL_NAMESPACE ? { namespace: env.TEMPORAL_NAMESPACE } : {}),
+  });
+  return createTemporalScheduler(client);
 }

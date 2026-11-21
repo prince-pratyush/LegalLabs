@@ -37,7 +37,7 @@ function harness() {
   const engine = createLocalEngine({
     pool,
     handlers: runHandlers(pool, {
-      ports: {
+      workflowPorts: {
         model: model.port,
         policy: allowAll(),
         drafts: scriptedDrafts().port,

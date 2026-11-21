@@ -1,4 +1,4 @@
-import { RT_LIMITS, type Settings } from "@legallabs/contracts";
+import { dependentsOf, promptForModel, RT_LIMITS, type Settings } from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
@@ -10,10 +10,12 @@ import {
   type CellColumn,
   type CellDocument,
   type CellOutcome,
+  type CellReference,
   type CellSources,
   type PageText,
   runCell,
 } from "./cell.js";
+import { loadGraph, markStale } from "./dependencies.js";
 import { setStatus } from "./history.js";
 
 type Db = pg.PoolClient;
@@ -32,6 +34,10 @@ export interface RunRequest {
   targets: readonly RunTarget[];
   scope: unknown;
   dryRun: boolean;
+  /** Columns the prompt refers to: each cell waits for its row's answers in them. */
+  dependsOn: readonly string[];
+  /** Label of every column of the table, to name a reference to the model. */
+  labels: Readonly<Record<string, string>>;
 }
 
 export interface Runner {
@@ -51,6 +57,8 @@ export interface RunnerOptions {
   cellsInFlight?: number;
   /** How often a run waiting for a column slot looks again; runs here also wake it. */
   slotPollMs?: number;
+  /** How often a run waiting for the columns it uses looks again; finished cells wake it. */
+  dependencyPollMs?: number;
 }
 
 /** A counting semaphore: waiters are served in order. */
@@ -132,6 +140,13 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     waiting.clear();
   };
   const SLOT_POLL_MS = options.slotPollMs ?? 2_000;
+  const DEPENDENCY_POLL_MS = options.dependencyPollMs ?? 1_000;
+  // Woken when a cell finishes here, so a run waiting on it needn't wait for its next poll.
+  const cellDone = new Set<() => void>();
+  const nudge = () => {
+    for (const wake of cellDone) wake();
+    cellDone.clear();
+  };
 
   async function claimSlot(principal: Principal, runId: string, tableId: string) {
     return asApp(pool, principal, async (db) => {
@@ -232,11 +247,150 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     });
   }
 
+  type Readiness = "ready" | "wait" | "blocked";
+
+  /**
+   * Per row, whether the answers a column uses are there ("ready"), still on their way
+   * ("wait": queued, running, or blocked in a run that is still going) or not coming
+   * ("blocked": none, a null, an error). A stale answer still counts: it has a value.
+   */
+  async function readiness(principal: Principal, rowIds: string[], dependsOn: readonly string[]) {
+    const { rows } = await asApp(pool, principal, (db) =>
+      db.query<{ row_id: string; status: string; has_value: boolean; live: boolean }>(
+        `select d.row_id, d.status, d.value_text is not null has_value,
+                exists (select 1 from work.run r
+                         where r.id = d.run_id and r.status in ('planned', 'running')) live
+           from work.rt_cell d
+          where d.row_id = any($1::uuid[]) and d.column_id = any($2::uuid[])`,
+        [rowIds, dependsOn],
+      ),
+    );
+    const byRow = new Map<string, Readiness>();
+    const seen = new Map<string, number>();
+    for (const d of rows) {
+      seen.set(d.row_id, (seen.get(d.row_id) ?? 0) + 1);
+      const now: Readiness =
+        (d.status === "done" || d.status === "stale") && d.has_value
+          ? "ready"
+          : d.status === "queued" || d.status === "running" || (d.status === "blocked" && d.live)
+            ? "wait"
+            : "blocked";
+      const before = byRow.get(d.row_id) ?? "ready";
+      // One answer not coming blocks the cell; otherwise one still coming makes it wait.
+      byRow.set(
+        d.row_id,
+        before === "blocked" || now === "blocked"
+          ? "blocked"
+          : before === "wait" || now === "wait"
+            ? "wait"
+            : "ready",
+      );
+    }
+    for (const id of rowIds) {
+      if ((seen.get(id) ?? 0) < dependsOn.length) byRow.set(id, "blocked");
+    }
+    return byRow;
+  }
+
+  /** The answers the cell's row has in the columns it uses, or null if one is missing now. */
+  async function referencesFor(
+    principal: Principal,
+    rowId: string,
+    request: RunRequest,
+  ): Promise<CellReference[] | null> {
+    const { rows } = await asApp(pool, principal, (db) =>
+      db.query<{ column_id: string; status: string; value_text: string | null }>(
+        `select column_id, status, value_text from work.rt_cell
+          where row_id = $1 and column_id = any($2::uuid[])`,
+        [rowId, request.dependsOn],
+      ),
+    );
+    const refs: CellReference[] = [];
+    for (const id of request.dependsOn) {
+      const found = rows.find((r) => r.column_id === id);
+      if (!found || found.value_text === null) return null;
+      if (found.status !== "done" && found.status !== "stale") return null;
+      refs.push({ label: request.labels[id] ?? "a column", value: found.value_text });
+    }
+    return refs;
+  }
+
+  /**
+   * Holds back cells whose row is still waiting for a column they use, without holding a
+   * column slot, so a run that others wait on can always start. Cells that wait, or whose
+   * answers never come, show as blocked; the rest are returned to run.
+   */
+  async function settleDependencies(
+    principal: Principal,
+    runId: string,
+    request: RunRequest,
+  ): Promise<RunTarget[]> {
+    if (request.dependsOn.length === 0) return [...request.targets];
+    const ready: RunTarget[] = [];
+    const shown = new Set<string>();
+    let waiting = [...request.targets];
+    while (waiting.length > 0 && !cancelled.has(runId)) {
+      const state = await readiness(
+        principal,
+        waiting.map((t) => t.rowId),
+        request.dependsOn,
+      );
+      const next: RunTarget[] = [];
+      const hold: RunTarget[] = [];
+      for (const target of waiting) {
+        const now = state.get(target.rowId) ?? "blocked";
+        if (now === "ready") ready.push(target);
+        else {
+          hold.push(target);
+          if (now === "wait") next.push(target);
+        }
+      }
+      const fresh = hold.filter((t) => !shown.has(t.cellId));
+      if (fresh.length > 0) {
+        for (const t of fresh) shown.add(t.cellId);
+        await asApp(pool, principal, (db) =>
+          setStatus(
+            db,
+            principal,
+            "c.run_id = $3 and c.status = 'queued' and c.id = any($4::uuid[])",
+            [runId, fresh.map((t) => t.cellId)],
+            "'blocked'",
+          ),
+        );
+      }
+      waiting = next;
+      if (waiting.length > 0) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, DEPENDENCY_POLL_MS);
+          cellDone.add(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+    }
+    if (cancelled.has(runId)) return [];
+    const unblocked = ready.filter((t) => shown.has(t.cellId));
+    if (unblocked.length > 0) {
+      await asApp(pool, principal, (db) =>
+        setStatus(
+          db,
+          principal,
+          "c.run_id = $3 and c.status = 'blocked' and c.id = any($4::uuid[])",
+          [runId, unblocked.map((t) => t.cellId)],
+          "'queued'",
+        ),
+      );
+    }
+    return ready;
+  }
+
   async function execute(
     principal: Principal,
     runId: string,
     request: RunRequest,
     target: RunTarget,
+    dependents: readonly string[],
   ): Promise<number> {
     const emit = (outcome: {
       status: string;
@@ -268,6 +422,22 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     );
     if (claimed.rowCount === 0) return 0;
     const before = claimed.rows[0]?.value_text ?? null;
+    const references =
+      request.dependsOn.length > 0 ? await referencesFor(principal, target.rowId, request) : [];
+    if (!references) {
+      // An answer this one uses went away since the run began: wait for the next run.
+      await asApp(pool, principal, (db) =>
+        setStatus(
+          db,
+          principal,
+          "c.id = $3 and c.run_id = $4 and c.status = 'running'",
+          [target.cellId, runId],
+          "'blocked'",
+        ),
+      );
+      await emit({ status: "blocked" });
+      return 0;
+    }
     await emit({ status: "running" });
 
     const row = await rowDocuments(principal, target.rowId);
@@ -302,7 +472,11 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
         outcome = await runCell(
           { gateway, sources: sources(principal) },
           {
-            column: request.column,
+            column: {
+              ...request.column,
+              prompt: promptForModel(request.column.prompt, (id) => request.labels[id]),
+            },
+            references,
             instructions: request.instructions,
             settings: request.settings,
             documents: docs,
@@ -397,6 +571,13 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
       return true;
     });
     if (!saved) return 0;
+    if (dependents.length > 0 && before !== outcome.valueText) {
+      // What was built on the old answer is out of date; it keeps its value until re-run.
+      await asApp(pool, principal, (db) =>
+        markStale(db, principal, request.tableId, dependents, [target.rowId]),
+      );
+    }
+    nudge();
     await emit({
       status: outcome.status,
       errorCode: outcome.errorCode,
@@ -418,17 +599,22 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     let cost = 0;
     let cells = 0;
     try {
+      const runnable = await settleDependencies(principal, runId, request);
+      const dependents = dependentsOf(
+        await asApp(pool, principal, (db) => loadGraph(db, request.tableId)),
+        [request.columnId],
+      );
       await waitForSlot(principal, runId, request.tableId);
       if (!cancelled.has(runId)) {
         await log.append(principal, runId, { type: "status", status: "running" });
-        const queue = [...request.targets];
+        const queue = [...runnable];
         const worker = async () => {
           for (let target = queue.shift(); target; target = queue.shift()) {
             if (cancelled.has(runId)) return;
             await inFlight.take();
             try {
               if (cancelled.has(runId)) return;
-              cost += await execute(principal, runId, request, target);
+              cost += await execute(principal, runId, request, target, dependents);
               cells += 1;
             } catch (err) {
               console.error(`cell ${target.cellId}: ${err instanceof Error ? err.message : err}`);
@@ -437,9 +623,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
             }
           }
         };
-        await Promise.all(
-          Array.from({ length: Math.min(request.targets.length, 4) }, () => worker()),
-        );
+        await Promise.all(Array.from({ length: Math.min(runnable.length, 4) }, () => worker()));
       }
       const stopped = cancelled.has(runId);
       const progress = await asApp(pool, principal, async (db) => {
@@ -488,7 +672,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
         await db.query(
           `update work.rt_cell set status = case when value_text is null then 'pending' else 'stale' end,
                   updated_at = now()
-            where run_id = $1 and status in ('queued', 'running')`,
+            where run_id = $1 and status in ('queued', 'running', 'blocked')`,
           [runId],
         );
         await db.query(
@@ -499,6 +683,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
       await log.append(principal, runId, { type: "status", status: "failed" }).catch(() => {});
     } finally {
       slotFreed();
+      nudge();
       cancelled.delete(runId);
       active.delete(runId);
       log.release(runId);
@@ -563,7 +748,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
           await setStatus(
             db,
             principal,
-            "c.run_id = $3 and c.status = 'queued'",
+            "c.run_id = $3 and c.status in ('queued', 'blocked')",
             [runId],
             "case when c.value_text is null then 'pending' else 'stale' end",
           );
@@ -580,7 +765,10 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
         return run;
       });
       if (!found) return false;
-      if (active.has(runId)) cancelled.add(runId);
+      if (active.has(runId)) {
+        cancelled.add(runId);
+        nudge();
+      }
       return true;
     },
 

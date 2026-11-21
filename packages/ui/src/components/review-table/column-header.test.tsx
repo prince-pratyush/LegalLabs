@@ -41,6 +41,13 @@ describe("ColumnHeader", () => {
     expect(h.onStop).toHaveBeenCalled();
   });
 
+  it("says which columns it uses", () => {
+    render(
+      <ColumnHeader column={sampleColumn()} rowCount={3} uses={["Term", "Fee"]} {...handlers()} />,
+    );
+    expect(screen.getByRole("img", { name: "Uses Term, Fee" })).toBeTruthy();
+  });
+
   it("offers Run remaining after a dry run", async () => {
     const h = handlers();
     render(
