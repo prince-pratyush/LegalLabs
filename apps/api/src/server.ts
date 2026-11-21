@@ -115,6 +115,18 @@ const knowledgeStore = createKnowledge(pool, { embedder });
 const knowledge = knowledgePort(knowledgeStore);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
 
+const tables = createReviewTables(pool, {
+  gateway,
+  documents,
+  log,
+  syncLog: (line) => console.log(line),
+  ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
+});
+// Tables over a vault with sync on pick up new files on this schedule, each as its owner.
+tables.sync.start();
+process.once("SIGTERM", () => void tables.sync.stop());
+process.once("SIGINT", () => void tables.sync.stop());
+
 const app = createApp({
   auth: createAuth(pool),
   documents,
@@ -142,12 +154,7 @@ const app = createApp({
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
-  tables: createReviewTables(pool, {
-    gateway,
-    documents,
-    log,
-    ...(Number.isInteger(cellsInFlight) && cellsInFlight > 0 ? { cellsInFlight } : {}),
-  }),
+  tables,
   clientIp: (c) => getConnInfo(c).remote.address ?? null,
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {

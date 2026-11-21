@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { SyncAddedRowsEvent } from "@legallabs/contracts";
 import { createGateway, type Message } from "@legallabs/model-gateway";
 import { createMemoryStore } from "@legallabs/storage";
 import { expect } from "vitest";
@@ -107,6 +108,8 @@ export interface HarnessOptions {
   paid?: boolean;
   /** Answers instead of fakeModel, to script what the provider says. */
   model?: (messages: readonly Message[]) => string;
+  /** Receives what a sync pass reports to an owner who opted in. */
+  syncEvents?: (event: SyncAddedRowsEvent) => void;
 }
 
 export function harness(options: HarnessOptions = {}) {
@@ -132,6 +135,7 @@ export function harness(options: HarnessOptions = {}) {
     documents,
     log,
     dependencyPollMs: 20,
+    ...(options.syncEvents ? { syncEvents: options.syncEvents } : {}),
     ...(options.vaultLimit ? { vaultDocumentLimit: options.vaultLimit } : {}),
   });
   const app = createApp({

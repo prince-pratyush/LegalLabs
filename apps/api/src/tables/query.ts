@@ -8,6 +8,12 @@ export const RESTRICTED_SQL = `exists (
   select 1 from unnest(r.document_ids) x(id)
    where not exists (select 1 from content.document d where d.id = x.id))`;
 
+/** Another row of the table reads a later version of this row's file. */
+export const NEWER_SQL = `(r.version_no is not null and exists (
+  select 1 from work.rt_row n
+   where n.table_id = r.table_id and n.deleted_at is null and n.id <> r.id
+     and n.document_ids && r.document_ids and n.version_no > r.version_no))`;
+
 export class UnknownColumn extends Error {}
 
 export interface RowQuery {
@@ -89,8 +95,8 @@ export function rowsSql(query: RowQuery): { sql: string; params: unknown[] } {
     ...(query.offset ? [`offset ${param(query.offset)}`] : []),
   ];
   return {
-    sql: `select r.id, r.ordinal, r.document_ids, r.flag_color, r.locked,
-                 ${RESTRICTED_SQL} restricted
+    sql: `select r.id, r.ordinal, r.document_ids, r.flag_color, r.locked, r.source_removed,
+                 r.version_no, ${NEWER_SQL} newer_version, ${RESTRICTED_SQL} restricted
             from work.rt_row r ${join}
            where ${where.join("\n             and ")}
            order by ${order} ${page.join(" ")}`,

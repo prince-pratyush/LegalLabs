@@ -134,7 +134,7 @@ async function targets(
   }>(
     `select c.id, c.row_id, c.locked or r.locked locked, c.verified_at is not null verified
        from work.rt_cell c join work.rt_row r on r.id = c.row_id and r.deleted_at is null
-      where c.column_id = $1
+      where c.column_id = $1 and not r.source_removed
         and ($2::uuid[] is null or r.id = any($2::uuid[]))
         and ($3 <> 'pending' or c.status in ('pending', 'stale', 'blocked'))
       order by r.ordinal
@@ -178,8 +178,10 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
 
   async function cellOf(db: Db, tableId: string, cellId: string) {
     if (!UUID.test(cellId)) return null;
-    const { rows } = await db.query<CellRow & { restricted: boolean; row_locked: boolean }>(
-      `select c.*, ${RESTRICTED_SQL} restricted, r.locked row_locked
+    const { rows } = await db.query<
+      CellRow & { restricted: boolean; row_locked: boolean; source_removed: boolean }
+    >(
+      `select c.*, ${RESTRICTED_SQL} restricted, r.locked row_locked, r.source_removed
          from work.rt_cell c join work.rt_row r on r.id = c.row_id and r.deleted_at is null
          join work.rt_column k on k.id = c.column_id and k.deleted_at is null
         where c.id = $1 and c.table_id = $2
@@ -372,6 +374,9 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
           flag_color: string | null;
           locked: boolean;
           restricted: boolean;
+          source_removed: boolean;
+          version_no: number | null;
+          newer_version: boolean;
         }>(built.sql, built.params);
         const shown = rows.slice(0, page.limit);
         const visible = shown.filter((r) => !r.restricted).map((r) => r.id);
@@ -595,7 +600,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             `select c.column_id, c.row_id from work.rt_cell c
                join work.rt_row r on r.id = c.row_id and r.deleted_at is null
               where c.id = any($1::uuid[]) and c.table_id = $2 and not c.locked and not r.locked
-                and not ${RESTRICTED_SQL}`,
+                and not r.source_removed and not ${RESTRICTED_SQL}`,
             [ids, tableId],
           );
           const columns = await loadColumns(db, tableId);
@@ -729,6 +734,9 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         const cell = await cellOf(db, tableId, cellId);
         if (!cell) return fail("NOT_FOUND");
         if (cell.locked || cell.row_locked) return fail("CELL_LOCKED", "This cell is locked.");
+        if (cell.source_removed) {
+          return fail("SOURCE_REMOVED", "The file has left the vault, so this can't be re-run.");
+        }
         const column = (await loadColumns(db, tableId)).find((c) => c.id === cell.column_id);
         if (!column) return fail("NOT_FOUND");
         await audit(db, principal, client, "table.cell.rerun", tableId, {
@@ -759,6 +767,29 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         [rowId],
         options.includeVerified === true,
         started,
+      );
+    },
+
+    /** Starts a column on some rows, for sync: cells in those rows only, nothing verified. */
+    async runRows(
+      principal: Principal,
+      tableId: string,
+      columnId: string,
+      rowIds: string[],
+      client: Client,
+    ) {
+      const found = await withTable(principal, tableId, async (db, table) => {
+        const column = (await loadColumns(db, tableId)).find((c) => c.id === columnId);
+        return column ? { ok: true as const, value: { table, column } } : fail("NOT_FOUND");
+      });
+      if (!found.ok) return found;
+      return startRun(
+        principal,
+        client,
+        found.value.table,
+        found.value.column,
+        { row_ids: rowIds },
+        false,
       );
     },
 

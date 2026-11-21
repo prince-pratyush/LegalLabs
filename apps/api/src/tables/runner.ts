@@ -220,11 +220,13 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
 
   async function rowDocuments(principal: Principal, rowId: string) {
     return asApp(pool, principal, async (db) => {
-      const { rows } = await db.query<{ document_ids: string[] }>(
-        "select document_ids from work.rt_row where id = $1",
+      const { rows } = await db.query<{ document_ids: string[]; version_id: string | null }>(
+        "select document_ids, version_id from work.rt_row where id = $1",
         [rowId],
       );
       const ids = rows[0]?.document_ids ?? [];
+      // A row sync made reads the version it was made for, even once the file has a newer one.
+      const pinned = rows[0]?.version_id ?? null;
       const found = await db.query<{
         id: string;
         version_id: string;
@@ -237,11 +239,12 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
                 coalesce(j.status, 'indexed') status
            from content.document d
            join lateral (select id, version_no, page_count from content.document_version
-                          where document_id = d.id order by version_no desc limit 1) v on true
+                          where document_id = d.id and ($2::uuid is null or id = $2)
+                          order by version_no desc limit 1) v on true
            left join content.ingest_job j on j.version_id = v.id
           where d.id = any($1::uuid[])
           order by array_position($1::uuid[], d.id)`,
-        [ids],
+        [ids, pinned],
       );
       return { expected: ids.length, documents: found.rows };
     });
