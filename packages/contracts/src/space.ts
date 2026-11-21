@@ -79,6 +79,8 @@ export const SpaceCustomisation = z
       .optional(),
     welcome_md: text(10_000).optional(),
     tz: z.string().max(64).optional(),
+    /** Whether a task run may stop to ask the assigner a question (default true). */
+    agent_runs_interactive: z.boolean().optional(),
   })
   .strict();
 export type SpaceCustomisation = z.infer<typeof SpaceCustomisation>;

@@ -35,6 +35,8 @@ create table work.task (
     check (jsonb_typeof(linked) = 'object'),
   -- The latest run for an assigned task. Kept as plain ids: runs are owned by the run engine.
   run_id uuid,
+  run_status text check (run_status in ('planned', 'awaiting_approval', 'running',
+    'awaiting_input', 'verifying', 'done', 'failed', 'cancelled')),
   thread_id uuid,
   approved_by uuid,
   approved_at timestamptz,

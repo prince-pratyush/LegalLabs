@@ -126,6 +126,26 @@ alter function work.space_role(uuid) owner to legallabs_definer;
 grant execute on function work.space_membership(uuid), work.space_role(uuid)
   to legallabs_app, legallabs_definer;
 
+-- Whether a user is in a Space, directly or through a group. Callers may not read groups they are
+-- not in, so assigning a task or mentioning someone asks here instead.
+create function work.user_in_space(p_space uuid, p_user uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select work.space_role(p_space) is not null and exists (
+    select 1 from work.space_member m
+     where m.space_id = p_space
+       and m.workspace_id = core.current_workspace_id()
+       and ((m.principal_type = 'user' and m.principal_id = p_user)
+         or (m.principal_type = 'group' and exists (
+               select 1 from core.group_member g
+                where g.group_id = m.principal_id and g.user_id = p_user
+                  and g.workspace_id = m.workspace_id)))
+       and exists (select 1 from core."user" u
+                    where u.id = p_user and u.workspace_id = m.workspace_id
+                      and u.status = 'active' and u.kind = 'member'))
+$$;
+alter function work.user_in_space(uuid, uuid) owner to legallabs_definer;
+grant execute on function work.user_in_space(uuid, uuid) to legallabs_app;
+
 -- A creator is always its first admin, however the row was made.
 create function work.space_first_admin() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -140,6 +160,28 @@ grant insert on work.space_member to legallabs_definer;
 create policy definer_insert on work.space_member for insert to legallabs_definer with check (true);
 create trigger space_first_admin after insert on work.space
   for each row execute function work.space_first_admin();
+
+-- Soft delete runs as definer: the deleted row no longer passes the read policy, so a plain update
+-- by the caller is refused when the database re-checks the new row.
+grant update (deleted_at) on work.space to legallabs_definer;
+create policy definer_delete on work.space for update to legallabs_definer using (true) with check (true);
+create function work.delete_space(p_space uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  -- Its creator, or someone who manages every Space; either way an admin of this one.
+  if work.space_role(p_space) is distinct from 'admin' then
+    raise exception 'FORBIDDEN' using errcode = 'insufficient_privilege';
+  end if;
+  update work.space set deleted_at = now()
+   where id = p_space and workspace_id = core.current_workspace_id() and deleted_at is null
+     and (created_by = core.current_user_id() or core.has_permission('spaces.manage'));
+  if not found then
+    raise exception 'FORBIDDEN' using errcode = 'insufficient_privilege';
+  end if;
+end
+$$;
+alter function work.delete_space(uuid) owner to legallabs_definer;
+grant execute on function work.delete_space(uuid) to legallabs_app;
 
 -- The kind never changes, and a matter, once attached, is only removed by `spaces.manage`.
 create function work.guard_space() returns trigger

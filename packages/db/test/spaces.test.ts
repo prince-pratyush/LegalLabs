@@ -154,7 +154,10 @@ describe("spaces", () => {
       const vault = await tx.one<{ id: string }>("select core.uuid7() as id");
       const has = async (user: string, level: string) => {
         await tx.as(user, s.acme);
-        const row = await tx.one("select core.has_access('vault', $1, $2) as ok", [vault.id, level]);
+        const row = await tx.one("select core.has_access('vault', $1, $2) as ok", [
+          vault.id,
+          level,
+        ]);
         await tx.asOwner();
         return row.ok;
       };
@@ -189,9 +192,9 @@ describe("spaces", () => {
         [s.acme, space, vault.id, s.ana],
       );
       await tx.as(s.cal, s.acme);
-      expect((await tx.one("select core.has_access('vault', $1, 'view') as ok", [vault.id])).ok).toBe(
-        false,
-      );
+      expect(
+        (await tx.one("select core.has_access('vault', $1, 'view') as ok", [vault.id])).ok,
+      ).toBe(false);
     });
   });
 
@@ -200,9 +203,9 @@ describe("spaces", () => {
       const s = await seed(tx);
       const space = await createSpace(tx, s, s.ana, "Fixed", null);
       await tx.as(s.ana, s.acme);
-      expect(await tx.error("update work.space set kind = 'external' where id = $1", [space])).toMatch(
-        /KIND_IMMUTABLE/,
-      );
+      expect(
+        await tx.error("update work.space set kind = 'external' where id = $1", [space]),
+      ).toMatch(/KIND_IMMUTABLE/);
     });
   });
 });
@@ -239,9 +242,9 @@ describe("phases and gates", () => {
       const s = await seed(tx);
       const { gate, next } = await room(tx, s);
       await tx.as(s.ben, s.acme);
-      expect(await tx.error("update work.task set status = 'in_progress' where id = $1", [next])).toMatch(
-        /PHASE_LOCKED/,
-      );
+      expect(
+        await tx.error("update work.task set status = 'in_progress' where id = $1", [next]),
+      ).toMatch(/PHASE_LOCKED/);
       // Ben cannot finish a gate himself, nor approve it.
       expect(await tx.error("update work.task set status = 'done' where id = $1", [gate])).toMatch(
         /GATE_NEEDS_APPROVAL/,
@@ -260,7 +263,9 @@ describe("phases and gates", () => {
         ),
       ).toBeUndefined();
       await tx.as(s.ben, s.acme);
-      expect(await tx.error("update work.task set status = 'in_progress' where id = $1", [next])).toBeUndefined();
+      expect(
+        await tx.error("update work.task set status = 'in_progress' where id = $1", [next]),
+      ).toBeUndefined();
     });
   });
 
@@ -270,7 +275,9 @@ describe("phases and gates", () => {
       const { gate, next } = await room(tx, s);
       await tx.as(s.ana, s.acme);
       await tx.rows("update work.task set status = 'cancelled' where id = $1", [gate]);
-      expect(await tx.error("update work.task set status = 'in_progress' where id = $1", [next])).toBeUndefined();
+      expect(
+        await tx.error("update work.task set status = 'in_progress' where id = $1", [next]),
+      ).toBeUndefined();
     });
   });
 

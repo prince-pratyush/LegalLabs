@@ -90,3 +90,27 @@ create policy access_insert on work.space_access_request for insert to legallabs
 create policy access_decide on work.space_access_request for update to legallabs_app
   using (core.in_tenant(workspace_id) and work.space_role(space_id) = 'admin')
   with check (core.in_tenant(workspace_id) and work.space_role(space_id) = 'admin');
+
+-- Whether a vault exists but its matter walls the caller, so a template can say why it skipped it.
+create function work.vault_walled(p_id uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from content.vault v
+                  where v.id = p_id and v.workspace_id = core.current_workspace_id()
+                    and not core.can_access_matter(v.matter_id))
+$$;
+alter function work.vault_walled(uuid) owner to legallabs_definer;
+grant execute on function work.vault_walled(uuid) to legallabs_app;
+
+-- The people to tell about a request to join: a requester can't read a Space's members, so this
+-- answers for any Space the caller can see in the directory.
+create function work.space_admin_ids(p_space uuid) returns setof uuid
+language sql stable security definer set search_path = '' as $$
+  select m.principal_id
+    from work.space_member m
+   where m.space_id = p_space
+     and m.role = 'admin' and m.principal_type = 'user'
+     and m.workspace_id = core.current_workspace_id()
+     and exists (select 1 from work.space_directory() d where d.id = p_space)
+$$;
+alter function work.space_admin_ids(uuid) owner to legallabs_definer;
+grant execute on function work.space_admin_ids(uuid) to legallabs_app;

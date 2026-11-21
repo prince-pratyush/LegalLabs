@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   renderSpaceContext,
   SPACE_LIMITS,
-  SpaceContext,
+  type SpaceContext,
   SpaceCreate,
   SpaceTemplateDefinition,
   TaskCreate,
@@ -45,7 +45,10 @@ describe("renderSpaceContext", () => {
     const long = {
       ...context,
       standing_instructions: "x".repeat(SPACE_LIMITS.instructions),
-      parties: Array.from({ length: 20 }, (_, i) => ({ name: `Party ${i}`, role: "r".repeat(100) })),
+      parties: Array.from({ length: 20 }, (_, i) => ({
+        name: `Party ${i}`,
+        role: "r".repeat(100),
+      })),
     };
     const out = renderSpaceContext({ name: "D", matterDisplay: null, context: long }, 3000);
     expect(out.length).toBeLessThanOrEqual(3000);
