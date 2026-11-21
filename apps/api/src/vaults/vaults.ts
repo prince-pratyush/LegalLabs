@@ -17,6 +17,7 @@ import {
   MAX_FILE_BYTES,
   type UploadResult,
 } from "../documents/documents.js";
+import { type Notifier, noNotifier } from "../notifications/notify.js";
 
 export interface Vault {
   id: string;
@@ -312,9 +313,14 @@ const codeOf = (err: unknown) => (err as { code?: string }).code;
 export interface VaultsOptions {
   documents: Documents;
   store: ObjectStore;
+  /** Tells people a vault was shared with them; left out, nobody is told. */
+  notifier?: Notifier;
 }
 
-export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions): Vaults {
+export function createVaults(
+  pool: pg.Pool,
+  { documents, store, notifier = noNotifier }: VaultsOptions,
+): Vaults {
   const audit = (
     db: pg.PoolClient,
     p: Principal,
@@ -778,8 +784,25 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
 
     async setShares(p, vaultId, shares, client) {
       if (!isId(vaultId)) return null;
-      return asApp(pool, p, async (db) => {
+      const notice: { title: string; matterId: string | null; userIds: string[] } = {
+        title: "",
+        matterId: null,
+        userIds: [],
+      };
+      const result = await asApp(pool, p, async (db) => {
         if (!canManage(await level(db, vaultId))) return null;
+        const had = new Set<string>();
+        if (notifier !== noNotifier) {
+          const { rows: before } = await db.query<{ user_id: string }>(
+            `select g.principal_id as user_id from core.share_grant g
+              where g.object_type = 'vault' and g.object_id = $1 and g.principal_type = 'user'
+             union
+             select m.user_id from core.share_grant g join core.group_member m on m.group_id = g.principal_id
+              where g.object_type = 'vault' and g.object_id = $1 and g.principal_type = 'group'`,
+            [vaultId],
+          );
+          for (const row of before) had.add(row.user_id);
+        }
         const { rows } = await db.query<{ result: { denied_by_wall: string[] } }>(
           "select content.set_vault_shares($1, $2, $3) result",
           [vaultId, JSON.stringify(shares.grants), shares.workspaceView],
@@ -792,8 +815,46 @@ export function createVaults(pool: pg.Pool, { documents, store }: VaultsOptions)
         for (const userId of denied.slice(0, 100)) {
           await audit(db, p, client, "wall.share_blocked", "vault", vaultId, { user_id: userId });
         }
+        if (notifier !== noNotifier) {
+          const named = shares.grants
+            .filter((g) => g.principal_type === "user")
+            .map((g) => g.principal_id);
+          const groups = shares.grants
+            .filter((g) => g.principal_type === "group")
+            .map((g) => g.principal_id);
+          const members =
+            groups.length > 0
+              ? (
+                  await db.query<{ user_id: string }>(
+                    "select user_id from core.group_member where group_id = any($1::uuid[])",
+                    [groups],
+                  )
+                ).rows.map((r) => r.user_id)
+              : [];
+          const vault = (
+            await db.query<{ name: string; matter_id: string | null }>(
+              "select name, matter_id from content.vault where id = $1",
+              [vaultId],
+            )
+          ).rows[0];
+          notice.title = vault?.name ?? "";
+          notice.matterId = vault?.matter_id ?? null;
+          notice.userIds = [...new Set([...named, ...members])].filter((id) => !had.has(id));
+        }
         return { deniedByWall: denied };
       });
+      if (result && notice.userIds.length > 0) {
+        await notifier.notify(p, {
+          kind: "vault.shared",
+          actorId: p.userId,
+          objectType: "vault",
+          objectId: vaultId,
+          objectTitle: notice.title,
+          matterId: notice.matterId,
+          people: { recipients: notice.userIds },
+        });
+      }
+      return result;
     },
 
     async preflight(p, vaultId, files) {
