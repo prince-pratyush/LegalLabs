@@ -7,7 +7,7 @@ import {
   type PaletteCommand,
   setThemeSetting,
 } from "@legallabs/ui";
-import { BookMarked, ClipboardList, History, Library, SquarePen, Table } from "lucide-react";
+import { BookMarked, ClipboardList, History, Library, SquarePen, Table, Users } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
@@ -19,6 +19,8 @@ import { ReviewsApp } from "./reviews/ReviewsApp.js";
 import { parseReviewRoute } from "./reviews/route.js";
 import { navigate, parseRoute, paths, useHash } from "./router.js";
 import { Shell, ShellContext, type ShellProps } from "./shell.js";
+import { parseSpaceRoute, spacesHash } from "./spaces/route.js";
+import { SpacesApp } from "./spaces/SpacesApp.js";
 import { goTables, parseTableRoute } from "./tables/route.js";
 import { TablesApp } from "./tables/TablesApp.js";
 import { ThreadScreen } from "./thread/ThreadScreen.js";
@@ -57,6 +59,8 @@ export function App() {
           <ReviewsApp onLeave={() => navigate(paths.new)} />
         ) : parsePlaybookRoute(hash) ? (
           <PlaybooksApp onLeave={() => navigate(paths.new)} />
+        ) : parseSpaceRoute(hash) ? (
+          <SpacesApp onLeave={() => navigate(paths.new)} />
         ) : parseLibraryRoute(hash) ? (
           <LibraryApp onLeave={() => navigate(paths.new)} />
         ) : parseVaultRoute(hash) ? (
@@ -214,6 +218,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => goTables({ page: "list", threadId: null }),
     },
     {
+      id: "spaces",
+      kind: "action",
+      group: "Go to",
+      label: "Spaces",
+      run: () => navigate(spacesHash().slice(1)),
+    },
+    {
       id: "library",
       kind: "action",
       group: "Go to",
@@ -311,6 +322,15 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <BookMarked aria-hidden />
           Library
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => navigate(spacesHash().slice(1))}
+        >
+          <Users aria-hidden />
+          Spaces
         </Button>
       </div>
       <section className="grid gap-2" aria-labelledby="recents-heading">
