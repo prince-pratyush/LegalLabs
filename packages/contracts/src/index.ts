@@ -62,6 +62,7 @@ export {
   TemplateFields,
   type TemplatePort,
 } from "./library.js";
+export * from "./notification.js";
 export {
   Action,
   Alternate,

@@ -281,6 +281,27 @@
       "when": 1794009660000,
       "tag": "0043_work_review_table_integrity",
       "breakpoints": false
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794009670000,
+      "tag": "0080_notify_notifications",
+      "breakpoints": false
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794009671000,
+      "tag": "0081_notify_prefs",
+      "breakpoints": false
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794009672000,
+      "tag": "0082_notify_email_outbox",
+      "breakpoints": false
     }
   ]
 }

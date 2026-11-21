@@ -151,6 +151,12 @@ export const auditActions: string[] = [
   ...family("export", ["user", "matter", "legal_hold", "audit", "analytics", "evidence_pack"]),
 
   ...family("knowledge.filter_preset", ["created", "updated", "deleted"]),
+
+  ...family("memory", ["enabled", "disabled", "imported", "all_deleted"]),
+  ...family("writing_style", ["created", "updated", "deleted", "shared", "unshared"]),
+  "notification_settings.updated",
+  "workspace_notification_settings.updated",
+  "admin.memory_permission_changed",
 ];
 
 export const AuditAction = z.enum(auditActions);
