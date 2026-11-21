@@ -189,7 +189,22 @@ export {
   RunDialog,
   type RunEstimate,
 } from "./components/review-table/run-dialog.js";
+export {
+  SyncIndicator,
+  type SyncInfo,
+  SyncPanel,
+  type SyncSettings,
+} from "./components/review-table/sync-panel.js";
 export { TableList, type TableSummary } from "./components/review-table/table-list.js";
+export {
+  SaveTemplateDialog,
+  type SaveTemplateRequest,
+  STATUS_TEXT as TEMPLATE_STATUS_TEXT,
+  TemplateList,
+  type TemplateStatus,
+  type TemplateSummary,
+  TestTemplatePanel,
+} from "./components/review-table/templates.js";
 export {
   CELL_STATUSES,
   type CellStatus,

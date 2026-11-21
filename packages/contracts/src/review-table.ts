@@ -294,6 +294,12 @@ export const Row = z.object({
   restricted: z.boolean(),
   flag_color: FlagColor.nullable(),
   locked: z.boolean(),
+  /** The file has left the vault: the row keeps its cells but can't be re-run. */
+  source_removed: z.boolean(),
+  /** The version of the file this row read, when sync pinned one. */
+  version_no: z.number().int().nullable(),
+  /** A later version of the same file has a row of its own. */
+  newer_version: z.boolean(),
 });
 export type Row = z.infer<typeof Row>;
 
@@ -354,6 +360,8 @@ export const CreateTableBody = z
   .object({
     name: text(200).pipe(z.string().trim().min(1)).optional(),
     source: TableSource,
+    /** Start with this template's columns, instructions and settings. */
+    template_id: Id.optional(),
     matter_id: Id.nullable().optional(),
   })
   .strict();
@@ -620,5 +628,11 @@ export const TableErrorCode = z.enum([
   "EXPORT_TOO_LARGE",
   "COLUMN_CYCLE",
   "COLUMN_REFERENCED",
+  "SYNC_ENABLED",
+  "SYNC_DISABLED",
+  "SYNC_UNAVAILABLE",
+  "SOURCE_REMOVED",
+  "TEMPLATE_BAD_TRANSITION",
+  "TEMPLATE_INVALID",
 ]);
 export type TableErrorCode = z.infer<typeof TableErrorCode>;
