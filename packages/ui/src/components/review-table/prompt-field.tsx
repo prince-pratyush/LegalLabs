@@ -116,8 +116,6 @@ export function PromptField({
         {...aria}
         ref={box}
         id={id}
-        role="combobox"
-        aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={open ? `${listId}-${active}` : undefined}
