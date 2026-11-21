@@ -20,7 +20,14 @@ export {
   type Evidence,
   type EvidenceStatus,
 } from "./components/evidence.js";
-export { Field, type FieldControlProps, Input, Label, Textarea } from "./components/field.js";
+export {
+  Field,
+  type FieldControlProps,
+  Input,
+  Label,
+  NativeSelect,
+  Textarea,
+} from "./components/field.js";
 export { FolderTree, type TreeFolder } from "./components/folder-tree.js";
 export {
   type LibraryAction,
