@@ -146,22 +146,22 @@ export function TemplatesPage() {
   );
 }
 
+const toShare = (s: {
+  principal_type: LibraryShare["principalType"];
+  principal_id: string;
+  label: string;
+  level: LibraryShare["level"];
+}): LibraryShare => ({
+  principalType: s.principal_type,
+  principalId: s.principal_id,
+  label: s.label,
+  level: s.level,
+});
+
 function TemplateShares({ templateId, onChanged }: { templateId: string; onChanged: () => void }) {
   const [shares, setShares] = useState<LibraryShare[] | null>(null);
   const [workspaceId, setWorkspaceId] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const toShare = (s: {
-    principal_type: LibraryShare["principalType"];
-    principal_id: string;
-    label: string;
-    level: LibraryShare["level"];
-  }): LibraryShare => ({
-    principalType: s.principal_type,
-    principalId: s.principal_id,
-    label: s.label,
-    level: s.level,
-  });
-
   useEffect(() => {
     tableApi.templateShares(templateId).then(
       (next) => setShares(next.map(toShare)),
