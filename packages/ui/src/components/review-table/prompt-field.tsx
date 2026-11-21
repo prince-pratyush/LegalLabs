@@ -44,6 +44,7 @@ export function PromptField({
   rows?: number;
   maxLength?: number;
   placeholder?: string;
+  "aria-label"?: string;
   "aria-describedby"?: string;
   "aria-invalid"?: true;
 }) {

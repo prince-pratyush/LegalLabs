@@ -8,8 +8,6 @@ import { createAuth } from "../auth/auth.js";
 import { createDrafts } from "../drafts/drafts.js";
 import { createRunLog } from "../runs/log.js";
 import { auditTrail, seedMember, testDocuments, testThreads } from "../test-db.js";
-import { createVaults } from "../vaults/vaults.js";
-import { createExports } from "./export.js";
 import {
   AMOUNT,
   addColumn,
@@ -24,7 +22,9 @@ import {
   rows,
   runAndWait,
   setup,
-} from "./harness.js";
+} from "../test-tables.js";
+import { createVaults } from "../vaults/vaults.js";
+import { createExports } from "./export.js";
 import { createReviewTables } from "./module.js";
 
 // Twelve uploads take about 2 s alone, but over 20 s when every API test file shares the

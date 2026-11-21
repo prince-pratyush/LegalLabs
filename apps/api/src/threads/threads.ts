@@ -14,6 +14,7 @@ import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
+import { type Notifier, noNotifier } from "../notifications/notify.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
 import { type Answer, type Checked, createAnswerer, type ScopeDocument } from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
@@ -202,6 +203,10 @@ export interface ThreadsOptions {
   log: RunLog;
   vaults: VaultPort;
   knowledge: KnowledgePort;
+  /** Tells people about approvals, failures, long runs and shares; left out, nobody is told. */
+  notifier?: Notifier;
+  /** A deep analysis that took longer than this notifies its owner when it finishes. */
+  longRunMs?: number;
 }
 
 const HISTORY_MESSAGES = 6;
@@ -472,7 +477,42 @@ const RUN_MESSAGES = {
 
 export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   const { log, vaults } = options;
+  const notifier = options.notifier ?? noNotifier;
+  const longRunMs = options.longRunMs ?? 60_000;
   const answer = createAnswerer({ pool, ...options });
+
+  /** Tells the person running (and owning) a thread how a run went; never throws. */
+  async function tell(
+    principal: Principal,
+    kind: "thread.run.awaiting_approval" | "thread.run.failed" | "thread.run.completed",
+    run: { id: string; threadId: string },
+    longRunning = false,
+  ) {
+    if (notifier === noNotifier) return;
+    try {
+      const { rows } = await asApp(pool, principal, (db) =>
+        db.query<{ title: string; matter_id: string | null; owner_id: string }>(
+          "select title, matter_id, owner_id from work.thread where id = $1",
+          [run.threadId],
+        ),
+      );
+      const thread = rows[0];
+      if (!thread) return;
+      await notifier.notify(principal, {
+        kind,
+        actorId: null,
+        objectType: "run",
+        objectId: run.id,
+        objectTitle: thread.title,
+        matterId: thread.matter_id,
+        people: { runner: principal.userId, owner: thread.owner_id },
+        url: `#/t/${run.threadId}`,
+        longRunning,
+      });
+    } catch {
+      // A missed notification must not fail the run.
+    }
+  }
   const inFlight = new Set<Promise<void>>();
   // Runs this process is working on, so a cancel can stop the model mid-answer.
   const active = new Map<string, AbortController>();
@@ -608,6 +648,13 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       ),
     );
     if (changed.rowCount === 0) return;
+    if (notifier !== noNotifier) {
+      const failed = await asApp(pool, principal, (db) =>
+        db.query<{ thread_id: string }>("select thread_id from work.run where id = $1", [runId]),
+      ).catch(() => null);
+      const threadId = failed?.rows[0]?.thread_id;
+      if (threadId) await tell(principal, "thread.run.failed", { id: runId, threadId });
+    }
     await log.append(principal, runId, { type: "error", code, message, retryable });
     // The status closes every open stream, retryable or not.
     await log.append(principal, runId, { type: "status", status: "failed" });
@@ -641,6 +688,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         ),
       );
       if (saved.rowCount === 0) return;
+      if (!replanning) await tell(principal, "thread.run.awaiting_approval", run);
       const { scope: _scope, ...shown } = stored;
       await emit({ type: "plan", plan: shown });
       if (!replanning) await emit({ type: "status", status: "awaiting_approval" });
@@ -754,6 +802,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       }
       const count = (status: CitationStatus) =>
         reply.citations.filter((citation) => citation.status === status).length;
+      if (Date.now() - started > longRunMs) {
+        await tell(principal, "thread.run.completed", run, true);
+      }
       await emit({
         type: "done",
         message_id: messageId,
@@ -1265,7 +1316,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         return { ok: false, reason: "NOT_FOUND" };
       }
       try {
-        return await asApp(pool, principal, async (db) => {
+        const shared = await asApp(pool, principal, async (db) => {
           const { rows } = await db.query<{
             principal_id: string;
             outcome: ShareOutcome["outcome"];
@@ -1275,6 +1326,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             link,
           ]);
           const created = rows.filter((row) => row.outcome === "created").length;
+          let notice: { title: string; matterId: string | null; userIds: string[] } | null = null;
           if (created > 0) {
             await audit(
               db,
@@ -1284,14 +1336,43 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
               { recipients: created, link },
               client,
             );
+            const thread = (
+              await db.query<{ title: string; matter_id: string | null }>(
+                "select title, matter_id from work.thread where id = $1",
+                [threadId],
+              )
+            ).rows[0];
+            if (thread) {
+              notice = {
+                title: thread.title,
+                matterId: thread.matter_id,
+                userIds: rows
+                  .filter(
+                    (r) => r.outcome === "created" && r.principal_id !== principal.workspaceId,
+                  )
+                  .map((r) => r.principal_id),
+              };
+            }
           }
           return {
-            ok: true as const,
+            notice,
             outcomes: rows
               .filter((row) => row.principal_id !== principal.workspaceId)
               .map((row) => ({ userId: row.principal_id, outcome: row.outcome })),
           };
         });
+        if (shared.notice) {
+          await notifier.notify(principal, {
+            kind: "thread.shared",
+            actorId: principal.userId,
+            objectType: "thread",
+            objectId: threadId,
+            objectTitle: shared.notice.title,
+            matterId: shared.notice.matterId,
+            people: { recipients: shared.notice.userIds },
+          });
+        }
+        return { ok: true as const, outcomes: shared.outcomes };
       } catch (err) {
         const message = err instanceof Error ? err.message : "";
         if (message.includes("WALL_MISMATCH")) return { ok: false, reason: "WALL_MISMATCH" };
