@@ -101,16 +101,19 @@ function fakeModel(messages: readonly Message[]): string {
   });
 }
 
-function harness(options: { asks?: number } = {}) {
+function harness(options: { asks?: number; hold?: Promise<void> } = {}) {
   const store = createMemoryStore();
   const documents = testDocuments(pool, { store });
   const gateway = createGateway({
     providers: {
       ollama: {
-        complete: async ({ messages }) => ({
-          text: fakeModel(messages),
-          usage: { input_tokens: 500, output_tokens: 40 },
-        }),
+        complete: async ({ messages }) => {
+          await options.hold;
+          return {
+            text: fakeModel(messages),
+            usage: { input_tokens: 500, output_tokens: 40 },
+          };
+        },
       },
     },
     contextWindows: { ollama: 8_192 },
@@ -216,7 +219,7 @@ const LAW = {
 };
 const FEE = { label: "Termination fee", type: "currency", prompt: "What is the termination fee?" };
 
-async function setup(options: { asks?: number } = {}) {
+async function setup(options: { asks?: number; hold?: Promise<void> } = {}) {
   const h = harness(options);
   const m = await seedMember(pool);
   const cookie = await h.signIn(m);
@@ -716,5 +719,28 @@ describe("review tables API", () => {
     expect(
       (await createExports(pool).run(principal, s.tableId, { format: "csv" } as never, client)).ok,
     ).toBe(true);
+  });
+
+  it("runs at most three columns of a table at once; a fourth waits", async () => {
+    let release = () => {};
+    const s = await setup({ hold: new Promise<void>((resolve) => (release = resolve)) });
+    const columns = [];
+    for (const label of ["Date", "Date 2", "Date 3", "Date 4"]) {
+      columns.push(await addColumn(s, { ...DATE, label }));
+    }
+    for (const column of columns) {
+      await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/columns/${column}/run`, {});
+    }
+    const statuses = async () =>
+      (
+        await pool.query<{ status: string }>(
+          "select status from work.run where table_id = $1 order by status",
+          [s.tableId],
+        )
+      ).rows.map((r) => r.status);
+    await expect.poll(statuses).toEqual(["planned", "running", "running", "running"]);
+    release();
+    await s.h.tables.runner.idle();
+    expect(await statuses()).toEqual(["done", "done", "done", "done"]);
   });
 });

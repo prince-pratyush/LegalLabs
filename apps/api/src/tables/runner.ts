@@ -48,6 +48,8 @@ export interface RunnerOptions {
   log: RunLog;
   /** Cells in flight across every run in this process. */
   cellsInFlight?: number;
+  /** How often a run waiting for a column slot looks again; runs here also wake it. */
+  slotPollMs?: number;
 }
 
 /** A counting semaphore: waiters are served in order. */
@@ -139,16 +141,45 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
   const { gateway, documents, log } = options;
   const inFlight = semaphore(Math.max(1, options.cellsInFlight ?? 2));
-  // Per table, at most three columns run at once; a fourth waits its turn.
-  const tables = new Map<string, ReturnType<typeof semaphore>>();
-  const slotFor = (tableId: string) => {
-    let slot = tables.get(tableId);
-    if (!slot) {
-      slot = semaphore(RT_LIMITS.runningColumns);
-      tables.set(tableId, slot);
-    }
-    return slot;
+  // Per table, at most three columns run at once; a fourth waits its turn. Counted in the
+  // database, so the limit holds across processes and nothing is kept per table here.
+  const waiting = new Set<() => void>();
+  const slotFreed = () => {
+    for (const wake of waiting) wake();
+    waiting.clear();
   };
+  const SLOT_POLL_MS = options.slotPollMs ?? 2_000;
+
+  async function claimSlot(principal: Principal, runId: string, tableId: string) {
+    return asApp(pool, principal, async (db) => {
+      // One claim at a time per table, so two runs can't both see two running.
+      await db.query("select pg_advisory_xact_lock(hashtextextended($1, 1))", [tableId]);
+      const { rows } = await db.query<{ n: number }>(
+        "select count(*)::int n from work.run where table_id = $1 and status = 'running'",
+        [tableId],
+      );
+      if ((rows[0]?.n ?? 0) >= RT_LIMITS.runningColumns) return false;
+      await db.query(
+        "update work.run set status = 'running', updated_at = now() where id = $1 and status = 'planned'",
+        [runId],
+      );
+      return true;
+    });
+  }
+
+  async function waitForSlot(principal: Principal, runId: string, tableId: string) {
+    while (!cancelled.has(runId) && !(await claimSlot(principal, runId, tableId))) {
+      // Woken when a run here ends; polled for runs ending in another process.
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, SLOT_POLL_MS);
+        waiting.add(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+  }
+
   const cancelled = new Set<string>();
   const active = new Set<string>();
   const work = new Set<Promise<void>>();
@@ -401,42 +432,31 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
   }
 
   async function drive(principal: Principal, runId: string, request: RunRequest, client: Client) {
-    const slot = slotFor(request.tableId);
     let cost = 0;
     let cells = 0;
     try {
-      await slot.take();
-      try {
-        if (!cancelled.has(runId)) {
-          await asApp(pool, principal, (db) =>
-            db.query(
-              "update work.run set status = 'running', updated_at = now() where id = $1 and status = 'planned'",
-              [runId],
-            ),
-          );
-          await log.append(principal, runId, { type: "status", status: "running" });
-          const queue = [...request.targets];
-          const worker = async () => {
-            for (let target = queue.shift(); target; target = queue.shift()) {
+      await waitForSlot(principal, runId, request.tableId);
+      if (!cancelled.has(runId)) {
+        await log.append(principal, runId, { type: "status", status: "running" });
+        const queue = [...request.targets];
+        const worker = async () => {
+          for (let target = queue.shift(); target; target = queue.shift()) {
+            if (cancelled.has(runId)) return;
+            await inFlight.take();
+            try {
               if (cancelled.has(runId)) return;
-              await inFlight.take();
-              try {
-                if (cancelled.has(runId)) return;
-                cost += await execute(principal, runId, request, target);
-                cells += 1;
-              } catch (err) {
-                console.error(`cell ${target.cellId}: ${err instanceof Error ? err.message : err}`);
-              } finally {
-                inFlight.give();
-              }
+              cost += await execute(principal, runId, request, target);
+              cells += 1;
+            } catch (err) {
+              console.error(`cell ${target.cellId}: ${err instanceof Error ? err.message : err}`);
+            } finally {
+              inFlight.give();
             }
-          };
-          await Promise.all(
-            Array.from({ length: Math.min(request.targets.length, 4) }, () => worker()),
-          );
-        }
-      } finally {
-        slot.give();
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(request.targets.length, 4) }, () => worker()),
+        );
       }
       const stopped = cancelled.has(runId);
       const progress = await asApp(pool, principal, async (db) => {
@@ -495,6 +515,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
       }).catch(() => {});
       await log.append(principal, runId, { type: "status", status: "failed" }).catch(() => {});
     } finally {
+      slotFreed();
       cancelled.delete(runId);
       active.delete(runId);
       log.release(runId);
