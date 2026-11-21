@@ -239,6 +239,7 @@ export function tableHttp({ tables, cells, exports, runner, clientOf, asks }: Ta
         parsed.scope,
         parsed.include_verified,
         clientOf(c),
+        { sort: parsed.sort, filter: parsed.filter },
       ),
       202,
     );

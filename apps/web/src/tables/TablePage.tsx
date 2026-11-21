@@ -7,6 +7,7 @@ import type {
   Row,
   RowFilter,
   RowSort,
+  RunColumnBody,
 } from "@legallabs/contracts";
 import {
   AddColumnPopover,
@@ -61,6 +62,22 @@ export function keyPatch(op: CellKeyOp, cell: Cell): PatchCellBody | null {
   if (cell.locked) return null;
   if (op === "verify") return { verified: !cell.verified_at };
   return { flag_color: nextFlag(cell.flag_color) };
+}
+
+/** What a run sends: a dry run carries the user's sort and filter, so it tries what they see. */
+export function runBody(
+  choice: RunChoice | "pending",
+  sort: RowSort | null,
+  filter: RowFilter,
+): RunColumnBody {
+  if (choice === "pending") return { scope: "pending", include_verified: false };
+  const body: RunColumnBody = { scope: choice.scope, include_verified: choice.include_verified };
+  if (choice.scope !== "dry_run") return body;
+  return {
+    ...body,
+    ...(sort ? { sort } : {}),
+    ...(filter.conditions.length > 0 ? { filter } : {}),
+  };
 }
 
 const isLive = (columns: Column[], cells: Map<string, Cell>) =>
@@ -227,13 +244,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
 
   const runColumn = async (column: Column, choice: RunChoice | "pending") => {
     try {
-      await tableApi.runColumn(
-        tableId,
-        column.id,
-        choice === "pending"
-          ? { scope: "pending", include_verified: false }
-          : { scope: choice.scope, include_verified: choice.include_verified },
-      );
+      await tableApi.runColumn(tableId, column.id, runBody(choice, sort, rowFilter));
       await refresh();
     } catch (err) {
       toast.error(messageOf(err));

@@ -442,11 +442,6 @@ export const RunScope = z.union([
 ]);
 export type RunScope = z.infer<typeof RunScope>;
 
-export const RunColumnBody = z
-  .object({ scope: RunScope.default("all"), include_verified: z.boolean().default(false) })
-  .strict();
-export type RunColumnBody = z.infer<typeof RunColumnBody>;
-
 export const RunTableBody = z
   .object({ scope: z.enum(["pending", "dry_run"]).default("pending") })
   .strict();
@@ -532,6 +527,17 @@ export function parseSort(raw: string): RowSort | null {
   const parsed = RowSort.safeParse({ column_id: columnId, direction });
   return parsed.success ? parsed.data : null;
 }
+
+/** A dry run takes the first rows in the order and filter the user is looking at. */
+export const RunColumnBody = z
+  .object({
+    scope: RunScope.default("all"),
+    include_verified: z.boolean().default(false),
+    sort: RowSort.optional(),
+    filter: RowFilter.optional(),
+  })
+  .strict();
+export type RunColumnBody = z.infer<typeof RunColumnBody>;
 
 export const ExportBody = z
   .object({

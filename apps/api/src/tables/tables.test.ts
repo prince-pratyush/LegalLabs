@@ -667,4 +667,35 @@ describe("review tables API", () => {
     const trail = await auditTrail(pool, s.m.workspaceId);
     expect(trail.some((e) => e.action === "table.cell.rerun" && e.details.cells === 2)).toBe(true);
   });
+
+  it("dry runs the first rows of the view the user sees (RVT-010)", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    const amount = await addColumn(s, AMOUNT);
+    await runAndWait(s, date);
+    // Filtered to the 2023 lease, a dry run must leave the credit agreement alone.
+    const res = await s.h.call(
+      s.cookie,
+      "POST",
+      `/review-tables/${s.tableId}/columns/${amount}/run`,
+      {
+        scope: "dry_run",
+        sort: { column_id: date, direction: "asc" },
+        filter: { conditions: [{ column_id: date, contains: "2023" }] },
+      },
+    );
+    expect(res.body.cells).toBe(1);
+    await s.h.tables.runner.idle();
+    const page = await rows(s);
+    const status = (name: string) => {
+      const row = page.rows.find(
+        (r: { documents: { name: string }[] }) => r.documents[0]?.name === name,
+      );
+      return page.cells.find(
+        (c: { row_id: string; column_id: string }) => c.row_id === row.id && c.column_id === amount,
+      )?.status;
+    };
+    expect(status("lease.txt")).toBe("done");
+    expect(status("credit.txt")).toBe("pending");
+  });
 });

@@ -195,6 +195,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
     column: ColumnRow,
     scope: RunScope,
     includeVerified: boolean,
+    dryRun = scope === "dry_run",
   ): Promise<
     Result<{
       run_id: string | null;
@@ -233,7 +234,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         settings: settingsOf(table),
         targets: picked.run,
         scope,
-        dryRun: scope === "dry_run",
+        dryRun,
       },
       client,
     );
@@ -679,17 +680,51 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
       scope: RunScope,
       includeVerified: boolean,
       client: Client,
+      view: { sort?: RowSort | undefined; filter?: RowFilter | undefined } = {},
     ) {
       const found = await withTable(principal, tableId, async (db, table) => {
-        const column = (await loadColumns(db, tableId)).find((c) => c.id === columnId);
+        const columns = await loadColumns(db, tableId);
+        const column = columns.find((c) => c.id === columnId);
         if (!column) return fail("NOT_FOUND");
+        let effective = scope;
+        if (scope === "dry_run" && (view.sort || view.filter)) {
+          // The first rows the user sees, in their order and filter (spec §3.10).
+          let built: { sql: string; params: unknown[] };
+          try {
+            built = rowsSql({
+              tableId,
+              columns: new Map(columns.map((c) => [c.id, c.type])),
+              filter: view.filter,
+              sort: view.sort,
+              limit: RT_LIMITS.dryRunRows,
+            });
+          } catch (err) {
+            if (err instanceof UnknownColumn) return fail("INVALID_REQUEST");
+            throw err;
+          }
+          const { rows } = await db.query<{ id: string; restricted: boolean }>(
+            built.sql,
+            built.params,
+          );
+          const ids = rows.filter((r) => !r.restricted).map((r) => r.id);
+          if (ids.length === 0) return fail("INVALID_REQUEST", "No rows match this view.");
+          effective = { row_ids: ids };
+        }
         // Estimated before the cells are queued, so it counts what this run will do.
-        const estimate = await estimateFor(db, [column], scope, includeVerified);
-        return { ok: true as const, value: { table, column, estimate } };
+        const estimate = await estimateFor(db, [column], effective, includeVerified);
+        return { ok: true as const, value: { table, column, estimate, effective } };
       });
       if (!found.ok) return found;
-      const { table, column, estimate } = found.value;
-      const started = await startRun(principal, client, table, column, scope, includeVerified);
+      const { table, column, estimate, effective } = found.value;
+      const started = await startRun(
+        principal,
+        client,
+        table,
+        column,
+        effective,
+        includeVerified,
+        scope === "dry_run",
+      );
       if (!started.ok) return started;
       return { ok: true as const, value: { ...started.value, estimate } };
     },
