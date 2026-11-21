@@ -211,10 +211,9 @@ describe("matter options and own matters", () => {
       await tx.as(s.ben, s.acme);
       expect(await tx.error(create, [s.acme, s.ben, id])).toMatch(/row-level security/);
       await tx.asOwner();
-      await tx.rows(
-        "update core.matter_options set user_editable = true where workspace_id = $1",
-        [s.acme],
-      );
+      await tx.rows("update core.matter_options set user_editable = true where workspace_id = $1", [
+        s.acme,
+      ]);
       await tx.as(s.ben, s.acme);
       await tx.rows(create, [s.acme, s.ben, id]);
       await tx.rows("update core.matter set matter_name = 'Renamed' where id = $1", [id]);
