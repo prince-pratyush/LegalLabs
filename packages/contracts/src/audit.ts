@@ -70,6 +70,28 @@ export const auditActions: string[] = [
     "previewed",
   ]),
 
+  ...family("agent", [
+    "imported",
+    "duplicated",
+    "version.saved",
+    "draft.updated",
+    "run.started",
+    "run.finished",
+    "schedule.upserted",
+    "schedule.paused",
+    "schedule.deleted",
+  ]),
+  ...family("workflow", [
+    "published",
+    "draft.saved",
+    "file_replaced",
+    "run.started",
+    "run.finished",
+  ]),
+  ...family("share", ["requested", "accepted", "denied"]),
+  ...family("admin.reporting", ["exported"]),
+  ...family("admin.agents", ["bulk_deleted"]),
+  "run.signal",
   ...family("playbook", ["published", "unpublished", "grant_changed", "generated"]),
   ...family("playbook_review", ["started", "finished", "cancelled"]),
   ...family("suggestion", ["applied", "dismissed", "revised", "alternates_requested"]),
@@ -129,6 +151,12 @@ export const auditActions: string[] = [
   ...family("export", ["user", "matter", "legal_hold", "audit", "analytics", "evidence_pack"]),
 
   ...family("knowledge.filter_preset", ["created", "updated", "deleted"]),
+
+  ...family("memory", ["enabled", "disabled", "imported", "all_deleted"]),
+  ...family("writing_style", ["created", "updated", "deleted", "shared", "unshared"]),
+  "notification_settings.updated",
+  "workspace_notification_settings.updated",
+  "admin.memory_permission_changed",
 ];
 
 export const AuditAction = z.enum(auditActions);
