@@ -288,6 +288,13 @@
       "when": 1794009750000,
       "tag": "0085_work_review_table_dependencies",
       "breakpoints": false
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794009751000,
+      "tag": "0086_work_review_table_sync",
+      "breakpoints": false
     }
   ]
 }
