@@ -1,7 +1,7 @@
 import type { Message } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
 import { auditTrail } from "../test-db.js";
-import { addColumn, FEE, fakeModel, LAW, pool, rows, runAndWait, setup } from "./harness.js";
+import { addColumn, FEE, fakeModel, LAW, pool, rows, runAndWait, setup } from "../test-tables.js";
 
 afterAll(() => pool.end());
 

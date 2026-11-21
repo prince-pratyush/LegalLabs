@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { createGateway, type Message } from "@legallabs/model-gateway";
 import { createMemoryStore } from "@legallabs/storage";
 import { expect } from "vitest";
-import { createApp } from "../app.js";
-import { createAuth } from "../auth/auth.js";
-import { hashPassword } from "../auth/password.js";
-import { createDrafts } from "../drafts/drafts.js";
-import { createRunLog } from "../runs/log.js";
+import { createApp } from "./app.js";
+import { createAuth } from "./auth/auth.js";
+import { hashPassword } from "./auth/password.js";
+import { createDrafts } from "./drafts/drafts.js";
+import { createRunLog } from "./runs/log.js";
+import { createReviewTables } from "./tables/module.js";
 import {
   PASSWORD,
   type Seeded,
@@ -14,9 +15,8 @@ import {
   testDocuments,
   testPool,
   testThreads,
-} from "../test-db.js";
-import { createVaults } from "../vaults/vaults.js";
-import { createReviewTables } from "./module.js";
+} from "./test-db.js";
+import { createVaults } from "./vaults/vaults.js";
 
 // Shared by the review-table API tests: a real app over the test database, a scripted model
 // standing in for the provider, and vaults whose files are read as they are uploaded.
