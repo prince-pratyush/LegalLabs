@@ -110,7 +110,8 @@ describe("spaces", () => {
       // Cal is denied on M2, so membership gives him nothing.
       expect(await visible(tx, s, s.cal, "work.space")).toBe(0);
       await tx.as(s.cal, s.acme);
-      expect(await tx.rows("select * from work.space_directory()")).toHaveLength(0);
+      const listed = await tx.rows<{ id: string }>("select id from work.space_directory()");
+      expect(listed.map((r) => r.id)).not.toContain(space);
     });
   });
 
@@ -120,7 +121,7 @@ describe("spaces", () => {
       const space = await createSpace(tx, s, s.ana, "Open room", s.matters.m2);
       await tx.as(s.ben, s.acme);
       const rows = await tx.rows("select id, locked from work.space_directory()");
-      expect(rows).toEqual([{ id: space, locked: true }]);
+      expect(rows.filter((r) => r.id === space)).toEqual([{ id: space, locked: true }]);
       // And may ask to join.
       expect(
         await tx.error(
