@@ -653,6 +653,39 @@ describe("the notifications hub", () => {
     expect(((await h.call(cookie, "GET", "/notifications")).body as Page).items).toHaveLength(1);
   });
 
+  it("makes no notification for someone who cannot open the object, until it is shared", async () => {
+    const h = harness();
+    const ana = await seedMember(pool);
+    const ben = await colleague(ana);
+    const thread = (
+      await pool.query<{ id: string }>(
+        "insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Private') returning id",
+        [ana.workspaceId, ana.userId],
+      )
+    ).rows[0]?.id;
+    const tell = () =>
+      h.notifications.notifier.notify(
+        principal(ana),
+        event({
+          kind: "thread.shared",
+          objectType: "thread",
+          objectId: thread ?? "",
+          actorId: ana.userId,
+          people: { recipients: [ben.userId] },
+        }),
+      );
+    const cookie = await h.signIn(ben);
+    await tell();
+    expect(((await h.call(cookie, "GET", "/notifications")).body as Page).items).toHaveLength(0);
+    await pool.query(
+      `insert into core.share_grant (workspace_id, object_type, object_id, principal_type,
+         principal_id, level, granted_by) values ($1, 'thread', $2, 'user', $3, 'view', $4)`,
+      [ana.workspaceId, thread, ben.userId, ana.userId],
+    );
+    await tell();
+    expect(((await h.call(cookie, "GET", "/notifications")).body as Page).items).toHaveLength(1);
+  });
+
   it("hides what an unavailable item was, and refuses to act on it", async () => {
     const h = harness();
     const ana = await seedMember(pool);

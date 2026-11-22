@@ -39,7 +39,12 @@ export function SyncIndicator({ sync, onClick }: { sync: SyncInfo | null; onClic
   if (!sync || sync.state === "off") return null;
   const pending = sync.state === "pending";
   return (
-    <Button variant="quiet" size="sm" onClick={onClick} aria-label="Sync settings">
+    <Button
+      variant="quiet"
+      size="sm"
+      onClick={onClick}
+      aria-label={`Sync settings: ${pending ? `${sync.pending_rows} pending` : "files synced"}`}
+    >
       <span
         aria-hidden
         className={cn("size-2 rounded-full", pending ? "bg-flag-orange" : "bg-flag-green")}

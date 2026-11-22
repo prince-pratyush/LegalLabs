@@ -267,7 +267,7 @@ export { TableList, type TableSummary } from "./components/review-table/table-li
 export {
   SaveTemplateDialog,
   type SaveTemplateRequest,
-  STATUS_TEXT as TEMPLATE_STATUS_TEXT,
+  TEMPLATE_STATUS_TEXT,
   TemplateList,
   type TemplateStatus,
   type TemplateSummary,

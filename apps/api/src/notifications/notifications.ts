@@ -233,11 +233,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createNotifications(
   pool: pg.Pool,
-  options: { log?: (line: string) => void; now?: () => Date } = {},
+  options: { log?: (line: string) => void } = {},
 ): Notifications {
   const hub = createHub();
   const actions = createActionRegistry();
-  const notifier = createNotifier(pool, hub, options.log, options.now ? { now: options.now } : {});
+  const notifier = createNotifier(pool, hub, options.log);
 
   const countsOf = async (db: Db): Promise<NotificationCounts> => {
     const { rows } = await db.query<{ unread: string; action_required: string }>(

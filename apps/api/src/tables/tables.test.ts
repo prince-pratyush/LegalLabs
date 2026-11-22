@@ -645,12 +645,30 @@ describe("review tables API", () => {
       documents: [{ name: "Restricted document" }],
     });
     expect(page.cells.some((c: { row_id: string }) => c.row_id === hidden.id)).toBe(false);
-    await runAndWait(s, date, { row_ids: [hidden.id] });
-    const { rows: stored } = await pool.query(
-      "select status, error_code from work.rt_cell where row_id = $1",
+    const { rows: before } = await pool.query(
+      "select status, error_code, value_text from work.rt_cell where row_id = $1",
       [hidden.id],
     );
-    expect(stored[0]).toEqual({ status: "error", error_code: "ACCESS_DENIED" });
+    expect(before[0]).toMatchObject({ status: "done", error_code: null });
+    // No run is started over a file the caller can't read, and the cell isn't wiped by one.
+    const run = await runAndWait(s, date, { row_ids: [hidden.id] });
+    expect(run).toMatchObject({ run_id: null, cells: 0 });
+    await runAndWait(s, date);
+    const { rows: stored } = await pool.query(
+      "select status, error_code, value_text from work.rt_cell where row_id = $1",
+      [hidden.id],
+    );
+    expect(stored[0]).toEqual(before[0]);
+    // A bulk re-run leaves it alone too.
+    const bulk = await s.h.call(s.cookie, "POST", `/review-tables/${s.tableId}/cells/bulk`, {
+      op: "rerun",
+      cell_ids: (
+        await pool.query<{ id: string }>("select id from work.rt_cell where row_id = $1", [
+          hidden.id,
+        ])
+      ).rows.map((c) => c.id),
+    });
+    expect(bulk.body).toMatchObject({ affected: 0 });
   });
 
   it("marks a cell DOC_NOT_READY while its document is still being read", async () => {

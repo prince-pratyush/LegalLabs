@@ -6,6 +6,7 @@ import {
   type CreateTableBody,
   DEFAULT_SETTINGS,
   type DeleteRowsBody,
+  dependentsOf,
   type PatchColumnBody,
   type PatchRowBody,
   type PatchTableBody,
@@ -24,12 +25,7 @@ import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp, RLS_REFUSED } from "../db.js";
 import { audit } from "./audit.js";
-import {
-  dependentColumns,
-  loadGraph,
-  markDependentsStale,
-  resolveReferences,
-} from "./dependencies.js";
+import { loadGraph, markDependentsStale, resolveReferences } from "./dependencies.js";
 import { setStatus } from "./history.js";
 import { NEWER_SQL, RESTRICTED_SQL } from "./query.js";
 import { columnProgress, refreshStats } from "./runner.js";
@@ -82,6 +78,10 @@ export interface ColumnRow {
   dry_run: boolean;
   run_id: string | null;
 }
+
+/** Column edits wait for each other per table, so two can't each pass the cycle check alone. */
+const lockColumns = (db: Db, tableId: string) =>
+  db.query("select pg_advisory_xact_lock(hashtextextended($1, 3))", [tableId]);
 
 export const settingsOf = (table: Pick<TableRow, "settings">): Settings =>
   Settings.safeParse({ ...DEFAULT_SETTINGS, ...table.settings }).data ?? DEFAULT_SETTINGS;
@@ -503,7 +503,8 @@ export function createTables(
         const limit = 50;
         const { rows } = await db.query<TableRow>(
           `select t.* from work.review_table t
-            where ($1::text is null or t.name ilike '%' || $1 || '%')
+            where not t.is_test
+              and ($1::text is null or t.name ilike '%' || $1 || '%')
               and (not $2 or exists (select 1 from work.rt_star s
                                       where s.table_id = t.id and s.user_id = $3))
             order by t.updated_at desc, t.id desc limit $4 offset $5`,
@@ -710,7 +711,11 @@ export function createTables(
 
     /** Removes rows from the table; a locked row, or one the caller can't see, stays. */
     removeRows(principal: Principal, tableId: string, body: DeleteRowsBody, client: Client) {
-      return withTable(principal, tableId, async (db) => {
+      return withTable(principal, tableId, async (db, table) => {
+        // Sync would add a deleted row's file straight back, and run the columns on it again.
+        if (table.sync_mode !== "off") {
+          return fail("SYNC_ENABLED", "Rows come from sync. Turn sync off to delete them.");
+        }
         const ids = [...new Set(body.row_ids)];
         const { rows } = await db.query<{ id: string }>(
           `update work.rt_row r set deleted_at = now()
@@ -735,6 +740,7 @@ export function createTables(
 
     createColumn(principal: Principal, tableId: string, body: CreateColumnBody, client: Client) {
       return withTable(principal, tableId, async (db, table) => {
+        await lockColumns(db, tableId);
         const options = parseColumnOptions(body.type, body.options);
         if (!options.success) return fail("INVALID_REQUEST", options.error);
         if (!modelAllowed(body.model)) return fail("MODEL_NOT_ALLOWED");
@@ -815,6 +821,7 @@ export function createTables(
       client: Client,
     ) {
       return withTable(principal, tableId, async (db, table) => {
+        await lockColumns(db, tableId);
         const column = (await loadColumns(db, tableId)).find((c) => c.id === columnId);
         if (!column) return fail("NOT_FOUND");
         if (column.state === "running") return fail("COLUMN_RUNNING", "Stop the run first.");
@@ -890,7 +897,9 @@ export function createTables(
     removeColumn(principal: Principal, tableId: string, columnId: string, client: Client) {
       return withTable(principal, tableId, async (db) => {
         if (!UUID.test(columnId)) return fail("NOT_FOUND");
-        const dependents = dependentColumns(await loadGraph(db, tableId), [columnId]);
+        // Waits for column edits in flight, so none can start to use this column as it goes.
+        await lockColumns(db, tableId);
+        const dependents = dependentsOf(await loadGraph(db, tableId), [columnId]);
         if (dependents.length > 0) {
           return fail(
             "COLUMN_REFERENCED",
