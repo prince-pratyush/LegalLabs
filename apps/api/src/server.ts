@@ -209,6 +209,7 @@ tables.sync.start();
 process.once("SIGTERM", () => void tables.sync.stop());
 process.once("SIGINT", () => void tables.sync.stop());
 
+const mfaOption = mfaFromEnv(process.env, pool);
 const app = createApp({
   agentRuns,
   workflows: createWorkflows(pool, {
@@ -227,8 +228,9 @@ const app = createApp({
   agentSharing: createAgentSharing(pool),
   agentNudges: createNudges(pool),
   auth: createAuth(pool),
-  ...mfaFromEnv(process.env, pool),
+  ...mfaOption,
   oidc: createOidc(pool, {
+    ...(mfaOption.mfa ? { secondFactor: mfaOption.mfa.secondStep } : {}),
     baseUrl: process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173",
     // Plain http and private addresses, for a local IdP only; never in production.
     policy: {

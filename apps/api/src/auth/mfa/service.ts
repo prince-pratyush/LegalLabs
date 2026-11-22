@@ -211,11 +211,19 @@ export function createMfa(pool: pg.Pool, config: MfaConfig) {
     }
 
     const subject = { userId: row.user_id, workspaceId: row.workspace_id };
+    const step = await secondStep(subject, client);
+    return step ?? { kind: "session", ...(await mintSession(subject, client, null)) };
+  }
+
+  /** The pending second step for someone already vouched for, or null when none is owed. */
+  async function secondStep(
+    subject: Subject,
+    client: Client,
+  ): Promise<Exclude<LoginOutcome, { kind: "session" }> | null> {
     const state = await stateOf(subject);
     const hasFactor = state.totp || state.passkey;
     // A factor someone enrolled is honoured even where the policy does not demand one.
-    if (!state.required && !hasFactor)
-      return { kind: "session", ...(await mintSession(subject, client, null)) };
+    if (!state.required && !hasFactor) return null;
 
     const mfaToken = randomBytes(32).toString("base64url");
     await as(subject, async (db) => {
@@ -794,6 +802,7 @@ export function createMfa(pool: pg.Pool, config: MfaConfig) {
 
   return {
     login,
+    secondStep,
     pendingOf,
     completeTotp: async (p: Pending, code: string, client: Client) =>
       completeWith(p, "totp", await verifyTotp(p, code), client),
