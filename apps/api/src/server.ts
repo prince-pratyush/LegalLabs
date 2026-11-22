@@ -18,6 +18,7 @@ import { createContextPort } from "./agents/context.js";
 import { createNudges } from "./agents/nudges.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
+import { mfaFromEnv } from "./auth/mfa/config.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
@@ -210,6 +211,7 @@ const app = createApp({
   agentSharing: createAgentSharing(pool),
   agentNudges: createNudges(pool),
   auth: createAuth(pool),
+  ...mfaFromEnv(process.env, pool),
   documents,
   vaults: createVaults(pool, { documents, store, notifier }),
   threads: {
