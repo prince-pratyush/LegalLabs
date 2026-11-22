@@ -50,6 +50,8 @@ jobs:
       - run: timeout 300 sh -c 'until printf "zPING\0" | nc -w 2 127.0.0.1 3310 | grep -q PONG; do sleep 5; done'
       - run: pnpm test
       - run: pnpm build
+      # The published API spec is generated from the code; a stale copy fails here.
+      - run: pnpm --filter @legallabs/api openapi:check
       # Pilot acceptance: a clean stack, driven end to end through the API.
       - run: pnpm --filter @legallabs/api test:e2e
         env:

@@ -43,6 +43,7 @@ import { createNotifications } from "./notifications/notifications.js";
 import { createPurgeJob } from "./notifications/purge.js";
 import { registerThreadActions } from "./notifications/register.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
+import { createPublicApi } from "./public-api/service.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
@@ -215,6 +216,7 @@ const mfaOption = mfaFromEnv(process.env, pool);
 const app = createApp({
   agentRuns,
   scim: { service: createScim(pool), admin: createScimAdmin(pool) },
+  publicApi: createPublicApi(pool),
   workflows: createWorkflows(pool, {
     documents,
     agentRuns,

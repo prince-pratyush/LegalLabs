@@ -14,6 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "node dist/server.js",
+    "openapi:write": "tsc -p tsconfig.build.json && node dist/public-api/openapi-cli.js --write",
+    "openapi:check": "node dist/public-api/openapi-cli.js --check",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {

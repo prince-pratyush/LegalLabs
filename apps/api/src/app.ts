@@ -1,4 +1,5 @@
 import { serveStatic } from "@hono/node-server/serve-static";
+import { PublicApi } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -42,6 +43,8 @@ import type { Notifications } from "./notifications/notifications.js";
 import { notificationRoutes } from "./notifications/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
+import { publicApiRoutes, tokenGate, tokenLimiter } from "./public-api/routes.js";
+import { type Caller, looksLikeToken, type PublicApiService } from "./public-api/service.js";
 import { retentionRoutes } from "./retention/routes.js";
 import type { Retention } from "./retention/service.js";
 import { reviewHttp } from "./reviews/http.js";
@@ -122,6 +125,8 @@ export interface AppOptions {
   memory?: MemoryModule;
   /** Models and connectors admin (ADM-005/006); optional, like vaults. */
   adminModels?: { models: AdminModels; connectors: AdminConnectors };
+  /** API tokens and the public endpoints they reach (ADM-009); left out, `cns_` tokens are refused. */
+  publicApi?: PublicApiService;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -180,6 +185,7 @@ export function createApp({
   agentSharing,
   agentNudges,
   scim,
+  publicApi,
   clientIp,
   now = Date.now,
   webRoot,
@@ -187,7 +193,8 @@ export function createApp({
 }: AppOptions) {
   const perIp = createLimiter({ limit: 10, windowMs: 60_000, now });
   const perAccount = createLimiter({ limit: 5, windowMs: 60_000, now });
-  const app = new Hono<{ Variables: { principal: Principal } }>();
+  const app = new Hono<{ Variables: { principal: Principal; caller?: Caller } }>();
+  const apiLimiter = tokenLimiter(now);
 
   const clientOf = (c: Context): Client => ({
     ip: clientIp(c),
@@ -320,16 +327,41 @@ export function createApp({
     );
   }
 
+  // The published contract is public: it names routes and shapes, never data.
+  app.get("/api/v1/openapi.json", (c) => c.json(PublicApi.buildOpenApi()));
+
   app.use("/api/v1/*", async (c, next) => {
     const token = tokenOf(c);
-    const principal = token ? await auth.resolve(token) : null;
-    if (!principal) return c.json({ code: "UNAUTHENTICATED", message: "Sign in first." }, 401);
-    c.set("principal", principal);
+    if (publicApi && token && looksLikeToken(token)) {
+      const result = await publicApi.authenticate(token, clientIp(c));
+      if (!result.ok) return c.json({ code: result.code, message: result.message }, result.status);
+      c.set("principal", result.caller.principal);
+      c.set("caller", result.caller);
+    } else {
+      const principal = token ? await auth.resolve(token) : null;
+      if (!principal) return c.json({ code: "UNAUTHENTICATED", message: "Sign in first." }, 401);
+      c.set("principal", principal);
+    }
     await next();
     c.header("Cache-Control", "no-store");
   });
+  // Right after sign-in, so a token never reaches a route the published spec doesn't list.
+  if (publicApi) app.use("/api/v1/*", tokenGate(publicApi, clientOf, apiLimiter));
 
   if (mfa) app.route("/api/v1/mfa", mfaApiRoutes({ mfa, clientOf, now }));
+  // Before the routes people use, so a token's read of /vaults gets the public shape.
+  if (publicApi) {
+    app.route(
+      "/api/v1",
+      publicApiRoutes({
+        api: publicApi,
+        vaults,
+        clientOf,
+        now,
+        ...(mfa ? { hasFactor: (p: Principal) => mfa.hasFactor(p) } : {}),
+      }),
+    );
+  }
   if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   // One budget of model calls per person, whether they ask a thread or draft playbook rules.
