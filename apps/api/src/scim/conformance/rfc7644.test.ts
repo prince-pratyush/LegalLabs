@@ -75,7 +75,7 @@ describe("errors", () => {
       body: "{nope",
     });
     expect(raw.status).toBe(400);
-    expect((await raw.json()).scimType).toBe("invalidSyntax");
+    expect(((await raw.json()) as { scimType: string }).scimType).toBe("invalidSyntax");
     const bad = await call("GET", "/Users?filter=userName%20bogus%20%22x%22");
     expect(bad.status).toBe(400);
     expect(bad.body.scimType).toBe("invalidFilter");

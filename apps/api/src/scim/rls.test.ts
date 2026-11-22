@@ -115,7 +115,7 @@ describe("the SCIM principal", () => {
     await pool.query(
       `insert into core.session (workspace_id, user_id, token_hash, expires_at)
        values ($1, $2, $3, now() + interval '1 day')`,
-      [w.workspaceId, victim, sha256("s1")],
+      [w.workspaceId, victim, sha256(`s-${Math.random()}`)],
     );
     await seedToken(pool, w.workspaceId, victim, ["whoami"]);
     const counts = await asApp(pool, asService(w), async (db) => {
@@ -157,7 +157,7 @@ describe("enabling SCIM and issuing tokens", () => {
         db.query(
           `insert into core.api_token (workspace_id, principal_id, name, token_hash, scopes, expires_at)
            values ($1, $2, 'x', $3, '{scim}', now() + interval '1 day')`,
-          [w.workspaceId, w.servicePrincipalId, sha256("nope")],
+          [w.workspaceId, w.servicePrincipalId, sha256(`n-${Math.random()}`)],
         ),
       ),
     ).rejects.toThrow();

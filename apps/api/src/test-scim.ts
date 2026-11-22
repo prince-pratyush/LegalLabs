@@ -83,6 +83,14 @@ export async function addPlainMember(pool: pg.Pool, w: ScimWorkspace): Promise<s
   return rows[0]?.id ?? "";
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: test responses are read loosely
+export type Json = any;
+export interface ScimResponse {
+  status: number;
+  headers: Response["headers"];
+  body: Json;
+}
+
 /** The whole app with SCIM mounted and a webhook that records instead of sending. */
 export function scimHarness(pool: pg.Pool, ip = "203.0.113.9") {
   const events: MassDeleteEvent[] = [];
@@ -104,7 +112,7 @@ export function scimHarness(pool: pg.Pool, ip = "203.0.113.9") {
     path: string,
     body?: unknown,
     headers: Record<string, string> = {},
-  ) => {
+  ): Promise<ScimResponse> => {
     const res = await app.request(`http://api.test/scim/v2${path}`, {
       method,
       headers: {

@@ -40,16 +40,19 @@ describe("who may call /scim/v2", () => {
     expect(denied.status).toBe(403);
     expect(await actions(w)).toContain("token.used_denied");
 
-    await pool.query("update core.api_token set expires_at = now() - interval '1 second' where token_hash = $1", [
-      sha256(w.token),
-    ]);
+    await pool.query(
+      "update core.api_token set expires_at = now() - interval '1 second' where token_hash = $1",
+      [sha256(w.token)],
+    );
     expect((await h.call(w.token, "GET", "/Users")).status).toBe(401);
   });
 
   it("refuses a revoked token at once", async () => {
     const w = await seedScim(pool);
     const h = scimHarness(pool);
-    await pool.query("update core.api_token set revoked_at = now() where workspace_id = $1", [w.workspaceId]);
+    await pool.query("update core.api_token set revoked_at = now() where workspace_id = $1", [
+      w.workspaceId,
+    ]);
     expect((await h.call(w.token, "GET", "/Users")).status).toBe(401);
   });
 
@@ -64,8 +67,12 @@ describe("who may call /scim/v2", () => {
 
   it("holds callers to the workspace's IP allow-list", async () => {
     const w = await seedScim(pool, { scim_ip_allowlist: ["198.51.100.0/24"] });
-    expect((await scimHarness(pool, "203.0.113.9").call(w.token, "GET", "/Users")).status).toBe(403);
-    expect((await scimHarness(pool, "198.51.100.7").call(w.token, "GET", "/Users")).status).toBe(200);
+    expect((await scimHarness(pool, "203.0.113.9").call(w.token, "GET", "/Users")).status).toBe(
+      403,
+    );
+    expect((await scimHarness(pool, "198.51.100.7").call(w.token, "GET", "/Users")).status).toBe(
+      200,
+    );
   });
 
   it("is not reachable with a person's session, and the token reaches nothing else", async () => {
@@ -92,7 +99,11 @@ describe("who may call /scim/v2", () => {
     const res = await scimHarness(pool).app.request("http://api.test/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ workspace: w.slug, email: rows[0]?.email, password: "anything at all" }),
+      body: JSON.stringify({
+        workspace: w.slug,
+        email: rows[0]?.email,
+        password: "anything at all",
+      }),
     });
     expect(res.status).toBe(401);
   });
@@ -103,10 +114,15 @@ describe("workspace isolation", () => {
     const a = await seedScim(pool);
     const b = await seedScim(pool);
     const h = scimHarness(pool);
-    const made = await h.call(a.token, "POST", "/Users", { schemas: [USER_URN], userName: "iso@x.test" });
+    const made = await h.call(a.token, "POST", "/Users", {
+      schemas: [USER_URN],
+      userName: "iso@x.test",
+    });
     const group = await h.call(a.token, "POST", "/Groups", { displayName: "Iso" });
     const seen = await h.call(b.token, "GET", "/Users");
-    expect(seen.body.Resources.map((r: { userName: string }) => r.userName)).not.toContain("iso@x.test");
+    expect(seen.body.Resources.map((r: { userName: string }) => r.userName)).not.toContain(
+      "iso@x.test",
+    );
     expect((await h.call(b.token, "GET", `/Users/${made.body.id}`)).status).toBe(404);
     expect((await h.call(b.token, "DELETE", `/Users/${made.body.id}`)).status).toBe(404);
     expect(
@@ -119,10 +135,19 @@ describe("workspace isolation", () => {
     ).toBe(404);
     expect((await h.call(b.token, "GET", `/Groups/${group.body.id}`)).status).toBe(404);
     // The same userName is free in the other workspace.
-    expect((await h.call(b.token, "POST", "/Users", { schemas: [USER_URN], userName: "iso@x.test" })).status).toBe(201);
+    expect(
+      (await h.call(b.token, "POST", "/Users", { schemas: [USER_URN], userName: "iso@x.test" }))
+        .status,
+    ).toBe(201);
     // A member of another workspace cannot be put in a group.
-    const stranger = await h.call(b.token, "POST", "/Users", { schemas: [USER_URN], userName: "s@x.test" });
-    const bad = await h.call(a.token, "POST", "/Groups", { displayName: "G2", members: [{ value: stranger.body.id }] });
+    const stranger = await h.call(b.token, "POST", "/Users", {
+      schemas: [USER_URN],
+      userName: "s@x.test",
+    });
+    const bad = await h.call(a.token, "POST", "/Groups", {
+      displayName: "G2",
+      members: [{ value: stranger.body.id }],
+    });
     expect(bad.status).toBe(400);
   });
 });
@@ -131,7 +156,10 @@ describe("audit", () => {
   it("records created, updated, deactivated and group changes as the service principal", async () => {
     const w = await seedScim(pool);
     const h = scimHarness(pool);
-    const u = await h.call(w.token, "POST", "/Users", { schemas: [USER_URN], userName: "aud@x.test" });
+    const u = await h.call(w.token, "POST", "/Users", {
+      schemas: [USER_URN],
+      userName: "aud@x.test",
+    });
     await h.call(w.token, "PATCH", `/Users/${u.body.id}`, {
       schemas: [PATCH_URN],
       Operations: [{ op: "replace", path: "title", value: "T" }],
@@ -140,7 +168,10 @@ describe("audit", () => {
       schemas: [PATCH_URN],
       Operations: [{ op: "replace", path: "active", value: false }],
     });
-    await h.call(w.token, "POST", "/Groups", { displayName: "Aud", members: [{ value: u.body.id }] });
+    await h.call(w.token, "POST", "/Groups", {
+      displayName: "Aud",
+      members: [{ value: u.body.id }],
+    });
     const trail = await auditTrail(pool, w.workspaceId);
     const scim = trail.filter((r) => String(r.action).startsWith("scim."));
     expect(scim.map((r) => r.action)).toEqual([
@@ -149,7 +180,9 @@ describe("audit", () => {
       "scim.user_deactivated",
       "scim.group_synced",
     ]);
-    expect(scim.every((r) => r.actor_type === "service" && r.actor_id === w.servicePrincipalId)).toBe(true);
+    expect(
+      scim.every((r) => r.actor_type === "service" && r.actor_id === w.servicePrincipalId),
+    ).toBe(true);
     expect(JSON.stringify(trail)).not.toContain("aud@x.test");
   });
 });
@@ -163,7 +196,9 @@ describe("deprovisioning", () => {
     const live2 = await seedToken(pool, w.workspaceId, victim, ["whoami"]);
     void live2;
     const check = () =>
-      h.app.request("http://api.test/auth/session", { headers: { authorization: `Bearer ${live}` } });
+      h.app.request("http://api.test/auth/session", {
+        headers: { authorization: `Bearer ${live}` },
+      });
     expect((await check()).status).toBe(200);
     const off = await h.call(w.token, "PATCH", `/Users/${victim}`, {
       schemas: [PATCH_URN],
@@ -185,10 +220,17 @@ describe("deprovisioning", () => {
     const h = scimHarness(pool);
     const victim = await addPlainMember(pool, w);
     const live = await session(w, victim);
-    const g = await h.call(w.token, "POST", "/Groups", { displayName: "Del", members: [{ value: victim }] });
+    const g = await h.call(w.token, "POST", "/Groups", {
+      displayName: "Del",
+      members: [{ value: victim }],
+    });
     expect((await h.call(w.token, "DELETE", `/Users/${victim}`)).status).toBe(204);
     expect(
-      (await h.app.request("http://api.test/auth/session", { headers: { authorization: `Bearer ${live}` } })).status,
+      (
+        await h.app.request("http://api.test/auth/session", {
+          headers: { authorization: `Bearer ${live}` },
+        })
+      ).status,
     ).toBe(401);
     expect((await h.call(w.token, "GET", `/Groups/${g.body.id}`)).body.members).toEqual([]);
   });
@@ -203,7 +245,9 @@ describe("deprovisioning", () => {
       kind: "service",
     });
     expect(r.status).toBe(201);
-    const row = await pool.query(`select role_id, kind from core."user" where id = $1`, [r.body.id]);
+    const row = await pool.query(`select role_id, kind from core."user" where id = $1`, [
+      r.body.id,
+    ]);
     expect(row.rows[0]).toEqual({ role_id: null, kind: "member" });
   });
 });
@@ -233,7 +277,10 @@ describe("mass-delete guard", () => {
       Operations: [{ op: "replace", path: "active", value: false }],
     });
     expect(off.status).toBe(403);
-    expect((await h.call(w.token, "POST", "/Users", { schemas: [USER_URN], userName: "ok@x.test" })).status).toBe(201);
+    expect(
+      (await h.call(w.token, "POST", "/Users", { schemas: [USER_URN], userName: "ok@x.test" }))
+        .status,
+    ).toBe(201);
     expect(h.events).toHaveLength(1);
 
     // Only an admin can lift it, over the session-authenticated admin API.
@@ -252,7 +299,13 @@ describe("mass-delete guard", () => {
 });
 
 describe("the admin API", () => {
-  const api = (h: ReturnType<typeof scimHarness>, token: string, method: string, path: string, body?: unknown) =>
+  const api = (
+    h: ReturnType<typeof scimHarness>,
+    token: string,
+    method: string,
+    path: string,
+    body?: unknown,
+  ) =>
     h.app.request(`http://api.test/api/v1/admin/scim${path}`, {
       method,
       headers: {
@@ -275,22 +328,36 @@ describe("the admin API", () => {
     const h = scimHarness(pool);
     const admin = await session(w, m.userId);
     expect((await api(h, admin, "POST", "/tokens", { name: "Okta" })).status).toBe(400);
-    expect((await api(h, admin, "PUT", "", { enabled: true, ip_allowlist: ["203.0.113.0/24"] })).status).toBe(204);
-    const setting = await pool.query("select settings from core.workspace where id = $1", [m.workspaceId]);
-    expect(setting.rows[0].settings).toMatchObject({ scim_enabled: true, scim_ip_allowlist: ["203.0.113.0/24"] });
+    expect(
+      (await api(h, admin, "PUT", "", { enabled: true, ip_allowlist: ["203.0.113.0/24"] })).status,
+    ).toBe(204);
+    const setting = await pool.query("select settings from core.workspace where id = $1", [
+      m.workspaceId,
+    ]);
+    expect(setting.rows[0].settings).toMatchObject({
+      scim_enabled: true,
+      scim_ip_allowlist: ["203.0.113.0/24"],
+    });
     const made = await api(h, admin, "POST", "/tokens", { name: "Okta" });
     expect(made.status).toBe(201);
     const { token, id } = (await made.json()) as { token: string; id: string };
     expect((await h.call(token, "GET", "/ServiceProviderConfig")).status).toBe(200);
-    const status = (await (await api(h, admin, "GET", "")).json()) as { tokens: { id: string }[]; enabled: boolean };
+    const status = (await (await api(h, admin, "GET", "")).json()) as {
+      tokens: { id: string }[];
+      enabled: boolean;
+    };
     expect(status.enabled).toBe(true);
     expect(JSON.stringify(status)).not.toContain(token);
     const stored = await pool.query("select token_hash from core.api_token where id = $1", [id]);
     expect(stored.rows[0].token_hash.equals(sha256(token))).toBe(true);
     expect((await api(h, admin, "DELETE", `/tokens/${id}`)).status).toBe(204);
     expect((await h.call(token, "GET", "/Users")).status).toBe(401);
-    expect(await actions(w)).toEqual(expect.arrayContaining(["settings.changed", "token.created", "token.revoked"]));
-    expect((await api(h, admin, "PUT", "", { enabled: true, ip_allowlist: ["not an ip"] })).status).toBe(400);
+    expect(await actions(w)).toEqual(
+      expect.arrayContaining(["settings.changed", "token.created", "token.revoked"]),
+    );
+    expect(
+      (await api(h, admin, "PUT", "", { enabled: true, ip_allowlist: ["not an ip"] })).status,
+    ).toBe(400);
   });
 
   it("refuses a non-admin who tries to enable SCIM, issue tokens, or see status", async () => {
@@ -300,8 +367,17 @@ describe("the admin API", () => {
     expect((await api(h, plain, "PUT", "", { enabled: false })).status).toBe(403);
     expect((await api(h, plain, "POST", "/tokens", { name: "x" })).status).toBe(403);
     expect((await api(h, plain, "GET", "")).status).toBe(403);
-    expect((await api(h, plain, "POST", "/group-roles", { group_id: crypto.randomUUID(), role_id: crypto.randomUUID() })).status).toBe(403);
-    const setting = await pool.query("select settings from core.workspace where id = $1", [w.workspaceId]);
+    expect(
+      (
+        await api(h, plain, "POST", "/group-roles", {
+          group_id: crypto.randomUUID(),
+          role_id: crypto.randomUUID(),
+        })
+      ).status,
+    ).toBe(403);
+    const setting = await pool.query("select settings from core.workspace where id = $1", [
+      w.workspaceId,
+    ]);
     expect(setting.rows[0].settings.scim_enabled).toBe(true);
     expect((await api(h, "", "GET", "")).status).toBe(401);
   });
@@ -314,7 +390,10 @@ describe("group to role mapping over SCIM", () => {
     const second = await addAdmin(pool, w);
     const first = await session(w, w.adminId);
     const other = await session(w, second);
-    const user = await h.call(w.token, "POST", "/Users", { schemas: [USER_URN], userName: "m@x.test" });
+    const user = await h.call(w.token, "POST", "/Users", {
+      schemas: [USER_URN],
+      userName: "m@x.test",
+    });
     const group = await h.call(w.token, "POST", "/Groups", {
       displayName: "Partners",
       members: [{ value: user.body.id }],
@@ -325,7 +404,10 @@ describe("group to role mapping over SCIM", () => {
         headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
         body: JSON.stringify(body ?? {}),
       });
-    const made = await post(first, "/group-roles", { group_id: group.body.id, role_id: w.adminRoleId });
+    const made = await post(first, "/group-roles", {
+      group_id: group.body.id,
+      role_id: w.adminRoleId,
+    });
     expect(made.status).toBe(201);
     const { id } = (await made.json()) as { id: string };
     const role = () => pool.query(`select role_id from core."user" where id = $1`, [user.body.id]);
