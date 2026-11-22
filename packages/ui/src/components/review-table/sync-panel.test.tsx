@@ -35,14 +35,16 @@ describe("SyncIndicator", () => {
         onClick={onClick}
       />,
     );
-    expect(screen.getByRole("button", { name: "Sync settings" }).textContent).toBe(
+    expect(screen.getByRole("button", { name: "Sync settings: 3 pending" }).textContent).toBe(
       "Sync pending (3)",
     );
     cleanup();
     render(
       <SyncIndicator sync={{ ...OFF, mode: "entire_vault", state: "idle" }} onClick={onClick} />,
     );
-    expect(screen.getByRole("button", { name: "Sync settings" }).textContent).toBe("Files synced");
+    expect(screen.getByRole("button", { name: "Sync settings: files synced" }).textContent).toBe(
+      "Files synced",
+    );
   });
 });
 
