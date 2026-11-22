@@ -6,6 +6,9 @@ import { z } from "zod";
 import { createCodeStore } from "./addins/codes.js";
 import type { Language } from "./addins/language.js";
 import { addinAuthRoutes, addinRoutes } from "./addins/routes.js";
+import type { AdminConnectors } from "./admin-models/connectors.js";
+import type { AdminModels } from "./admin-models/models.js";
+import { adminModelRoutes } from "./admin-models/routes.js";
 import { agentRunHttp } from "./agent-runs/http.js";
 import type { AgentRuns } from "./agent-runs/runs.js";
 import type { Agents } from "./agents/agents.js";
@@ -14,6 +17,8 @@ import { agentHttp } from "./agents/http.js";
 import type { Nudges } from "./agents/nudges.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
+import { oidcRoutes } from "./auth/oidc/routes.js";
+import type { Oidc } from "./auth/oidc/service.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
@@ -83,6 +88,8 @@ export interface AppOptions {
   /** Pages and files for the document viewer. */
   viewer?: Viewer;
   drafts: Drafts;
+  /** Single sign-on through OIDC; left out, /auth/oidc is not mounted. */
+  oidc?: Oidc;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
   /** Optional in the same way as vaults. */
@@ -97,6 +104,8 @@ export interface AppOptions {
   notifications?: Notifications;
   /** Memories and writing styles; optional, like vaults. */
   memory?: MemoryModule;
+  /** Models and connectors admin (ADM-005/006); optional, like vaults. */
+  adminModels?: { models: AdminModels; connectors: AdminConnectors };
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -132,6 +141,7 @@ export function createApp({
   threads,
   viewer,
   drafts,
+  oidc,
   vaults,
   tables,
   library,
@@ -139,6 +149,7 @@ export function createApp({
   spaces,
   notifications,
   memory,
+  adminModels,
   knowledge,
   playbooks,
   reviews,
@@ -244,6 +255,29 @@ export function createApp({
     return c.json({ user_id: principal.userId, workspace_id: principal.workspaceId });
   });
 
+  if (oidc) {
+    app.route(
+      "/auth/oidc",
+      oidcRoutes({
+        oidc,
+        clientOf,
+        now,
+        signedIn: async (c, token) => {
+          const previous = getCookie(c, COOKIE, COOKIE_PREFIX);
+          if (previous) await auth.logout(previous, clientOf(c));
+          setCookie(c, COOKIE, token, {
+            prefix: COOKIE_PREFIX,
+            httpOnly: true,
+            secure: true,
+            sameSite: "Lax",
+            path: "/",
+            maxAge: SESSION_SECONDS,
+          });
+        },
+      }),
+    );
+  }
+
   if (addin) {
     app.route(
       "/auth/addin",
@@ -296,6 +330,8 @@ export function createApp({
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
+  if (adminModels)
+    app.route("/api/v1", adminModelRoutes(adminModels.models, adminModels.connectors, clientOf));
   if (memory) {
     app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
     app.route("/api/v1", styleRoutes(memory.styles, clientOf));

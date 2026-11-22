@@ -411,6 +411,16 @@ export async function seed(tx: Tx) {
   };
   const libraryItems = { acme: await library(acme, ana), beta: await library(beta, bob) };
 
+  // The OIDC tables the app can read, seeded in beta only.
+  await tx.rows(
+    "insert into core.oidc_provider (workspace_id, issuer, client_id) values ($1, 'https://idp.beta.test', 'beta-client')",
+    [beta],
+  );
+  await tx.rows(
+    "insert into core.external_identity (workspace_id, user_id, issuer, subject, linked_via) values ($1, $2, 'https://idp.beta.test', 'sub-bob', 'email')",
+    [beta, bob],
+  );
+
   // One of each notification table in beta only, so the notification tests start from nothing
   // in acme (they check the other workspace stays untouched).
   await tx.rows(
@@ -630,6 +640,33 @@ export async function seed(tx: Tx) {
     `insert into memory.writing_style (workspace_id, owner_id, name, kind, instructions)
      values ($1, $2, 'Terse', 'instructions', 'Short sentences.')`,
     [beta, bob],
+  );
+
+  // Models and connectors admin: one of each table in beta only.
+  await tx.rows(
+    "insert into admin.secret (id, workspace_id, ciphertext) values ('sec_' || md5(random()::text), $1, decode(repeat('00', 40), 'hex'))",
+    [beta],
+  );
+  await tx.rows(
+    "insert into admin.model_config (workspace_id, provider, model) values ($1, 'anthropic', 'claude-haiku-5-5')",
+    [beta],
+  );
+  await tx.rows("insert into admin.model_policy (workspace_id) values ($1)", [beta]);
+  const connectorId = (
+    await tx.rows<{ id: string }>(
+      "insert into admin.connector (workspace_id, name, url, auth_kind) values ($1, 'Docs', 'https://mcp.example.com/mcp', 'none') returning id",
+      [beta],
+    )
+  )[0]?.id;
+  await tx.rows(
+    `insert into admin.connector_tool (workspace_id, connector_id, name, tool_hash)
+     values ($1, $2, 'search', repeat('c', 64))`,
+    [beta, connectorId],
+  );
+  await tx.rows(
+    `insert into admin.connector_user_policy (workspace_id, connector_id, user_id, tool_name, policy)
+     values ($1, $2, $3, 'search', 'block')`,
+    [beta, connectorId, bob],
   );
 
   return {

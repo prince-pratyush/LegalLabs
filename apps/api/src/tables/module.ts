@@ -19,7 +19,7 @@ export function createReviewTables(
     log: RunLog;
     cellsInFlight?: number;
     dependencyPollMs?: number;
-    /** Where a sync pass reports rows it added, for owners who opted in to hear of it. */
+    /** Where sync reports rows it added (for owners who opted in) and template decisions go. */
     notifier?: Notifier;
     syncIntervalMs?: number;
     syncLog?: (line: string) => void;
@@ -34,7 +34,11 @@ export function createReviewTables(
     runner,
     tables,
     cells,
-    templates: createTemplates(pool, { tables, cells }),
+    templates: createTemplates(pool, {
+      tables,
+      cells,
+      ...(deps.notifier ? { notifier: deps.notifier } : {}),
+    }),
     exports: createExports(pool),
     sync: createTableSync(pool, {
       cells,

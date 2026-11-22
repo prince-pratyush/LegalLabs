@@ -73,6 +73,8 @@ export const NOTIFICATION_KINDS = {
   "table.generation_completed": meta("review_tables", false, { completion: true }),
   "table.export_ready": meta("review_tables", false),
   "table.sync_added_rows": meta("review_tables", false),
+  "table.template_approved": meta("review_tables", false),
+  "table.template_rejected": meta("review_tables", false),
   "table.cell_assigned": meta("review_tables", true),
   "table.cell_commented": meta("review_tables", false),
   "table.cell_mentioned": meta("review_tables", false),
