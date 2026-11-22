@@ -221,10 +221,14 @@ describe("spaces", () => {
     expect((await w.b("GET", `/spaces/${id}`)).status).toBe(404);
   });
 
-  it("refuses an external Space until they exist", async () => {
+  it("creates an external Space only for someone holding spaces.external", async () => {
     const w = await world();
+    const refused = await w.b("POST", "/spaces", { name: "Ext", kind: "external" });
+    expect(refused.status).toBe(403);
     const res = await w.a("POST", "/spaces", { name: "Ext", kind: "external" });
-    expect(res.body.code).toBe("EXTERNAL_NOT_ENABLED");
+    expect(res.status).toBe(201);
+    expect(res.body.space.kind).toBe("external");
+    expect(res.body.space.external_parties).toEqual([]);
   });
 });
 

@@ -106,6 +106,14 @@ async function addUser(
     ],
   );
   const id = rows[0]?.id ?? "";
+  if (o.kind === "guest") {
+    // Without a profile a guest is locked out.
+    await pool.query(
+      `insert into core.guest_profile (workspace_id, user_id, email_domain, expires_at)
+       values ($1, $2, 'example.test', now() + interval '365 days')`,
+      [ws.workspaceId, id],
+    );
+  }
   if (o.password) {
     await pool.query(
       "insert into core.password_credential (workspace_id, user_id, password_hash) values ($1, $2, $3)",

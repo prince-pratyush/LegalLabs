@@ -33,7 +33,18 @@ export type Failure =
   | "RUN_UNAVAILABLE"
   | "NO_RUN"
   | "ALREADY_REQUESTED"
-  | "ALREADY_DECIDED";
+  | "ALREADY_DECIDED"
+  | "GUEST_DOMAIN_MISMATCH"
+  | "PARTY_LIMIT"
+  | "EMAIL_IS_MEMBER"
+  | "CONNECTION_NOT_APPROVED"
+  | "CONNECTION_NOT_PENDING"
+  | "ALREADY_APPROVED"
+  | "INVITE_INVALID"
+  | "NO_PARTY"
+  | "SPACE_NOT_EXTERNAL"
+  | "INVALID_PARTY_LEVEL"
+  | "UNKNOWN_PARTY";
 
 export type Result<T> = { ok: true; value: T } | { ok: false; reason: Failure };
 
@@ -51,6 +62,21 @@ const SQL_REFUSALS: Record<string, Failure> = {
   PHASE_LOCKED: "PHASE_LOCKED",
   GATE_NEEDS_APPROVAL: "GATE_NEEDS_APPROVAL",
   FORBIDDEN: "FORBIDDEN",
+  NOT_FOUND: "NOT_FOUND",
+  // Guests and external Spaces (0161).
+  GUEST_DOMAIN_MISMATCH: "GUEST_DOMAIN_MISMATCH",
+  PARTY_LIMIT: "PARTY_LIMIT",
+  EMAIL_IS_MEMBER: "EMAIL_IS_MEMBER",
+  CONNECTION_NOT_APPROVED: "CONNECTION_NOT_APPROVED",
+  CONNECTION_NOT_PENDING: "CONNECTION_NOT_PENDING",
+  ALREADY_APPROVED: "ALREADY_APPROVED",
+  INVITE_INVALID: "INVITE_INVALID",
+  NO_PARTY: "NO_PARTY",
+  SPACE_NOT_EXTERNAL: "SPACE_NOT_EXTERNAL",
+  INVALID_PARTY_LEVEL: "INVALID_PARTY_LEVEL",
+  UNKNOWN_PARTY: "UNKNOWN_PARTY",
+  PER_PARTY_NEEDS_EXTERNAL_SPACE: "SPACE_NOT_EXTERNAL",
+  GUEST_MEMBERSHIP_INVALID: "INVALID",
 };
 
 // Unique indexes that mean something to the caller.
@@ -64,7 +90,7 @@ const UNIQUE: Record<string, Failure> = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isId = (value: string) => UUID.test(value);
 
-function failureOf(err: unknown): Failure | null {
+export function failureOf(err: unknown): Failure | null {
   if (err instanceof Refused) return err.reason;
   const e = err as { message?: string; code?: string; constraint?: string };
   const message = e.message ?? "";

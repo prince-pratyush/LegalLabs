@@ -1,5 +1,6 @@
 import type {
   MemberInput,
+  PerParty,
   ResourceInput,
   SpaceContext,
   SpaceContextInput,
@@ -67,7 +68,7 @@ export interface SpaceView {
   customization: SpaceCustomisation;
   myRole: SpaceRole;
   templateId: string | null;
-  /** Always empty until external Spaces arrive. */
+  /** The guest organisations still part of the Space. */
   externalParties: string[];
   counts: { members: number; resources: number; openTasks: number };
   createdBy: string;
@@ -98,6 +99,9 @@ export interface ResourceView {
   resourceId: string;
   name: string | null;
   access: SpaceLevel;
+  /** Party id to level, for an external Space; empty for an internal one. */
+  perParty: Record<string, string>;
+  /** Names of the organisations that can reach it. */
   externalParties: string[];
   grantedBy: string;
   createdAt: string;
@@ -180,7 +184,7 @@ export interface Spaces {
     p: Principal,
     id: string,
     resourceId: string,
-    access: SpaceLevel,
+    patch: { access?: SpaceLevel; perParty?: PerParty },
     client: Client,
   ): Promise<Result<ResourceView>>;
   removeResource(
@@ -229,6 +233,7 @@ interface SpaceRow {
   members: number;
   resources: number;
   open_tasks: number;
+  external_parties: string[];
 }
 
 const SPACE_SQL = `
@@ -238,7 +243,9 @@ const SPACE_SQL = `
          (select count(*) from work.space_member x where x.space_id = s.id)::int as members,
          (select count(*) from work.space_resource x where x.space_id = s.id)::int as resources,
          (select count(*) from work.task t
-           where t.space_id = s.id and t.status in ('todo', 'in_progress'))::int as open_tasks
+           where t.space_id = s.id and t.status in ('todo', 'in_progress'))::int as open_tasks,
+         coalesce((select array_agg(p.name order by p.created_at) from work.space_party p
+                    where p.space_id = s.id and p.removed_at is null), '{}') as external_parties
     from work.space s left join core.matter m on m.id = s.matter_id`;
 
 const spaceView = (r: SpaceRow): SpaceView => ({
@@ -261,7 +268,7 @@ const spaceView = (r: SpaceRow): SpaceView => ({
   customization: r.customization,
   myRole: r.my_role,
   templateId: r.template_id,
-  externalParties: [],
+  externalParties: r.external_parties,
   counts: { members: r.members, resources: r.resources, openTasks: r.open_tasks },
   createdBy: r.created_by,
   createdAt: r.created_at.toISOString(),
@@ -297,12 +304,18 @@ interface ResourceRow {
   resource_type: SpaceResourceType;
   resource_id: string;
   access: SpaceLevel;
+  per_party: Record<string, string>;
+  external_parties: string[];
   granted_by: string;
   created_at: Date;
 }
 
-const RESOURCE_SQL =
-  "select id, resource_type, resource_id, access, granted_by, created_at from work.space_resource";
+const RESOURCE_SQL = `
+  select r.id, r.resource_type, r.resource_id, r.access, r.per_party, r.granted_by, r.created_at,
+         coalesce((select array_agg(p.name order by p.created_at) from work.space_party p
+                    where p.space_id = r.space_id and p.removed_at is null
+                      and coalesce(r.per_party ->> p.id::text, 'none') <> 'none'), '{}') as external_parties
+    from work.space_resource r`;
 
 const REQUEST_SQL = `
   select r.id, r.user_id, coalesce(nullif(u.name, ''), u.email) as user_name, r.message,
@@ -326,6 +339,13 @@ const requestView = (r: RequestRow): AccessRequestView => ({
   status: r.status,
   createdAt: r.created_at.toISOString(),
 });
+
+/** The same rule as a Space level: only runnable things can be given Run. */
+function checkPartyLevels(type: SpaceResourceType, perParty: PerParty) {
+  for (const level of Object.values(perParty)) {
+    if (level === "run" && !RUNNABLE.has(type)) throw refusal("INVALID_PARTY_LEVEL");
+  }
+}
 
 export interface SpacesOptions {
   notifier?: SpaceNotifier;
@@ -365,10 +385,40 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
       resourceId: row.resource_id,
       name: found?.name ?? null,
       access: row.access,
-      externalParties: [],
+      perParty: row.per_party,
+      externalParties: row.external_parties,
       grantedBy: row.granted_by,
       createdAt: row.created_at.toISOString(),
     };
+  };
+
+  /** Merges party levels into a resource; `none` withdraws a party's entry. The row's trigger checks the rest. */
+  const setPerParty = async (
+    db: Db,
+    p: Principal,
+    client: Client,
+    spaceId: string,
+    rowId: string,
+    type: SpaceResourceType,
+    resourceId: string,
+    change: PerParty,
+  ) => {
+    const current = await one<{ per_party: Record<string, string> }>(
+      db,
+      "select per_party from work.space_resource where id = $1",
+      [rowId],
+    );
+    const next: Record<string, string> = { ...(current?.per_party ?? {}), ...change };
+    for (const [party, level] of Object.entries(next)) if (level === "none") delete next[party];
+    await db.query("update work.space_resource set per_party = $2::jsonb where id = $1", [
+      rowId,
+      JSON.stringify(next),
+    ]);
+    await kit.audit(db, p, client, "space.party_level_changed", "space", spaceId, {
+      resource_type: type,
+      resource_id: resourceId,
+      per_party: change,
+    });
   };
 
   /** A Space always keeps an admin: the last one can't be removed or demoted. */
@@ -383,7 +433,7 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
 
   const find = async (db: Db, spaceId: string, resourceId: string) => {
     const row = isId(resourceId)
-      ? await one<ResourceRow>(db, `${RESOURCE_SQL} where id = $1 and space_id = $2`, [
+      ? await one<ResourceRow>(db, `${RESOURCE_SQL} where r.id = $1 and r.space_id = $2`, [
           resourceId,
           spaceId,
         ])
@@ -473,8 +523,7 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
 
     async create(p, input, client) {
       return kit.attempt(p, async (db) => {
-        // Checked before anything is written.
-        if (input.kind === "external") throw refusal("EXTERNAL_NOT_ENABLED");
+        // An external Space needs spaces.external; the insert policy refuses anyone without it.
         if (input.matter_id) {
           const matter = isId(input.matter_id)
             ? await one(db, "select id from core.matter where id = $1", [input.matter_id])
@@ -488,11 +537,12 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
         // No `returning`: the creator is a member only once the insert has finished.
         await db.query(
           `insert into work.space (id, workspace_id, name, kind, matter_id, template_id, created_by)
-           values ($1, $2, $3, 'internal', $4, $5, $6)`,
+           values ($1, $2, $3, $4, $5, $6, $7)`,
           [
             id,
             p.workspaceId,
             input.name,
+            input.kind,
             input.matter_id ?? null,
             input.template_id ?? null,
             p.userId,
@@ -507,7 +557,7 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
           });
         }
         await kit.audit(db, p, client, "space.created", "space", id, {
-          kind: "internal",
+          kind: input.kind,
           matter_id: input.matter_id ?? null,
           template_id: input.template_id ?? null,
         });
@@ -685,7 +735,7 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
       const r = await kit.attempt(p, async (db) => {
         if (!(await roleOf(db, id))) return null;
         const rows = await db.query<ResourceRow>(
-          `${RESOURCE_SQL} where space_id = $1 order by created_at, id`,
+          `${RESOURCE_SQL} where r.space_id = $1 order by r.created_at, r.id`,
           [id],
         );
         return Promise.all(rows.rows.map((row) => resourceView(db, row)));
@@ -695,7 +745,9 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
 
     async addResource(p, id, input, client) {
       return kit.attempt(p, async (db) => {
-        await needMember(db, id);
+        const role = await needMember(db, id);
+        // Sharing outside the workspace is an admin's call.
+        if (input.per_party && role !== "admin") throw refusal("FORBIDDEN");
         const lookup = catalog[input.resource_type];
         if (!lookup) throw refusal("RESOURCE_UNSUPPORTED");
         if (!levelAllowed(input.resource_type, input.access)) throw refusal("INVALID");
@@ -716,6 +768,7 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
         ) {
           throw refusal("MATTER_MISMATCH");
         }
+        if (input.per_party) checkPartyLevels(input.resource_type, input.per_party);
         const existing = await one<{ id: string; access: SpaceLevel }>(
           db,
           "select id, access from work.space_resource where space_id = $1 and resource_type = $2 and resource_id = $3",
@@ -734,6 +787,18 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
               access: input.access,
             });
           }
+          if (input.per_party) {
+            await setPerParty(
+              db,
+              p,
+              client,
+              id,
+              rowId,
+              input.resource_type,
+              input.resource_id,
+              input.per_party,
+            );
+          }
         } else {
           const added = await one<{ id: string }>(
             db,
@@ -743,6 +808,18 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
             [p.workspaceId, id, input.resource_type, input.resource_id, input.access, p.userId],
           );
           rowId = added?.id ?? "";
+          if (input.per_party) {
+            await setPerParty(
+              db,
+              p,
+              client,
+              id,
+              rowId,
+              input.resource_type,
+              input.resource_id,
+              input.per_party,
+            );
+          }
           await kit.audit(db, p, client, "space.resource_added", "space", id, {
             resource_type: input.resource_type,
             resource_id: input.resource_id,
@@ -761,11 +838,32 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
       });
     },
 
-    async setResourceLevel(p, id, resourceId, access, client) {
+    async setResourceLevel(p, id, resourceId, patch, client) {
       return kit.attempt(p, async (db) => {
         await needAdmin(db, id);
         const row = await find(db, id, resourceId);
+        const access = patch.access ?? row.access;
         if (!levelAllowed(row.resource_type, access)) throw refusal("INVALID");
+        if (patch.perParty) {
+          checkPartyLevels(row.resource_type, patch.perParty);
+          // Sharing outward is sharing onward: the caller must hold the resource in their own right.
+          const lookup = catalog[row.resource_type];
+          const found = lookup ? await lookup(db, row.resource_id) : null;
+          if (!found?.full) throw refusal("FORBIDDEN");
+          await setPerParty(
+            db,
+            p,
+            client,
+            id,
+            resourceId,
+            row.resource_type,
+            row.resource_id,
+            patch.perParty,
+          );
+        }
+        if (access === row.access) {
+          return resourceView(db, await find(db, id, resourceId));
+        }
         // Raising a level hands out access the caller must hold on their own, not through a Space.
         if (RANK[access] > RANK[row.access]) {
           const lookup = catalog[row.resource_type];
