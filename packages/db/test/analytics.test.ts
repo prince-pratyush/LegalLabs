@@ -18,8 +18,12 @@ describe("analytics schema", () => {
       await tx.as(u.id, ws.id);
       await tx.one("select analytics.record_usage('web','thread.message','query','threads')");
       await tx.asOwner();
-      await tx.one("select analytics.materialise_workspace($1, current_date - 3, current_date)", [ws.id]);
-      const rows = await tx.rows("select metrics from analytics.daily where workspace_id = $1", [ws.id]);
+      await tx.one("select analytics.materialise_workspace($1, current_date - 3, current_date)", [
+        ws.id,
+      ]);
+      const rows = await tx.rows("select metrics from analytics.daily where workspace_id = $1", [
+        ws.id,
+      ]);
       expect(rows).toHaveLength(4);
     });
   });
