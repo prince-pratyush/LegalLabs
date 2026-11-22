@@ -414,6 +414,20 @@
       "when": 1794009950001,
       "tag": "0088_work_review_table_template_scope",
       "breakpoints": false
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794010130000,
+      "tag": "0130_admin_models",
+      "breakpoints": false
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794010130001,
+      "tag": "0131_admin_connectors",
+      "breakpoints": false
     }
   ]
 }
