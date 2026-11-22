@@ -441,6 +441,18 @@ export async function seed(tx: Tx) {
     [beta, bob],
   );
 
+  // SCIM state in beta: the mass-delete guard, one recorded removal and one group-role mapping.
+  await tx.rows("insert into scim.guard (workspace_id) values ($1)", [beta]);
+  await tx.rows(
+    "insert into scim.deprovision_event (workspace_id, user_id, via) values ($1, $2, 'delete')",
+    [beta, bob],
+  );
+  await tx.rows(
+    `insert into scim.group_role (workspace_id, group_id, role_id, needs_confirmation, state, requested_by)
+     values ($1, $2, $3, false, 'active', $4)`,
+    [beta, betaTeam, betaAdmin, bob],
+  );
+
   // A review table with one row, column, cell, citation, history entry, star and run.
   const reviewTable = async (
     ws: string,
