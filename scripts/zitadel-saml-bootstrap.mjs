@@ -19,9 +19,10 @@ const IDP_METADATA_URL =
 const REDIRECT_URI = process.env.SAML_APP_REDIRECT_URI ?? "http://localhost:3000/auth/callback";
 const OTHER_SP = "urn:legallabs:test:other-sp";
 
-// Zitadel writes the machine user's PAT during first-instance setup, which can lag container start.
-for (let i = 0; i < 90 && !existsSync(PAT_FILE); i++) await new Promise((r) => setTimeout(r, 2000));
-const pat = readFileSync(PAT_FILE, "utf8").trim();
+// Zitadel writes the machine user's PAT during first-instance setup, which can lag container
+// start (and an old file may linger), so readiness means "the PAT works", not "the file exists".
+let pat = "";
+const readPat = () => (existsSync(PAT_FILE) ? readFileSync(PAT_FILE, "utf8").trim() : "");
 
 async function api(method, path, body) {
   const res = await fetch(`${ZITADEL}${path}`, {
@@ -39,9 +40,18 @@ async function api(method, path, body) {
 }
 
 async function waitReady() {
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 120; i++) {
+    pat = readPat();
     try {
-      if ((await fetch(`${ZITADEL}/debug/ready`)).ok) return;
+      if (
+        pat &&
+        (
+          await fetch(`${ZITADEL}/auth/v1/users/me`, {
+            headers: { authorization: `Bearer ${pat}` },
+          })
+        ).ok
+      )
+        return;
     } catch {}
     await new Promise((r) => setTimeout(r, 2000));
   }
@@ -65,7 +75,7 @@ const samlBody = {
     isLinkingAllowed: true,
     isCreationAllowed: true,
     isAutoCreation: true,
-    isAutoUpdate: true,
+    isAutoUpdate: false, // the IdP sends no name attributes; an update would blank the profile
   },
 };
 if (idpId) await api("PUT", `/management/v1/idps/saml/${idpId}`, samlBody);
@@ -127,12 +137,28 @@ if (!clientId) {
   clientId = app.clientId;
 }
 
+// Our app owns the login UI (login v2 model): Zitadel only hands out auth request IDs and sessions.
+// The base URI is never browsed to by the test; it just has to be a valid http(s) URL.
+await api("PUT", "/v2/features/instance", {
+  loginV2: { required: true, baseUri: "http://localhost:3000/ui/v2/login" },
+});
+
+// The same machine user plays the app's sign-in service, which must be allowed to finalize
+// OIDC auth requests with a session.
+const me = (await api("GET", "/auth/v1/users/me")).user.id;
+try {
+  await api("PUT", `/admin/v1/members/${me}`, { roles: ["IAM_OWNER", "IAM_LOGIN_CLIENT"] });
+} catch (e) {
+  if (!/NotChanged|not changed|have not been changed/i.test(e.message)) throw e;
+}
+
 // 4. Teach the test IdP about Zitadel as an SP. Zitadel's entity ID and ACS come from its metadata.
 const spMeta = await (await fetch(`${ZITADEL}/idps/${idpId}/saml/metadata`)).text();
 const spEntityId = /entityID="([^"]+)"/.exec(spMeta)?.[1];
-// The metadata ACS belongs to Zitadel's IdP-intent (v2 API) flow. The hosted login (v1) that
-// serves OIDC clients receives SAML responses at this URL, which is also what its AuthnRequest names.
-const acs = `${ZITADEL}/ui/login/login/externalidp/saml/acs`;
+// Responses for the IdP-intent flow (the app's own login service drives it) go to the ACS in
+// Zitadel's SP metadata, with the intent ID as RelayState.
+const acs = /AssertionConsumerService[^>]*Location="([^"]+)"/.exec(spMeta)?.[1];
+if (!acs) throw new Error("no ACS in SP metadata");
 if (!spEntityId) throw new Error(`cannot read SP metadata: ${spMeta.slice(0, 300)}`);
 const spsDir = join(root, "docker/saml-idp/dynamic");
 mkdirSync(spsDir, { recursive: true });
