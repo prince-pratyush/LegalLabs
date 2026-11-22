@@ -131,3 +131,23 @@ jobs:
           key: docproc-models-${{ hashFiles('services/docproc/uv.lock') }}
       - run: uv run python -m docproc.prefetch
       - run: uv run pytest
+
+  # SAML via Zitadel (SEC-005): a test SAML IdP, Zitadel as its SP, driven headlessly end to end.
+  identity-saml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ZITADEL_SAML_ISSUER: http://localhost:55436
+    steps:
+      - uses: actions/checkout@v7
+      - run: LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f compose.zitadel-saml.yaml up -d
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @legallabs/api...
+      - run: node scripts/zitadel-saml-bootstrap.mjs
+      - run: pnpm --filter @legallabs/api exec vitest run --config vitest.saml.config.ts
+      - if: failure()
+        run: docker compose -f compose.zitadel-saml.yaml logs --tail 200
