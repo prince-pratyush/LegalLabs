@@ -23,6 +23,8 @@ export interface Principal {
   workspaceId: string;
   /** When a second factor last passed in this session; null if none did. */
   mfaAt?: Date | null;
+  /** A guest of an external Space: let in to /api/v1/guest only, whatever else they ask for. */
+  guest?: boolean;
 }
 
 export interface Auth {
@@ -50,9 +52,12 @@ export function createAuth(pool: pg.Pool): Auth {
         user_id: string;
         workspace_id: string;
         mfa_at: Date | null;
-      }>("select session_id, user_id, workspace_id, mfa_at from core.resolve_session($1)", [
-        sha256(token),
-      ]);
+        guest: boolean | null;
+      }>(
+        `select session_id, user_id, workspace_id, mfa_at, core.guest_live(user_id) as guest
+           from core.resolve_session($1)`,
+        [sha256(token)],
+      );
       return rows[0];
     });
     return row
@@ -61,6 +66,7 @@ export function createAuth(pool: pg.Pool): Auth {
           userId: row.user_id,
           workspaceId: row.workspace_id,
           mfaAt: row.mfa_at,
+          ...(row.guest ? { guest: true } : {}),
         }
       : null;
   };
@@ -77,6 +83,20 @@ export function createAuth(pool: pg.Pool): Auth {
           [principal.sessionId],
         );
         if (rowCount === 0) return;
+        if (principal.guest) {
+          // The audit chain won't take a guest as an actor: record it as the system, naming them.
+          await db.query("select set_config('app.user_id', '', true)");
+          await db.query(
+            "select admin.append_audit_event('logout', 'system', null, 'session', $1, $2, $3, $4)",
+            [
+              principal.sessionId,
+              JSON.stringify({ guest_id: principal.userId }),
+              client.ip,
+              uaHash(client),
+            ],
+          );
+          return;
+        }
         await db.query(
           "select admin.append_audit_event('logout', 'user', $1, 'session', $2, '{}', $3, $4)",
           [principal.userId, principal.sessionId, client.ip, uaHash(client)],

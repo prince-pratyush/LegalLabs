@@ -1,5 +1,6 @@
 import type { TaskRunPort } from "@legallabs/contracts";
 import type pg from "pg";
+import { createGuests, type Guests, type GuestsOptions } from "./guests.js";
 import { createSpaces, type Spaces, type SpacesOptions } from "./spaces.js";
 import { createTasks, type Tasks } from "./tasks.js";
 import { createTemplates, type Templates } from "./templates.js";
@@ -8,11 +9,14 @@ export interface SpaceModule {
   spaces: Spaces;
   tasks: Tasks;
   templates: Templates;
+  guests: Guests;
 }
 
 export interface SpaceModuleOptions extends SpacesOptions {
   /** Starts, reads and cancels the runs behind tasks given to the assistant or an agent. */
   runs: TaskRunPort;
+  /** Sends guests their sign-in codes and sets where invite links point. */
+  guest?: GuestsOptions;
   now?: () => number;
 }
 
@@ -26,5 +30,6 @@ export function createSpaceModule(pool: pg.Pool, options: SpaceModuleOptions): S
       ...(options.now ? { now: options.now } : {}),
     }),
     templates: createTemplates(spaces.kit, spaces.catalog),
+    guests: createGuests(pool, spaces.kit, spaces.catalog, options.guest),
   };
 }

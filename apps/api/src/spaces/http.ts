@@ -1,6 +1,7 @@
 import {
   CommentInput,
   MemberInput,
+  PerParty,
   PhaseInput,
   PhasePatch,
   ResourceInput,
@@ -33,7 +34,7 @@ import type { TemplateView } from "./templates.js";
 
 type Env = { Variables: { principal: Principal } };
 
-const FAILURES: Record<Failure, { status: 400 | 403 | 404 | 409 | 502; message: string }> = {
+export const FAILURES: Record<Failure, { status: 400 | 403 | 404 | 409 | 502; message: string }> = {
   NOT_FOUND: { status: 404, message: "That wasn't found." },
   FORBIDDEN: { status: 403, message: "You don't have permission to do that." },
   INVALID: { status: 400, message: "Check the details and try again." },
@@ -68,6 +69,23 @@ const FAILURES: Record<Failure, { status: 400 | 403 | 404 | 409 | 502; message: 
   NO_RUN: { status: 409, message: "There is no question waiting." },
   ALREADY_REQUESTED: { status: 409, message: "You've already asked to join." },
   ALREADY_DECIDED: { status: 409, message: "That request was already answered." },
+  GUEST_DOMAIN_MISMATCH: {
+    status: 400,
+    message: "That address isn't in the guest organisation's domain.",
+  },
+  PARTY_LIMIT: { status: 409, message: "This Space already has a guest organisation." },
+  EMAIL_IS_MEMBER: { status: 409, message: "That address belongs to someone in this workspace." },
+  CONNECTION_NOT_APPROVED: {
+    status: 409,
+    message: "Both sides must approve the connection first.",
+  },
+  CONNECTION_NOT_PENDING: { status: 409, message: "That connection isn't waiting for approval." },
+  ALREADY_APPROVED: { status: 409, message: "Your side has already approved." },
+  INVITE_INVALID: { status: 404, message: "That invitation is no longer valid." },
+  NO_PARTY: { status: 409, message: "Add the guest organisation first." },
+  SPACE_NOT_EXTERNAL: { status: 400, message: "That Space isn't an external Space." },
+  INVALID_PARTY_LEVEL: { status: 400, message: "Check the access levels and try again." },
+  UNKNOWN_PARTY: { status: 400, message: "That organisation isn't in this Space." },
 };
 
 const small = bodyLimit({
@@ -117,6 +135,7 @@ const resourceJson = (r: ResourceView) => ({
   resource_id: r.resourceId,
   name: r.name,
   access: r.access,
+  per_party: r.perParty,
   external_parties: r.externalParties,
   granted_by: r.grantedBy,
   created_at: r.createdAt,
@@ -193,7 +212,10 @@ const templateJson = (t: TemplateView) => ({
 });
 
 const roleBody = z.object({ role: SpaceRole }).strict();
-const levelBody = z.object({ access: SpaceLevel }).strict();
+const levelBody = z
+  .object({ access: SpaceLevel.optional(), per_party: PerParty.optional() })
+  .strict()
+  .refine((b) => b.access !== undefined || b.per_party !== undefined);
 const messageBody = z.object({ message: z.string().trim().max(1000).default("") }).strict();
 const decideBody = z
   .discriminatedUnion("decision", [
@@ -357,7 +379,10 @@ export function spaceHttp(module: SpaceModule, clientOf: (c: Context) => Client)
       me(c),
       param(c, "id"),
       param(c, "rid"),
-      input.access,
+      {
+        ...(input.access ? { access: input.access } : {}),
+        ...(input.per_party ? { perParty: input.per_party } : {}),
+      },
       client(c),
     );
     return respond(c, result, (r) => ({ resource: resourceJson(r) }));

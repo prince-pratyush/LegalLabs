@@ -50,6 +50,7 @@ import type { ScimAdmin } from "./scim/admin.js";
 import { scimAdminRoutes } from "./scim/admin-routes.js";
 import { scimRoutes } from "./scim/routes.js";
 import type { Scim } from "./scim/service.js";
+import { guestAdminRoutes, guestPublicRoutes, guestRoutes } from "./spaces/guests-http.js";
 import { spaceHttp } from "./spaces/http.js";
 import type { SpaceModule } from "./spaces/module.js";
 import { tableHttp } from "./tables/http.js";
@@ -232,7 +233,7 @@ export function createApp({
     c.header("Cache-Control", "no-store");
   });
 
-  const startSession = async (c: Context, token: string) => {
+  const startSession = async (c: Context, token: string, maxAge = SESSION_SECONDS) => {
     const previous = getCookie(c, COOKIE, COOKIE_PREFIX);
     if (previous) await auth.logout(previous, clientOf(c));
     setCookie(c, COOKIE, token, {
@@ -241,9 +242,17 @@ export function createApp({
       secure: true,
       sameSite: "Lax",
       path: "/",
-      maxAge: SESSION_SECONDS,
+      maxAge,
     });
   };
+
+  // A guest signs in with an emailed code, before there is any session to check.
+  if (spaces) {
+    app.route(
+      "/guest",
+      guestPublicRoutes({ guests: spaces.guests, clientOf, clientIp, startSession, now }),
+    );
+  }
 
   // Before the password-only login below, which it replaces when MFA is on.
   if (mfa) app.route("/auth", mfaAuthRoutes({ mfa, clientOf, clientIp, startSession, now }));
@@ -324,6 +333,10 @@ export function createApp({
     const token = tokenOf(c);
     const principal = token ? await auth.resolve(token) : null;
     if (!principal) return c.json({ code: "UNAUTHENTICATED", message: "Sign in first." }, 401);
+    // A guest is let into /api/v1/guest and nothing else: one rule here, not one per route.
+    if (principal.guest && !c.req.path.startsWith("/api/v1/guest/")) {
+      return c.json({ code: "FORBIDDEN", message: "Guests can't use this." }, 403);
+    }
     c.set("principal", principal);
     await next();
     c.header("Cache-Control", "no-store");
@@ -361,7 +374,11 @@ export function createApp({
   }
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
-  if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
+  if (spaces) {
+    app.route("/api/v1", spaceHttp(spaces, clientOf));
+    app.route("/api/v1", guestAdminRoutes(spaces.guests, clientOf));
+    app.route("/api/v1", guestRoutes(spaces.guests, clientOf));
+  }
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
   if (retention) app.route("/api/v1", retentionRoutes(retention, clientOf));
   if (adminModels)
