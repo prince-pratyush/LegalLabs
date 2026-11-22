@@ -56,6 +56,36 @@ jobs:
           PILOT_S3_ENDPOINT: http://127.0.0.1:8333
       - run: pnpm --filter @legallabs/ui build-storybook
 
+  # Kept apart so the main job stays fast: this one boots a real Zitadel and signs in through it.
+  identity-oidc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+      - run: mkdir -m 777 .zitadel && docker compose -p legallabs-zitadel -f compose.zitadel.yaml up -d
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo build --filter=@legallabs/api...
+      # The script waits for Zitadel itself, so the image pull and first-run setup overlap the build.
+      - run: node scripts/zitadel-bootstrap.mjs >> "$GITHUB_ENV"
+      - run: pnpm --filter @legallabs/api exec vitest run src/auth/oidc/oidc.zitadel.test.ts
+      - if: failure()
+        run: docker compose -p legallabs-zitadel -f compose.zitadel.yaml logs --tail 200 zitadel
+
   eval:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -101,3 +131,23 @@ jobs:
           key: docproc-models-${{ hashFiles('services/docproc/uv.lock') }}
       - run: uv run python -m docproc.prefetch
       - run: uv run pytest
+
+  # SAML via Zitadel (SEC-005): a test SAML IdP, Zitadel as its SP, driven headlessly end to end.
+  identity-saml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ZITADEL_SAML_ISSUER: http://localhost:55436
+    steps:
+      - uses: actions/checkout@v7
+      - run: LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f compose.zitadel-saml.yaml up -d
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @legallabs/api...
+      - run: node scripts/zitadel-saml-bootstrap.mjs
+      - run: pnpm --filter @legallabs/api exec vitest run --config vitest.saml.config.ts
+      - if: failure()
+        run: docker compose -f compose.zitadel-saml.yaml logs --tail 200

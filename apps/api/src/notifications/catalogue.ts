@@ -63,6 +63,7 @@ const ROUTES: Record<string, (id: string) => string> = {
   thread: (id) => `#/t/${id}`,
   vault: (id) => `#/vaults/${id}`,
   table: (id) => `#/tables/${id}`,
+  table_template: () => "#/tables/templates",
   playbook: (id) => `#/playbooks/${id}`,
   playbook_review: (id) => `#/reviews/${id}`,
   agent: (id) => `#/agents/${id}`,
@@ -186,6 +187,15 @@ export const CATALOGUE: Record<NotificationKind, CatalogueEntry> = {
   "table.sync_added_rows": entry("table.sync_added_rows", {
     recipients: to.optedIn,
     title: (e) => `New rows were added to ${name(e)}`,
+  }),
+  "table.template_approved": entry("table.template_approved", {
+    recipients: to.requester,
+    title: (e) => `Your review table template was approved: ${name(e)}`,
+  }),
+  "table.template_rejected": entry("table.template_rejected", {
+    recipients: to.requester,
+    title: (e) => `Your review table template was rejected: ${name(e)}`,
+    body: true,
   }),
   "table.cell_assigned": entry("table.cell_assigned", {
     recipients: to.assignee,

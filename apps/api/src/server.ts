@@ -9,6 +9,10 @@ import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createSignInAudit } from "./addins/audit.js";
 import { createLanguage } from "./addins/language.js";
+import { createAdminConnectors } from "./admin-models/connectors.js";
+import { httpDiscovery } from "./admin-models/discovery.js";
+import { createAdminModels } from "./admin-models/models.js";
+import { createSecretBox } from "./admin-models/secrets.js";
 import { runEngineFromEnv, schedulerFromEnv } from "./agent-runs/engine.js";
 import { runHandlers } from "./agent-runs/handlers.js";
 import { createAgentRuns } from "./agent-runs/runs.js";
@@ -18,6 +22,8 @@ import { createContextPort } from "./agents/context.js";
 import { createNudges } from "./agents/nudges.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
+import { mfaFromEnv } from "./auth/mfa/config.js";
+import { createOidc } from "./auth/oidc/service.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
@@ -40,6 +46,8 @@ import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
+import { createScimAdmin } from "./scim/admin.js";
+import { createScim } from "./scim/service.js";
 import { createSpaceModule } from "./spaces/module.js";
 import { spaceNotifier } from "./spaces/notify.js";
 import { scriptedTaskRuns } from "./spaces/ports.js";
@@ -155,6 +163,17 @@ const memory = createMemoryModule(pool, {
   // PDF, Word and text samples, read the same way uploaded files are.
   read: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
 });
+// Without LEGALLABS_SECRETS_KEY keys and tokens can't be stored, so those calls answer 503.
+const secrets = process.env.LEGALLABS_SECRETS_KEY
+  ? createSecretBox(process.env.LEGALLABS_SECRETS_KEY)
+  : undefined;
+const adminModels = {
+  models: createAdminModels(pool, secrets ? { secrets } : {}),
+  connectors: createAdminConnectors(pool, {
+    ...(secrets ? { secrets } : {}),
+    discovery: httpDiscovery,
+  }),
+};
 const memoryPurge = createMemoryPurgeJob(memory.memories, { log: (line) => console.log(line) });
 memoryPurge.start();
 const threadService = createThreads(pool, {
@@ -192,8 +211,10 @@ tables.sync.start();
 process.once("SIGTERM", () => void tables.sync.stop());
 process.once("SIGINT", () => void tables.sync.stop());
 
+const mfaOption = mfaFromEnv(process.env, pool);
 const app = createApp({
   agentRuns,
+  scim: { service: createScim(pool), admin: createScimAdmin(pool) },
   workflows: createWorkflows(pool, {
     documents,
     agentRuns,
@@ -210,6 +231,15 @@ const app = createApp({
   agentSharing: createAgentSharing(pool),
   agentNudges: createNudges(pool),
   auth: createAuth(pool),
+  ...mfaOption,
+  oidc: createOidc(pool, {
+    ...(mfaOption.mfa ? { secondFactor: mfaOption.mfa.secondStep } : {}),
+    baseUrl: process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173",
+    // Plain http and private addresses, for a local IdP only; never in production.
+    policy: {
+      insecureDev: process.env.OIDC_INSECURE_DEV === "1" && process.env.NODE_ENV !== "production",
+    },
+  }),
   documents,
   vaults: createVaults(pool, { documents, store, notifier }),
   threads: {
@@ -224,6 +254,7 @@ const app = createApp({
   playbooks: createPlaybooks(pool, { gateway }),
   notifications,
   memory,
+  adminModels,
   reviews: createReviews(pool, {
     gateway,
     notifier,

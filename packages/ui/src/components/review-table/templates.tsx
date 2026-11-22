@@ -1,3 +1,4 @@
+import { TEMPLATE_LIMITS } from "@legallabs/contracts";
 import { Dialog } from "radix-ui";
 import { type FormEvent, useEffect, useState } from "react";
 import { Button } from "../button.js";
@@ -30,7 +31,7 @@ export interface TemplateSummary {
   rejected_note: string | null;
 }
 
-export const STATUS_TEXT: Record<TemplateStatus, string> = {
+export const TEMPLATE_STATUS_TEXT: Record<TemplateStatus, string> = {
   draft: "Draft",
   tested: "Tested",
   shared: "Shared",
@@ -216,7 +217,7 @@ export function TemplateList({
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-medium">{t.name}</h3>
               <span className="rounded-sm bg-bg-subtle px-1.5 text-caption text-fg-muted">
-                {STATUS_TEXT[t.status]}
+                {TEMPLATE_STATUS_TEXT[t.status]}
               </span>
               {t.version > 1 && <span className="text-caption text-fg-muted">v{t.version}</span>}
             </div>
@@ -229,36 +230,67 @@ export function TemplateList({
               <p className="text-caption text-destructive">Rejected: {t.rejected_note}</p>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => actions.onUse(t)}>
+              <Button size="sm" aria-label={`Use ${t.name}`} onClick={() => actions.onUse(t)}>
                 Use
               </Button>
               {mine && t.status !== "pending_approval" && (
-                <Button size="sm" variant="secondary" onClick={() => actions.onTest(t)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-label={`Test ${t.name}`}
+                  onClick={() => actions.onTest(t)}
+                >
                   Test
                 </Button>
               )}
-              {t.my_access === "owner" && (
-                <Button size="sm" variant="secondary" onClick={() => actions.onShare(t)}>
+              {/* Sharing waits for a test run, as the API requires. */}
+              {t.my_access === "owner" && ["tested", "shared", "published"].includes(t.status) && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-label={`Share ${t.name}`}
+                  onClick={() => actions.onShare(t)}
+                >
                   Share
                 </Button>
               )}
               {mine && (t.status === "tested" || t.status === "shared") && (
-                <Button size="sm" variant="secondary" onClick={() => actions.onPublish(t)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-label={`Ask for approval of ${t.name}`}
+                  onClick={() => actions.onPublish(t)}
+                >
                   Ask for approval
                 </Button>
               )}
               {t.status === "pending_approval" && t.my_access === "edit" && (
                 <>
-                  <Button size="sm" variant="secondary" onClick={() => actions.onApprove(t)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    aria-label={`Approve ${t.name}`}
+                    onClick={() => actions.onApprove(t)}
+                  >
                     Approve
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => actions.onReject(t)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    aria-label={`Reject ${t.name}`}
+                    onClick={() => actions.onReject(t)}
+                  >
                     Reject
                   </Button>
                 </>
               )}
               {mine && (
-                <Button size="sm" variant="quiet" onClick={() => actions.onDelete(t)}>
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  aria-label={`Delete ${t.name}`}
+                  onClick={() => actions.onDelete(t)}
+                >
                   Delete
                 </Button>
               )}
@@ -275,7 +307,7 @@ export function TestTemplatePanel({
   templateName,
   vaults,
   loadTree,
-  limit = 10,
+  limit = TEMPLATE_LIMITS.testDocuments,
   onTest,
   onClose,
 }: {

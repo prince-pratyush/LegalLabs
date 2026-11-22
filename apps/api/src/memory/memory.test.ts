@@ -927,6 +927,50 @@ describe("writing styles", () => {
     expect((await h.call(cookie, "DELETE", `/writing-styles/${id}`)).status).toBe(204);
   });
 
+  it("can be edited by a workspace admin while shared, but never when private", async () => {
+    const h = harness();
+    const { admin, adminCookie } = await member(h);
+    const peer = await colleague(admin, MEMBER);
+    const peerCookie = await h.signIn(peer);
+    const make = async (name: string, shared: boolean) =>
+      (
+        await pool.query<{ id: string }>(
+          `insert into memory.writing_style (workspace_id, owner_id, name, kind, instructions, shared)
+           values ($1, $2, $3, 'instructions', 'x', $4) returning id`,
+          [admin.workspaceId, peer.userId, name, shared],
+        )
+      ).rows[0]?.id;
+    const open = await make("Open", true);
+    const closed = await make("Closed", false);
+
+    const seen = (await h.call(adminCookie, "GET", "/writing-styles")).body;
+    expect(seen.workspace).toEqual([expect.objectContaining({ name: "Open", editable: true })]);
+    const edited = await h.call(adminCookie, "PATCH", `/writing-styles/${open}`, {
+      name: "House rules",
+      instructions: "Formal.",
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({
+      name: "House rules",
+      instructions: "Formal.",
+      editable: true,
+    });
+    expect((await h.call(peerCookie, "GET", `/writing-styles/${open}`)).body).toMatchObject({
+      name: "House rules",
+      editable: true,
+    });
+    // A private style is the owner's alone.
+    expect(
+      (await h.call(adminCookie, "PATCH", `/writing-styles/${closed}`, { name: "Mine" })).status,
+    ).toBe(404);
+    // And an ordinary member still can't edit someone else's shared style.
+    const third = await colleague(admin, MEMBER);
+    const thirdCookie = await h.signIn(third);
+    expect(
+      (await h.call(thirdCookie, "PATCH", `/writing-styles/${open}`, { name: "Nope" })).status,
+    ).toBe(404);
+  });
+
   it("go into the prompt after the citation contract, with the grounding guard", async () => {
     const h = harness();
     const { m, cookie } = await member(h);

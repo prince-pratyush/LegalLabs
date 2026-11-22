@@ -31,10 +31,15 @@ const principal = (m: Seeded): Principal => ({
 
 const BASE = "https://app.legallabs.test";
 
-// The clock the notifier uses when queueing; tests move it to pick a local time.
+// The database queues mail by its own clock. Every test file shares one database, and the
+// worker takes whatever is due, so a test moves its own people's mail 100 years back (all of
+// it alike, so the timing rules still hold) and runs the worker on the same shifted clock.
+const SHIFT_HOURS = 876000;
+const SHIFT_MS = SHIFT_HOURS * 3600e3;
+
 function harness() {
-  let current = new Date("2026-03-10T12:00:00Z");
-  const notifications = createNotifications(pool, { now: () => current });
+  const people: string[] = [];
+  const notifications = createNotifications(pool);
   const provider = createFakeEmailProvider();
   const worker = createEmailWorker(pool, { provider, baseUrl: BASE });
   const documents = testDocuments(pool);
@@ -68,10 +73,16 @@ function harness() {
     // biome-ignore lint/suspicious/noExplicitAny: test responses are read loosely
     return { status: res.status, body: (text ? JSON.parse(text) : null) as any };
   };
-  const at = (iso: string) => {
-    current = new Date(iso);
+  // Runs the worker `afterMs` from now, having moved this test's new mail onto its clock.
+  const run = async (afterMs = 1000) => {
+    await pool.query(
+      `update notify.email_outbox set scheduled_at = scheduled_at - make_interval(hours => $2)
+        where user_id = any ($1::uuid[]) and scheduled_at > now() - interval '1 year'`,
+      [people, SHIFT_HOURS],
+    );
+    return worker.runOnce(new Date(Date.now() + afterMs - SHIFT_MS));
   };
-  return { notifications, provider, worker, signIn, call, at, now: () => current };
+  return { notifications, provider, worker, signIn, call, run, people };
 }
 
 async function colleague(m: Seeded, tag = "ben"): Promise<Seeded> {
@@ -117,6 +128,7 @@ async function twoPeople() {
   const ben = await colleague(ana);
   const anaCookie = await h.signIn(ana);
   const benCookie = await h.signIn(ben);
+  h.people.push(ana.userId, ben.userId);
   return { h, ana, ben, anaCookie, benCookie };
 }
 
@@ -134,7 +146,7 @@ describe("notification email", () => {
         detail: "THE-DETAIL-TEXT",
       }),
     );
-    const out = await h.worker.runOnce(h.now());
+    const out = await h.run();
     expect(out).toEqual({ sent: 1, failed: 0 });
     const mail = h.provider.sent[0];
     expect(mail?.to.email).toBe(ben.email);
@@ -148,10 +160,7 @@ describe("notification email", () => {
     );
     expect(row.rows[0].email_sent_at).not.toBeNull();
     // Sent once: the next pass has nothing.
-    expect(await h.worker.runOnce(new Date(h.now().getTime() + 3600e3))).toEqual({
-      sent: 0,
-      failed: 0,
-    });
+    expect(await h.run(3600e3)).toEqual({ sent: 0, failed: 0 });
   });
 
   it("sends nothing for a category the workspace locked off, even if the person turned it on", async () => {
@@ -167,20 +176,22 @@ describe("notification email", () => {
       event({ kind: "task.assigned", actorId: ana.userId, people: { assignee: ben.userId } }),
     );
     expect(await outboxCount(ben.userId)).toBe(0);
-    expect(await h.worker.runOnce(h.now())).toEqual({ sent: 0, failed: 0 });
+    expect(await h.run()).toEqual({ sent: 0, failed: 0 });
     expect(h.provider.sent).toHaveLength(0);
     // The in-app notification is still made.
     expect((await h.call(benCookie, "GET", "/notifications")).body.items).toHaveLength(1);
   });
 
-  it("holds a non-action email until quiet hours end at 07:00 local, while action-required goes now", async () => {
+  it("holds a non-action email until quiet hours end, while action-required goes now", async () => {
     const { h, ana, ben, benCookie } = await twoPeople();
+    // Quiet hours from an hour ago until an hour ahead, in UTC, so queueing happens inside them.
+    const hhmm = (offsetHours: number) =>
+      new Date(Date.now() + offsetHours * 3600e3).toISOString().slice(11, 16);
+    const to = hhmm(1);
     await h.call(benCookie, "PATCH", "/notification-settings", {
-      quiet_hours: { from: "22:00", to: "07:00", tz: "America/New_York" },
+      quiet_hours: { from: hhmm(-1), to, tz: "UTC" },
       categories: [{ category: "tasks", value: true, mode: "all" }],
     });
-    // 23:00 in New York.
-    h.at("2026-03-11T03:00:00Z");
     await h.notifications.notifier.notify(
       principal(ana),
       event({ kind: "task.status_changed", actorId: ana.userId, people: { assignee: ben.userId } }),
@@ -189,29 +200,25 @@ describe("notification email", () => {
       principal(ana),
       event({ kind: "task.assigned", actorId: ana.userId, people: { assignee: ben.userId } }),
     );
-    const due = await pool.query<{ scheduled_at: Date; action_required: boolean }>(
-      `select o.scheduled_at, (o.payload->>'action_required')::boolean action_required
+    // Moves the two rows onto the test clock (nothing is due yet an hour back).
+    await h.run(-3600e3);
+    const due = await pool.query<{ ms: string; action_required: boolean }>(
+      `select (extract(epoch from o.scheduled_at + make_interval(hours => $2)) * 1000)::bigint ms,
+              (o.payload->>'action_required')::boolean action_required
          from notify.email_outbox o where o.user_id = $1 order by o.created_at`,
-      [ben.userId],
+      [ben.userId, SHIFT_HOURS],
     );
-    expect(due.rows[0]?.scheduled_at.toISOString()).toBe("2026-03-11T11:00:00.000Z");
-    expect(due.rows[1]?.scheduled_at.toISOString()).toBe("2026-03-11T03:00:00.000Z");
+    const hold = Number(due.rows[0]?.ms);
+    expect(hold).toBeGreaterThan(Date.now() + 50 * 60e3);
+    expect(new Date(hold).toISOString().slice(11, 16)).toBe(to);
+    expect(Number(due.rows[1]?.ms)).toBeLessThan(Date.now() + 5e3);
 
-    expect(await h.worker.runOnce(new Date("2026-03-11T03:05:00Z"))).toEqual({
-      sent: 1,
-      failed: 0,
-    });
+    expect(await h.run()).toEqual({ sent: 1, failed: 0 });
     expect(h.provider.sent.map((m) => m.subject)).toEqual([
       "A task was assigned to you: Review the indemnity",
     ]);
-    expect(await h.worker.runOnce(new Date("2026-03-11T10:59:00Z"))).toEqual({
-      sent: 0,
-      failed: 0,
-    });
-    expect(await h.worker.runOnce(new Date("2026-03-11T11:00:01Z"))).toEqual({
-      sent: 1,
-      failed: 0,
-    });
+    expect(await h.run(hold - Date.now() - 60e3)).toEqual({ sent: 0, failed: 0 });
+    expect(await h.run(hold - Date.now() + 1000)).toEqual({ sent: 1, failed: 0 });
     expect(h.provider.sent[1]?.subject).toBe("Task status changed: Review the indemnity");
   });
 
@@ -220,7 +227,6 @@ describe("notification email", () => {
     await h.call(benCookie, "PATCH", "/notification-settings", {
       categories: [{ category: "tasks", value: true, mode: "all" }],
     });
-    h.at("2026-03-10T12:01:00Z");
     for (const title of ["Alpha", "Beta", "Gamma"]) {
       await h.notifications.notifier.notify(
         principal(ana),
@@ -232,12 +238,9 @@ describe("notification email", () => {
         }),
       );
     }
-    // Not yet: the window closes at 12:15.
-    expect(await h.worker.runOnce(new Date("2026-03-10T12:10:00Z"))).toEqual({
-      sent: 0,
-      failed: 0,
-    });
-    expect(await h.worker.runOnce(new Date("2026-03-10T12:15:01Z"))).toEqual({
+    // Not yet: the window closes at the next quarter hour, which is never now.
+    expect(await h.run()).toEqual({ sent: 0, failed: 0 });
+    expect(await h.run(16 * 60e3)).toEqual({
       sent: 1,
       failed: 0,
     });
@@ -271,12 +274,12 @@ describe("notification email", () => {
     };
 
     await comment1();
-    await h.worker.runOnce(new Date("2026-03-10T12:15:01Z"));
+    await h.run(16 * 60e3);
     expect(h.provider.sent[0]?.text).not.toContain("ccc");
 
     await h.call(anaCookie, "PATCH", "/admin/notification-settings", { include_content: true });
     await comment1();
-    await h.worker.runOnce(new Date("2026-03-10T12:15:02Z"));
+    await h.run(32 * 60e3);
     const text = h.provider.sent[1]?.text ?? "";
     expect(text).toContain("c".repeat(300));
     expect(text).not.toContain("TAIL-BEYOND-LIMIT");
@@ -285,12 +288,18 @@ describe("notification email", () => {
   it("emails a long run's completion in action-only mode but not a short one", async () => {
     const { h, ana, ben, benCookie } = await twoPeople();
     await h.call(benCookie, "GET", "/notification-settings");
+    // A recipient is only told about an object they can open: here, their own thread.
+    const thread = await pool.query<{ id: string }>(
+      "insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 'Mine') returning id",
+      [ben.workspaceId, ben.userId],
+    );
     const run = (longRunning: boolean) =>
       h.notifications.notifier.notify(
         principal(ana),
         event({
           kind: "thread.run.completed",
-          objectType: "run",
+          objectType: "thread",
+          objectId: thread.rows[0]?.id ?? "",
           actorId: null,
           longRunning,
           people: { runner: ben.userId },
@@ -344,7 +353,7 @@ describe("notification email", () => {
       const queued = (await outboxCount(ben.userId)) - before;
       if (!meta.email || !meta.in_app) expect(queued, kind).toBe(0);
     }
-    await h.worker.runOnce(new Date("2026-03-11T00:00:00Z"));
+    await h.run(24 * 3600e3);
     expect(h.provider.sent.length).toBeGreaterThan(0);
     for (const mail of h.provider.sent) {
       expect(`${mail.subject}\n${mail.text}`).not.toContain("SECRET");
@@ -363,17 +372,14 @@ describe("notification email", () => {
       event({ kind: "task.assigned", actorId: ana.userId, people: { assignee: ben.userId } }),
     );
     h.provider.failNext();
-    expect(await h.worker.runOnce(h.now())).toEqual({ sent: 0, failed: 1 });
+    expect(await h.run()).toEqual({ sent: 0, failed: 1 });
     const failed = await pool.query(
       "select error, attempts from notify.email_outbox where user_id = $1",
       [ben.userId],
     );
     expect(failed.rows[0]).toEqual({ error: "send failed: Error", attempts: 1 });
-    expect(await h.worker.runOnce(new Date(h.now().getTime() + 60e3))).toEqual({
-      sent: 0,
-      failed: 0,
-    });
-    expect(await h.worker.runOnce(new Date(h.now().getTime() + 6 * 60e3))).toEqual({
+    expect(await h.run(61e3)).toEqual({ sent: 0, failed: 0 });
+    expect(await h.run(6 * 60e3)).toEqual({
       sent: 1,
       failed: 0,
     });

@@ -23,6 +23,7 @@ import type {
   SyncResult,
   SyncStatus,
   TemplateGrant,
+  TemplateShare,
   TestTemplateBody,
 } from "@legallabs/contracts";
 import { RT_LIMITS } from "@legallabs/contracts";
@@ -73,13 +74,6 @@ const send = <T>(method: string, path: string, body: unknown) =>
 const t = (id: string) => `/review-tables/${encodeURIComponent(id)}`;
 const c = (id: string, cellId: string) => `${t(id)}/cells/${encodeURIComponent(cellId)}`;
 const col = (id: string, columnId: string) => `${t(id)}/columns/${encodeURIComponent(columnId)}`;
-
-export interface TemplateShare {
-  principal_type: "user" | "group" | "workspace";
-  principal_id: string;
-  label: string;
-  level: "use" | "edit";
-}
 
 export interface RowsPage {
   rows: Row[];

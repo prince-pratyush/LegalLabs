@@ -1,0 +1,71 @@
+# Local SAML-via-Zitadel stack: a throwaway SAML IdP, Zitadel as its SP, and Zitadel's database.
+# Zitadel brokers SAML to OIDC for the app (06-security-compliance 3.1, ADR-012).
+# Run: LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose -f compose.zitadel-saml.yaml up -d --wait
+# then: node scripts/zitadel-saml-bootstrap.mjs
+name: idp-saml
+services:
+  pg:
+    image: postgres:16-alpine
+    container_name: idp-saml-pg
+    environment:
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v2.71.9
+    container_name: idp-saml-zitadel
+    command: start-from-init --masterkey MasterkeyNeedsToHave32Characters --tlsMode disabled
+    # Runs as the caller so the PAT written to the bind mount is readable by the host.
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    depends_on:
+      pg:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:55436:8080"
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: pg
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: 55436
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_TLS_ENABLED: "false"
+      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel-bootstrap/admin.pat
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: bootstrap-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: bootstrap-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+    volumes:
+      - ./docker/zitadel-saml/bootstrap:/zitadel-bootstrap
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  saml-idp:
+    # simpleSAMLphp test IdP, amd64 only (runs under emulation on arm64).
+    # Users: user1/user1pass (user1@example.com), user2/user2pass (user2@example.com).
+    image: kristophjunge/test-saml-idp:latest
+    container_name: idp-saml-idp
+    platform: linux/amd64
+    hostname: saml-idp
+    ports:
+      - "127.0.0.1:55437:8080"
+    environment:
+      SIMPLESAMLPHP_SP_ENTITY_ID: unused
+      SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: http://unused/
+    volumes:
+      - ./docker/saml-idp/saml20-idp-hosted.php:/var/www/simplesamlphp/metadata/saml20-idp-hosted.php:ro
+      - ./docker/saml-idp/saml20-sp-remote.php:/var/www/simplesamlphp/metadata/saml20-sp-remote.php:ro
+      - ./docker/saml-idp/dynamic:/sp-dynamic

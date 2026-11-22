@@ -411,21 +411,133 @@
     {
       "idx": 57,
       "version": "7",
-      "when": 1794010120000,
-      "tag": "0120_retention_schema",
+      "when": 1794009950001,
+      "tag": "0088_work_review_table_template_scope",
+      "breakpoints": false
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794010130000,
+      "tag": "0130_admin_models",
+      "breakpoints": false
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794010130001,
+      "tag": "0131_admin_connectors",
+      "breakpoints": false
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794010130002,
+      "tag": "0089_notify_hardening",
+      "breakpoints": false
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794010140000,
+      "tag": "0103_core_oidc",
+      "breakpoints": false
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794010140001,
+      "tag": "0104_core_oidc_password_gate",
+      "breakpoints": false
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794010140002,
+      "tag": "0100_core_mfa_totp",
+      "breakpoints": false
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794010140003,
+      "tag": "0101_core_mfa_passkeys",
+      "breakpoints": false
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794010140004,
+      "tag": "0102_core_mfa_admin",
+      "breakpoints": false
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794010140005,
+      "tag": "0105_core_scim_resources",
       "breakpoints": false
     },
     {
       "idx": 58,
       "version": "7",
-      "when": 1794010121000,
-      "tag": "0121_retention_functions",
+      "when": 1794010140006,
+      "tag": "0106_core_scim_auth",
       "breakpoints": false
     },
     {
       "idx": 59,
       "version": "7",
-      "when": 1794010122000,
+      "when": 1794010140007,
+      "tag": "0107_core_scim_guard",
+      "breakpoints": false
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794010140008,
+      "tag": "0108_core_scim_group_roles",
+      "breakpoints": false
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1794010140009,
+      "tag": "0110_analytics_events",
+      "breakpoints": false
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1794010140010,
+      "tag": "0111_analytics_materialise",
+      "breakpoints": false
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794010140011,
+      "tag": "0112_analytics_exports",
+      "breakpoints": false
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794010140012,
+      "tag": "0120_retention_schema",
+      "breakpoints": false
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1794010140013,
+      "tag": "0121_retention_functions",
+      "breakpoints": false
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1794010140014,
       "tag": "0122_retention_holds",
       "breakpoints": false
     }
