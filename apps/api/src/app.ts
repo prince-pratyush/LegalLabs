@@ -22,6 +22,8 @@ import type { Mfa } from "./auth/mfa/service.js";
 import { oidcRoutes } from "./auth/oidc/routes.js";
 import type { Oidc } from "./auth/oidc/service.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
+import { commandCenterRoutes } from "./command-center/routes.js";
+import type { CommandCenter } from "./command-center/service.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
 import type { Viewer } from "./documents/viewer.js";
@@ -110,6 +112,8 @@ export interface AppOptions {
   spaces?: SpaceModule;
   /** The notifications hub; optional, like vaults. */
   notifications?: Notifications;
+  /** The Command Center reports; left out, /admin/analytics is not mounted. */
+  commandCenter?: CommandCenter;
   /** Memories and writing styles; optional, like vaults. */
   memory?: MemoryModule;
   /** Models and connectors admin (ADM-005/006); optional, like vaults. */
@@ -159,6 +163,7 @@ export function createApp({
   matters,
   spaces,
   notifications,
+  commandCenter,
   memory,
   adminModels,
   knowledge,
@@ -355,6 +360,7 @@ export function createApp({
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
   if (adminModels)
     app.route("/api/v1", adminModelRoutes(adminModels.models, adminModels.connectors, clientOf));
+  if (commandCenter) app.route("/api/v1", commandCenterRoutes(commandCenter, clientOf));
   if (memory) {
     app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
     app.route("/api/v1", styleRoutes(memory.styles, clientOf));

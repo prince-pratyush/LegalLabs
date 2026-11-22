@@ -498,6 +498,27 @@
       "when": 1794010140008,
       "tag": "0108_core_scim_group_roles",
       "breakpoints": false
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1794010140009,
+      "tag": "0110_analytics_events",
+      "breakpoints": false
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1794010140010,
+      "tag": "0111_analytics_materialise",
+      "breakpoints": false
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794010140011,
+      "tag": "0112_analytics_exports",
+      "breakpoints": false
     }
   ]
 }
