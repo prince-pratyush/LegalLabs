@@ -407,6 +407,20 @@
       "when": 1794009767000,
       "tag": "0062_work_workflows",
       "breakpoints": false
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794010103000,
+      "tag": "0103_core_oidc",
+      "breakpoints": false
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794010104000,
+      "tag": "0104_core_oidc_password_gate",
+      "breakpoints": false
     }
   ]
 }
