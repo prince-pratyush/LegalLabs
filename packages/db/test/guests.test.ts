@@ -46,7 +46,13 @@ async function shareVault(tx: Tx, s: Seed, space: string, party: string, level: 
   await tx.rows(
     `insert into work.space_resource (workspace_id, space_id, resource_type, resource_id, access, per_party, granted_by)
      values ($1, $2, 'vault', $3, 'view', $4::jsonb, $5)`,
-    [s.acme, space, s.vaults.acme.vaultId, level ? JSON.stringify({ [party]: level }) : "{}", s.ana],
+    [
+      s.acme,
+      space,
+      s.vaults.acme.vaultId,
+      level ? JSON.stringify({ [party]: level }) : "{}",
+      s.ana,
+    ],
   );
   await tx.asOwner();
 }
@@ -71,8 +77,15 @@ describe("guests", () => {
           order by 1`,
       );
       const opened = new Set([
-        "core.user", "core.workspace", "core.session", "work.space", "work.space_member",
-        "work.space_resource", "work.space_party", "work.space_connection", "content.vault",
+        "core.user",
+        "core.workspace",
+        "core.session",
+        "work.space",
+        "work.space_member",
+        "work.space_resource",
+        "work.space_party",
+        "work.space_connection",
+        "content.vault",
       ]);
       const leaks: string[] = [];
       await tx.as(s.gia, s.acme);
@@ -121,9 +134,13 @@ describe("guests", () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
       await tx.as(s.gia, s.acme);
-      expect((await tx.one("select work.vault_walled($1) as w", [s.vaults.acme.vaultId])).w).toBe(false);
+      expect((await tx.one("select work.vault_walled($1) as w", [s.vaults.acme.vaultId])).w).toBe(
+        false,
+      );
       expect(await tx.rows("select * from work.space_directory()")).toEqual([]);
-      expect(await tx.rows("select * from work.space_guests($1)", [s.guestRooms.acme.spaceId])).toEqual([]);
+      expect(
+        await tx.rows("select * from work.space_guests($1)", [s.guestRooms.acme.spaceId]),
+      ).toEqual([]);
     });
   });
 
@@ -143,7 +160,10 @@ describe("guests", () => {
         );
       }
       await tx.as(s.gia, s.acme);
-      expect((await tx.one("select core.has_access('vault', $1, 'view') as a", [s.vaults.acme.vaultId])).a).toBe(false);
+      expect(
+        (await tx.one("select core.has_access('vault', $1, 'view') as a", [s.vaults.acme.vaultId]))
+          .a,
+      ).toBe(false);
       expect(await tx.rows("select id from content.vault")).toEqual([]);
     });
   });
@@ -154,12 +174,21 @@ describe("guests", () => {
         const s = await seed(tx);
         const { space } = await externalSpace(tx, s);
         await tx.as(s.ana, s.acme);
-        expect(await tx.error(`select work.invite_guest($1, 'x@elsewhere.test', ${H("a")})`, [space])).toMatch(/GUEST_DOMAIN_MISMATCH/);
-        expect(await tx.error("select work.add_party($1, 'Two', 'two.test')", [space])).toMatch(/PARTY_LIMIT/);
+        expect(
+          await tx.error(`select work.invite_guest($1, 'x@elsewhere.test', ${H("a")})`, [space]),
+        ).toMatch(/GUEST_DOMAIN_MISMATCH/);
+        expect(await tx.error("select work.add_party($1, 'Two', 'two.test')", [space])).toMatch(
+          /PARTY_LIMIT/,
+        );
         await tx.asOwner();
-        await tx.rows(`insert into core."user" (workspace_id, email, status, kind) values ($1, 'm@other.test', 'active', 'member')`, [s.acme]);
+        await tx.rows(
+          `insert into core."user" (workspace_id, email, status, kind) values ($1, 'm@other.test', 'active', 'member')`,
+          [s.acme],
+        );
         await tx.as(s.ana, s.acme);
-        expect(await tx.error(`select work.invite_guest($1, 'm@other.test', ${H("b")})`, [space])).toMatch(/EMAIL_IS_MEMBER/);
+        expect(
+          await tx.error(`select work.invite_guest($1, 'm@other.test', ${H("b")})`, [space]),
+        ).toMatch(/EMAIL_IS_MEMBER/);
       });
     });
 
@@ -168,10 +197,16 @@ describe("guests", () => {
         const s = await seed(tx);
         const { space, party } = await externalSpace(tx, s);
         await tx.as(s.ben, s.acme);
-        expect(await tx.error(`select work.invite_guest($1, 'a@other.test', ${H("c")})`, [space])).toMatch(/FORBIDDEN/);
-        expect(await tx.error("select work.approve_connection($1, $2)", [space, party])).toMatch(/FORBIDDEN/);
+        expect(
+          await tx.error(`select work.invite_guest($1, 'a@other.test', ${H("c")})`, [space]),
+        ).toMatch(/FORBIDDEN/);
+        expect(await tx.error("select work.approve_connection($1, $2)", [space, party])).toMatch(
+          /FORBIDDEN/,
+        );
         await tx.as(s.gia, s.acme);
-        expect(await tx.error("select work.approve_connection($1, $2)", [space, party])).toMatch(/FORBIDDEN/);
+        expect(await tx.error("select work.approve_connection($1, $2)", [space, party])).toMatch(
+          /FORBIDDEN/,
+        );
       });
     });
 
@@ -191,12 +226,18 @@ describe("guests", () => {
         await tx.asOwner();
         expect(await count(tx, s, guest, "work.space")).toBe(0);
         await tx.as(s.ana, s.acme);
-        expect((await tx.one("select work.approve_connection($1, $2) as st", [space, party])).st).toBe("in_progress");
-        expect(await tx.error("select work.approve_connection($1, $2)", [space, party])).toMatch(/ALREADY_APPROVED/);
+        expect(
+          (await tx.one("select work.approve_connection($1, $2) as st", [space, party])).st,
+        ).toBe("in_progress");
+        expect(await tx.error("select work.approve_connection($1, $2)", [space, party])).toMatch(
+          /ALREADY_APPROVED/,
+        );
         await tx.asOwner();
         expect(await count(tx, s, guest, "work.space")).toBe(0);
         await tx.as(guest, s.acme);
-        expect((await tx.one("select work.approve_connection($1, $2) as st", [space, party])).st).toBe("resolved");
+        expect(
+          (await tx.one("select work.approve_connection($1, $2) as st", [space, party])).st,
+        ).toBe("resolved");
         await tx.asOwner();
         expect(await count(tx, s, guest, "work.space")).toBe(1);
       });
@@ -212,18 +253,45 @@ describe("guests", () => {
         expect(await count(tx, s, guest, "content.vault")).toBe(0);
         expect(await count(tx, s, guest, "work.space_resource")).toBe(0);
         await tx.asOwner();
-        await tx.rows("update work.space_resource set per_party = $1::jsonb where space_id = $2", [JSON.stringify({ [party]: "view" }), space]);
+        await tx.rows("update work.space_resource set per_party = $1::jsonb where space_id = $2", [
+          JSON.stringify({ [party]: "view" }),
+          space,
+        ]);
         expect(await count(tx, s, guest, "content.vault")).toBe(1);
         await tx.as(guest, s.acme);
-        expect((await tx.one("select core.has_access('vault', $1, 'edit') as a", [s.vaults.acme.vaultId])).a).toBe(false);
+        expect(
+          (
+            await tx.one("select core.has_access('vault', $1, 'edit') as a", [
+              s.vaults.acme.vaultId,
+            ])
+          ).a,
+        ).toBe(false);
         await tx.asOwner();
-        await tx.rows("update work.space_resource set per_party = $1::jsonb where space_id = $2", [JSON.stringify({ [party]: "full" }), space]);
+        await tx.rows("update work.space_resource set per_party = $1::jsonb where space_id = $2", [
+          JSON.stringify({ [party]: "full" }),
+          space,
+        ]);
         await tx.as(guest, s.acme);
-        expect((await tx.one("select core.has_access('vault', $1, 'edit') as a", [s.vaults.acme.vaultId])).a).toBe(true);
-        expect((await tx.one("select core.has_access('vault', $1, 'full') as a", [s.vaults.acme.vaultId])).a).toBe(false);
+        expect(
+          (
+            await tx.one("select core.has_access('vault', $1, 'edit') as a", [
+              s.vaults.acme.vaultId,
+            ])
+          ).a,
+        ).toBe(true);
+        expect(
+          (
+            await tx.one("select core.has_access('vault', $1, 'full') as a", [
+              s.vaults.acme.vaultId,
+            ])
+          ).a,
+        ).toBe(false);
         expect(await tx.rows("select id from content.document")).toEqual([]);
         await tx.asOwner();
-        await tx.rows("update work.space_resource set per_party = $1::jsonb where space_id = $2", [JSON.stringify({ [party]: "none" }), space]);
+        await tx.rows("update work.space_resource set per_party = $1::jsonb where space_id = $2", [
+          JSON.stringify({ [party]: "none" }),
+          space,
+        ]);
         expect(await count(tx, s, guest, "content.vault")).toBe(0);
       });
     });
@@ -244,7 +312,10 @@ describe("guests", () => {
         expect(await count(tx, s, guest, "work.space")).toBe(1);
         // The vault's own matter is walled separately.
         await shareVault(tx, s, space, party, "view");
-        await tx.rows("update content.vault set matter_id = $1 where id = $2", [s.matters.m2, s.vaults.acme.vaultId]);
+        await tx.rows("update content.vault set matter_id = $1 where id = $2", [
+          s.matters.m2,
+          s.vaults.acme.vaultId,
+        ]);
         expect(await count(tx, s, guest, "content.vault")).toBe(0);
         // A deny on their party's group shuts the Space again.
         await tx.rows(
@@ -252,7 +323,10 @@ describe("guests", () => {
            values ($1, $2, 'group', $3, 'deny')`,
           [s.acme, s.matters.m1, s.groups.partyP],
         );
-        await tx.rows("insert into core.group_member (workspace_id, group_id, user_id) values ($1, $2, $3)", [s.acme, s.groups.partyP, guest]);
+        await tx.rows(
+          "insert into core.group_member (workspace_id, group_id, user_id) values ($1, $2, $3)",
+          [s.acme, s.groups.partyP, guest],
+        );
         expect(await count(tx, s, guest, "work.space")).toBe(0);
       });
     });
@@ -270,17 +344,43 @@ describe("guests", () => {
            values ($1, $2, sha256('tok'::text::bytea), now() + interval '1 hour')`,
           [s.acme, guest],
         );
-        expect((await tx.rows("select * from core.resolve_session(sha256('tok'::text::bytea))")).length).toBe(1);
-        await tx.rows("update core.guest_profile set expires_at = now() - interval '1 second' where user_id = $1", [guest]);
-        for (const t of ["content.vault", "work.space", "work.space_resource", "core.user", "core.workspace"]) {
+        expect(
+          (await tx.rows("select * from core.resolve_session(sha256('tok'::text::bytea))")).length,
+        ).toBe(1);
+        await tx.rows(
+          "update core.guest_profile set expires_at = now() - interval '1 second' where user_id = $1",
+          [guest],
+        );
+        for (const t of [
+          "content.vault",
+          "work.space",
+          "work.space_resource",
+          "core.user",
+          "core.workspace",
+        ]) {
           expect(await count(tx, s, guest, t)).toBe(0);
         }
         await tx.as(guest, s.acme);
-        expect((await tx.one("select core.has_access('vault', $1, 'view') as a", [s.vaults.acme.vaultId])).a).toBe(false);
+        expect(
+          (
+            await tx.one("select core.has_access('vault', $1, 'view') as a", [
+              s.vaults.acme.vaultId,
+            ])
+          ).a,
+        ).toBe(false);
         expect(await tx.rows("select * from work.my_guest_spaces()")).toEqual([]);
         await tx.asOwner();
-        expect(await tx.rows("select * from core.resolve_session(sha256('tok'::text::bytea))")).toEqual([]);
-        expect((await tx.one(`select issued from core.issue_guest_code($1, 'lead@other.test', ${H("c1")})`, [s.slugs.acme])).issued).toBe(false);
+        expect(
+          await tx.rows("select * from core.resolve_session(sha256('tok'::text::bytea))"),
+        ).toEqual([]);
+        expect(
+          (
+            await tx.one(
+              `select issued from core.issue_guest_code($1, 'lead@other.test', ${H("c1")})`,
+              [s.slugs.acme],
+            )
+          ).issued,
+        ).toBe(false);
       });
     });
 
@@ -295,11 +395,17 @@ describe("guests", () => {
         await tx.rows("select work.set_party_domain($1, $2, 'new.test')", [space, party]);
         await tx.asOwner();
         expect(await count(tx, s, guest, "work.space")).toBe(0);
-        expect((await tx.one("select status from work.space_connection where party_id = $1", [party])).status).toBe("action_required");
+        expect(
+          (await tx.one("select status from work.space_connection where party_id = $1", [party]))
+            .status,
+        ).toBe("action_required");
         await tx.as(s.ana, s.acme);
         await tx.rows("select work.reject_connection($1, $2, 'no')", [space, party]);
         await tx.asOwner();
-        expect((await tx.one("select status from work.space_connection where party_id = $1", [party])).status).toBe("rejected");
+        expect(
+          (await tx.one("select status from work.space_connection where party_id = $1", [party]))
+            .status,
+        ).toBe("rejected");
       });
     });
 
@@ -311,15 +417,51 @@ describe("guests", () => {
         await approveBoth(tx, s, space, party, guest);
         const slug = s.slugs.acme;
         await tx.as(null, null);
-        expect((await tx.one(`select issued from core.issue_guest_code($1, 'lead@other.test', ${H("good")})`, [slug])).issued).toBe(true);
-        expect((await tx.one(`select issued from core.issue_guest_code($1, 'nobody@other.test', ${H("good")})`, [slug])).issued).toBe(false);
-        expect((await tx.one(`select ok from core.verify_guest_code($1, 'lead@other.test', ${H("good")})`, [slug])).ok).toBe(true);
-        expect((await tx.one(`select ok from core.verify_guest_code($1, 'lead@other.test', ${H("good")})`, [slug])).ok).toBe(false);
-        await tx.rows(`select * from core.issue_guest_code($1, 'lead@other.test', ${H("good2")})`, [slug]);
+        expect(
+          (
+            await tx.one(
+              `select issued from core.issue_guest_code($1, 'lead@other.test', ${H("good")})`,
+              [slug],
+            )
+          ).issued,
+        ).toBe(true);
+        expect(
+          (
+            await tx.one(
+              `select issued from core.issue_guest_code($1, 'nobody@other.test', ${H("good")})`,
+              [slug],
+            )
+          ).issued,
+        ).toBe(false);
+        expect(
+          (
+            await tx.one(
+              `select ok from core.verify_guest_code($1, 'lead@other.test', ${H("good")})`,
+              [slug],
+            )
+          ).ok,
+        ).toBe(true);
+        expect(
+          (
+            await tx.one(
+              `select ok from core.verify_guest_code($1, 'lead@other.test', ${H("good")})`,
+              [slug],
+            )
+          ).ok,
+        ).toBe(false);
+        await tx.rows(`select * from core.issue_guest_code($1, 'lead@other.test', ${H("good2")})`, [
+          slug,
+        ]);
         for (let i = 0; i < 5; i++) {
-          await tx.rows(`select * from core.verify_guest_code($1, 'lead@other.test', ${H("bad")})`, [slug]);
+          await tx.rows(
+            `select * from core.verify_guest_code($1, 'lead@other.test', ${H("bad")})`,
+            [slug],
+          );
         }
-        const r = await tx.one(`select ok, reason from core.verify_guest_code($1, 'lead@other.test', ${H("good2")})`, [slug]);
+        const r = await tx.one(
+          `select ok, reason from core.verify_guest_code($1, 'lead@other.test', ${H("good2")})`,
+          [slug],
+        );
         expect(r).toEqual({ ok: false, reason: "locked" });
       });
     });
