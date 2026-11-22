@@ -112,11 +112,22 @@ export const MemberInput = z
   .strict();
 export type MemberInput = z.infer<typeof MemberInput>;
 
+/** A guest party's level on one resource; `none` withdraws what the party had. */
+export const PartyLevel = z.enum(["none", "view", "run", "edit", "full"]);
+export type PartyLevel = z.infer<typeof PartyLevel>;
+
+/** Party id to level, for an external Space. */
+export const PerParty = z.record(Id, PartyLevel).refine((m) => Object.keys(m).length <= 5, {
+  message: "At most 5 parties",
+});
+export type PerParty = z.infer<typeof PerParty>;
+
 export const ResourceInput = z
   .object({
     resource_type: SpaceResourceType,
     resource_id: Id,
     access: SpaceLevel,
+    per_party: PerParty.optional(),
   })
   .strict();
 export type ResourceInput = z.infer<typeof ResourceInput>;

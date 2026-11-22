@@ -107,6 +107,16 @@ export const auditActions: string[] = [
   ]),
   ...family("space", ["member_added", "member_removed", "party_level_changed", "external_access"]),
   ...family("space", [
+    "party_added",
+    "party_removed",
+    "connection_approved",
+    "connection_rejected",
+    "guest_invited",
+    "guest_joined",
+    "guest_removed",
+  ]),
+  ...family("guest", ["login_code_issued", "login_succeeded", "login_failed"]),
+  ...family("space", [
     "context_updated",
     "matter_attached",
     "member_role_changed",
