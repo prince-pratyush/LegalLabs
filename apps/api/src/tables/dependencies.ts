@@ -61,10 +61,6 @@ export function resolveReferences(
   return { ok: true, dependsOn: refs };
 }
 
-/** Columns that use one of `columnIds`, directly or through others. */
-export const dependentColumns = (graph: Graph, columnIds: Iterable<string>) =>
-  dependentsOf(graph, columnIds);
-
 /**
  * Marks the cells of `columnIds` stale, in the given rows or every row. They keep their
  * values and nothing re-runs. Returns how many changed.

@@ -32,15 +32,15 @@ const handlers = () => ({
 const buttons = () => screen.getAllByRole("button").map((b) => b.textContent);
 
 describe("TemplateList", () => {
-  it("offers an owner use, test, share and delete, and approval only once tested", async () => {
+  it("offers an owner use, test and delete, and sharing and approval only once tested", async () => {
     const h = handlers();
     render(<TemplateList templates={[T]} {...h} />);
-    expect(buttons()).toEqual(["Use", "Test", "Share", "Delete"]);
-    await userEvent.click(screen.getByRole("button", { name: "Test" }));
+    expect(buttons()).toEqual(["Use", "Test", "Delete"]);
+    await userEvent.click(screen.getByRole("button", { name: "Test Credit terms" }));
     expect(h.onTest).toHaveBeenCalledWith(T);
     cleanup();
     render(<TemplateList templates={[{ ...T, status: "tested" }]} {...h} />);
-    expect(buttons()).toContain("Ask for approval");
+    expect(buttons()).toEqual(["Use", "Test", "Share", "Ask for approval", "Delete"]);
   });
 
   it("gives someone it is only shared with just Use", () => {
@@ -59,9 +59,9 @@ describe("TemplateList", () => {
     render(
       <TemplateList templates={[{ ...T, status: "pending_approval", my_access: "edit" }]} {...h} />,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await userEvent.click(screen.getByRole("button", { name: "Approve Credit terms" }));
     expect(h.onApprove).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reject Credit terms" })).toBeTruthy();
     // Nobody tests or changes it while it waits.
     expect(buttons()).not.toContain("Test");
   });

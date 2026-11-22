@@ -45,6 +45,41 @@ describe("rows", () => {
     }
   });
 
+  it("keeps a locked row's cells from being edited, even in a request that unlocks the cell", async () => {
+    const s = await setup();
+    const date = await addColumn(s, DATE);
+    await runAndWait(s, date);
+    const page = await rows(s);
+    const row = page.rows[0];
+    const cell = page.cells.find((c: { row_id: string }) => c.row_id === row.id);
+    await call(s, "PATCH", `/rows/${row.id}`, { locked: true });
+    for (const body of [
+      { value_text: "1 January 2000" },
+      { value_text: "1 January 2000", locked: false },
+      { verified: true, locked: false },
+      { flag_color: "red", locked: false },
+    ]) {
+      expect(await call(s, "PATCH", `/cells/${cell.id}`, body)).toMatchObject({
+        status: 409,
+        body: { code: "CELL_LOCKED" },
+      });
+    }
+    const { rows: stored } = await pool.query(
+      "select value_text, verified_at, flag_color from work.rt_cell where id = $1",
+      [cell.id],
+    );
+    expect(stored[0]).toMatchObject({
+      value_text: cell.value_text,
+      verified_at: null,
+      flag_color: null,
+    });
+    // Once the row is unlocked the cell takes edits again.
+    await call(s, "PATCH", `/rows/${row.id}`, { locked: false });
+    expect(await call(s, "PATCH", `/cells/${cell.id}`, { flag_color: "red" })).toMatchObject({
+      status: 200,
+    });
+  });
+
   it("deletes rows, keeping a locked one", async () => {
     const s = await setup();
     const [first, second] = (await rows(s)).rows;
@@ -57,6 +92,18 @@ describe("rows", () => {
     expect(trail.find((e) => e.action === "table.rows.deleted")?.details).toEqual({
       rows: 1,
       skipped: 1,
+    });
+  });
+});
+
+describe("rows on a synced table", () => {
+  it("won't delete a row while sync is on, as sync would add its file straight back", async () => {
+    const s = await setup();
+    await call(s, "PUT", "/sync", { mode: "entire_vault" });
+    const row = (await rows(s)).rows[0];
+    expect(await call(s, "DELETE", "/rows", { row_ids: [row.id] })).toMatchObject({
+      status: 409,
+      body: { code: "SYNC_ENABLED" },
     });
   });
 });

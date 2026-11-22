@@ -317,7 +317,7 @@ describe("TablePage", () => {
         notify: false,
       }),
     );
-    expect((await screen.findByRole("button", { name: "Sync settings" })).textContent).toBe(
+    expect((await screen.findByRole("button", { name: /^Sync settings/ })).textContent).toBe(
       "Sync pending (2)",
     );
   });

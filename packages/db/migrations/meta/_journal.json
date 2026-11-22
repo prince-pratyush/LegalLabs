@@ -411,28 +411,70 @@
     {
       "idx": 57,
       "version": "7",
-      "when": 1794010105000,
+      "when": 1794009950001,
+      "tag": "0088_work_review_table_template_scope",
+      "breakpoints": false
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794010130000,
+      "tag": "0130_admin_models",
+      "breakpoints": false
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794010130001,
+      "tag": "0131_admin_connectors",
+      "breakpoints": false
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794010130002,
+      "tag": "0089_notify_hardening",
+      "breakpoints": false
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794010140000,
+      "tag": "0103_core_oidc",
+      "breakpoints": false
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794010140001,
+      "tag": "0104_core_oidc_password_gate",
+      "breakpoints": false
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794010140002,
       "tag": "0105_core_scim_resources",
       "breakpoints": false
     },
     {
       "idx": 58,
       "version": "7",
-      "when": 1794010106000,
+      "when": 1794010140003,
       "tag": "0106_core_scim_auth",
       "breakpoints": false
     },
     {
       "idx": 59,
       "version": "7",
-      "when": 1794010107000,
+      "when": 1794010140004,
       "tag": "0107_core_scim_guard",
       "breakpoints": false
     },
     {
       "idx": 60,
       "version": "7",
-      "when": 1794010108000,
+      "when": 1794010140005,
       "tag": "0108_core_scim_group_roles",
       "breakpoints": false
     }
