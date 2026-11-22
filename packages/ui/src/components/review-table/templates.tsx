@@ -243,7 +243,8 @@ export function TemplateList({
                   Test
                 </Button>
               )}
-              {t.my_access === "owner" && (
+              {/* Sharing waits for a test run, as the API requires. */}
+              {t.my_access === "owner" && ["tested", "shared", "published"].includes(t.status) && (
                 <Button
                   size="sm"
                   variant="secondary"

@@ -897,6 +897,8 @@ export function createTables(
     removeColumn(principal: Principal, tableId: string, columnId: string, client: Client) {
       return withTable(principal, tableId, async (db) => {
         if (!UUID.test(columnId)) return fail("NOT_FOUND");
+        // Waits for column edits in flight, so none can start to use this column as it goes.
+        await lockColumns(db, tableId);
         const dependents = dependentsOf(await loadGraph(db, tableId), [columnId]);
         if (dependents.length > 0) {
           return fail(

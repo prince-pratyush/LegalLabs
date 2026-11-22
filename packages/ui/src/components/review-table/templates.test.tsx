@@ -32,15 +32,15 @@ const handlers = () => ({
 const buttons = () => screen.getAllByRole("button").map((b) => b.textContent);
 
 describe("TemplateList", () => {
-  it("offers an owner use, test, share and delete, and approval only once tested", async () => {
+  it("offers an owner use, test and delete, and sharing and approval only once tested", async () => {
     const h = handlers();
     render(<TemplateList templates={[T]} {...h} />);
-    expect(buttons()).toEqual(["Use", "Test", "Share", "Delete"]);
+    expect(buttons()).toEqual(["Use", "Test", "Delete"]);
     await userEvent.click(screen.getByRole("button", { name: "Test Credit terms" }));
     expect(h.onTest).toHaveBeenCalledWith(T);
     cleanup();
     render(<TemplateList templates={[{ ...T, status: "tested" }]} {...h} />);
-    expect(buttons()).toContain("Ask for approval");
+    expect(buttons()).toEqual(["Use", "Test", "Share", "Ask for approval", "Delete"]);
   });
 
   it("gives someone it is only shared with just Use", () => {

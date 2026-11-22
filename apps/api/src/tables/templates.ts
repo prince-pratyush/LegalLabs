@@ -19,6 +19,7 @@ import {
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
+import type { Notifier } from "../notifications/notify.js";
 import { audit } from "./audit.js";
 import type { Cells } from "./cells.js";
 import {
@@ -60,6 +61,9 @@ const SELECT = `select t.*, case when t.owner_id = core.current_user_id() then '
                                    then 'edit'
                                  else 'use' end my_access
                   from work.rt_template t where t.deleted_at is null`;
+
+/** Stages at which a template may be shared: tried out, or already through approval. */
+const SHAREABLE: readonly TemplateStatus[] = ["tested", "shared", "published"];
 
 const json = (t: TemplateRow): ReviewTableTemplate => ({
   id: t.id,
@@ -105,10 +109,12 @@ function refusal(err: unknown): ReturnType<typeof fail> | null {
 export interface TemplateDeps {
   tables: Tables;
   cells: Pick<Cells, "runTable">;
+  /** Tells an author their template was approved or rejected, with the reviewer's note. */
+  notifier?: Notifier;
 }
 
 export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
-  const { tables, cells } = deps;
+  const { tables, cells, notifier } = deps;
 
   async function load(db: Db, id: string) {
     if (!UUID.test(id)) return null;
@@ -412,6 +418,17 @@ export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
       if (!UUID.test(id)) return fail("NOT_FOUND");
       try {
         return await asApp(pool, principal, async (db): Promise<Result<unknown[]>> => {
+          // A template is shared only once it has been tried out; taking shares away is always
+          // allowed. The database function checks who may share, so a stranger still sees 404.
+          if (body.grants.length > 0) {
+            const t = await load(db, id);
+            if (t && t.my_access !== "use" && !SHAREABLE.includes(t.status)) {
+              return fail(
+                "TEMPLATE_BAD_TRANSITION",
+                "Test the template on a few files before sharing it.",
+              );
+            }
+          }
           const { rows: changes } = await db.query<{ change: string }>(
             "select * from work.rt_template_set_shares($1, $2::jsonb)",
             [id, JSON.stringify(body.grants)],
@@ -511,6 +528,18 @@ export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
           "template",
         ),
       );
+      if (notifier) {
+        // notify never throws, so a notification that fails can't undo the decision.
+        await notifier.notify(principal, {
+          kind: approve ? "table.template_approved" : "table.template_rejected",
+          actorId: principal.userId,
+          objectType: "table_template",
+          objectId: id,
+          objectTitle: result.value.name,
+          people: { requester: result.value.owner_id },
+          ...(!approve && note ? { detail: note } : {}),
+        });
+      }
       return { ok: true as const, value: json(result.value) };
     },
   };
