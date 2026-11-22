@@ -632,6 +632,33 @@ export async function seed(tx: Tx) {
     [beta, bob],
   );
 
+  // Models and connectors admin: one of each table in beta only.
+  await tx.rows(
+    "insert into admin.secret (id, workspace_id, ciphertext) values ('sec_' || repeat('b', 32), $1, decode(repeat('00', 40), 'hex'))",
+    [beta],
+  );
+  await tx.rows(
+    "insert into admin.model_config (workspace_id, provider, model) values ($1, 'anthropic', 'claude-haiku-5-5')",
+    [beta],
+  );
+  await tx.rows("insert into admin.model_policy (workspace_id) values ($1)", [beta]);
+  const connectorId = (
+    await tx.rows<{ id: string }>(
+      "insert into admin.connector (workspace_id, name, url, auth_kind) values ($1, 'Docs', 'https://mcp.example.com/mcp', 'none') returning id",
+      [beta],
+    )
+  )[0]?.id;
+  await tx.rows(
+    `insert into admin.connector_tool (workspace_id, connector_id, name, tool_hash)
+     values ($1, $2, 'search', repeat('c', 64))`,
+    [beta, connectorId],
+  );
+  await tx.rows(
+    `insert into admin.connector_user_policy (workspace_id, connector_id, user_id, tool_name, policy)
+     values ($1, $2, $3, 'search', 'block')`,
+    [beta, connectorId, bob],
+  );
+
   return {
     workflows,
     agents,

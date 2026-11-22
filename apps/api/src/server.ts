@@ -9,6 +9,10 @@ import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createSignInAudit } from "./addins/audit.js";
 import { createLanguage } from "./addins/language.js";
+import { createAdminConnectors } from "./admin-models/connectors.js";
+import { httpDiscovery } from "./admin-models/discovery.js";
+import { createAdminModels } from "./admin-models/models.js";
+import { createSecretBox } from "./admin-models/secrets.js";
 import { runEngineFromEnv, schedulerFromEnv } from "./agent-runs/engine.js";
 import { runHandlers } from "./agent-runs/handlers.js";
 import { createAgentRuns } from "./agent-runs/runs.js";
@@ -155,6 +159,17 @@ const memory = createMemoryModule(pool, {
   // PDF, Word and text samples, read the same way uploaded files are.
   read: createIngest(process.env.DOCPROC_URL ? { docprocUrl: process.env.DOCPROC_URL } : {}),
 });
+// Without LEGALLABS_SECRETS_KEY keys and tokens can't be stored, so those calls answer 503.
+const secrets = process.env.LEGALLABS_SECRETS_KEY
+  ? createSecretBox(process.env.LEGALLABS_SECRETS_KEY)
+  : undefined;
+const adminModels = {
+  models: createAdminModels(pool, secrets ? { secrets } : {}),
+  connectors: createAdminConnectors(pool, {
+    ...(secrets ? { secrets } : {}),
+    discovery: httpDiscovery,
+  }),
+};
 const memoryPurge = createMemoryPurgeJob(memory.memories, { log: (line) => console.log(line) });
 memoryPurge.start();
 const threadService = createThreads(pool, {
@@ -224,6 +239,7 @@ const app = createApp({
   playbooks: createPlaybooks(pool, { gateway }),
   notifications,
   memory,
+  adminModels,
   reviews: createReviews(pool, {
     gateway,
     notifier,
