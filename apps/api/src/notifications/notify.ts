@@ -1,3 +1,4 @@
+import { isRelativeLink } from "@legallabs/contracts";
 import type pg from "pg";
 import type { Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
@@ -35,6 +36,12 @@ export function createNotifier(
           (id) => id !== event.actorId,
         );
         if (recipients.length === 0) return;
+        // A link that leaves the app is a phishing vector, so such an event is dropped, not sent.
+        const link = entry.link(event);
+        if (!isRelativeLink(link)) {
+          log(`notify ${event.kind} dropped: link is not an in-app link`);
+          return;
+        }
         const body =
           entry.body && event.detail ? [...event.detail].slice(0, BODY_CHARS).join("") : null;
         const made = await asApp(pool, principal, async (db) => {
@@ -51,7 +58,7 @@ export function createNotifier(
               event.actorId,
               entry.action_required,
               JSON.stringify(entry.actions ?? []),
-              entry.link(event),
+              link,
               event.matterId ?? null,
               recipients,
             ],

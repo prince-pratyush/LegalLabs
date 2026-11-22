@@ -1,0 +1,17 @@
+# Self-hosted Temporal for runs and schedules. State is kept in a volume, so runs survive a
+# restart of the server as well as of the worker.
+services:
+  temporal:
+    image: temporalio/temporal:1.10.1
+    command: server start-dev --ip 0.0.0.0 --db-filename /data/temporal.db
+    ports:
+      - "127.0.0.1:7233:7233"
+    volumes:
+      - temporal-data:/data
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+volumes:
+  temporal-data:

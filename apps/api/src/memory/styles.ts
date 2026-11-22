@@ -10,7 +10,8 @@ import {
 import type { IngestResult } from "@legallabs/ingest";
 import { type Gateway, GatewayError } from "@legallabs/model-gateway";
 import type pg from "pg";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { audit } from "../auth/audit.js";
+import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
 
 export type StyleFailure =
@@ -106,23 +107,6 @@ export function createWritingStyles(
   options: { gateway?: Gateway; read?: SampleReader } = {},
 ): WritingStyles {
   const running = new Set<Promise<unknown>>();
-
-  const audit = (
-    db: Db,
-    p: Principal,
-    client: Client,
-    action: string,
-    id: string,
-    details: object = {},
-  ) =>
-    db.query("select admin.append_audit_event($1, 'user', $2, 'writing_style', $3, $4, $5, $6)", [
-      action,
-      p.userId,
-      id,
-      JSON.stringify(details),
-      client.ip,
-      uaHash(client),
-    ]);
 
   async function attempt<T>(p: Principal, work: (db: Db) => Promise<T>): Promise<Result<T>> {
     try {
@@ -246,7 +230,7 @@ export function createWritingStyles(
           ],
         );
         const id = (rows[0] as { id: string }).id;
-        await audit(db, p, client, "writing_style.created", id, {
+        await audit(db, p, client, "writing_style.created", "writing_style", id, {
           kind: sampleText === null ? "instructions" : "sample",
         });
         return (await one(db, id, p.userId)) as WritingStyle;
@@ -284,7 +268,9 @@ export function createWritingStyles(
             values,
           );
         }
-        await audit(db, p, client, "writing_style.updated", id, { fields: Object.keys(patch) });
+        await audit(db, p, client, "writing_style.updated", "writing_style", id, {
+          fields: Object.keys(patch),
+        });
         return (await one(db, id, p.userId)) as WritingStyle;
       }),
 
@@ -293,7 +279,7 @@ export function createWritingStyles(
         // The owner, or a holder of writing_styles.share when it is shared; the policy decides.
         const { rowCount } = await db.query("delete from memory.writing_style where id = $1", [id]);
         if (!rowCount) throw new Refused("NOT_FOUND");
-        await audit(db, p, client, "writing_style.deleted", id);
+        await audit(db, p, client, "writing_style.deleted", "writing_style", id);
         return null;
       }),
 
@@ -322,7 +308,14 @@ export function createWritingStyles(
           if (!holder) throw new Refused("FORBIDDEN");
           await db.query("select memory.unshare_style($1)", [id]);
         }
-        await audit(db, p, client, shared ? "writing_style.shared" : "writing_style.unshared", id);
+        await audit(
+          db,
+          p,
+          client,
+          shared ? "writing_style.shared" : "writing_style.unshared",
+          "writing_style",
+          id,
+        );
         return await one(db, id, p.userId);
       }),
 

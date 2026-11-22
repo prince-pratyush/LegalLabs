@@ -55,37 +55,57 @@ export function notificationRoutes(
 
   app.get("/notifications/stream", async (c) => {
     const principal = c.get("principal");
-    const open = streams.get(principal.userId) ?? 0;
-    if (open >= MAX_STREAMS) {
+    const mine = () => streams.get(principal.userId) ?? 0;
+    if (mine() >= MAX_STREAMS) {
       return c.json({ code: "TOO_MANY_STREAMS", message: "Close another tab first." }, 429);
     }
-    streams.set(principal.userId, open + 1);
     c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
+      // Counted here, where the matching release is guaranteed by the finally below, so a
+      // request that never gets as far as streaming can't leave a slot taken.
+      if (mine() >= MAX_STREAMS) return;
+      streams.set(principal.userId, mine() + 1);
       let wake: (() => void) | null = null;
-      // A publish only wakes the loop; what to send is always read back as the caller.
-      const stop = notifications.hub.subscribe(principal.userId, () => wake?.());
-      stream.onAbort(() => wake?.());
-      const opened = now();
-      const sent = new Set<string>();
-      let since: string | null = null;
-      let lastCounts = "";
+      let stop = () => {};
       try {
+        // A publish only wakes the loop; what to send is always read back as the caller.
+        stop = notifications.hub.subscribe(principal.userId, () => wake?.());
+        stream.onAbort(() => wake?.());
+        const opened = now();
+        // Each item is sent once: the newest creation time sent so far is the high-water mark
+        // (with the ids already sent at that instant), and a merged item gets a later time, so
+        // it is sent again.
+        let mark = 0n;
+        let atMark = new Set<string>();
+        let since: string | null = null;
+        let lastCounts = "";
         while (!stream.aborted && now() - opened < MAX_STREAM_MS) {
-          const { items, counts, high } = await notifications.changes(principal, since);
+          let batch: Awaited<ReturnType<Notifications["changes"]>>;
+          try {
+            batch = await notifications.changes(principal, since);
+          } catch {
+            // The session ended or the account was suspended: say nothing more.
+            return;
+          }
+          const { items, marks, counts, high } = batch;
           since = high;
-          for (const item of items) {
-            const key = `${item.id}|${item.created_at}`;
-            if (sent.has(key)) continue;
-            sent.add(key);
+          let sent = 0;
+          for (const [i, item] of items.entries()) {
+            const at = marks[i] ?? 0n;
+            if (at < mark || (at === mark && atMark.has(item.id))) continue;
+            if (at > mark) {
+              mark = at;
+              atMark = new Set();
+            }
+            atMark.add(item.id);
+            sent++;
             await stream.writeSSE({
               event: "notification",
               data: JSON.stringify({ notification: item }),
             });
           }
-          if (sent.size > 500) sent.clear();
           const text = JSON.stringify(counts);
-          if (text !== lastCounts || items.length > 0) {
+          if (text !== lastCounts || sent > 0) {
             lastCounts = text;
             await stream.writeSSE({ event: "counts", data: text });
           }
@@ -100,7 +120,7 @@ export function notificationRoutes(
         }
       } finally {
         stop();
-        const left = (streams.get(principal.userId) ?? 1) - 1;
+        const left = mine() - 1;
         if (left > 0) streams.set(principal.userId, left);
         else streams.delete(principal.userId);
       }

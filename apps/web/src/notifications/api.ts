@@ -6,7 +6,7 @@ import type {
   NotificationSettings,
   NotificationSettingsPatch,
 } from "@legallabs/contracts";
-import { request, send } from "./http.js";
+import { request, send } from "../http.js";
 
 export type Tab = "all" | "action_required";
 export type State = "unread_read" | "unread" | "archived";

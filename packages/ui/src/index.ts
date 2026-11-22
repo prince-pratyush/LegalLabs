@@ -1,4 +1,65 @@
 export { cn } from "./cn.js";
+export {
+  type ActivityRun,
+  AgentActivity,
+  AgentActivitySkeleton,
+  RunStatusText,
+} from "./components/agent/agent-activity.js";
+export { AccessBadge, AgentStatusBadge, ScheduleBadge } from "./components/agent/agent-badges.js";
+export {
+  AgentChanges,
+  AgentChangesSkeleton,
+  AgentVersionList,
+  type ChangedItem,
+  type ItemChanges,
+  type VersionRow,
+} from "./components/agent/agent-changes.js";
+export { AgentEditor, AgentEditorSkeleton } from "./components/agent/agent-editor.js";
+export { AgentList, AgentListSkeleton, type AgentRow } from "./components/agent/agent-list.js";
+export {
+  type AgentGrant,
+  type AgentPrincipalType,
+  AgentShareForm,
+  AgentShareFormSkeleton,
+  type AgentShareRequest,
+  type PrincipalCandidate,
+  type ShareTarget,
+} from "./components/agent/agent-share-form.js";
+export {
+  ImportPreview,
+  type ImportPreviewData,
+  type ImportStatus,
+} from "./components/agent/import-preview.js";
+export { NudgeChip } from "./components/agent/nudge-chip.js";
+export { type QuestionAnswer, QuestionCard } from "./components/agent/question-card.js";
+export {
+  blankSchedule,
+  ScheduleForm,
+  type ScheduleValue,
+  toSchedule,
+  upcoming,
+} from "./components/agent/schedule-form.js";
+export {
+  ApprovalSwitches,
+  type ApprovalValue,
+  ShareRequestQueue,
+  type ShareRequestRow,
+} from "./components/agent/share-requests.js";
+export {
+  ACCESS_LABEL,
+  type AgentAttachmentItem,
+  type AgentContent,
+  type AgentSourceItem,
+  type AttachChoice,
+  type AttachmentKind,
+  formatDuration,
+  formatWhen,
+  KIND_LABEL,
+  type SourceChoice,
+  type SourceKind,
+  toLabel,
+  unresolvedLabels,
+} from "./components/agent/types.js";
 export { AppShell } from "./components/app-shell.js";
 export { Breadcrumbs, type Crumb } from "./components/breadcrumbs.js";
 export { Button, type ButtonProps, buttonStyles } from "./components/button.js";

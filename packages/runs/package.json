@@ -1,0 +1,39 @@
+{
+  "name": "@legallabs/runs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./temporal": {
+      "types": "./dist/temporal/index.d.ts",
+      "default": "./dist/temporal/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@legallabs/contracts": "workspace:*",
+    "@temporalio/activity": "1.26.0",
+    "@temporalio/client": "1.26.0",
+    "@temporalio/worker": "1.26.0",
+    "@temporalio/workflow": "1.26.0",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@legallabs/db": "workspace:*",
+    "@temporalio/testing": "1.26.0",
+    "@types/pg": "8.23.1",
+    "vitest": "5.1.0"
+  }
+}

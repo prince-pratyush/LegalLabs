@@ -9,6 +9,7 @@ import {
 } from "@legallabs/ui";
 import {
   BookMarked,
+  Bot,
   Briefcase,
   ClipboardList,
   History,
@@ -19,6 +20,8 @@ import {
   Users,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { AgentsApp } from "./agents/AgentsApp.js";
+import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { HistoryPage } from "./history/HistoryPage.js";
 import { LibraryApp } from "./library/LibraryApp.js";
@@ -68,7 +71,9 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseMattersRoute(hash) ? (
+        {parseAgentRoute(hash) ? (
+          <AgentsApp onLeave={() => navigate(paths.new)} />
+        ) : parseMattersRoute(hash) ? (
           <MattersApp onLeave={() => navigate(paths.new)} />
         ) : parseTableRoute(hash) ? (
           <TablesApp onLeave={() => navigate(paths.new)} />
@@ -223,6 +228,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => go({ page: "list" }),
     },
     {
+      id: "agents",
+      kind: "action",
+      group: "Go to",
+      label: "Agents",
+      run: () => goAgents({ page: "list" }),
+    },
+    {
       id: "playbooks",
       kind: "action",
       group: "Go to",
@@ -328,6 +340,15 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <Library aria-hidden />
           Vaults
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => goAgents({ page: "list" })}
+        >
+          <Bot aria-hidden />
+          Agents
         </Button>
         <Button
           variant="quiet"
