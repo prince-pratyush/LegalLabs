@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
+import type { NotificationEvent } from "../notifications/notify.js";
 import { auditTrail } from "../test-db.js";
 import { colleague, LAW, pool, setup } from "../test-tables.js";
 
@@ -116,14 +117,28 @@ describe("review-table templates (RVT-009)", () => {
         [s.m.workspaceId],
       )
     ).rows[0]?.id;
-    const shared = await call(s, "PUT", `/review-table-templates/${t.id}/shares`, {
-      grants: [{ principal_type: "user", principal_id: benUser, level: "use" }],
+    const grants = [{ principal_type: "user", principal_id: benUser, level: "use" }];
+    // Not tried out yet, so it can't be shared; nothing was granted.
+    expect(
+      await call(s, "PUT", `/review-table-templates/${t.id}/shares`, { grants }),
+    ).toMatchObject({ status: 409, body: { code: "TEMPLATE_BAD_TRANSITION" } });
+    expect((await call(s, "GET", `/review-table-templates/${t.id}/shares`)).body.shares).toEqual(
+      [],
+    );
+    expect((await call(s, "GET", `/review-table-templates/${t.id}`, undefined, ben)).status).toBe(
+      404,
+    );
+    await call(s, "POST", `/review-table-templates/${t.id}/test`, {
+      vault_id: s.v.id,
+      document_ids: [s.v.ids[0]],
     });
+    await s.h.tables.runner.idle();
+    const shared = await call(s, "PUT", `/review-table-templates/${t.id}/shares`, { grants });
     expect(shared.status).toBe(200);
     expect(shared.body.shares[0]).toMatchObject({ principal_id: benUser, level: "use" });
     expect(
       (await call(s, "GET", `/review-table-templates/${t.id}`, undefined, ben)).body.template,
-    ).toMatchObject({ status: "draft", my_access: "use" });
+    ).toMatchObject({ status: "shared", my_access: "use" });
     expect(
       await call(s, "PATCH", `/review-table-templates/${t.id}`, { name: "Mine" }, ben),
     ).toMatchObject({ status: 403 });
@@ -312,5 +327,37 @@ describe("review-table templates (RVT-009)", () => {
     expect(fine.body.template.categories).toEqual(["Real estate"]);
     expect((await call(s, "DELETE", `/review-table-templates/${t.id}`)).status).toBe(204);
     expect((await call(s, "GET", `/review-table-templates/${t.id}`)).status).toBe(404);
+  });
+
+  it("tells the author when a manager approves or rejects, with the note", async () => {
+    const events: NotificationEvent[] = [];
+    const s = await setup({ notifier: { notify: async (_, e) => void events.push(e) } });
+    await call(s, "POST", `/review-tables/${s.tableId}/columns`, LAW);
+    const t = (await save(s)).body.template;
+    const ask = async () => {
+      await call(s, "POST", `/review-table-templates/${t.id}/test`, {
+        vault_id: s.v.id,
+        document_ids: [s.v.ids[0]],
+      });
+      await s.h.tables.runner.idle();
+      await call(s, "POST", `/review-table-templates/${t.id}/publish`);
+    };
+    await ask();
+    await call(s, "POST", `/admin/review-table-templates/${t.id}/reject`, {
+      note: "Needs a clearer prompt",
+    });
+    await ask();
+    await call(s, "POST", `/admin/review-table-templates/${t.id}/approve`, {});
+    expect(events.map((e) => e.kind)).toEqual([
+      "table.template_rejected",
+      "table.template_approved",
+    ]);
+    expect(events[0]).toMatchObject({
+      objectId: t.id,
+      objectTitle: "Deal terms",
+      people: { requester: t.owner_id },
+      detail: "Needs a clearer prompt",
+    });
+    expect(events[1]?.detail).toBeUndefined();
   });
 });
