@@ -17,6 +17,8 @@ import { agentHttp } from "./agents/http.js";
 import type { Nudges } from "./agents/nudges.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
+import { oidcRoutes } from "./auth/oidc/routes.js";
+import type { Oidc } from "./auth/oidc/service.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
 import type { Documents } from "./documents/documents.js";
 import { documentRoutes } from "./documents/routes.js";
@@ -86,6 +88,8 @@ export interface AppOptions {
   /** Pages and files for the document viewer. */
   viewer?: Viewer;
   drafts: Drafts;
+  /** Single sign-on through OIDC; left out, /auth/oidc is not mounted. */
+  oidc?: Oidc;
   /** Optional, so harnesses that don't touch vaults needn't build one. */
   vaults?: Vaults;
   /** Optional in the same way as vaults. */
@@ -137,6 +141,7 @@ export function createApp({
   threads,
   viewer,
   drafts,
+  oidc,
   vaults,
   tables,
   library,
@@ -249,6 +254,29 @@ export function createApp({
     if (!principal) return c.json({ error: "unauthenticated" }, 401);
     return c.json({ user_id: principal.userId, workspace_id: principal.workspaceId });
   });
+
+  if (oidc) {
+    app.route(
+      "/auth/oidc",
+      oidcRoutes({
+        oidc,
+        clientOf,
+        now,
+        signedIn: async (c, token) => {
+          const previous = getCookie(c, COOKIE, COOKIE_PREFIX);
+          if (previous) await auth.logout(previous, clientOf(c));
+          setCookie(c, COOKIE, token, {
+            prefix: COOKIE_PREFIX,
+            httpOnly: true,
+            secure: true,
+            sameSite: "Lax",
+            path: "/",
+            maxAge: SESSION_SECONDS,
+          });
+        },
+      }),
+    );
+  }
 
   if (addin) {
     app.route(

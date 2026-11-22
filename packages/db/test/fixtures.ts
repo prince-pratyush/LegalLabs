@@ -411,6 +411,16 @@ export async function seed(tx: Tx) {
   };
   const libraryItems = { acme: await library(acme, ana), beta: await library(beta, bob) };
 
+  // The OIDC tables the app can read, seeded in beta only.
+  await tx.rows(
+    "insert into core.oidc_provider (workspace_id, issuer, client_id) values ($1, 'https://idp.beta.test', 'beta-client')",
+    [beta],
+  );
+  await tx.rows(
+    "insert into core.external_identity (workspace_id, user_id, issuer, subject, linked_via) values ($1, $2, 'https://idp.beta.test', 'sub-bob', 'email')",
+    [beta, bob],
+  );
+
   // One of each notification table in beta only, so the notification tests start from nothing
   // in acme (they check the other workspace stays untouched).
   await tx.rows(

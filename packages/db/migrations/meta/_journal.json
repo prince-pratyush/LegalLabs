@@ -435,6 +435,20 @@
       "when": 1794010130002,
       "tag": "0089_notify_hardening",
       "breakpoints": false
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794010140000,
+      "tag": "0103_core_oidc",
+      "breakpoints": false
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794010140001,
+      "tag": "0104_core_oidc_password_gate",
+      "breakpoints": false
     }
   ]
 }
