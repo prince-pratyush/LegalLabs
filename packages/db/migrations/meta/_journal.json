@@ -435,6 +435,20 @@
       "when": 1794010130002,
       "tag": "0089_notify_hardening",
       "breakpoints": false
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794010140001,
+      "tag": "0110_analytics_events",
+      "breakpoints": false
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794010140002,
+      "tag": "0111_analytics_materialise",
+      "breakpoints": false
     }
   ]
 }
