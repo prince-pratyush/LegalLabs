@@ -19,6 +19,7 @@ describe("tenancy", () => {
         "dee@acme.test",
         "gia@guest.test",
         "sue@acme.test",
+        "y@other.test",
       ]);
     });
   });

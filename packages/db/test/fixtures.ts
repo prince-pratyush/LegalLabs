@@ -54,6 +54,12 @@ export async function seed(tx: Tx) {
     `insert into core."user" (workspace_id, email, status, kind) values ($1, 'gia@guest.test', 'active', 'guest') returning id`,
     [acme],
   );
+  // A live guest: without a profile a guest is locked out.
+  await tx.rows(
+    `insert into core.guest_profile (workspace_id, user_id, email_domain, expires_at)
+     values ($1, $2, 'guest.test', now() + interval '30 days')`,
+    [acme, gia],
+  );
   // Holds admin.users but not admin.matters, to test that it cannot grant more.
   const dee = await user(acme, "dee@acme.test", acmeUser, { extra: ["admin.users"] });
   const bob = await user(beta, "bob@beta.test", betaAdmin);
@@ -654,6 +660,46 @@ export async function seed(tx: Tx) {
     return { spaceId, phaseId, taskId };
   };
   const spaces = { acme: await space(acme, ana, ben), beta: await space(beta, bob, bob) };
+  // An external Space with a party, its connection, an invite, a guest and a login code, per workspace.
+  const guestRoom = async (ws: string, owner: string, domain: string) => {
+    const spaceId = await id(
+      `insert into work.space (workspace_id, name, kind, created_by) values ($1, 'Outside room', 'external', $2) returning id`,
+      [ws, owner],
+    );
+    const partyId = await id(
+      `insert into work.space_party (workspace_id, space_id, name, domain, created_by)
+       values ($1, $2, 'Other LLP', $3, $4) returning id`,
+      [ws, spaceId, domain, owner],
+    );
+    await tx.rows(
+      `insert into work.space_connection (workspace_id, space_id, party_id) values ($1, $2, $3)`,
+      [ws, spaceId, partyId],
+    );
+    await tx.rows(
+      `insert into work.guest_invite (workspace_id, space_id, party_id, email, token_hash, invited_by, expires_at)
+       values ($1, $2, $3, $4, sha256(gen_random_uuid()::text::bytea), $5, now() + interval '7 days')`,
+      [ws, spaceId, partyId, `x@${domain}`, owner],
+    );
+    const guestId = await id(
+      `insert into core."user" (workspace_id, email, status, kind) values ($1, $2, 'active', 'guest') returning id`,
+      [ws, `y@${domain}`],
+    );
+    await tx.rows(
+      `insert into core.guest_profile (workspace_id, user_id, email_domain, expires_at)
+       values ($1, $2, $3, now() + interval '30 days')`,
+      [ws, guestId, domain],
+    );
+    await tx.rows(
+      `insert into core.guest_login_code (workspace_id, user_id, code_hash, expires_at)
+       values ($1, $2, sha256(gen_random_uuid()::text::bytea), now() + interval '10 minutes')`,
+      [ws, guestId],
+    );
+    return { spaceId, partyId, guestId };
+  };
+  const guestRooms = {
+    acme: await guestRoom(acme, ana, "other.test"),
+    beta: await guestRoom(beta, bob, "other.test"),
+  };
   // One of each memory table in beta only, so the memory tests start from nothing in acme.
   await tx.rows(
     `insert into memory.memory (workspace_id, user_id, text, source, normalized_hash)
@@ -737,6 +783,7 @@ export async function seed(tx: Tx) {
   );
 
   return {
+    guestRooms,
     workflows,
     agents,
     documents,
