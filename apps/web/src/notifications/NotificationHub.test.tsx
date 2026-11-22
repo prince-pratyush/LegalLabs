@@ -169,8 +169,15 @@ describe("the hub", () => {
   });
 
   it("runs an inline action and shows Done", async () => {
+    // The hub refetches after acting, so the server must report the plan as done by then.
+    let acted = false;
+    const done = { ...PLAN, done_at: "2026-11-10T02:00:00.000Z" };
     const sent = setup({
-      [`POST /api/v1/notifications/${ID(1)}/act`]: () => [200, { result: "done" }],
+      [`POST /api/v1/notifications/${ID(1)}/act`]: () => {
+        acted = true;
+        return [200, { result: "done" }];
+      },
+      [ALL]: () => [200, feed(acted ? [done, item(2), item(3)] : [PLAN, item(2), item(3)])],
     });
     render(<NotificationBell />);
     const list = await openHub();
