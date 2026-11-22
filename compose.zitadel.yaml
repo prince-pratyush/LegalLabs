@@ -1,0 +1,49 @@
+# A real OpenID provider for the identity tests, with nothing external behind it.
+#   docker compose -p legallabs-zitadel -f compose.zitadel.yaml up -d
+#   node scripts/zitadel-bootstrap.mjs   # prints the ZITADEL_* values the test reads
+# Never for production: plain http, a throwaway key and a PAT that does not expire.
+services:
+  zitadel-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 3s
+      timeout: 10s
+      retries: 20
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v4.20.3
+    command: start-from-init --masterkeyFromEnv
+    # Root only so it can write the PAT to the bind mount on any host.
+    user: "0"
+    depends_on:
+      zitadel-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ZITADEL_PORT:-8080}:8080"
+    volumes:
+      - ./.zitadel:/zitadel-out
+    environment:
+      ZITADEL_MASTERKEY: MasterkeyNeedsToHave32Characters
+      ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: ${ZITADEL_PORT:-8080}
+      ZITADEL_TLS_ENABLED: "false"
+      # A machine user with a PAT is the only credential the bootstrap script needs.
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: LegalLabs
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: bootstrap
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: bootstrap
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel-out/bootstrap.pat

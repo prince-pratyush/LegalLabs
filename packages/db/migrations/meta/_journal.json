@@ -439,21 +439,35 @@
     {
       "idx": 103,
       "version": "7",
-      "when": 1794010140001,
-      "tag": "0110_analytics_events",
+      "when": 1794010140000,
+      "tag": "0103_core_oidc",
       "breakpoints": false
     },
     {
       "idx": 104,
       "version": "7",
-      "when": 1794010140002,
-      "tag": "0111_analytics_materialise",
+      "when": 1794010140001,
+      "tag": "0104_core_oidc_password_gate",
       "breakpoints": false
     },
     {
       "idx": 105,
       "version": "7",
+      "when": 1794010140002,
+      "tag": "0110_analytics_events",
+      "breakpoints": false
+    },
+    {
+      "idx": 106,
+      "version": "7",
       "when": 1794010140003,
+      "tag": "0111_analytics_materialise",
+      "breakpoints": false
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794010140004,
       "tag": "0112_analytics_exports",
       "breakpoints": false
     }
