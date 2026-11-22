@@ -540,6 +540,20 @@
       "when": 1794010140014,
       "tag": "0122_retention_holds",
       "breakpoints": false
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794010150000,
+      "tag": "0140_sync_connections",
+      "breakpoints": false
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1794010150001,
+      "tag": "0141_vault_sync",
+      "breakpoints": false
     }
   ]
 }

@@ -51,6 +51,7 @@ import { createScim } from "./scim/service.js";
 import { createSpaceModule } from "./spaces/module.js";
 import { spaceNotifier } from "./spaces/notify.js";
 import { scriptedTaskRuns } from "./spaces/ports.js";
+import { createSyncModule } from "./sync/module.js";
 import { createReviewTables } from "./tables/module.js";
 import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
@@ -130,6 +131,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         notificationPurge.stop(),
         memoryPurge.stop(),
         emailWorker.stop(),
+        syncModule.stop(),
       ]).finally(() => process.exit(0)),
   );
 }
@@ -167,6 +169,17 @@ const memory = createMemoryModule(pool, {
 const secrets = process.env.LEGALLABS_SECRETS_KEY
   ? createSecretBox(process.env.LEGALLABS_SECRETS_KEY)
   : undefined;
+const vaultService = createVaults(pool, { documents, store, notifier });
+// Drive and SharePoint sync into vaults (CON-002), run by its own scheduler.
+const syncModule = createSyncModule(pool, {
+  ...(secrets ? { secrets } : {}),
+  vaults: vaultService,
+  notifier,
+  documentsFor: (p) =>
+    createDocuments(p, { store, embedder, reranker: rerankerFromEnv(process.env) }),
+  log: (line) => console.log(line),
+});
+syncModule.scheduler?.start();
 const adminModels = {
   models: createAdminModels(pool, secrets ? { secrets } : {}),
   connectors: createAdminConnectors(pool, {
@@ -241,7 +254,8 @@ const app = createApp({
     },
   }),
   documents,
-  vaults: createVaults(pool, { documents, store, notifier }),
+  vaults: vaultService,
+  sync: syncModule.service,
   threads: {
     threads: threadService,
     log,
