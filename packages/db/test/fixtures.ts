@@ -477,6 +477,8 @@ export async function seed(tx: Tx) {
     `insert into retention.warning_sent (workspace_id, vault_id, lead_days, expires_on)
      values ($1, $2, 7, current_date)`,
     [beta, randomUUID()],
+  );
+
   // SCIM state in beta: the mass-delete guard, one recorded removal and one group-role mapping.
   await tx.rows("insert into scim.guard (workspace_id) values ($1)", [beta]);
   await tx.rows(
