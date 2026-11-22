@@ -1,7 +1,9 @@
 import { serveStatic } from "@hono/node-server/serve-static";
+import { PublicApi } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { createCodeStore } from "./addins/codes.js";
 import type { Language } from "./addins/language.js";
@@ -42,6 +44,8 @@ import type { Notifications } from "./notifications/notifications.js";
 import { notificationRoutes } from "./notifications/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
+import { publicApiRoutes, tokenGate, tokenLimiter } from "./public-api/routes.js";
+import { type Caller, looksLikeToken, type PublicApiService } from "./public-api/service.js";
 import { retentionRoutes } from "./retention/routes.js";
 import type { Retention } from "./retention/service.js";
 import { reviewHttp } from "./reviews/http.js";
@@ -53,6 +57,8 @@ import type { Scim } from "./scim/service.js";
 import { guestAdminRoutes, guestPublicRoutes, guestRoutes } from "./spaces/guests-http.js";
 import { spaceHttp } from "./spaces/http.js";
 import type { SpaceModule } from "./spaces/module.js";
+import { syncRoutes } from "./sync/routes.js";
+import type { SyncService } from "./sync/service.js";
 import { tableHttp } from "./tables/http.js";
 import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
@@ -123,6 +129,10 @@ export interface AppOptions {
   memory?: MemoryModule;
   /** Models and connectors admin (ADM-005/006); optional, like vaults. */
   adminModels?: { models: AdminModels; connectors: AdminConnectors };
+  /** Drive and SharePoint sync into vaults (CON-002); optional, like vaults. */
+  sync?: SyncService;
+  /** API tokens and the public endpoints they reach (ADM-009); left out, `cns_` tokens are refused. */
+  publicApi?: PublicApiService;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -172,6 +182,7 @@ export function createApp({
   commandCenter,
   memory,
   adminModels,
+  sync,
   knowledge,
   playbooks,
   reviews,
@@ -181,6 +192,7 @@ export function createApp({
   agentSharing,
   agentNudges,
   scim,
+  publicApi,
   clientIp,
   now = Date.now,
   webRoot,
@@ -188,7 +200,8 @@ export function createApp({
 }: AppOptions) {
   const perIp = createLimiter({ limit: 10, windowMs: 60_000, now });
   const perAccount = createLimiter({ limit: 5, windowMs: 60_000, now });
-  const app = new Hono<{ Variables: { principal: Principal } }>();
+  const app = new Hono<{ Variables: { principal: Principal; caller?: Caller } }>();
+  const apiLimiter = tokenLimiter(now);
 
   const clientOf = (c: Context): Client => ({
     ip: clientIp(c),
@@ -329,20 +342,45 @@ export function createApp({
     );
   }
 
+  // The published contract is public: it names routes and shapes, never data.
+  app.get("/api/v1/openapi.json", (c) => c.json(PublicApi.buildOpenApi()));
+
   app.use("/api/v1/*", async (c, next) => {
     const token = tokenOf(c);
-    const principal = token ? await auth.resolve(token) : null;
-    if (!principal) return c.json({ code: "UNAUTHENTICATED", message: "Sign in first." }, 401);
-    // A guest is let into /api/v1/guest and nothing else: one rule here, not one per route.
-    if (principal.guest && !c.req.path.startsWith("/api/v1/guest/")) {
-      return c.json({ code: "FORBIDDEN", message: "Guests can't use this." }, 403);
+    if (publicApi && token && looksLikeToken(token)) {
+      const result = await publicApi.authenticate(token, clientIp(c));
+      if (!result.ok) return c.json({ code: result.code, message: result.message }, result.status);
+      c.set("principal", result.caller.principal);
+      c.set("caller", result.caller);
+    } else {
+      const principal = token ? await auth.resolve(token) : null;
+      if (!principal) return c.json({ code: "UNAUTHENTICATED", message: "Sign in first." }, 401);
+      // A guest is let into /api/v1/guest and nothing else: one rule here, not one per route.
+      if (principal.guest && !c.req.path.startsWith("/api/v1/guest/")) {
+        return c.json({ code: "FORBIDDEN", message: "Guests can't use this." }, 403);
+      }
+      c.set("principal", principal);
     }
-    c.set("principal", principal);
     await next();
     c.header("Cache-Control", "no-store");
   });
+  // Right after sign-in, so a token never reaches a route the published spec doesn't list.
+  if (publicApi) app.use("/api/v1/*", tokenGate(publicApi, clientOf, apiLimiter));
 
   if (mfa) app.route("/api/v1/mfa", mfaApiRoutes({ mfa, clientOf, now }));
+  // Before the routes people use, so a token's read of /vaults gets the public shape.
+  if (publicApi) {
+    app.route(
+      "/api/v1",
+      publicApiRoutes({
+        api: publicApi,
+        vaults,
+        clientOf,
+        now,
+        ...(mfa ? { hasFactor: (p: Principal) => mfa.hasFactor(p) } : {}),
+      }),
+    );
+  }
   if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   // One budget of model calls per person, whether they ask a thread or draft playbook rules.
@@ -383,6 +421,7 @@ export function createApp({
   if (retention) app.route("/api/v1", retentionRoutes(retention, clientOf));
   if (adminModels)
     app.route("/api/v1", adminModelRoutes(adminModels.models, adminModels.connectors, clientOf));
+  if (sync) app.route("/api/v1", syncRoutes(sync, clientOf));
   if (commandCenter) app.route("/api/v1", commandCenterRoutes(commandCenter, clientOf));
   if (memory) {
     app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
@@ -404,6 +443,22 @@ export function createApp({
     });
     app.get("*", serveStatic({ root: webRoot }));
   }
+
+  // A synced vault is read-only: the database refuses the write, and this says so plainly.
+  app.onError((err, c) => {
+    if ((err as { message?: string }).message === "VAULT_READ_ONLY") {
+      return c.json(
+        {
+          code: "VAULT_READ_ONLY",
+          message: "This vault mirrors a connected folder and can't be changed here.",
+        },
+        409,
+      );
+    }
+    if (err instanceof HTTPException) return err.getResponse();
+    console.error(err);
+    return c.text("Internal Server Error", 500);
+  });
 
   return app;
 }

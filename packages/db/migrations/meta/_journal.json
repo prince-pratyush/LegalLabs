@@ -544,28 +544,63 @@
     {
       "idx": 111,
       "version": "7",
-      "when": 1794010160001,
-      "tag": "0160_core_guest_accounts",
+      "when": 1794010150000,
+      "tag": "0150_api_tokens",
       "breakpoints": false
     },
     {
       "idx": 112,
       "version": "7",
-      "when": 1794010160002,
-      "tag": "0161_work_space_parties",
+      "when": 1794010150001,
+      "tag": "0151_api_read_scopes",
       "breakpoints": false
     },
     {
       "idx": 113,
       "version": "7",
-      "when": 1794010160003,
-      "tag": "0162_work_guest_access",
+      "when": 1794010150002,
+      "tag": "0152_api_vault_reads",
+      "breakpoints": false
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1794010160000,
+      "tag": "0140_sync_connections",
+      "breakpoints": false
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1794010160001,
+      "tag": "0141_vault_sync",
       "breakpoints": false
     },
     {
       "idx": 114,
       "version": "7",
+      "when": 1794010160002,
+      "tag": "0160_core_guest_accounts",
+      "breakpoints": false
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1794010160003,
+      "tag": "0161_work_space_parties",
+      "breakpoints": false
+    },
+    {
+      "idx": 116,
+      "version": "7",
       "when": 1794010160004,
+      "tag": "0162_work_guest_access",
+      "breakpoints": false
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1794010160005,
       "tag": "0163_analytics_guest_usage",
       "breakpoints": false
     }

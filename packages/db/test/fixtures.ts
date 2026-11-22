@@ -782,6 +782,30 @@ export async function seed(tx: Tx) {
     [beta, connectorId, bob],
   );
 
+  // Drive and SharePoint sync: a connection, a synced vault and one mapped file, beta only.
+  const syncRef = "sec_" + "ab".repeat(16);
+  await tx.rows(
+    "insert into admin.secret (id, workspace_id, ciphertext) values ($1, $2, decode(repeat('00', 40), 'hex'))",
+    [syncRef, beta],
+  );
+  const syncConnection = (
+    await tx.rows<{ id: string }>(
+      `insert into content.sync_connection (workspace_id, user_id, provider, secret_ref)
+       values ($1, $2, 'google_drive', $3) returning id`,
+      [beta, bob, syncRef],
+    )
+  )[0]?.id;
+  await tx.rows(
+    `insert into content.vault_sync (vault_id, workspace_id, connection_id, provider, root_remote_id)
+     values ($1, $2, $3, 'google_drive', 'root1')`,
+    [vaults.beta.vaultId, beta, syncConnection],
+  );
+  await tx.rows(
+    `insert into content.sync_item (vault_id, remote_id, workspace_id, kind, name)
+     values ($1, 'f1', $2, 'folder', 'Contracts')`,
+    [vaults.beta.vaultId, beta],
+  );
+
   return {
     guestRooms,
     workflows,

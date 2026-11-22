@@ -174,6 +174,7 @@ export {
   Text,
   Usage,
 } from "./playbook.js";
+export * as PublicApi from "./public-api.js";
 export { RetrievalScope } from "./retrieval.js";
 export * from "./review-table.js";
 export * from "./review-table-references.js";
