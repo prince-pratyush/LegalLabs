@@ -65,6 +65,14 @@ export function oidcRoutes({ oidc, clientOf, signedIn, now = Date.now }: OidcRou
     );
     // The reason stays in the audit log: the caller learns only that sign-in failed.
     if (!result.ok) return c.json({ error: "sso_failed" }, 401);
+    // The token rides in the fragment, which the browser never sends to a server.
+    if ("pending" in result) {
+      const { kind, mfaToken, methods } = result.pending;
+      return c.redirect(
+        `/#/auth/mfa?kind=${kind}&token=${encodeURIComponent(mfaToken)}&methods=${methods.join(",")}`,
+        302,
+      );
+    }
     await signedIn(c, result.token);
     return c.redirect(result.returnTo, 302);
   });

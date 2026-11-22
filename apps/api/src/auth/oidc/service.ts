@@ -23,6 +23,7 @@ export interface CallbackParams {
 
 export type OidcResult =
   | { ok: true; token: string; principal: Principal; returnTo: string; mfa: boolean }
+  | { ok: true; pending: SecondStep; returnTo: string }
   | { ok: false; reason: string };
 
 export interface Oidc {
@@ -38,7 +39,19 @@ export interface Oidc {
   ): Promise<OidcResult>;
 }
 
+/** A second factor the app still wants because the IdP did not assert one. */
+export interface SecondStep {
+  kind: "challenge" | "enrol";
+  mfaToken: string;
+  methods: string[];
+}
+
 export interface OidcOptions {
+  /** Owed when the IdP asserted no MFA; null means the policy asks nothing more. */
+  secondFactor?: (
+    who: { userId: string; workspaceId: string },
+    client: Client,
+  ) => Promise<SecondStep | null>;
   /** The public address of this API, which the IdP redirects back to. */
   baseUrl: string;
   policy?: FetchPolicy;
@@ -239,6 +252,8 @@ export function createOidc(pool: pg.Pool, opts: OidcOptions): Oidc {
               ],
             );
           }
+          // The app's own policy applies when the IdP did not strengthen the sign-in.
+          if (!mfa && opts.secondFactor) return { who: { userId: r.user_id, workspaceId } };
           const session = await insertSession(db, { userId: r.user_id, workspaceId }, client, {
             mfa,
             details: { method: "oidc", mfa },
@@ -246,6 +261,20 @@ export function createOidc(pool: pg.Pool, opts: OidcOptions): Oidc {
           return { session };
         });
         if ("reason" in outcome) return { ok: false, reason: outcome.reason };
+        const returnTo = safeReturnTo(req.return_to) ?? "/";
+        const who = "who" in outcome ? outcome.who : undefined;
+        if (who) {
+          const pending = await opts.secondFactor?.(who, client);
+          if (pending) return { ok: true, pending, returnTo };
+          const session = await asApp(pool, who, (db) =>
+            insertSession(db, who, client, {
+              mfa: false,
+              details: { method: "oidc", mfa: false },
+            }),
+          );
+          return { ok: true, ...session, returnTo, mfa: false };
+        }
+        if (!("session" in outcome)) return { ok: false, reason: "internal" };
         return {
           ok: true,
           ...outcome.session,
