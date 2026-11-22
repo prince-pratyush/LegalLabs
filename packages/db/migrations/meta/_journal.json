@@ -379,6 +379,13 @@
       "when": 1794009904000,
       "tag": "0077_core_wall_enforcement",
       "breakpoints": false
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1794009950000,
+      "tag": "0088_work_review_table_template_scope",
+      "breakpoints": false
     }
   ]
 }

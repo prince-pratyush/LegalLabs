@@ -1,6 +1,7 @@
 import {
   inRunOrder,
   type PutSyncBody,
+  RT_LIMITS,
   type SyncResult,
   type SyncStatus,
 } from "@legallabs/contracts";
@@ -46,6 +47,9 @@ export interface TableSync {
 }
 
 const NO_CLIENT: Client = { ip: null, userAgent: null };
+// A pass adds this many rows at most, so one huge vault is taken in steps rather than queueing
+// thousands of model calls at once.
+const PASS_ROWS = 200;
 
 /** A folder and everything under it, for the folders a table syncs. */
 async function folderTree(db: Db, vaultId: string, folderIds: readonly string[]) {
@@ -94,7 +98,12 @@ export function createTableSync(pool: pg.Pool, options: SyncOptions): TableSync 
   /** The database half of a pass: rows for new files and versions, flags for gone ones. */
   async function sync(db: Db, principal: Principal, client: Client, table: TableRow) {
     // One pass at a time per table, so a manual pass and the job can't both add the same file.
-    await db.query("select pg_advisory_xact_lock(hashtextextended($1, 2))", [table.id]);
+    // A pass that finds another running does nothing, rather than holding a connection to wait.
+    const { rows: locked } = await db.query<{ got: boolean }>(
+      "select pg_try_advisory_xact_lock(hashtextextended($1, 2)) got",
+      [table.id],
+    );
+    if (!locked[0]?.got) return { added: 0, versions: 0, removed: 0, restored: 0 };
     let scope: string[] | null = null;
     if (table.sync_mode === "selected_folders" && table.sync_folder_ids) {
       scope = (await folderTree(db, table.vault_id ?? "", table.sync_folder_ids)).all;
@@ -135,9 +144,11 @@ export function createTableSync(pool: pg.Pool, options: SyncOptions): TableSync 
     }
     const inScope = (folder: string | null) =>
       scope === null || (folder !== null && scope.includes(folder));
-    const fresh = files.filter(
-      (f) => f.ready && inScope(f.folder_id) && (newest.get(f.id) ?? 0) < f.version_no,
-    );
+    // A table holds up to the vault limit, new versions included; the rest wait for room.
+    const room = Math.max(0, RT_LIMITS.vaultDocuments - new Set(held.map((h) => h.id)).size);
+    const fresh = files
+      .filter((f) => f.ready && inScope(f.folder_id) && (newest.get(f.id) ?? 0) < f.version_no)
+      .slice(0, Math.min(PASS_ROWS, room));
     const versions = fresh.filter((f) => newest.has(f.id)).length;
     const added = await insertRows(
       db,
@@ -273,6 +284,8 @@ export function createTableSync(pool: pg.Pool, options: SyncOptions): TableSync 
 
   async function runDue(onlyWorkspace?: string) {
     const due = await asWorker(pool, async (db) => {
+      // Try-out tables of templates go after a week, on the same schedule.
+      await db.query("select work.rt_expire_tests()");
       const { rows } = await db.query<{ workspace_id: string; table_id: string; owner_id: string }>(
         "select workspace_id, table_id, owner_id from work.rt_sync_due()",
       );

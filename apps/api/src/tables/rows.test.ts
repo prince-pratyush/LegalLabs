@@ -61,6 +61,18 @@ describe("rows", () => {
   });
 });
 
+describe("rows on a synced table", () => {
+  it("won't delete a row while sync is on, as sync would add its file straight back", async () => {
+    const s = await setup();
+    await call(s, "PUT", "/sync", { mode: "entire_vault" });
+    const row = (await rows(s)).rows[0];
+    expect(await call(s, "DELETE", "/rows", { row_ids: [row.id] })).toMatchObject({
+      status: 409,
+      body: { code: "SYNC_ENABLED" },
+    });
+  });
+});
+
 describe("column context file", () => {
   it("puts the context file in every cell's prompt, uncitable and within its share", async () => {
     const seen: string[] = [];
