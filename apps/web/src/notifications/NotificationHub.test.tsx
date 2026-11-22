@@ -178,7 +178,9 @@ describe("the hub", () => {
       await within(list).findByRole("button", { name: "Approve plan: Approve the plan" }),
     );
     expect(await within(list).findByText("Done")).toBeTruthy();
-    expect(within(list).queryByRole("button", { name: /Approve plan/ })).toBeNull();
+    await waitFor(() =>
+      expect(within(list).queryByRole("button", { name: /Approve plan/ })).toBeNull(),
+    );
     expect(sent.find((s) => s.route.endsWith("/act"))?.body).toEqual({ action: "approve_plan" });
   });
 
