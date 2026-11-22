@@ -414,6 +414,13 @@
       "when": 1794009950001,
       "tag": "0088_work_review_table_template_scope",
       "breakpoints": false
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794009950002,
+      "tag": "0089_notify_hardening",
+      "breakpoints": false
     }
   ]
 }

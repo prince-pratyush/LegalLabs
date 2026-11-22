@@ -25,7 +25,6 @@ export function createNotifier(
   pool: pg.Pool,
   hub: Hub,
   log: (line: string) => void = console.error,
-  options: { now?: () => Date } = {},
 ): Notifier {
   return {
     async notify(principal, event) {
@@ -67,19 +66,14 @@ export function createNotifier(
         });
         for (const userId of new Set(made.map((r) => r.user_id))) hub.publish(userId);
         if (entry.email) {
-          // After the notification is committed, so a mail problem never undoes it. The
-          // subject and text are the catalogue's; the comment is sent only as an excerpt the
-          // function keeps when the workspace allows content.
+          // After the notification is committed, so a mail problem never undoes it. What the
+          // mail says is read from the notification itself by the database.
           try {
             await asApp(pool, principal, (db) =>
-              db.query("select notify.enqueue_email($1::uuid[], $2, $3, $4, $5, $6, $7)", [
+              db.query("select notify.enqueue_email($1::uuid[], $2, $3)", [
                 made.map((r) => r.notification_id),
-                entry.template.subject(event),
-                entry.template.text(event),
-                entry.body && event.detail ? [...event.detail].slice(0, 300).join("") : null,
                 event.longRunning ?? false,
                 entry.completion,
-                options.now ? options.now().toISOString() : null,
               ]),
             );
           } catch (err) {
