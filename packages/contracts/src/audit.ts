@@ -180,6 +180,7 @@ export const auditActions: string[] = [
   "injection.withheld",
 
   "retention.sweep",
+  ...family("retention", ["hold_changed", "object_binned", "object_purged"]),
   ...family("deletion", ["scheduled", "completed", "verified"]),
   "recycle.restored",
   "backup.completed",

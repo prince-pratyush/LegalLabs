@@ -407,6 +407,27 @@
       "when": 1794009767000,
       "tag": "0062_work_workflows",
       "breakpoints": false
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794010120000,
+      "tag": "0120_retention_schema",
+      "breakpoints": false
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794010121000,
+      "tag": "0121_retention_functions",
+      "breakpoints": false
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794010122000,
+      "tag": "0122_retention_holds",
+      "breakpoints": false
     }
   ]
 }
