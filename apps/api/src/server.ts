@@ -40,6 +40,8 @@ import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
+import { createScimAdmin } from "./scim/admin.js";
+import { createScim } from "./scim/service.js";
 import { createSpaceModule } from "./spaces/module.js";
 import { spaceNotifier } from "./spaces/notify.js";
 import { scriptedTaskRuns } from "./spaces/ports.js";
@@ -194,6 +196,7 @@ process.once("SIGINT", () => void tables.sync.stop());
 
 const app = createApp({
   agentRuns,
+  scim: { service: createScim(pool), admin: createScimAdmin(pool) },
   workflows: createWorkflows(pool, {
     documents,
     agentRuns,

@@ -1,6 +1,13 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createGateway } from "@legallabs/model-gateway";
 import type pg from "pg";
-import { seedMember } from "./test-db.js";
+import { createApp } from "./app.js";
+import { createAuth } from "./auth/auth.js";
+import { createDrafts } from "./drafts/drafts.js";
+import { createScimAdmin } from "./scim/admin.js";
+import type { MassDeleteEvent, ScimWebhook } from "./scim/ports.js";
+import { createScim } from "./scim/service.js";
+import { seedMember, testDocuments, testThreads } from "./test-db.js";
 
 export const sha256 = (text: string) => createHash("sha256").update(text).digest();
 
@@ -74,4 +81,41 @@ export async function addPlainMember(pool: pg.Pool, w: ScimWorkspace): Promise<s
     [w.workspaceId, `plain-${randomUUID().slice(0, 6)}@${w.slug}.test`],
   );
   return rows[0]?.id ?? "";
+}
+
+/** The whole app with SCIM mounted and a webhook that records instead of sending. */
+export function scimHarness(pool: pg.Pool, ip = "203.0.113.9") {
+  const events: MassDeleteEvent[] = [];
+  const webhook: ScimWebhook = { notify: async (e) => void events.push(e) };
+  const app = createApp({
+    auth: createAuth(pool),
+    documents: testDocuments(pool),
+    threads: testThreads(pool, testDocuments(pool)),
+    drafts: createDrafts(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+    }),
+    scim: { service: createScim(pool, { webhook }), admin: createScimAdmin(pool) },
+    clientIp: () => ip,
+  });
+  /** Calls /scim/v2 as a provider would; the body is parsed when the answer is JSON. */
+  const call = async (
+    token: string,
+    method: string,
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ) => {
+    const res = await app.request(`http://api.test/scim/v2${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(body !== undefined ? { "content-type": "application/scim+json" } : {}),
+        ...headers,
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await res.text();
+    return { status: res.status, headers: res.headers, body: text ? JSON.parse(text) : null };
+  };
+  return { app, call, events };
 }

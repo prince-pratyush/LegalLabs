@@ -35,6 +35,10 @@ import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
 import { reviewHttp } from "./reviews/http.js";
 import type { Reviews } from "./reviews/reviews.js";
+import type { ScimAdmin } from "./scim/admin.js";
+import { scimAdminRoutes } from "./scim/admin-routes.js";
+import { scimRoutes } from "./scim/routes.js";
+import type { Scim } from "./scim/service.js";
 import { spaceHttp } from "./spaces/http.js";
 import type { SpaceModule } from "./spaces/module.js";
 import { tableHttp } from "./tables/http.js";
@@ -113,6 +117,8 @@ export interface AppOptions {
   agentSharing?: AgentSharing;
   /** Suggests a shared agent for what someone is typing. */
   agentNudges?: Nudges;
+  /** SCIM 2.0 under /scim/v2 and its admin API; left out, neither is mounted. */
+  scim?: { service: Scim; admin: ScimAdmin };
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -147,6 +153,7 @@ export function createApp({
   agents,
   agentSharing,
   agentNudges,
+  scim,
   clientIp,
   now = Date.now,
   webRoot,
@@ -292,6 +299,10 @@ export function createApp({
       "/api/v1",
       agentHttp({ agents, runs: agentRuns, sharing: agentSharing, nudges: agentNudges, clientOf }),
     );
+  if (scim) {
+    app.route("/api/v1", scimAdminRoutes(scim.admin, clientOf));
+    app.route("/scim/v2", scimRoutes(scim.service, clientOf));
+  }
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
