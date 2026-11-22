@@ -632,6 +632,33 @@ export async function seed(tx: Tx) {
     [beta, bob],
   );
 
+  // Command Center: one of each analytics table in beta only.
+  await tx.rows(
+    "insert into analytics.usage_event (workspace_id, user_id, access_point, surface, action, action_class) values ($1, $2, 'web', 'web', 'thread.message', 'query')",
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into analytics.outcome_event (workspace_id, user_id, workflow_type, baseline_hours, hours_saved) values ($1, $2, 'contract_reviewed', 2, 2)",
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into analytics.outcome_baseline (workspace_id, workflow_type, hours_per_completion) values ($1, 'contract_reviewed', 2)",
+    [beta],
+  );
+  await tx.rows(
+    "insert into analytics.daily (workspace_id, day, metrics) values ($1, current_date, '{}')",
+    [beta],
+  );
+  await tx.rows("insert into analytics.refresh_state (workspace_id) values ($1)", [beta]);
+  await tx.rows(
+    "insert into analytics.action_dismissal (workspace_id, user_id, action_key, dismissed_until) values ($1, $2, 'sso', now() + interval '30 days')",
+    [beta, bob],
+  );
+  await tx.rows(
+    "insert into analytics.export_job (workspace_id, requested_by, params) values ($1, $2, '{}')",
+    [beta, bob],
+  );
+
   // Models and connectors admin: one of each table in beta only.
   await tx.rows(
     "insert into admin.secret (id, workspace_id, ciphertext) values ('sec_' || md5(random()::text), $1, decode(repeat('00', 40), 'hex'))",
