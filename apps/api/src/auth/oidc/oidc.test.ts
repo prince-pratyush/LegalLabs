@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../app.js";
@@ -14,6 +15,7 @@ import {
 } from "../../test-db.js";
 import { type MockIdp, startMockIdp, type Tweaks } from "../../test-idp.js";
 import { createAuth } from "../auth.js";
+import { createMfa, type Mfa } from "../mfa/service.js";
 import { createOidcProviders, type ProviderInput } from "./providers.js";
 import { createOidc } from "./service.js";
 
@@ -30,10 +32,11 @@ afterAll(async () => {
   await pool.end();
 });
 
-const harness = () => {
+const harness = (mfa?: Mfa) => {
   const oidc = createOidc(pool, {
     baseUrl: "https://app.test",
     policy: { insecureDev: true },
+    ...(mfa ? { secondFactor: mfa.secondStep } : {}),
   });
   const app = createApp({
     auth,
@@ -302,6 +305,57 @@ describe("the second factor", () => {
     const { m, run } = await login({ amr: ["pwd"] }, { requireMfaClaim: true });
     expect(run.callback.status).toBe(401);
     expect((await failures(m)).at(-1)?.details).toMatchObject({ reason: "mfa_required" });
+  });
+
+  describe("with the app's own policy on", () => {
+    const mfa = createMfa(pool, {
+      rpID: "legal.test",
+      rpName: "LegalLabs",
+      origins: ["https://legal.test"],
+      encryptionKey: randomBytes(32),
+    });
+    const go = async (claims: Record<string, unknown>) => {
+      const m = await workspace();
+      await pool.query(
+        `update core.workspace set settings = settings || '{"mfa":"all"}' where id = $1`,
+        [m.workspaceId],
+      );
+      const userId = await invite(m, `cy@${m.slug}.test`);
+      const run = await signIn(harness(mfa), m, {
+        email: `cy@${m.slug}.test`,
+        email_verified: true,
+        ...claims,
+      });
+      const { rowCount } = await pool.query("select 1 from core.session where user_id = $1", [
+        userId,
+      ]);
+      return { run, sessions: rowCount };
+    };
+
+    it("asks for a second factor when the IdP asserted none", async () => {
+      const { run, sessions } = await go({ amr: ["pwd"] });
+      expect(run.callback.status).toBe(302);
+      expect(run.callback.headers.get("location")).toMatch(/^\/#\/auth\/mfa\?kind=enrol&token=/);
+      expect(sidOf(run.callback)).toBeUndefined();
+      expect(sessions).toBe(0);
+    });
+
+    it("trusts an IdP that asserted MFA", async () => {
+      const { run, sessions } = await go({ amr: ["mfa"] });
+      expect(run.callback.headers.get("location")).toBe("/");
+      expect(sidOf(run.callback)).toBeDefined();
+      expect(sessions).toBe(1);
+    });
+
+    it("signs in at once where the policy asks nothing", async () => {
+      const m = await workspace();
+      await invite(m, `di@${m.slug}.test`);
+      const run = await signIn(harness(mfa), m, {
+        email: `di@${m.slug}.test`,
+        email_verified: true,
+      });
+      expect(sidOf(run.callback)).toBeDefined();
+    });
   });
 
   it("is visible through the session lookup", async () => {
