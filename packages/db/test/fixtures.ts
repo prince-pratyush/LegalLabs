@@ -634,7 +634,7 @@ export async function seed(tx: Tx) {
 
   // Models and connectors admin: one of each table in beta only.
   await tx.rows(
-    "insert into admin.secret (id, workspace_id, ciphertext) values ('sec_' || repeat('b', 32), $1, decode(repeat('00', 40), 'hex'))",
+    "insert into admin.secret (id, workspace_id, ciphertext) values ('sec_' || md5(random()::text), $1, decode(repeat('00', 40), 'hex'))",
     [beta],
   );
   await tx.rows(
