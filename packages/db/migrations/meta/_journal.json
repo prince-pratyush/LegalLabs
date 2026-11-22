@@ -428,6 +428,13 @@
       "when": 1794010130001,
       "tag": "0131_admin_connectors",
       "breakpoints": false
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794010130002,
+      "tag": "0089_notify_hardening",
+      "breakpoints": false
     }
   ]
 }
