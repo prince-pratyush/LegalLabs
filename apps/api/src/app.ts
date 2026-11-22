@@ -33,6 +33,8 @@ import type { Notifications } from "./notifications/notifications.js";
 import { notificationRoutes } from "./notifications/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
+import { retentionRoutes } from "./retention/routes.js";
+import type { Retention } from "./retention/service.js";
 import { reviewHttp } from "./reviews/http.js";
 import type { Reviews } from "./reviews/reviews.js";
 import { spaceHttp } from "./spaces/http.js";
@@ -95,6 +97,8 @@ export interface AppOptions {
   spaces?: SpaceModule;
   /** The notifications hub; optional, like vaults. */
   notifications?: Notifications;
+  /** Retention policies, holds and the recycle bin; left out, they are not mounted. */
+  retention?: Retention;
   /** Memories and writing styles; optional, like vaults. */
   memory?: MemoryModule;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
@@ -138,6 +142,7 @@ export function createApp({
   matters,
   spaces,
   notifications,
+  retention,
   memory,
   knowledge,
   playbooks,
@@ -296,6 +301,7 @@ export function createApp({
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
+  if (retention) app.route("/api/v1", retentionRoutes(retention, clientOf));
   if (memory) {
     app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
     app.route("/api/v1", styleRoutes(memory.styles, clientOf));
