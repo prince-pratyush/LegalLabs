@@ -407,6 +407,34 @@
       "when": 1794009767000,
       "tag": "0062_work_workflows",
       "breakpoints": false
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794010105000,
+      "tag": "0105_core_scim_resources",
+      "breakpoints": false
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794010106000,
+      "tag": "0106_core_scim_auth",
+      "breakpoints": false
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794010107000,
+      "tag": "0107_core_scim_guard",
+      "breakpoints": false
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794010108000,
+      "tag": "0108_core_scim_group_roles",
+      "breakpoints": false
     }
   ]
 }
