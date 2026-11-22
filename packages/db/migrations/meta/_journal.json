@@ -542,16 +542,37 @@
       "breakpoints": false
     },
     {
-      "idx": 77,
+      "idx": 111,
       "version": "7",
       "when": 1794010150000,
+      "tag": "0150_api_tokens",
+      "breakpoints": false
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1794010150001,
+      "tag": "0151_api_read_scopes",
+      "breakpoints": false
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1794010150002,
+      "tag": "0152_api_vault_reads",
+      "breakpoints": false
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1794010160000,
       "tag": "0140_sync_connections",
       "breakpoints": false
     },
     {
-      "idx": 78,
+      "idx": 81,
       "version": "7",
-      "when": 1794010150001,
+      "when": 1794010160001,
       "tag": "0141_vault_sync",
       "breakpoints": false
     }
