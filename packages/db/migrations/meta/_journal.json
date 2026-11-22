@@ -451,30 +451,51 @@
       "breakpoints": false
     },
     {
-      "idx": 57,
+      "idx": 100,
       "version": "7",
       "when": 1794010140002,
+      "tag": "0100_core_mfa_totp",
+      "breakpoints": false
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794010140003,
+      "tag": "0101_core_mfa_passkeys",
+      "breakpoints": false
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794010140004,
+      "tag": "0102_core_mfa_admin",
+      "breakpoints": false
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794010140005,
       "tag": "0105_core_scim_resources",
       "breakpoints": false
     },
     {
       "idx": 58,
       "version": "7",
-      "when": 1794010140003,
+      "when": 1794010140006,
       "tag": "0106_core_scim_auth",
       "breakpoints": false
     },
     {
       "idx": 59,
       "version": "7",
-      "when": 1794010140004,
+      "when": 1794010140007,
       "tag": "0107_core_scim_guard",
       "breakpoints": false
     },
     {
       "idx": 60,
       "version": "7",
-      "when": 1794010140005,
+      "when": 1794010140008,
       "tag": "0108_core_scim_group_roles",
       "breakpoints": false
     }

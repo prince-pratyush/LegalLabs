@@ -21,6 +21,8 @@ export interface Principal {
   sessionId: string;
   userId: string;
   workspaceId: string;
+  /** When a second factor last passed in this session; null if none did. */
+  mfaAt?: Date | null;
 }
 
 export interface Auth {
@@ -47,11 +49,19 @@ export function createAuth(pool: pg.Pool): Auth {
         session_id: string;
         user_id: string;
         workspace_id: string;
-      }>("select session_id, user_id, workspace_id from core.resolve_session($1)", [sha256(token)]);
+        mfa_at: Date | null;
+      }>("select session_id, user_id, workspace_id, mfa_at from core.resolve_session($1)", [
+        sha256(token),
+      ]);
       return rows[0];
     });
     return row
-      ? { sessionId: row.session_id, userId: row.user_id, workspaceId: row.workspace_id }
+      ? {
+          sessionId: row.session_id,
+          userId: row.user_id,
+          workspaceId: row.workspace_id,
+          mfaAt: row.mfa_at,
+        }
       : null;
   };
 
@@ -130,7 +140,7 @@ export function createAuth(pool: pg.Pool): Auth {
         );
         return id;
       });
-      return { token, principal: { sessionId, userId, workspaceId } };
+      return { token, principal: { sessionId, userId, workspaceId, mfaAt: null } };
     },
   };
 }
