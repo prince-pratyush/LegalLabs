@@ -89,6 +89,8 @@ describe("the notification catalogue", () => {
       [
         "table.cell_commented",
         "table.cell_mentioned",
+        // A reviewer's note on a rejected template is a comment to its author.
+        "table.template_rejected",
         "task.commented",
         "task.mentioned",
         "thread.mentioned",

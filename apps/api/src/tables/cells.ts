@@ -135,6 +135,8 @@ async function targets(
     `select c.id, c.row_id, c.locked or r.locked locked, c.verified_at is not null verified
        from work.rt_cell c join work.rt_row r on r.id = c.row_id and r.deleted_at is null
       where c.column_id = $1 and not r.source_removed
+        -- Rows over a hidden file are left as they are, not run into errors that wipe them.
+        and not ${RESTRICTED_SQL}
         and ($2::uuid[] is null or r.id = any($2::uuid[]))
         and ($3 <> 'pending' or c.status in ('pending', 'stale', 'blocked'))
       order by r.ordinal
@@ -483,8 +485,9 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
       return withTable(principal, tableId, async (db, table) => {
         const cell = await cellOf(db, tableId, cellId);
         if (!cell) return fail("NOT_FOUND");
-        const locked = body.locked ?? (cell.locked || cell.row_locked);
-        // A locked cell takes no edits, verification or flags until it is unlocked.
+        // A locked cell takes no edits, verification or flags until it is unlocked, which may
+        // be in the same request. A locked row is unlocked only through the row.
+        const locked = cell.row_locked || (body.locked ?? cell.locked);
         const changesContent =
           body.value_text !== undefined ||
           body.verified !== undefined ||

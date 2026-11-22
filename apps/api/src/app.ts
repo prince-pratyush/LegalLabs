@@ -6,6 +6,9 @@ import { z } from "zod";
 import { createCodeStore } from "./addins/codes.js";
 import type { Language } from "./addins/language.js";
 import { addinAuthRoutes, addinRoutes } from "./addins/routes.js";
+import type { AdminConnectors } from "./admin-models/connectors.js";
+import type { AdminModels } from "./admin-models/models.js";
+import { adminModelRoutes } from "./admin-models/routes.js";
 import { agentRunHttp } from "./agent-runs/http.js";
 import type { AgentRuns } from "./agent-runs/runs.js";
 import type { Agents } from "./agents/agents.js";
@@ -101,6 +104,8 @@ export interface AppOptions {
   notifications?: Notifications;
   /** Memories and writing styles; optional, like vaults. */
   memory?: MemoryModule;
+  /** Models and connectors admin (ADM-005/006); optional, like vaults. */
+  adminModels?: { models: AdminModels; connectors: AdminConnectors };
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
@@ -144,6 +149,7 @@ export function createApp({
   spaces,
   notifications,
   memory,
+  adminModels,
   knowledge,
   playbooks,
   reviews,
@@ -324,6 +330,8 @@ export function createApp({
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
+  if (adminModels)
+    app.route("/api/v1", adminModelRoutes(adminModels.models, adminModels.connectors, clientOf));
   if (memory) {
     app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
     app.route("/api/v1", styleRoutes(memory.styles, clientOf));

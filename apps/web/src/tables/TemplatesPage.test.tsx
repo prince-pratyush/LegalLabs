@@ -63,14 +63,14 @@ describe("TemplatesPage", () => {
     render(<TemplatesPage />);
     expect(await screen.findByText("Credit terms")).toBeTruthy();
     expect(screen.getByText("Waiting for approval")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve Credit terms" }));
     await waitFor(() => expect(sent).toContain(`POST /admin/review-table-templates/${ID}/approve`));
   });
 
   it("asks why before rejecting", async () => {
     const sent = serve();
     render(<TemplatesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reject Credit terms" }));
     fireEvent.change(await screen.findByLabelText("Tell the author why"), {
       target: { value: "Too vague" },
     });

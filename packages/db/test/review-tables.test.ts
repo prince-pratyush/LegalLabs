@@ -241,6 +241,8 @@ describe("review tables", () => {
         );
         await tx.as(s.ana, s.acme);
         await set("rejected", "Too vague");
+        // The decision goes back to the author; the manager no longer sees it.
+        await tx.as(amy, s.acme);
         const rejected = await tx.one<{ status: string; rejected_note: string }>(
           "select status, rejected_note from work.rt_template where id = $1",
           [id],
@@ -254,6 +256,33 @@ describe("review tables", () => {
         // Published templates are open to every member of the workspace.
         expect(await sees(tx, s.cal, s.acme, id)).toBe(true);
         expect(await sees(tx, s.bob, s.beta, id)).toBe(false);
+      });
+    });
+
+    it("keeps drafts from a manager, and shares only what has been tried out", async () => {
+      await withTx(async (tx) => {
+        const s = await seed(tx);
+        const amy = await author(tx, s.acme);
+        const id = await make(tx, s.acme, amy);
+        // ana can manage the Library, but a draft isn't hers to read.
+        expect(await sees(tx, s.ana, s.acme, id)).toBe(false);
+        await tx.as(amy, s.acme);
+        expect(await tx.error("select work.rt_template_set_status($1, 'shared')", [id])).toMatch(
+          /BAD_TRANSITION/,
+        );
+        await tx.rows("select work.rt_template_set_status($1, 'tested')", [id]);
+        await tx.rows("select work.rt_template_set_status($1, 'shared')", [id]);
+        // Changed content goes back to draft, and has to be tried out again.
+        await tx.rows("select work.rt_template_set_status($1, 'draft')", [id]);
+        expect(
+          await tx.error("select work.rt_template_set_status($1, 'pending_approval')", [id]),
+        ).toMatch(/BAD_TRANSITION/);
+        await tx.rows("select work.rt_template_set_status($1, 'tested')", [id]);
+        await tx.rows("select work.rt_template_set_status($1, 'pending_approval')", [id]);
+        // Once it waits for approval the manager can read it, and nothing else of the author's.
+        expect(await sees(tx, s.ana, s.acme, id)).toBe(true);
+        const other = await make(tx, s.acme, amy);
+        expect(await sees(tx, s.ana, s.acme, other)).toBe(false);
       });
     });
 

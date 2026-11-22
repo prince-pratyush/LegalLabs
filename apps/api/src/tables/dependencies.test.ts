@@ -107,6 +107,33 @@ describe("conditional columns (RVT-004)", () => {
     expect((await call(s, "DELETE", `/columns/${law}`)).status).toBe(202);
   });
 
+  it("never leaves a column depending on one that was deleted at the same moment", async () => {
+    const s = await setup();
+    for (let i = 0; i < 4; i += 1) {
+      const used = await addColumn(s, { label: `Used ${i}`, type: "free", prompt: "What?" });
+      const [added, removed] = await Promise.all([
+        call(s, "POST", "/columns", {
+          label: `User ${i}`,
+          type: "free",
+          prompt: `Given @{${used}}`,
+        }),
+        call(s, "DELETE", `/columns/${used}`),
+      ]);
+      // One of the two wins, and the other is refused; never both.
+      expect([added.status, removed.status].sort()).toEqual(
+        added.status === 201 ? [201, 409] : [202, 400],
+      );
+      const { rows: broken } = await pool.query(
+        `select k.id from work.rt_column k
+          where k.table_id = $1 and k.deleted_at is null
+            and exists (select 1 from work.rt_column u
+                         where u.id = any (k.depends_on) and u.deleted_at is not null)`,
+        [s.tableId],
+      );
+      expect(broken).toEqual([]);
+    }
+  });
+
   it("runs the columns a column uses first, and hands their answers to the model", async () => {
     const seen: string[] = [];
     const { s, law } = await withLaw(seen);

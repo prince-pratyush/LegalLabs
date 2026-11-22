@@ -5,7 +5,7 @@ import { seed } from "./fixtures.js";
 
 type Seed = Awaited<ReturnType<typeof seed>>;
 
-const EMIT = `select * from notify.emit($1, 'threads', 'thread', $2, $3, null, $4, false, '[]'::jsonb,
+const EMIT = `select * from notify.emit($1, 'threads', 'task', $2, $3, null, $4, false, '[]'::jsonb,
   '#/t/x', $5, $6::uuid[])`;
 
 interface Emitted {

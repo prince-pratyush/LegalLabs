@@ -91,6 +91,27 @@ export {
   PersonaliseInput,
   SourcePlatform,
 } from "./memory.js";
+export {
+  Connector,
+  ConnectorInput,
+  type ConnectorStatus,
+  ConnectorTool,
+  DiscoverResult,
+  LocalEndpointInput,
+  ManifestDiff,
+  ModelCapability,
+  ModelConfig,
+  ModelConfigPatch,
+  ModelKeyInput,
+  ModelList,
+  ModelPolicy,
+  ModelTestResult,
+  TaskClassName,
+  ToolPolicy,
+  ToolPolicyInput,
+  TrustTier,
+  UserToolPolicyInput,
+} from "./models-admin.js";
 export * from "./notification.js";
 export {
   Action,
