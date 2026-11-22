@@ -3,6 +3,7 @@ import { PublicApi } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { createCodeStore } from "./addins/codes.js";
 import type { Language } from "./addins/language.js";
@@ -55,6 +56,8 @@ import { scimRoutes } from "./scim/routes.js";
 import type { Scim } from "./scim/service.js";
 import { spaceHttp } from "./spaces/http.js";
 import type { SpaceModule } from "./spaces/module.js";
+import { syncRoutes } from "./sync/routes.js";
+import type { SyncService } from "./sync/service.js";
 import { tableHttp } from "./tables/http.js";
 import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
@@ -125,6 +128,8 @@ export interface AppOptions {
   memory?: MemoryModule;
   /** Models and connectors admin (ADM-005/006); optional, like vaults. */
   adminModels?: { models: AdminModels; connectors: AdminConnectors };
+  /** Drive and SharePoint sync into vaults (CON-002); optional, like vaults. */
+  sync?: SyncService;
   /** API tokens and the public endpoints they reach (ADM-009); left out, `cns_` tokens are refused. */
   publicApi?: PublicApiService;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
@@ -176,6 +181,7 @@ export function createApp({
   commandCenter,
   memory,
   adminModels,
+  sync,
   knowledge,
   playbooks,
   reviews,
@@ -398,6 +404,7 @@ export function createApp({
   if (retention) app.route("/api/v1", retentionRoutes(retention, clientOf));
   if (adminModels)
     app.route("/api/v1", adminModelRoutes(adminModels.models, adminModels.connectors, clientOf));
+  if (sync) app.route("/api/v1", syncRoutes(sync, clientOf));
   if (commandCenter) app.route("/api/v1", commandCenterRoutes(commandCenter, clientOf));
   if (memory) {
     app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
@@ -419,6 +426,22 @@ export function createApp({
     });
     app.get("*", serveStatic({ root: webRoot }));
   }
+
+  // A synced vault is read-only: the database refuses the write, and this says so plainly.
+  app.onError((err, c) => {
+    if ((err as { message?: string }).message === "VAULT_READ_ONLY") {
+      return c.json(
+        {
+          code: "VAULT_READ_ONLY",
+          message: "This vault mirrors a connected folder and can't be changed here.",
+        },
+        409,
+      );
+    }
+    if (err instanceof HTTPException) return err.getResponse();
+    console.error(err);
+    return c.text("Internal Server Error", 500);
+  });
 
   return app;
 }
