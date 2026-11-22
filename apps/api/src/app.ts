@@ -42,6 +42,8 @@ import type { Notifications } from "./notifications/notifications.js";
 import { notificationRoutes } from "./notifications/routes.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
+import { retentionRoutes } from "./retention/routes.js";
+import type { Retention } from "./retention/service.js";
 import { reviewHttp } from "./reviews/http.js";
 import type { Reviews } from "./reviews/reviews.js";
 import type { ScimAdmin } from "./scim/admin.js";
@@ -112,6 +114,8 @@ export interface AppOptions {
   spaces?: SpaceModule;
   /** The notifications hub; optional, like vaults. */
   notifications?: Notifications;
+  /** Retention policies, holds and the recycle bin; left out, they are not mounted. */
+  retention?: Retention;
   /** The Command Center reports; left out, /admin/analytics is not mounted. */
   commandCenter?: CommandCenter;
   /** Memories and writing styles; optional, like vaults. */
@@ -163,6 +167,7 @@ export function createApp({
   matters,
   spaces,
   notifications,
+  retention,
   commandCenter,
   memory,
   adminModels,
@@ -358,6 +363,7 @@ export function createApp({
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) app.route("/api/v1", spaceHttp(spaces, clientOf));
   if (notifications) app.route("/api/v1", notificationRoutes(notifications, clientOf, { now }));
+  if (retention) app.route("/api/v1", retentionRoutes(retention, clientOf));
   if (adminModels)
     app.route("/api/v1", adminModelRoutes(adminModels.models, adminModels.connectors, clientOf));
   if (commandCenter) app.route("/api/v1", commandCenterRoutes(commandCenter, clientOf));

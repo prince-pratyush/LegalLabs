@@ -519,6 +519,27 @@
       "when": 1794010140011,
       "tag": "0112_analytics_exports",
       "breakpoints": false
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794010140012,
+      "tag": "0120_retention_schema",
+      "breakpoints": false
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1794010140013,
+      "tag": "0121_retention_functions",
+      "breakpoints": false
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1794010140014,
+      "tag": "0122_retention_holds",
+      "breakpoints": false
     }
   ]
 }

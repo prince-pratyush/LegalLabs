@@ -451,6 +451,34 @@ export async function seed(tx: Tx) {
     [beta, bob],
   );
 
+  // One of each retention table in beta, so isolation tests have rows to look for.
+  const retentionPolicy = await id(
+    `insert into retention.policy (workspace_id, scope, scope_id, hours)
+     values ($1, 'workspace', $1, 24) returning id`,
+    [beta],
+  );
+  const retentionJob = await id(
+    `insert into retention.deletion_job (workspace_id, kind, policy_id) values ($1, 'sweep', $2)
+     returning id`,
+    [beta, retentionPolicy],
+  );
+  await tx.rows(
+    `insert into retention.hold (workspace_id, object_type, object_id, reason, set_by)
+     values ($1, 'matter', $2, 'Seed', $3)`,
+    [beta, randomUUID(), bob],
+  );
+  await tx.rows(
+    `insert into retention.recycle_bin (workspace_id, object_type, object_id, label, policy_id, job_id,
+                                        restorable_until)
+     values ($1, 'thread', $2, 'Seed', $3, $4, now() + interval '30 days')`,
+    [beta, randomUUID(), retentionPolicy, retentionJob],
+  );
+  await tx.rows(
+    `insert into retention.warning_sent (workspace_id, vault_id, lead_days, expires_on)
+     values ($1, $2, 7, current_date)`,
+    [beta, randomUUID()],
+  );
+
   // SCIM state in beta: the mass-delete guard, one recorded removal and one group-role mapping.
   await tx.rows("insert into scim.guard (workspace_id) values ($1)", [beta]);
   await tx.rows(
