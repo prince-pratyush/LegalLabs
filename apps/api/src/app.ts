@@ -17,6 +17,8 @@ import { agentHttp } from "./agents/http.js";
 import type { Nudges } from "./agents/nudges.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
+import { mfaApiRoutes, mfaAuthRoutes } from "./auth/mfa/routes.js";
+import type { Mfa } from "./auth/mfa/service.js";
 import { oidcRoutes } from "./auth/oidc/routes.js";
 import type { Oidc } from "./auth/oidc/service.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
@@ -83,6 +85,8 @@ const loginBody = z.object({
 
 export interface AppOptions {
   auth: Auth;
+  /** Second factors and passkeys; left out, password alone signs in and no MFA endpoints exist. */
+  mfa?: Mfa;
   documents: Documents;
   threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
   /** Pages and files for the document viewer. */
@@ -137,6 +141,7 @@ export interface AppOptions {
 
 export function createApp({
   auth,
+  mfa,
   documents,
   threads,
   viewer,
@@ -210,6 +215,22 @@ export function createApp({
     c.header("Cache-Control", "no-store");
   });
 
+  const startSession = async (c: Context, token: string) => {
+    const previous = getCookie(c, COOKIE, COOKIE_PREFIX);
+    if (previous) await auth.logout(previous, clientOf(c));
+    setCookie(c, COOKIE, token, {
+      prefix: COOKIE_PREFIX,
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+      path: "/",
+      maxAge: SESSION_SECONDS,
+    });
+  };
+
+  // Before the password-only login below, which it replaces when MFA is on.
+  if (mfa) app.route("/auth", mfaAuthRoutes({ mfa, clientOf, clientIp, startSession, now }));
+
   app.post("/auth/login", bodyLimit({ maxSize: 4096 }), async (c) => {
     const parsed = loginBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "invalid_request" }, 400);
@@ -227,17 +248,7 @@ export function createApp({
     const result = await auth.login(attempt, clientOf(c));
     if (!result) return c.json({ error: "invalid_credentials" }, 401);
 
-    const previous = getCookie(c, COOKIE, COOKIE_PREFIX);
-    if (previous) await auth.logout(previous, clientOf(c));
-
-    setCookie(c, COOKIE, result.token, {
-      prefix: COOKIE_PREFIX,
-      httpOnly: true,
-      secure: true,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: SESSION_SECONDS,
-    });
+    await startSession(c, result.token);
     return c.json({ user_id: result.principal.userId, workspace_id: result.principal.workspaceId });
   });
 
@@ -301,6 +312,7 @@ export function createApp({
     c.header("Cache-Control", "no-store");
   });
 
+  if (mfa) app.route("/api/v1/mfa", mfaApiRoutes({ mfa, clientOf, now }));
   if (viewer) app.route("/api/v1/documents", viewerRoutes(viewer, clientOf));
   app.route("/api/v1/documents", documentRoutes(documents, clientOf));
   // One budget of model calls per person, whether they ask a thread or draft playbook rules.
