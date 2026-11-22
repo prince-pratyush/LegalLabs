@@ -123,7 +123,7 @@ describe("review-table templates (RVT-009)", () => {
     expect(shared.body.shares[0]).toMatchObject({ principal_id: benUser, level: "use" });
     expect(
       (await call(s, "GET", `/review-table-templates/${t.id}`, undefined, ben)).body.template,
-    ).toMatchObject({ status: "shared", my_access: "use" });
+    ).toMatchObject({ status: "draft", my_access: "use" });
     expect(
       await call(s, "PATCH", `/review-table-templates/${t.id}`, { name: "Mine" }, ben),
     ).toMatchObject({ status: 403 });
@@ -250,6 +250,48 @@ describe("review-table templates (RVT-009)", () => {
     await call(s, "POST", `/admin/review-table-templates/${next}/approve`, {});
     const listed = await call(s, "GET", "/review-table-templates?filter[status]=published");
     expect(listed.body.items.map((i: { id: string }) => i.id)).toEqual([next]);
+  });
+
+  it("sends a tested template back to draft when its columns change, and 404s a bad id", async () => {
+    const s = await dealTable();
+    const t = (await save(s)).body.template;
+    await call(s, "POST", `/review-table-templates/${t.id}/test`, {
+      vault_id: s.v.id,
+      document_ids: [s.v.ids[0]],
+    });
+    await s.h.tables.runner.idle();
+    expect((await call(s, "GET", `/review-table-templates/${t.id}`)).body.template.status).toBe(
+      "tested",
+    );
+    const edited = await call(s, "PATCH", `/review-table-templates/${t.id}`, {
+      columns: [{ key: "c1", label: "Only", type: "free", prompt: "What?", options: {} }],
+    });
+    expect(edited.body.template.status).toBe("draft");
+    // A name change isn't a change of content.
+    await call(s, "POST", `/review-table-templates/${t.id}/test`, {
+      vault_id: s.v.id,
+      document_ids: [s.v.ids[0]],
+    });
+    await s.h.tables.runner.idle();
+    const renamed = await call(s, "PATCH", `/review-table-templates/${t.id}`, { name: "Renamed" });
+    expect(renamed.body.template.status).toBe("tested");
+    // The options have to fit the type.
+    const bad = await call(s, "PATCH", `/review-table-templates/${t.id}`, {
+      columns: [{ key: "c1", label: "X", type: "classify", prompt: "?", options: { options: [] } }],
+    });
+    expect(bad).toMatchObject({ status: 400, body: { code: "TEMPLATE_INVALID" } });
+    for (const path of ["publish", "shares"]) {
+      const res = await call(
+        s,
+        path === "shares" ? "PUT" : "POST",
+        `/review-table-templates/xyz/${path}`,
+        path === "shares" ? { grants: [] } : undefined,
+      );
+      expect(res.status).toBe(404);
+    }
+    expect((await call(s, "POST", "/admin/review-table-templates/xyz/approve", {})).status).toBe(
+      404,
+    );
   });
 
   it("edits columns, refuses a circle, and deletes", async () => {

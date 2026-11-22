@@ -1,12 +1,12 @@
 import type { ReviewTableTemplate } from "@legallabs/contracts";
 import {
   Button,
+  ConfirmDialog,
   type LibraryShare,
   LibraryShareForm,
   LibraryShareFormSkeleton,
   SidePanel,
   TemplateList,
-  type TemplateSummary,
   TestTemplatePanel,
   Textarea,
   toast,
@@ -20,9 +20,8 @@ import { goTables } from "./route.js";
 type Panel =
   | { kind: "test"; template: ReviewTableTemplate }
   | { kind: "share"; template: ReviewTableTemplate }
-  | { kind: "reject"; template: ReviewTableTemplate };
-
-const toSummary = (t: ReviewTableTemplate): TemplateSummary => t;
+  | { kind: "reject"; template: ReviewTableTemplate }
+  | { kind: "delete"; template: ReviewTableTemplate };
 
 /** Templates the person owns, has been given, or that the workspace has published. */
 export function TemplatesPage() {
@@ -47,7 +46,7 @@ export function TemplatesPage() {
     return { folders: tree.folders, files: tree.files };
   }, []);
 
-  const find = (summary: TemplateSummary) => templates?.find((t) => t.id === summary.id);
+  const find = (summary: { id: string }) => templates?.find((t) => t.id === summary.id);
 
   const act = async (work: () => Promise<unknown>, done: string) => {
     try {
@@ -76,7 +75,7 @@ export function TemplatesPage() {
           A template keeps a table's columns, instructions and settings, never its rows or source.
         </p>
         <TemplateList
-          templates={(templates ?? []).map(toSummary)}
+          templates={templates ?? []}
           loading={templates === null}
           onUse={(t) => goTables({ page: "list", threadId: null, templateId: t.id })}
           onTest={(t) => {
@@ -97,7 +96,10 @@ export function TemplatesPage() {
             const found = find(t);
             if (found) setPanel({ kind: "reject", template: found });
           }}
-          onDelete={(t) => void act(() => tableApi.deleteTemplate(t.id), "Template deleted.")}
+          onDelete={(t) => {
+            const found = find(t);
+            if (found) setPanel({ kind: "delete", template: found });
+          }}
         />
       </main>
       {panel?.kind === "test" && (
@@ -129,6 +131,20 @@ export function TemplatesPage() {
           <TemplateShares templateId={panel.template.id} onChanged={() => void load()} />
         </SidePanel>
       )}
+      <ConfirmDialog
+        open={panel?.kind === "delete"}
+        onOpenChange={(open) => !open && setPanel(null)}
+        title="Delete this template?"
+        description={`${panel?.kind === "delete" ? panel.template.name : "It"} will be deleted for everyone it is shared with. Tables made from it are not affected.`}
+        confirmLabel="Delete template"
+        destructive
+        onConfirm={() => {
+          if (panel?.kind === "delete") {
+            void act(() => tableApi.deleteTemplate(panel.template.id), "Template deleted.");
+          }
+          setPanel(null);
+        }}
+      />
       {panel?.kind === "reject" && (
         <RejectPanel
           name={panel.template.name}

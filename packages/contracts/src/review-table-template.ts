@@ -50,6 +50,15 @@ const Tags = z
   .array(text(TEMPLATE_LIMITS.tagChars).pipe(z.string().trim().min(1)))
   .max(TEMPLATE_LIMITS.tags);
 
+/** Who a template is shared with, as its owner sees it. */
+export const TemplateShare = z.object({
+  principal_type: z.enum(["user", "group", "workspace"]),
+  principal_id: Id,
+  label: z.string(),
+  level: z.enum(["use", "edit"]),
+});
+export type TemplateShare = z.infer<typeof TemplateShare>;
+
 export const TemplateAccess = z.enum(["owner", "edit", "use"]);
 export type TemplateAccess = z.infer<typeof TemplateAccess>;
 

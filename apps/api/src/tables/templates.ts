@@ -6,6 +6,7 @@ import {
   instantiatePrompt,
   type PatchTemplateBody,
   type PutTemplateSharesBody,
+  parseColumnOptions,
   type ReviewTableTemplate,
   type SaveTemplateBody,
   Settings,
@@ -54,7 +55,9 @@ interface TemplateRow {
 
 const SELECT = `select t.*, case when t.owner_id = core.current_user_id() then 'owner'
                                  when core.has_access('template', t.id, 'edit')
-                                   or core.has_permission('library.manage') then 'edit'
+                                   or (core.has_permission('library.manage')
+                                       and t.status in ('pending_approval', 'published'))
+                                   then 'edit'
                                  else 'use' end my_access
                   from work.rt_template t where t.deleted_at is null`;
 
@@ -120,6 +123,7 @@ export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
     status: TemplateStatus,
     note: string | null,
   ): Promise<Result<TemplateRow>> {
+    if (!UUID.test(id)) return fail("NOT_FOUND");
     try {
       return await asApp(pool, principal, async (db) => {
         await db.query("select work.rt_template_set_status($1, $2, $3)", [id, status, note]);
@@ -185,8 +189,10 @@ export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
     isTest = false,
   ) {
     const template = await asApp(pool, principal, (db) => load(db, templateId));
-    if (!template) return fail("NOT_FOUND", "That template wasn't found.");
-    if (template.status === "superseded") return fail("NOT_FOUND", "That template wasn't found.");
+    if (!template || template.status === "superseded") {
+      return fail("NOT_FOUND", "That template wasn't found.");
+    }
+
     const created = await tables.create(principal, body, client, { templateId, isTest });
     if (!created.ok) return created;
     const applied = await apply(principal, client, created.value.table.id, template);
@@ -307,6 +313,8 @@ export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
         if (body.columns && !templateOrder(body.columns)) {
           return fail("TEMPLATE_INVALID", "The columns refer to each other in a circle.");
         }
+        const bad = body.columns?.find((c) => !parseColumnOptions(c.type, c.options).success);
+        if (bad) return fail("TEMPLATE_INVALID", `The options of ${bad.label} don't fit its type.`);
         const settings = body.settings ? { ...json(t).settings, ...body.settings } : null;
         let target = t;
         if (t.status === "published") {
@@ -367,8 +375,17 @@ export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
           },
           "template",
         );
+        // Changed content has to be tried out again before it is shared or sent for approval.
+        const changesContent =
+          body.columns !== undefined ||
+          body.settings !== undefined ||
+          body.instructions !== undefined;
+        if (changesContent && (target.status === "tested" || target.status === "shared")) {
+          await db.query("select work.rt_template_set_status($1, 'draft')", [target.id]);
+        }
         const fresh = await load(db, target.id);
-        return { ok: true, value: json(fresh as TemplateRow) };
+        if (!fresh) return fail("NOT_FOUND");
+        return { ok: true, value: json(fresh) };
       });
     },
 
@@ -392,6 +409,7 @@ export function createTemplates(pool: pg.Pool, deps: TemplateDeps) {
     },
 
     async setShares(principal: Principal, id: string, body: PutTemplateSharesBody, client: Client) {
+      if (!UUID.test(id)) return fail("NOT_FOUND");
       try {
         return await asApp(pool, principal, async (db): Promise<Result<unknown[]>> => {
           const { rows: changes } = await db.query<{ change: string }>(
