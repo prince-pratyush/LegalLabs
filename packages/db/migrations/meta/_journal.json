@@ -610,6 +610,13 @@
       "when": 1794010170000,
       "tag": "0170_retention_purge_notifications",
       "breakpoints": false
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1794010170004,
+      "tag": "0174_admin_anchor_workspaces",
+      "breakpoints": false
     }
   ]
 }
