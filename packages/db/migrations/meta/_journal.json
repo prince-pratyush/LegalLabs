@@ -624,6 +624,13 @@
       "when": 1794010170002,
       "tag": "0172_work_run_scope_check",
       "breakpoints": false
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1794010170003,
+      "tag": "0173_core_role_permissions_scope",
+      "breakpoints": false
     }
   ]
 }
