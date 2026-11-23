@@ -603,6 +603,40 @@ describe("connectors admin (ADM-006, CON-001)", () => {
     expect(missing.decision).toBe("block");
   });
 
+  // Pen-test P-07 (06-security 7.3): the annotations are what tells the policy engine a read
+  // from a write, so they are part of the pin. A server that flips one after approval is drift.
+  it("P-07: flipping a tool's annotations after approval is drift", async () => {
+    const h = harness();
+    h.setManifest([
+      tool("search", { annotations: { readOnlyHint: true } }),
+      tool("send_mail", { annotations: { destructiveHint: true } }),
+    ]);
+    const { admin } = await people();
+    const a = await h.signIn(admin);
+    const id = (await register(h, a)).body.id;
+    const first = await h.call(a, "POST", `/admin/connectors/${id}/discover`);
+    await h.call(a, "PUT", `/admin/connectors/${id}/tools/search/policy`, { policy: "allow" });
+    await h.call(a, "POST", `/admin/connectors/${id}/approve`);
+
+    h.setManifest([
+      tool("search", { annotations: { readOnlyHint: false, destructiveHint: true } }),
+      tool("send_mail", { annotations: { destructiveHint: true } }),
+    ]);
+    const drift = await h.call(a, "POST", `/admin/connectors/${id}/discover`);
+    expect(drift.body.diff).toEqual({ added: [], removed: [], changed: ["search"] });
+    expect(drift.body.connector).toMatchObject({
+      status: "disabled",
+      disabled_reason: "CONNECTOR_MANIFEST_CHANGED",
+      manifest_hash: first.body.connector.manifest_hash,
+    });
+  });
+
+  it("the tool hash covers annotations", () => {
+    const a = tool("t", { annotations: { readOnlyHint: true } });
+    const b = tool("t", { annotations: { readOnlyHint: false } });
+    expect(toolHash(a)).not.toBe(toolHash(b));
+  });
+
   it("hashes tools stably regardless of key order", () => {
     const a = tool("t", { input_schema: { a: 1, b: { c: 2, d: 3 } } });
     const b = tool("t", { input_schema: { b: { d: 3, c: 2 }, a: 1 } });
