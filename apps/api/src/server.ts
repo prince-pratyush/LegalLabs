@@ -23,8 +23,9 @@ import { createNudges } from "./agents/nudges.js";
 import { createApp } from "./app.js";
 import { createAnchorJob } from "./audit/anchor-job.js";
 import { createAuth } from "./auth/auth.js";
-import { mfaFromEnv } from "./auth/mfa/config.js";
+import { mfaFromEnv, mfaStartupCheck } from "./auth/mfa/config.js";
 import { createOidc } from "./auth/oidc/service.js";
+import { createClientIp, trustedProxiesFromEnv } from "./client-ip.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
@@ -45,6 +46,8 @@ import { createPurgeJob } from "./notifications/purge.js";
 import { registerThreadActions } from "./notifications/register.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createPublicApi } from "./public-api/service.js";
+import { createRetentionSweepJob } from "./retention/job.js";
+import { createRetention } from "./retention/service.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
@@ -123,6 +126,15 @@ const anchorJob = createAnchorJob(pool, {
 anchorJob.start();
 const notifications = createNotifications(pool);
 const notifier = notifications.notifier;
+// The policy-driven sweep (ADM-004): bins what a retention policy has expired, empties the bin
+// after 30 days, deletes the stored files and warns owners. The job above only knows a vault's
+// own hours; without this one no retention policy is ever carried out.
+const retentionSweep = createRetentionSweepJob(pool, {
+  store,
+  notifications: notifier,
+  log: (line) => console.log(line),
+});
+retentionSweep.start();
 const notificationPurge = createPurgeJob(notifications, { log: (line) => console.log(line) });
 notificationPurge.start();
 // Mail goes to the log until a real provider is plugged in; links use the public web address.
@@ -141,6 +153,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         worker.stop(),
         retention.stop(),
         anchorJob.stop(),
+        retentionSweep.stop(),
         notificationPurge.stop(),
         memoryPurge.stop(),
         emailWorker.stop(),
@@ -238,10 +251,18 @@ process.once("SIGTERM", () => void tables.sync.stop());
 process.once("SIGINT", () => void tables.sync.stop());
 
 const mfaOption = mfaFromEnv(process.env, pool);
+const mfaCheck = mfaStartupCheck(process.env, mfaOption.mfa !== undefined);
+if (mfaCheck.action === "refuse") {
+  console.error(mfaCheck.message);
+  process.exit(1);
+}
+if (mfaCheck.action === "warn") console.warn(mfaCheck.message);
 const app = createApp({
   agentRuns,
   scim: { service: createScim(pool), admin: createScimAdmin(pool) },
   publicApi: createPublicApi(pool),
+  // Retention policies, legal holds and the recycle bin (ADM-004).
+  retention: createRetention(pool, { store, notifications: notifier }),
   workflows: createWorkflows(pool, {
     documents,
     agentRuns,
@@ -312,7 +333,12 @@ const app = createApp({
       ).rows[0]?.ok ?? false,
   }),
   tables,
-  clientIp: (c) => getConnInfo(c).remote.address ?? null,
+  // The socket address, or the client behind a proxy the deployer listed in
+  // LEGALLABS_TRUSTED_PROXIES (comma-separated addresses or CIDR blocks of the ingress).
+  clientIp: createClientIp(
+    trustedProxiesFromEnv(process.env),
+    (c) => getConnInfo(c).remote.address ?? null,
+  ),
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {
     language: createLanguage(gateway),
