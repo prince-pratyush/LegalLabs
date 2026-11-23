@@ -94,8 +94,10 @@ describe("scheduled surface", () => {
       "block",
     );
   });
-  it("write tool interactive -> allow with workspace allow", () => {
-    expect(evaluatePolicy(base({ isWriteTool: true })).decision).toBe("allow");
+  it("write tool interactive -> ask_user even when the workspace says allow", () => {
+    const d = evaluatePolicy(base({ isWriteTool: true }));
+    expect(d.decision).toBe("ask_user");
+    expect(d.code).toBe("WRITE_TOOL");
   });
   it("read tool scheduled -> allow", () => {
     expect(evaluatePolicy(base({ surface: "scheduled" })).decision).toBe("allow");
@@ -260,6 +262,7 @@ describe("allow only when every condition is clean", () => {
                           userPolicy === null ||
                           userPolicy === "allow") &&
                         !(surface === "scheduled" && isWriteTool === true) &&
+                        isWriteTool !== true &&
                         callsToToolInRun < 20 &&
                         matterBlocksConnector !== true;
                       if (d.decision === "allow") allows++;
