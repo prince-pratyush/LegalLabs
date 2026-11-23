@@ -44,6 +44,8 @@ import { createPurgeJob } from "./notifications/purge.js";
 import { registerThreadActions } from "./notifications/register.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createPublicApi } from "./public-api/service.js";
+import { createRetentionSweepJob } from "./retention/job.js";
+import { createRetention } from "./retention/service.js";
 import { createReviews } from "./reviews/reviews.js";
 import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
@@ -112,6 +114,15 @@ const retention = createRetentionJob(pool, { store, log: (line) => console.log(l
 retention.start();
 const notifications = createNotifications(pool);
 const notifier = notifications.notifier;
+// The policy-driven sweep (ADM-004): bins what a retention policy has expired, empties the bin
+// after 30 days, deletes the stored files and warns owners. The job above only knows a vault's
+// own hours; without this one no retention policy is ever carried out.
+const retentionSweep = createRetentionSweepJob(pool, {
+  store,
+  notifications: notifier,
+  log: (line) => console.log(line),
+});
+retentionSweep.start();
 const notificationPurge = createPurgeJob(notifications, { log: (line) => console.log(line) });
 notificationPurge.start();
 // Mail goes to the log until a real provider is plugged in; links use the public web address.
@@ -129,6 +140,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
       void Promise.all([
         worker.stop(),
         retention.stop(),
+        retentionSweep.stop(),
         notificationPurge.stop(),
         memoryPurge.stop(),
         emailWorker.stop(),
@@ -230,6 +242,8 @@ const app = createApp({
   agentRuns,
   scim: { service: createScim(pool), admin: createScimAdmin(pool) },
   publicApi: createPublicApi(pool),
+  // Retention policies, legal holds and the recycle bin (ADM-004).
+  retention: createRetention(pool, { store, notifications: notifier }),
   workflows: createWorkflows(pool, {
     documents,
     agentRuns,
