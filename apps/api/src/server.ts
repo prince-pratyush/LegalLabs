@@ -22,7 +22,7 @@ import { createContextPort } from "./agents/context.js";
 import { createNudges } from "./agents/nudges.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
-import { mfaFromEnv } from "./auth/mfa/config.js";
+import { mfaFromEnv, mfaStartupCheck } from "./auth/mfa/config.js";
 import { createOidc } from "./auth/oidc/service.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
@@ -238,6 +238,12 @@ process.once("SIGTERM", () => void tables.sync.stop());
 process.once("SIGINT", () => void tables.sync.stop());
 
 const mfaOption = mfaFromEnv(process.env, pool);
+const mfaCheck = mfaStartupCheck(process.env, mfaOption.mfa !== undefined);
+if (mfaCheck.action === "refuse") {
+  console.error(mfaCheck.message);
+  process.exit(1);
+}
+if (mfaCheck.action === "warn") console.warn(mfaCheck.message);
 const app = createApp({
   agentRuns,
   scim: { service: createScim(pool), admin: createScimAdmin(pool) },
