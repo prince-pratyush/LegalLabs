@@ -41,9 +41,20 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
-/** The pinned identity of one tool: name, description and input schema (CON-001 tool pinning). */
+/**
+ * The pinned identity of one tool: name, description, input schema and annotations (CON-001 tool
+ * pinning, 06-security 7.3). The annotations are what the policy engine reads to tell a read
+ * from a write, so a server that flips `readOnlyHint` after approval must show up as drift.
+ */
 export const toolHash = (t: RawTool) =>
-  sha(canonical({ name: t.name, description: t.description, input_schema: t.input_schema }));
+  sha(
+    canonical({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema,
+      annotations: t.annotations,
+    }),
+  );
 
 export const manifestHash = (hashes: readonly string[]) => sha([...hashes].sort().join("\n"));
 
