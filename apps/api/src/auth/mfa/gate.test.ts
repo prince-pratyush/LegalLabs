@@ -110,7 +110,10 @@ describe("P-08 step-up on sensitive admin actions", () => {
       expect(res.body.code).toBe("MFA_REQUIRED");
     }
     // Nothing was written.
-    const rows = await pool.query("select count(*)::int as n from retention.policy");
+    const rows = await pool.query(
+      "select count(*)::int as n from retention.policy where workspace_id = $1",
+      [w.admin.workspaceId],
+    );
     expect(rows.rows[0].n).toBe(0);
   });
 
