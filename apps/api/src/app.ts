@@ -37,6 +37,7 @@ import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
 import type { Library } from "./library/library.js";
 import { libraryRoutes } from "./library/routes.js";
+import { describeError } from "./log-error.js";
 import type { Matters } from "./matters/matters.js";
 import { matterRoutes } from "./matters/routes.js";
 import type { MemoryModule } from "./memory/module.js";
@@ -459,7 +460,8 @@ export function createApp({
       );
     }
     if (err instanceof HTTPException) return err.getResponse();
-    console.error(err);
+    // Not the object itself: a database error's properties quote the failing row.
+    console.error(describeError(err));
     return c.text("Internal Server Error", 500);
   });
 
