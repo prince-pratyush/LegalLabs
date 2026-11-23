@@ -21,6 +21,7 @@ import { createAgentSharing } from "./agents/config.js";
 import { createContextPort } from "./agents/context.js";
 import { createNudges } from "./agents/nudges.js";
 import { createApp } from "./app.js";
+import { createAnchorJob } from "./audit/anchor-job.js";
 import { createAuth } from "./auth/auth.js";
 import { mfaFromEnv, mfaStartupCheck } from "./auth/mfa/config.js";
 import { createOidc } from "./auth/oidc/service.js";
@@ -113,6 +114,16 @@ const worker = createIngestWorker(pool, {
 worker.start();
 const retention = createRetentionJob(pool, { store, log: (line) => console.log(line) });
 retention.start();
+// Daily audit anchors, written outside the database (06-security 9.1). Point S3_ANCHOR_BUCKET at
+// a bucket with Object Lock in compliance mode; without it they go under audit-anchors/ in the
+// content bucket, which proves nothing against someone who can write that bucket.
+const anchorJob = createAnchorJob(pool, {
+  store: process.env.S3_ANCHOR_BUCKET
+    ? objectStoreFromEnv({ ...process.env, S3_BUCKET: process.env.S3_ANCHOR_BUCKET })
+    : store,
+  log: (line) => console.log(line),
+});
+anchorJob.start();
 const notifications = createNotifications(pool);
 const notifier = notifications.notifier;
 // The policy-driven sweep (ADM-004): bins what a retention policy has expired, empties the bin
@@ -141,6 +152,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
       void Promise.all([
         worker.stop(),
         retention.stop(),
+        anchorJob.stop(),
         retentionSweep.stop(),
         notificationPurge.stop(),
         memoryPurge.stop(),

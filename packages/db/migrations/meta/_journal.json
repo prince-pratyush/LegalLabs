@@ -631,6 +631,13 @@
       "when": 1794010170003,
       "tag": "0173_core_role_permissions_scope",
       "breakpoints": false
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1794010170004,
+      "tag": "0174_admin_anchor_workspaces",
+      "breakpoints": false
     }
   ]
 }
