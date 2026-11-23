@@ -111,6 +111,9 @@ function decide(raw: unknown): PolicyDecision {
   if (i.userPolicy === "ask_user")
     escalate("USER_ASK", `Approval required by your policy: ${name}`);
   if (destructive) escalate("DESTRUCTIVE_HINT", `Approval required: destructive tool (${name})`);
+  // A write is a side effect, and side effects need a human click however the admin set the tool
+  // (06-security-compliance 7.2). "allow" is for tools that only read.
+  if (isWrite) escalate("WRITE_TOOL", `Approval required: write tool (${name})`);
   if (annotations.openWorldHint === true) {
     escalate("OPEN_WORLD_HINT", `Approval required: tool reaches external systems (${name})`);
   }
