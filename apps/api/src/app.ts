@@ -19,6 +19,7 @@ import { agentHttp } from "./agents/http.js";
 import type { Nudges } from "./agents/nudges.js";
 import { type Auth, type Client, type Principal, SESSION_SECONDS } from "./auth/auth.js";
 import { createLimiter } from "./auth/limiter.js";
+import { stepUpGate } from "./auth/mfa/gate.js";
 import { mfaApiRoutes, mfaAuthRoutes } from "./auth/mfa/routes.js";
 import type { Mfa } from "./auth/mfa/service.js";
 import { oidcRoutes } from "./auth/oidc/routes.js";
@@ -366,6 +367,8 @@ export function createApp({
   });
   // Right after sign-in, so a token never reaches a route the published spec doesn't list.
   if (publicApi) app.use("/api/v1/*", tokenGate(publicApi, clientOf, apiLimiter));
+  // Retention changes, legal holds and guest organisations need a fresh second factor (SEC-007).
+  if (mfa) app.use("/api/v1/*", stepUpGate(mfa, now));
 
   if (mfa) app.route("/api/v1/mfa", mfaApiRoutes({ mfa, clientOf, now }));
   // Before the routes people use, so a token's read of /vaults gets the public shape.
