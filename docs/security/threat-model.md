@@ -1,0 +1,122 @@
+# Threat model walkthrough (Phase 4 security review)
+
+Scope: the Phase 3 and 4 surface. Method: STRIDE per surface, written from the code as it stands on `main` after the review's fixes, not from the design. The design is `06-security-compliance.md` (section 2 is the component-level table); this document says what the code actually does, where the design's control exists, and what is left. Finding ids (F-nn) are in [evidence.md](evidence.md); test ids (P-nn) are in [pentest-checklist.md](pentest-checklist.md).
+
+S spoofing, T tampering, R repudiation, I information disclosure, D denial of service, E elevation of privilege.
+
+## Trust boundaries
+
+```
+ browser / add-in / API client ──TLS──> ingress ──> api (Hono) ──> postgres (RLS, app role)
+                                                       │              ▲
+                                  MCP servers, Drive,  │              │ worker role: ingest, retention, anchors
+                                  SharePoint, IdP  <───┘              │ definer role: owns SECURITY DEFINER functions
+```
+
+Four database roles carry the model. `legallabs_app` runs every request with `app.user_id` and `app.workspace_id` set per transaction (`apps/api/src/db.ts`); it owns nothing and every table forces row-level security. `legallabs_definer` owns the SECURITY DEFINER functions. `legallabs_worker` runs jobs with no identity. The schema owner only migrates. The API refuses to start as anything but the restricted role (`database-role.ts`).
+
+What a request cannot do is the load-bearing control: tenant isolation, matter walls and resource ACLs are policies in Postgres (`core.in_tenant`, `core.can_access_matter`, `core.has_access`), so a bug in `api` can fail a feature but not widen reach. Most findings below are places where something lived in `api` or in a definer function that should have lived in the database, or where a control was built but not switched on.
+
+## 1. Identity: OIDC, SAML, SCIM, MFA, sessions
+
+Code: `apps/api/src/auth/` (`auth.ts`, `oidc/`, `mfa/`), `apps/api/src/scim/`, migrations 0006, 0100 to 0108, 0160.
+
+| | Threat | Control as built | Residual |
+|---|---|---|---|
+| S | Forged or replayed ID token, code or state | Authorization Code with PKCE S256, state and nonce, state single use and bound to the starting browser, `alg none` and HS256-with-client-secret rejected, JWKS cached with refresh on unknown `kid` (`oidc/rp.ts`, `oidc/service.ts`) | IdP compromise |
+| S | Account takeover by a second IdP with the same email | Linking is by issuer and subject; email links only when verified and the workspace allows it (`core.oidc_resolve_user`) | None known |
+| S | SAML assertion replay or wrong audience | Not in this code: SAML terminates at Zitadel, which validates audience, window and assertion id; the app speaks OIDC to it (`docs/identity/saml.md`) | Tested only in the CI job `identity-saml`, against a real Zitadel |
+| S | Password guessing | argon2id, input length cap, per-address (10/min) and per-account (5/min) limits, failures audited without the typed email | Limits are in memory and per process (F-15, accepted); the address was the proxy's before F-12 |
+| T | Session fixation, theft | Server-side opaque id stored as SHA-256, `__Host-` cookie, HttpOnly, Secure, SameSite=Lax, Origin check on non-safe methods, previous session revoked on sign-in | No hourly rotation, no idle timeout, no device binding (SEC-008, 009, 010 only partly built; see evidence.md) |
+| E | Admin or SCIM client grants itself more | `core.holds_all`: nobody grants a permission they lack; SCIM principal cannot touch roles of admins; Admin group mapping needs a different admin to confirm (`0108`) | None known |
+| E | Sensitive admin action with a stolen session | Step-up (fresh MFA within 15 minutes). Was enforced for API tokens only; now also retention policy, legal hold and guest organisations (F-04). Server refuses to start in production with no MFA configured unless explicitly allowed (F-11) | Step-up is skipped for a person with no factor; export over 100 documents has no endpoint yet |
+| R | Denied or failed sign-ins unrecorded | `login.failure` (reason code only), `mfa.*`, `token.*`, `scim.*` events | None known |
+| D | SCIM mass delete empties a workspace | `scim.record_deprovision` pauses past 10 percent per hour (and a floor of 2), webhook, admin resume (`0107`) | Webhook has no deployer configuration in `server.ts`; default is a no-op, so the pause is silent until an admin looks (open, evidence.md) |
+| I | Deprovisioned person keeps access | `core.resolve_session` and `resolve_public_token` join the user's status on every request, so suspension is immediate; SCIM `DELETE` or `active=false` also revokes sessions and tokens in the same transaction (`scim.revoke_user_access`) | None known |
+
+## 2. Public API tokens and scopes
+
+Code: `public-api/service.ts`, `public-api/routes.ts`, `app.ts` (`tokenGate`), migrations 0150 to 0152.
+
+| | Threat | Control as built | Residual |
+|---|---|---|---|
+| S | Guessed or stolen token | 40 characters from a 62 letter alphabet by rejection sampling (about 238 bits), `cns_` prefix, SHA-256 at rest, shown once; expiry at most 365 days; optional CIDR list (`ipAllowed`), now meaningful behind a proxy (F-12) | A leaked token works until revoked or expired |
+| E | Over-scoped use, token on an admin route | `tokenGate`: a token reaches only operations the published spec lists, and only with that operation's scope; `session`-only operations refused; audit and history reads are additionally gated by `app.api_scopes` in the policies | `app.api_scopes` is a plain session setting; anything that can run SQL as the app role could set it (same class as F-07, accepted: the API exposes no such path) |
+| E | Token used for SCIM, SCIM token used for the API | `resolve_public_token` excludes `scim`-scoped tokens; `scim.authenticate` requires the `scim` scope | None known |
+| T | Rotation leaves two live secrets | Old token capped to a 24 hour overlap, new one audited with `replaces` | None |
+| R | Misuse invisible | `token.created`, `rotated`, `revoked`, `used_denied` (route and reason) | `last_used_at` is touched hourly, not per call |
+| D | Token floods | 600 requests a minute per token, 429 with `Retry-After` | Per process |
+| I | Cross-workspace read | Everything a token reads runs under the service account's identity and RLS | None known |
+
+## 3. Guests and ethical walls (RLS)
+
+Code: migrations 0077, 0160 to 0162, `spaces/guests.ts`, `spaces/guests-http.ts`; `core.can_access_matter`, `core.has_access`, `work.guest_level`.
+
+| | Threat | Control as built | Residual |
+|---|---|---|---|
+| E | Guest reaches anything outside their Space | The guest has no role; a policy opens a handful of tables to a *live* guest and only through the Space and its party; `/api/v1/*` refuses a guest except `/api/v1/guest/*` in one middleware (`app.ts`) | None known |
+| E | Guest is admitted to a walled matter | `can_access_matter` applies to guests through their party group; guests and service accounts need an explicit allow even on open matters | None known |
+| S | Code guessing, mailbox flood | 8 digit code hashed, 5 wrong guesses lock the guest in the database (not only in `api`), per-address and per-account limiters | No mailer is wired in `server.ts`, so no deployment can send a code yet (gap, evidence.md) |
+| T | Expired guest keeps a session | `core.guest_live` is part of `resolve_session`; 24 hour absolute session | None |
+| I | Walled content through search, counts, shares | Policies on every content table; `require walls for sharing` evaluates the recipient; group grants suspend while a member is walled (`matter-walls.test.ts`) | Timing and count side channels accepted by design (06 section 2) |
+| E | Run claims a Space or matter it cannot open | Was possible: `work.run` did not check `space_id` or `matter_id` on insert (F-08, fixed) | Runs still carry the caller's `app.user_id`; no service role exists |
+
+## 4. Retention deletion
+
+Code: migrations 0120 to 0122, 0170; `retention/service.ts`, `retention/job.ts`.
+
+| | Threat | Control as built | Residual |
+|---|---|---|---|
+| I | Deleted object leaves traces | `retention._purge_item` removes the object, its cascades, shares, and (F-05) the notifications and queued or sent mail that named it; blobs are deleted from the store after commit | Review table cells that quote a purged document live and die with their table, by age. Audit events keep ids and counts by design |
+| T | Policy shortened by a stolen session | Admin permission, 3 hour floor, typed confirmation over 1,000 objects, estimate equals sweep, step-up (F-04) | |
+| E | Held data purged | `_is_held` checked in the sweep and in early purge | None known |
+| D | Sweep never runs | It did not: the job and API were not started in `server.ts` (F-10, fixed) | One sweep per hour |
+| I | Strictest scope not applied | The code lets the most specific scope win (matter, then vault, then workspace), the design says "strictest" and also "a matter policy overrides a vault policy". Not changed: ambiguous spec (F-16, open, owner decision) | A vault set to keep for ever outlives a shorter workspace policy |
+
+## 5. Sync credentials and the read-only guard
+
+Code: `sync/` (`credentials.ts`, `engine.ts`, providers), migrations 0140, 0141, 0171, `admin-models/secrets.ts`.
+
+| | Threat | Control as built | Residual |
+|---|---|---|---|
+| I | OAuth tokens leak | Sealed with AES-256-GCM (key in the environment, not the database), readable only through the worker's function; the app role can write a seal but never read one; OAuth `state` is sealed and bound to user, provider and expiry | Key in environment; no KMS (SEC-025 not built) |
+| T | Sync writes to the source | Providers use read scopes and only `GET`; nothing in `engine.ts` or the providers issues a write | UNVERIFIED against live Google or Microsoft tenants (mock servers only) |
+| T | Person edits the mirror | `content.guard_synced_vault` trigger refuses rename, move, bin and insert; the engine's pool opts in with a session setting | The setting is forgeable by any app role statement (F-07, accepted: no SQL path exists, a fix needs a dedicated engine role) |
+| E | Vault linked to another person's connection | API checks ownership under RLS; the database did not (F-06, fixed by trigger) | |
+| S | Other person's connection used via OAuth callback | State names the user; a state from another user is refused | Replayable within its 10 minutes; the code itself is single use |
+
+## 6. MCP connectors and the tool policy engine
+
+Code: `connectors/policy.ts`, `admin-models/connectors.ts`, `admin-models/discovery.ts`, migrations 0130 and 0131.
+
+| | Threat | Control as built | Residual |
+|---|---|---|---|
+| E | Tool call bypasses block or ask | `evaluatePolicy` is pure and fail closed: unknown tool, disabled or drifted connector, matter restriction, unreadable policy, parse error all block and audit `policy.fail_closed`; a person can only tighten; since F-02 a write always asks (and blocks unattended) and only `readOnlyHint: true` is a read | The runtime caller that executes tool calls and supplies `observedManifestHash` is not in this repository yet, so the engine is verified in isolation |
+| T | Rug pull: tool or annotations change after approval | Name, description, schema and (F-03) annotations are pinned; drift disables the connector and re-approval blocks changed tools | A server that lies at call time, not in its manifest |
+| S, I | SSRF through the connector URL | Name check (now ignoring the DNS root dot and covering more private suffixes) and discovery through `safeRequest`, which judges the address actually connected to, refuses redirects, caps size (F-01) | The local model endpoint (`LocalEndpointInput`) accepts any http(s) URL by design (admin only, local models are internal): accepted |
+| I | Secret in logs or errors | Bearer secrets sealed; `scrub` removes known values and key shapes from tester errors; 500 handler logs no error properties (F-14) | Provider error bodies up to 300 characters are stored as sync status text |
+| D | Tool storm | 20 calls to one tool in a run escalate to ask | |
+
+## 7. Agent runs, workflows, agents
+
+Code: `agent-runs/`, `agents/`, `workflows/`, `spaces/agent-runs.ts`, migrations 0060, 0065, 0066, 0062, 0172.
+
+| | Threat | Control as built | Residual |
+|---|---|---|---|
+| I | Run reads outside its space or wall | Every read runs `asApp` as the run's owner, so walls, shares and tenancy apply at each step; attachments are re-checked at plan time and a walled one is left out and audited | Space context assembly for agent runs is not in this repository yet |
+| E | Another person controls or reads a run | Signals need the owner, Full access on the agent, or admin of the run's Space; step input and output are the runner's alone | `space_id` was unchecked (F-08, fixed) |
+| E | Run continues after the person loses access | RLS requires an active member at every write, so a suspended person's next step is refused | Long single steps can overrun by their length |
+| T | Scheduled run acts with a changed wall | The fire re-checks `can_access_matter` and pauses the schedule (`schedule-fire.ts`); the insert policy now also refuses it (F-08) | |
+| E | Prompt injection to a side effect | Policy engine (section 6); side-effecting tools need a click | The injection regression suite (SEC-040) is not in this repository |
+
+## 8. Cross-cutting
+
+**Tenant isolation.** RLS is enabled and forced on every table (checked by `rls.test.ts`, including a test that catches a table added without protection). The definer functions are the weak point of any RLS design, so P-01 calls every one the app role may execute, as four kinds of caller, with the ids of everything in another workspace: nothing changed, and only three yes or no oracles remain (accepted, F-09).
+
+**Secrets in logs.** Provider keys, connector tokens and OAuth tokens are sealed; token secrets are hashed. Log sites were reviewed (`console.*` across `apps/api/src`): all log names or messages except the 500 handler, which printed whole error objects (F-14, fixed).
+
+**SSRF.** Server-initiated fetches: OIDC discovery and JWKS (guarded `safeRequest`), MCP discovery (now the same guard), model endpoint test (admin supplied local URL, accepted), Drive and Graph (fixed vendor hosts; bearer tokens go only to them), SCIM webhook (no configuration yet).
+
+**Audit integrity.** Append only table (REVOKE and trigger), per workspace SHA-256 chain, offline verifier (`legallabs audit verify`), anchors. Anchors were never produced by the running server (F-13, fixed by a job); Object Lock on the anchor bucket is the deployer's.
+
+**Client address.** Rate limits, CIDR restrictions and audit IPs used the socket peer, which behind the ingress is the ingress (F-12, fixed with an explicit trusted-proxy list).
