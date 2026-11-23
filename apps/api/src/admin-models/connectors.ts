@@ -96,8 +96,11 @@ const BADGES: Record<Connector["trust_tier"], string> = {
   custom: "Custom — not reviewed",
 };
 
+// MCP's own default is that a tool may write: readOnlyHint is false unless the server says
+// otherwise. A server that leaves the annotation out is not vouching for the tool, so only an
+// explicit readOnlyHint: true counts as a read.
 const WRITE_HINT = (a: Record<string, unknown>) =>
-  a.readOnlyHint === false || a.destructiveHint === true;
+  a.readOnlyHint !== true || a.destructiveHint === true;
 
 export function createAdminConnectors(
   pool: pg.Pool,

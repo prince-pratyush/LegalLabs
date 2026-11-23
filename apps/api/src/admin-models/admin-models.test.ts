@@ -33,11 +33,12 @@ afterAll(() => pool.end());
 const secrets = createSecretBox(randomBytes(32).toString("base64"));
 const KEY = "sk-live-SUPERSECRETKEY123456";
 
+// A tool is a read only when the server says so; the default has to be the cautious one.
 const tool = (name: string, extra: Partial<RawTool> = {}): RawTool => ({
   name,
   description: `${name} tool`,
   input_schema: { type: "object" },
-  annotations: {},
+  annotations: { readOnlyHint: true },
   ...extra,
 });
 
@@ -569,6 +570,44 @@ describe("connectors admin (ADM-006, CON-001)", () => {
     expect((await d("search", { observedManifestHash: undefined })).decision).toBe("block");
     expect((await d("search", { observedManifestHash: "0".repeat(64) })).decision).toBe("block");
     expect((await d("search", { matterBlocksConnector: true })).decision).toBe("block");
+  });
+
+  // Pen-test P-06 (SEC-037, SEC-039): a workspace "allow" must not let a write run unattended or
+  // without a click, and a server that leaves the annotations out is not vouching for its tools.
+  it("P-06: writes and unannotated tools are never allowed without approval", async () => {
+    const h = harness();
+    h.setManifest([
+      tool("search"),
+      tool("create_note", { annotations: { readOnlyHint: false, destructiveHint: false } }),
+      tool("mystery", { annotations: {} }),
+      tool("liar", { annotations: { readOnlyHint: false } }),
+    ]);
+    const { admin } = await people();
+    const a = await h.signIn(admin);
+    const made = (await register(h, a)).body;
+    const found = await h.call(a, "POST", `/admin/connectors/${made.id}/discover`);
+    for (const t of ["search", "create_note", "mystery", "liar"])
+      await h.call(a, "PUT", `/admin/connectors/${made.id}/tools/${t}/policy`, { policy: "allow" });
+    await h.call(a, "POST", `/admin/connectors/${made.id}/approve`);
+    const pin = found.body.connector.manifest_hash;
+    const d = (toolName: string, surface: "interactive" | "scheduled") =>
+      h.connectors.decide(
+        admin as never,
+        {
+          connectorId: made.id,
+          toolName,
+          surface,
+          callsToToolInRun: 0,
+          observedManifestHash: pin,
+        },
+        { ip: null, userAgent: null },
+      );
+    expect((await d("search", "interactive")).decision).toBe("allow");
+    expect((await d("search", "scheduled")).decision).toBe("allow");
+    for (const writer of ["create_note", "mystery", "liar"]) {
+      expect((await d(writer, "interactive")).decision, writer).toBe("ask_user");
+      expect((await d(writer, "scheduled")).decision, writer).toBe("block");
+    }
   });
 
   it("CON-001-c: fails closed, and audits, when the policy can't be read", async () => {
