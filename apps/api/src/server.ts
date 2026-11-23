@@ -24,6 +24,7 @@ import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { mfaFromEnv, mfaStartupCheck } from "./auth/mfa/config.js";
 import { createOidc } from "./auth/oidc/service.js";
+import { createClientIp, trustedProxiesFromEnv } from "./client-ip.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
@@ -320,7 +321,12 @@ const app = createApp({
       ).rows[0]?.ok ?? false,
   }),
   tables,
-  clientIp: (c) => getConnInfo(c).remote.address ?? null,
+  // The socket address, or the client behind a proxy the deployer listed in
+  // LEGALLABS_TRUSTED_PROXIES (comma-separated addresses or CIDR blocks of the ingress).
+  clientIp: createClientIp(
+    trustedProxiesFromEnv(process.env),
+    (c) => getConnInfo(c).remote.address ?? null,
+  ),
   ...(existsSync(webRoot) ? { webRoot } : {}),
   addin: {
     language: createLanguage(gateway),
