@@ -121,7 +121,9 @@ export function useStack(options: StackOptions = {}) {
     }
   }
 
-  return { call, json, post, events, asOwner };
+  const workspace = () => stack?.workspace ?? "";
+
+  return { call, json, post, events, asOwner, workspace };
 }
 
 export async function until<T>(
