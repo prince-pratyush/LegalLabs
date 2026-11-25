@@ -1,6 +1,6 @@
 import type { ModelProvider } from "@legallabs/model-gateway";
 import { createGateway } from "@legallabs/model-gateway";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
 import { createDrafts } from "../drafts/drafts.js";
@@ -82,6 +82,24 @@ const events = (text: string) =>
     });
 
 describe("thread API", () => {
+  it("still sends the end of a run that finishes between its two reads", async () => {
+    const { deps, signIn, upload, call } = harness();
+    const m = await seedMember(pool);
+    const cookie = await signIn(m);
+    const documentId = await upload(cookie);
+    const res = await call(cookie, "/api/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({ content: "Who is liable?", scope: { document_ids: [documentId] } }),
+    });
+    const started = (await res.json()) as { run_id: string };
+    await deps.threads.settled();
+
+    // The log read as it was before the run ended; the status read after it sees "done".
+    vi.spyOn(deps.log, "replay").mockResolvedValueOnce([]);
+    const stream = await call(cookie, `/api/v1/runs/${started.run_id}/events`);
+    expect(events(await stream.text()).at(-1)?.event).toBe("done");
+  });
+
   it("accepts a question, streams its run, and returns the verified answer", async () => {
     const { deps, signIn, upload, call } = harness();
     const m = await seedMember(pool);
