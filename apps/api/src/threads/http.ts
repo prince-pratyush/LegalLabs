@@ -422,6 +422,7 @@ export function threadHttp(options: ThreadHttpOptions) {
       stream.onAbort(() => wake?.());
       const opened = now();
       let last = start;
+      let sawFinished = false;
       try {
         while (!stream.aborted && now() - opened < MAX_STREAM_MS) {
           // Read back as the caller each time, so a new wall or a revoked share ends the stream.
@@ -438,7 +439,13 @@ export function threadHttp(options: ThreadHttpOptions) {
           }
           if (batch.length > 0) continue;
           const current = await threads.run(principal, runId);
-          if (!current || FINISHED.includes(current.status)) return;
+          if (!current) return;
+          if (FINISHED.includes(current.status)) {
+            // It may have ended between the read above and this one, so read once more.
+            if (sawFinished) return;
+            sawFinished = true;
+            continue;
+          }
           let timer: ReturnType<typeof setTimeout> | undefined;
           await new Promise<void>((resolve) => {
             wake = resolve;
