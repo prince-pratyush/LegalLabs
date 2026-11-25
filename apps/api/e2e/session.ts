@@ -32,14 +32,22 @@ function stopOnSignal() {
   }
 }
 
+export interface StackOptions {
+  env?: Record<string, string>;
+  /** Flags for the server's own node process. */
+  nodeArgs?: string[];
+  /** A model server of the test's own; read when the stack starts. */
+  modelUrl?: () => string;
+}
+
 /** A clean stack for this test file, signed in as its admin, and helpers to drive the API. */
-export function useStack() {
+export function useStack(options: StackOptions = {}) {
   let stack: Stack | undefined;
   let cookie = "";
   stopOnSignal();
 
   beforeAll(async () => {
-    stack = (await startStack()) as Stack;
+    stack = (await startStack(options)) as Stack;
     running.add(stack);
     const res = await fetch(`${stack.url}/auth/login`, {
       method: "POST",

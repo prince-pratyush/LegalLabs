@@ -47,7 +47,7 @@ export interface LifecycleEnv {
 }
 
 export interface LifecycleInput {
-  kind: "agent" | "workflow" | "agent_builder";
+  kind: "agent" | "workflow" | "agent_builder" | "assistant";
   interactive: boolean;
 }
 

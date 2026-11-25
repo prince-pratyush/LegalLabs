@@ -13,9 +13,8 @@ import { createAdminConnectors } from "./admin-models/connectors.js";
 import { httpDiscovery } from "./admin-models/discovery.js";
 import { createAdminModels } from "./admin-models/models.js";
 import { createSecretBox } from "./admin-models/secrets.js";
-import { runEngineFromEnv, schedulerFromEnv } from "./agent-runs/engine.js";
-import { runHandlers } from "./agent-runs/handlers.js";
-import { createAgentRuns } from "./agent-runs/runs.js";
+import { schedulerFromEnv } from "./agent-runs/engine.js";
+import { createRunStack } from "./agent-runs/stack.js";
 import { createAgents } from "./agents/agents.js";
 import { createAgentSharing } from "./agents/config.js";
 import { createContextPort } from "./agents/context.js";
@@ -55,7 +54,6 @@ import { createScimAdmin } from "./scim/admin.js";
 import { createScim } from "./scim/service.js";
 import { createSpaceModule } from "./spaces/module.js";
 import { spaceNotifier } from "./spaces/notify.js";
-import { scriptedTaskRuns } from "./spaces/ports.js";
 import { createSyncModule } from "./sync/module.js";
 import { createReviewTables } from "./tables/module.js";
 import { createThreads } from "./threads/threads.js";
@@ -233,9 +231,14 @@ const agents = createAgents(pool, {
   documents,
   ...(scheduler ? { scheduler } : {}),
 });
-const agentRuns = createAgentRuns(pool, {
-  engine: await runEngineFromEnv(pool, runHandlers(pool, { gateway, agents, documents })),
+// Agent, workflow and Space task runs: the model through the gateway, tools through the policy.
+const runStack = await createRunStack(pool, {
+  gateway,
+  documents,
+  agents,
+  connectors: adminModels.connectors,
 });
+const { agentRuns } = runStack;
 
 const tables = createReviewTables(pool, {
   gateway,
@@ -319,19 +322,19 @@ const app = createApp({
   knowledge: knowledgeStore,
   library: createLibrary(pool),
   matters: createMatters(pool),
-  // Tasks given to the assistant or an agent run on the scripted stand-in until the run engine
-  // implements `TaskRunPort`; it calls no model.
-  spaces: createSpaceModule(pool, {
-    runs: scriptedTaskRuns(),
-    notifier: spaceNotifier(notifier),
-    // The workspace may let a Space hold resources from another matter.
-    allowMatterMismatch: async (db) =>
-      (
-        await db.query<{ ok: boolean }>(
-          "select coalesce((select allow_matter_mismatch_in_spaces from core.matter_options), false) as ok",
-        )
-      ).rows[0]?.ok ?? false,
-  }),
+  spaces: runStack.attach(
+    createSpaceModule(pool, {
+      runs: runStack.taskRuns,
+      notifier: spaceNotifier(notifier),
+      // The workspace may let a Space hold resources from another matter.
+      allowMatterMismatch: async (db) =>
+        (
+          await db.query<{ ok: boolean }>(
+            "select coalesce((select allow_matter_mismatch_in_spaces from core.matter_options), false) as ok",
+          )
+        ).rows[0]?.ok ?? false,
+    }),
+  ),
   tables,
   // The socket address, or the client behind a proxy the deployer listed in
   // LEGALLABS_TRUSTED_PROXIES (comma-separated addresses or CIDR blocks of the ingress).
