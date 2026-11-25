@@ -3,6 +3,7 @@ import type { GuestInviteInput, PartyInput } from "@legallabs/contracts";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp, type Identity } from "../db.js";
+import type { EmailProvider } from "../notifications/email-port.js";
 import {
   type Db,
   failureOf,
@@ -20,14 +21,37 @@ import {
 /** A guest's session ends 24 hours after sign-in, whatever they do: no renewal. */
 export const GUEST_SESSION_SECONDS = 24 * 60 * 60;
 
-/**
- * Sends a sign-in code to a guest. The default sends nothing: no mail provider is wired yet, and
- * a deployment that has one supplies it. The code is never stored or logged in the clear.
- */
+/** Sends a sign-in code to a guest. The code is never stored or logged in the clear. */
 export interface GuestMailer {
+  /** False when there is nowhere to send: invites and code requests are then refused aloud. */
+  readonly configured: boolean;
   sendCode(to: { workspace: string; email: string }, code: string): Promise<void>;
 }
-export const noGuestMail: GuestMailer = { sendCode: async () => {} };
+
+/** The default. It refuses, so a code is never accepted and then dropped. */
+export const noGuestMail: GuestMailer = {
+  configured: false,
+  sendCode: async () => {
+    throw new Error("mail is not configured");
+  },
+};
+
+/** Codes by email. The subject carries no code, since subjects turn up in logs. */
+export function emailGuestMailer(provider: EmailProvider): GuestMailer {
+  return {
+    configured: true,
+    async sendCode(to, code) {
+      await provider.send({
+        to: { email: to.email, name: "" },
+        subject: "Your LegalLabs sign-in code",
+        text: [
+          `Your sign-in code for the workspace "${to.workspace}" is ${code}`,
+          "It works once and for 10 minutes. If you did not ask for it, ignore this email.",
+        ].join("\n"),
+      });
+    },
+  };
+}
 
 /** A mailer that remembers what it was asked to send, for tests and demos. */
 export function recordingGuestMailer(): GuestMailer & {
@@ -35,6 +59,7 @@ export function recordingGuestMailer(): GuestMailer & {
 } {
   const sent: { workspace: string; email: string; code: string }[] = [];
   return {
+    configured: true,
     sent,
     async sendCode(to, code) {
       sent.push({ workspace: to.workspace, email: to.email, code });
@@ -111,6 +136,8 @@ export interface Accepted {
 }
 
 export interface Guests {
+  /** Whether sign-in codes have somewhere to go. */
+  canSendCodes(): boolean;
   addParty(
     p: Principal,
     spaceId: string,
@@ -167,6 +194,8 @@ export interface Guests {
 
 export interface GuestsOptions {
   mailer?: GuestMailer;
+  /** Told when a code could not be sent; given no address and no code. */
+  log?: (line: string) => void;
   /** Where the invite link points; the token follows in the fragment, so no server log holds it. */
   acceptUrl?: string;
   now?: () => number;
@@ -247,6 +276,7 @@ export function createGuests(
   options: GuestsOptions = {},
 ): Guests {
   const mailer = options.mailer ?? noGuestMail;
+  const log = options.log ?? ((line: string) => console.error(line));
   const acceptBase = options.acceptUrl ?? "/guest/accept";
 
   /** For callers with no identity yet: refusals still become a Result. */
@@ -272,6 +302,8 @@ export function createGuests(
   };
 
   return {
+    canSendCodes: () => mailer.configured,
+
     async addParty(p, spaceId, input, client) {
       return kit.attempt(p, async (db) => {
         if (!isId(spaceId)) throw refusal("NOT_FOUND");
@@ -393,6 +425,8 @@ export function createGuests(
       return kit.attempt(p, async (db) => {
         if (!isId(spaceId)) throw refusal("NOT_FOUND");
         await needAdmin(db, spaceId);
+        // An invite nobody could ever sign in from.
+        if (!mailer.configured) throw refusal("MAIL_UNAVAILABLE");
         const token = randomBytes(32).toString("base64url");
         const made = await one<{ id: string }>(
           db,
@@ -527,8 +561,14 @@ export function createGuests(
         );
         return true;
       });
-      // After the commit, so a code is never sent for one that rolled back.
-      if (issued) await mailer.sendCode({ workspace, email: address }, code).catch(() => {});
+      // After the commit, so a code is never sent for one that rolled back. Not awaited: only a
+      // real guest gets mail, and waiting for it would tell the caller who is one.
+      if (issued) {
+        void mailer.sendCode({ workspace, email: address }, code).catch((err: unknown) => {
+          const reason = err instanceof Error ? err.name : "unknown";
+          log(`guest sign-in code could not be sent (${reason}) for workspace ${workspace}`);
+        });
+      }
     },
 
     async verifyCode(workspace, email, code, client) {

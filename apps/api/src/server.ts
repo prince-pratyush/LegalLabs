@@ -38,6 +38,8 @@ import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
 import { createTemplatePort } from "./library/port.js";
+import { createSmtpEmailProvider, type SmtpConfig, smtpConfigFromEnv } from "./mail/smtp.js";
+import { guestsInUse, mailStartupCheck } from "./mail/startup.js";
 import { createMatters } from "./matters/matters.js";
 import { createMemoryModule } from "./memory/module.js";
 import { createMemoryPurgeJob } from "./memory/purge.js";
@@ -55,6 +57,7 @@ import { validatorFromEnv } from "./reviews/soffice.js";
 import { createRunLog } from "./runs/log.js";
 import { createScimAdmin } from "./scim/admin.js";
 import { createScim } from "./scim/service.js";
+import { emailGuestMailer, noGuestMail } from "./spaces/guests.js";
 import { createSpaceModule } from "./spaces/module.js";
 import { spaceNotifier } from "./spaces/notify.js";
 import { scriptedTaskRuns } from "./spaces/ports.js";
@@ -90,6 +93,27 @@ try {
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
+
+// Mail carries guest sign-in codes and notification emails. Checked before anything starts.
+let smtpConfig: SmtpConfig | null;
+try {
+  smtpConfig = smtpConfigFromEnv(process.env);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+const mailCheck = mailStartupCheck(process.env, {
+  configured: smtpConfig !== null,
+  guests: smtpConfig ? false : await guestsInUse(pool),
+});
+if (mailCheck.action === "refuse") {
+  console.error(mailCheck.message);
+  process.exit(1);
+}
+if (mailCheck.action === "warn") console.warn(mailCheck.message);
+const smtp = smtpConfig ? createSmtpEmailProvider(smtpConfig) : null;
+// A mail server that is down now may be back later, so this reports and carries on.
+smtp?.verify().catch((err: Error) => console.error(`mail server check failed: ${err.name}`));
 
 // Optional: without a model server, search is keywords only.
 const embedder = embedderFromEnv(process.env);
@@ -143,9 +167,9 @@ const retentionSweep = createRetentionSweepJob(pool, {
 retentionSweep.start();
 const notificationPurge = createPurgeJob(notifications, { log: (line) => console.log(line) });
 notificationPurge.start();
-// Mail goes to the log until a real provider is plugged in; links use the public web address.
+// Without a mail server, notification mail goes to the log; links use the public web address.
 const emailWorker = createEmailWorker(pool, {
-  provider: createLogEmailProvider((line) => console.log(line)),
+  provider: smtp ?? createLogEmailProvider((line) => console.log(line)),
   baseUrl: process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173",
   log: (line) => console.log(line),
 });
@@ -333,6 +357,7 @@ const app = createApp({
   spaces: createSpaceModule(pool, {
     runs: scriptedTaskRuns(),
     notifier: spaceNotifier(notifier),
+    guest: { mailer: smtp ? emailGuestMailer(smtp) : noGuestMail },
     // The workspace may let a Space hold resources from another matter.
     allowMatterMismatch: async (db) =>
       (

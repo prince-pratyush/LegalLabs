@@ -34,7 +34,10 @@ import type { TemplateView } from "./templates.js";
 
 type Env = { Variables: { principal: Principal } };
 
-export const FAILURES: Record<Failure, { status: 400 | 403 | 404 | 409 | 502; message: string }> = {
+export const FAILURES: Record<
+  Failure,
+  { status: 400 | 403 | 404 | 409 | 502 | 503; message: string }
+> = {
   NOT_FOUND: { status: 404, message: "That wasn't found." },
   FORBIDDEN: { status: 403, message: "You don't have permission to do that." },
   INVALID: { status: 400, message: "Check the details and try again." },
@@ -42,6 +45,10 @@ export const FAILURES: Record<Failure, { status: 400 | 403 | 404 | 409 | 502; me
   MATTER_HAS_SPACE: { status: 409, message: "That matter already has a Space." },
   NAME_TAKEN: { status: 409, message: "A Space with that name already exists." },
   EXTERNAL_NOT_ENABLED: { status: 403, message: "External Spaces aren't available yet." },
+  MAIL_UNAVAILABLE: {
+    status: 503,
+    message: "This server has no mail service, so guests can't sign in. Ask your administrator.",
+  },
   ALREADY_MEMBER: { status: 409, message: "They are already in this Space." },
   NOT_MEMBER: { status: 400, message: "Choose someone in this workspace." },
   LAST_ADMIN: { status: 409, message: "A Space needs at least one admin." },

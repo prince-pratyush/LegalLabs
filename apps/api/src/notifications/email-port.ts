@@ -5,7 +5,7 @@ export interface EmailMessage {
   text: string;
 }
 
-/** Where mail goes out. A real provider (SMTP, a mail API) implements this; none ships yet. */
+/** Where mail goes out; `mail/smtp.ts` is the one that really sends. */
 export interface EmailProvider {
   send(message: EmailMessage): Promise<void>;
 }
