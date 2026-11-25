@@ -77,7 +77,12 @@ export function isPrivateAddress(address: string): boolean {
 export function safeRequest(
   url: string,
   policy: FetchPolicy = {},
-  init: { method?: "GET" | "POST"; headers?: Record<string, string>; body?: string } = {},
+  init: {
+    method?: "GET" | "POST";
+    headers?: Record<string, string>;
+    body?: string;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<FetchResult> {
   const { insecureDev = false, timeoutMs = 5000, maxBytes = 1_000_000 } = policy;
   return new Promise((resolve, reject) => {
@@ -130,6 +135,7 @@ export function safeRequest(
         lookup,
         timeout: timeoutMs,
         agent: false,
+        ...(init.signal ? { signal: init.signal } : {}),
       },
       (res) => {
         const chunks: Buffer[] = [];

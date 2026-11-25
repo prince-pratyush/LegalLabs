@@ -17,6 +17,7 @@ import {
   type RawTool,
   safeConnectorUrl,
   toolHash,
+  uniqueTools,
 } from "./discovery.js";
 import type { SecretBox } from "./secrets.js";
 
@@ -43,7 +44,38 @@ export interface CallContext {
   matterBlocksConnector?: boolean;
 }
 
+/** A tool a run may be told about; what it may do with it is decided per call. */
+export interface OfferedTool {
+  /** What the model writes to call it: "connector.tool". */
+  name: string;
+  connectorId: string;
+  connectorName: string;
+  tool: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+/** Where a tool call goes, and what was pinned when an admin approved it. */
+export interface ConnectorEndpoint {
+  url: string;
+  auth: DiscoveryAuth;
+  manifestHash: string;
+  toolHash: string;
+}
+
 export interface AdminConnectors {
+  /**
+   * The tools of the named connectors (by id or name) this person may be offered: the connector
+   * must be enabled and the tool not blocked for them. Empty without `connectors.use`.
+   */
+  offered(
+    p: Principal,
+    scopes: readonly { connector: string; tools?: readonly string[] }[],
+  ): Promise<OfferedTool[]>;
+  /** Null when the connector isn't enabled, the person may not use it, or its key can't be read. */
+  endpoint(p: Principal, connectorId: string, toolName: string): Promise<ConnectorEndpoint | null>;
+  /** Shuts a connector whose live manifest no longer matches the pin, until an admin re-approves. */
+  reportDrift(p: Principal, connectorId: string, client: Client): Promise<void>;
   list(p: Principal): Promise<Connector[]>;
   register(p: Principal, input: ConnectorInput, client: Client): Promise<Result<Connector>>;
   discover(p: Principal, id: string, client: Client): Promise<Result<DiscoverResult>>;
@@ -174,6 +206,10 @@ export function createAdminConnectors(
     return sealed ? { kind: "bearer", token: secrets.open(sealed) } : null;
   };
 
+  const mayUse = async (db: pg.PoolClient) =>
+    (await db.query<{ a: boolean }>("select core.has_permission('connectors.use') a")).rows[0]
+      ?.a === true;
+
   const diffOf = (old: ToolRow[], fresh: Map<string, string>): ManifestDiff => {
     const before = new Map(old.map((t) => [t.name, t.tool_hash]));
     return {
@@ -241,8 +277,7 @@ export function createAdminConnectors(
     } catch {
       return { ok: false, reason: "DISCOVERY_FAILED" };
     }
-    const names = new Set<string>();
-    tools = tools.filter((t) => !names.has(t.name) && names.add(t.name));
+    tools = uniqueTools(tools);
     const fresh = new Map(tools.map((t) => [t.name, toolHash(t)]));
     const hash = manifestHash([...fresh.values()]);
     const old = (
@@ -280,6 +315,88 @@ export function createAdminConnectors(
   }
 
   return {
+    offered: (p, scopes) =>
+      asApp(pool, p, async (db) => {
+        if (scopes.length === 0 || !(await mayUse(db))) return [];
+        const out: OfferedTool[] = [];
+        for (const scope of scopes) {
+          const { rows } = await db.query<ToolRow & { connector_name: string }>(
+            `select t.*, c.name as connector_name
+               from admin.connector c
+               join admin.connector_tool t on t.connector_id = c.id
+               left join admin.connector_user_policy u
+                 on u.connector_id = c.id and u.user_id = $3 and u.tool_name = t.name
+              where c.workspace_id = $2 and (c.id::text = $1 or c.name = $1)
+                and c.status = 'enabled' and t.policy <> 'block'
+                and u.policy is distinct from 'block'
+              order by t.name`,
+            [scope.connector, p.workspaceId, p.userId],
+          );
+          for (const t of rows) {
+            if (scope.tools && !scope.tools.includes(t.name)) continue;
+            const name = `${t.connector_name}.${t.name}`;
+            if (out.some((o) => o.name === name)) continue;
+            out.push({
+              name,
+              connectorId: t.connector_id,
+              connectorName: t.connector_name,
+              tool: t.name,
+              description: t.description,
+              inputSchema: t.input_schema,
+            });
+          }
+        }
+        return out;
+      }),
+
+    endpoint: async (p, id, toolName) => {
+      const found = await asApp(pool, p, async (db) => {
+        if (!(await mayUse(db))) return null;
+        const c = (
+          await db.query<ConnRow>(
+            "select * from admin.connector where id = $1 and workspace_id = $2 and status = 'enabled'",
+            [id, p.workspaceId],
+          )
+        ).rows[0];
+        const t = (
+          await db.query<ToolRow>(
+            "select * from admin.connector_tool where connector_id = $1 and name = $2",
+            [id, toolName],
+          )
+        ).rows[0];
+        return c && t ? { c, t } : null;
+      });
+      if (!found?.c.manifest_hash || !safeConnectorUrl(found.c.url)) return null;
+      const auth = await authFor(found.c, p.workspaceId);
+      return auth
+        ? {
+            url: found.c.url,
+            auth,
+            manifestHash: found.c.manifest_hash,
+            toolHash: found.t.tool_hash,
+          }
+        : null;
+    },
+
+    reportDrift: async (p, id, client) => {
+      // A member can't write connectors, so the worker's one function does the shutting.
+      const shut = await asWorker(
+        pool,
+        async (w) =>
+          (
+            await w.query<{ shut: boolean }>("select admin.report_connector_drift($1, $2) shut", [
+              p.workspaceId,
+              id,
+            ])
+          ).rows[0]?.shut === true,
+      );
+      if (shut) {
+        await asApp(pool, p, (db) =>
+          audit(db, p, client, "connector.schema_drift", "connector", id, { seen: "tool_call" }),
+        );
+      }
+    },
+
     list: (p) =>
       asApp(pool, p, async (db) => {
         const admin = await isAdmin(db);
