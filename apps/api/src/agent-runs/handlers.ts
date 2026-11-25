@@ -25,17 +25,23 @@ export interface HandlerDeps {
 /** The handler for each kind of run, shared by the API (local engine) and the worker. */
 export function runHandlers(pool: pg.Pool, deps: HandlerDeps): HandlerRegistry {
   const { gateway, agents } = deps;
+  const agent =
+    gateway && agents
+      ? createAgentHandler({
+          pool,
+          gateway,
+          context: createContextPort(pool),
+          ...(deps.tools ? { tools: deps.tools } : {}),
+          ...(deps.maxCostUsd ? { maxCostUsd: deps.maxCostUsd } : {}),
+        })
+      : undefined;
   return {
     // Agent runs need a model and the agents module; a harness that only runs workflows omits both.
-    ...(gateway && agents
+    ...(gateway && agents && agent
       ? {
-          agent: createAgentHandler({
-            pool,
-            gateway,
-            context: createContextPort(pool),
-            ...(deps.tools ? { tools: deps.tools } : {}),
-            ...(deps.maxCostUsd ? { maxCostUsd: deps.maxCostUsd } : {}),
-          }),
+          agent,
+          // The assistant on a Space task: the same loop, with no saved agent and no tools.
+          assistant: agent,
           agent_builder: createBuilderHandler({ pool, gateway, agents }),
         }
       : {}),

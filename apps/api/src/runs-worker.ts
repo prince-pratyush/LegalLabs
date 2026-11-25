@@ -3,10 +3,13 @@ import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { createRunWorker } from "@legallabs/runs/temporal";
 import { objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
+import { createAdminConnectors } from "./admin-models/connectors.js";
+import { httpDiscovery } from "./admin-models/discovery.js";
+import { createSecretBox } from "./admin-models/secrets.js";
 import { runAudit } from "./agent-runs/audit.js";
 import { runEngineFromEnv, schedulerFromEnv } from "./agent-runs/engine.js";
-import { runHandlers } from "./agent-runs/handlers.js";
 import { createAgentRuns } from "./agent-runs/runs.js";
+import { agentRunBudget, agentRunHandlers } from "./agent-runs/stack.js";
 import { createAgents } from "./agents/agents.js";
 import { createContextPort } from "./agents/context.js";
 import { createScheduleFirer } from "./agents/schedule-fire.js";
@@ -40,9 +43,19 @@ const agents = createAgents(pool, {
   attachments: createContextPort(pool),
   ...(scheduler ? { scheduler } : {}),
 });
-const handlers = runHandlers(pool, { gateway, agents, documents });
+// Without the secrets key, connectors that need a token are refused.
+const connectors = createAdminConnectors(pool, {
+  ...(process.env.LEGALLABS_SECRETS_KEY
+    ? { secrets: createSecretBox(process.env.LEGALLABS_SECRETS_KEY) }
+    : {}),
+  discovery: httpDiscovery,
+});
+const handlers = agentRunHandlers(pool, { gateway, agents, documents, connectors });
 // The worker starts scheduled runs too, so it holds an engine client of its own.
-const runs = createAgentRuns(pool, { engine: await runEngineFromEnv(pool, handlers) });
+const runs = createAgentRuns(pool, {
+  engine: await runEngineFromEnv(pool, handlers),
+  maxCostUsd: agentRunBudget(process.env),
+});
 const fire = createScheduleFirer({ pool, agents, runs, scheduler: scheduler ?? undefined });
 
 const worker = await createRunWorker({

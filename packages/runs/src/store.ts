@@ -9,7 +9,7 @@ export interface RunRow {
   workspace_id: string;
   owner_id: string;
   thread_id: string | null;
-  kind: "agent" | "workflow" | "agent_builder";
+  kind: "agent" | "workflow" | "agent_builder" | "assistant";
   subject_id: string;
   agent_version_id: string | null;
   workflow_version_id: string | null;

@@ -33,10 +33,18 @@ function stopOnSignal() {
   }
 }
 
+export interface StackOptions {
+  env?: Record<string, string>;
+  /** Receives what the server prints. */
+  log?: (line: string) => void;
+  /** Flags for the server's own node process. */
+  nodeArgs?: string[];
+  /** A model server of the test's own; read when the stack starts. */
+  modelUrl?: () => string;
+}
+
 /** A clean stack for this test file, signed in as its admin, and helpers to drive the API. */
-export function useStack(
-  options: { env?: Record<string, string>; log?: (line: string) => void } = {},
-) {
+export function useStack(options: StackOptions = {}) {
   let stack: Stack | undefined;
   let cookie = "";
   stopOnSignal();

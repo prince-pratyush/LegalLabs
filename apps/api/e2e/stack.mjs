@@ -73,7 +73,12 @@ async function startStorage() {
   };
 }
 
-export async function startStack({ log = () => {}, env = {} } = {}) {
+export async function startStack({
+  log = () => {},
+  env = {},
+  nodeArgs = [],
+  modelUrl: model,
+} = {}) {
   const stops = [];
   // In reverse and each awaited, so the server is gone before its database is.
   const stop = async () => {
@@ -133,7 +138,7 @@ export async function startStack({ log = () => {}, env = {} } = {}) {
     await (await s3.fetch(`${storage.endpoint}/${bucket}`, { method: "PUT" })).body?.cancel();
 
     // A real local model when asked for, otherwise the scripted one.
-    let modelUrl = process.env.PILOT_OLLAMA_URL;
+    let modelUrl = model?.() ?? process.env.PILOT_OLLAMA_URL;
     if (!modelUrl) {
       const fake = await startFakeModel();
       stops.push(fake.stop);
@@ -161,7 +166,7 @@ export async function startStack({ log = () => {}, env = {} } = {}) {
       LEGALLABS_ASKS_PER_10_MIN: process.env.LEGALLABS_ASKS_PER_10_MIN ?? "1000",
       ...env,
     };
-    const server = spawn(process.execPath, [`${API}/dist/server.js`], {
+    const server = spawn(process.execPath, [...nodeArgs, `${API}/dist/server.js`], {
       env: serverEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
