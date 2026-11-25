@@ -80,6 +80,8 @@ export interface AgentRuns {
 
 export interface AgentRunsOptions {
   engine: RunEngine;
+  /** What an agent or assistant run may spend unless the caller says otherwise. */
+  maxCostUsd?: number;
   /**
    * Whether someone other than the run's owner may signal it: Full access on the agent, or
    * being admin of the run's Space. Supplied by the agents module; owner only until then.
@@ -224,7 +226,8 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
             kind: req.kind,
             interactive,
             budget: {
-              max_cost_usd: req.max_cost_usd ?? null,
+              max_cost_usd:
+                req.max_cost_usd ?? (req.kind === "workflow" ? null : (options.maxCostUsd ?? null)),
               max_tokens: req.max_tokens ?? DEFAULT_MAX_TOKENS,
             },
           } satisfies RunRef,
@@ -336,7 +339,25 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
         ((await options.mayControl?.(principal, run)) ?? false);
       if (!allowed) return "FORBIDDEN";
       if (["done", "failed", "cancelled"].includes(run.status)) return "FINISHED";
+      // A tool call is approved only by the person whose run it is: the call goes out as them.
+      if (signal.name === "answer_question" && run.owner_id !== principal.userId) {
+        const approval = await asApp(pool, principal, async (db) => {
+          const { rows } = await db.query<{ awaiting: string | null }>(
+            "select output ->> 'awaiting' as awaiting from work.run_step where run_id = $1 and id::text = $2",
+            [runId, signal.step_id],
+          );
+          // A step that can't be read can't be shown to be an ordinary question.
+          return rows[0] ? rows[0].awaiting === "tool_approval" : true;
+        });
+        if (approval) return "FORBIDDEN";
+      }
+      // The engine first, so a step that stops on the flag finds the signal already waiting.
       await engine.signal(runId, signal);
+      if (signal.name === "cancel") {
+        await asApp(pool, principal, (db) =>
+          db.query("update work.run set cancel_requested_at = now() where id = $1", [runId]),
+        );
+      }
       await asApp(pool, principal, (db) =>
         db.query("select admin.append_audit_event($1, 'user', $2, 'run', $3, $4, $5, $6)", [
           "run.signal",
