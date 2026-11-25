@@ -13,6 +13,16 @@ export interface Material {
   pages: number;
 }
 
+export interface ContextDocument {
+  documentId: string;
+  versionId: string;
+  versionNo: number;
+  name: string;
+  pages: { page: number; text: string }[];
+}
+
+type Who = { userId: string; workspaceId: string };
+
 /** Reads what an agent was given, as the person running it, so walls and shares apply. */
 export interface ContextPort extends AttachmentPort {
   read(
@@ -20,6 +30,15 @@ export interface ContextPort extends AttachmentPort {
     attachment: { kind: FileKind; ref: string; name: string },
     maxChars: number,
   ): Promise<Material | null>;
+  /**
+   * An upload, vault or folder attachment page by page, so what is quoted can be checked. With a
+   * matter, documents belonging to a different matter are left out. Null for other kinds.
+   */
+  documents(
+    who: Who,
+    attachment: { kind: FileKind; ref: string },
+    matterId: string | null,
+  ): Promise<{ documents: ContextDocument[]; otherMatter: number } | null>;
 }
 
 const principalOf = (who: { userId: string; workspaceId: string }): Principal => ({
@@ -59,6 +78,50 @@ export function createContextPort(pool: pg.Pool): ContextPort {
 
   return {
     available: (who, att) => exists(who, att.kind, att.ref),
+
+    async documents(who, att, matterId) {
+      const column = { upload: "d.id", vault: "d.vault_id", vault_folder: "d.folder_id" } as const;
+      if (att.kind !== "upload" && att.kind !== "vault" && att.kind !== "vault_folder") return null;
+      if (!UUID.test(att.ref)) return { documents: [], otherMatter: 0 };
+      return as(who, async (db) => {
+        const { rows } = await db.query<{
+          document_id: string;
+          version_id: string;
+          version_no: number;
+          name: string;
+          in_matter: boolean;
+          pages: { page: number; text: string }[];
+        }>(
+          `select d.id as document_id, latest.id as version_id, latest.version_no, d.name,
+                  ($2::uuid is null
+                    or (coalesce(d.matter_id, $2) = $2 and coalesce(va.matter_id, $2) = $2))
+                    as in_matter,
+                  coalesce((select json_agg(json_build_object('page', p.page_no, 'text', p.text)
+                                            order by p.page_no)
+                              from content.page p where p.version_id = latest.id), '[]') as pages
+             from content.document d
+             left join content.vault va on va.id = d.vault_id
+             join lateral (select id, version_no from content.document_version v
+                            where v.document_id = d.id order by version_no desc limit 1) latest on true
+            where ${column[att.kind as keyof typeof column]} = $1 and d.deleted_at is null
+            order by d.name, d.id
+            limit 25`,
+          [att.ref, matterId],
+        );
+        return {
+          documents: rows
+            .filter((r) => r.in_matter)
+            .map((r) => ({
+              documentId: r.document_id,
+              versionId: r.version_id,
+              versionNo: r.version_no,
+              name: r.name,
+              pages: r.pages,
+            })),
+          otherMatter: rows.filter((r) => !r.in_matter).length,
+        };
+      });
+    },
 
     async read(who, att, maxChars) {
       if (!UUID.test(att.ref)) return null;

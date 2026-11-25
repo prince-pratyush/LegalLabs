@@ -30,6 +30,8 @@ export type GatewayCall = {
   trace: string;
   /** "provider/model" the user picked; tried first, others only as fallback. */
   model?: string;
+  /** "provider/model" ids a policy forbids here: never tried, not even as fallback. */
+  exclude?: readonly string[];
 };
 
 type Measured = { model: string; usage: Usage; cost_usd: number; latency_ms: number };
@@ -118,7 +120,9 @@ export function createGateway(options: GatewayOptions): Gateway {
     options.contextWindows?.[route.provider] ?? route.context_window;
 
   function ordered(request: GatewayCall): Route[] {
-    const routes = usable(request.task_class);
+    const routes = usable(request.task_class).filter(
+      (route) => !request.exclude?.includes(idOf(route)),
+    );
     if (request.model === undefined) return routes;
     const chosen = routes.find((route) => idOf(route) === request.model);
     // A model the install can't use is refused, never quietly swapped.
