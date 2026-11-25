@@ -46,12 +46,14 @@ export interface FakeMcp {
   requests: { method: string; authorization: string }[];
   /** Holds tools/call open until the request is dropped. */
   hang: boolean;
+  /** Where it really listens, on loopback. */
+  url: string;
   transport: McpTransport;
   close(): Promise<void>;
 }
 
 export async function startFakeMcp(tools: RawTool[]): Promise<FakeMcp> {
-  const fake: Omit<FakeMcp, "transport" | "close"> = {
+  const fake: Omit<FakeMcp, "url" | "transport" | "close"> = {
     tools,
     replies: {},
     calls: [],
@@ -98,6 +100,7 @@ export async function startFakeMcp(tools: RawTool[]): Promise<FakeMcp> {
     return safeRequest(local, { ...policy, insecureDev: true }, init);
   };
   return Object.assign(fake, {
+    url: local,
     transport,
     close: () =>
       new Promise<void>((resolve) => {

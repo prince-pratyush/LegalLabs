@@ -153,7 +153,7 @@ export type AgentRunBody = z.infer<typeof AgentRunBody>;
 
 export interface RunSummary {
   id: string;
-  kind: "agent" | "workflow" | "agent_builder";
+  kind: "agent" | "workflow" | "agent_builder" | "assistant";
   subject_id: string;
   status: string;
   started_by: string;

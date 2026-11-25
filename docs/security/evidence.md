@@ -85,6 +85,6 @@ Both start a private Postgres 17 (`initdb`/`pg_ctl` on the PATH, or `TEST_DATABA
 
 1. A person with a valid session and the right to run SQL as the app role bypasses the synced-vault guard and the API-scope setting (F-07). The API has no such path; a new raw SQL route would be the way in.
 2. Strictest-scope retention is undecided (F-16); until it is, owners must read the policy list, not infer from the workspace policy alone.
-3. The tool policy engine is tested in isolation: the code that executes MCP calls and supplies the live manifest hash is not in the repository, so end to end enforcement (SEC-037, 038) needs a re-test when it lands.
+3. The tool executor and policy engine are covered end to end against a fake MCP server (`api/e2e/runs.test.ts`, `api/agents/tools.test.ts`), not against a real third-party server; MCP session ids, SSE replies and OAuth connectors are not supported.
 4. Single process in-memory limiters (F-15).
 5. Everything marked not built above, in particular ADM-007 allow-listing and the injection suite, which matter most for a compromised-account or malicious-document actor.

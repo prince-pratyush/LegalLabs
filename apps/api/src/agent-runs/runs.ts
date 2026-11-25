@@ -276,7 +276,7 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
       return asApp(pool, principal, async (db) => {
         const { rows } = await db.query<SummaryRow>(
           `select ${SUMMARY_COLUMNS} from work.run
-            where id = $1 and kind in ('agent', 'workflow', 'agent_builder')`,
+            where id = $1 and kind in ('agent', 'workflow', 'agent_builder', 'assistant')`,
           [runId],
         );
         return rows[0] ? toSummary(rows[0]) : null;
@@ -328,7 +328,7 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
           space_id: string | null;
         }>(
           `select id, owner_id, status, subject_id, space_id from work.run
-            where id = $1 and kind in ('agent', 'workflow', 'agent_builder')`,
+            where id = $1 and kind in ('agent', 'workflow', 'agent_builder', 'assistant')`,
           [runId],
         );
         return rows[0] ?? null;

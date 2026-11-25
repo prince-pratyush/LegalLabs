@@ -78,6 +78,15 @@ const SYSTEM = [
   '{"question": string, "options": [{"id": string, "label": string}], "allow_text": boolean} and nothing else.',
 ].join(" ");
 
+/** What a Space task given to the assistant runs on; the task is its input. */
+const ASSISTANT: Loaded = {
+  version_id: "assistant",
+  instructions:
+    "Do the task described in the person's inputs. Say what you could not do or did not have.",
+  attachments: [],
+  sources: [],
+};
+
 const ASK = /^ASK:\s*(\{[\s\S]*\})\s*$/;
 const MAX_OUTPUT = 4000;
 
@@ -108,6 +117,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
 
   async function load(ctx: RunContext): Promise<Loaded | null> {
     const { run } = ctx;
+    if (run.kind === "assistant") return ASSISTANT;
     if (!run.agent_version_id) return null;
     return asApp(deps.pool, principal(run), async (db) => {
       const { rows } = await db.query<{

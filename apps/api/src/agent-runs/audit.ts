@@ -5,7 +5,7 @@ import { asApp } from "../db.js";
 /** Audit events a run writes as its owner: started, finished, plan approved. */
 export function runAudit(pool: pg.Pool): NonNullable<ActivityDeps["audit"]> {
   return async (ref: RunRef, action, details) => {
-    const object = ref.kind === "workflow" ? "workflow" : "agent";
+    const object = ref.kind === "workflow" || ref.kind === "assistant" ? ref.kind : "agent";
     // Workflow runs say `workflow.run.started`; agent runs say `agent.run.started`.
     const name = action.replace(/^agent\./, `${object}.`);
     await asApp(pool, { userId: ref.userId, workspaceId: ref.workspaceId }, (db) =>

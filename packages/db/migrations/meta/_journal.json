@@ -652,6 +652,13 @@
       "when": 1794010170006,
       "tag": "0186_work_run_cancel_request",
       "breakpoints": false
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1794010170007,
+      "tag": "0187_work_assistant_runs",
+      "breakpoints": false
     }
   ]
 }
