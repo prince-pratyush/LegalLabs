@@ -26,6 +26,8 @@ import { createAuth } from "./auth/auth.js";
 import { mfaFromEnv, mfaStartupCheck } from "./auth/mfa/config.js";
 import { createOidc } from "./auth/oidc/service.js";
 import { createClientIp, trustedProxiesFromEnv } from "./client-ip.js";
+import { createAnalyticsJob } from "./command-center/job.js";
+import { createCommandCenter } from "./command-center/service.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
 import { createDocuments } from "./documents/documents.js";
@@ -124,6 +126,10 @@ const anchorJob = createAnchorJob(pool, {
   log: (line) => console.log(line),
 });
 anchorJob.start();
+// The Command Center's charts read a rollup that only this job rebuilds, six-hourly (ADR-087);
+// it also removes expired event exports.
+const analyticsJob = createAnalyticsJob(pool, { store, log: (line) => console.log(line) });
+analyticsJob.start();
 const notifications = createNotifications(pool);
 const notifier = notifications.notifier;
 // The policy-driven sweep (ADM-004): bins what a retention policy has expired, empties the bin
@@ -153,6 +159,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         worker.stop(),
         retention.stop(),
         anchorJob.stop(),
+        analyticsJob.stop(),
         retentionSweep.stop(),
         notificationPurge.stop(),
         memoryPurge.stop(),
@@ -289,6 +296,8 @@ const app = createApp({
     },
   }),
   documents,
+  // Usage and outcome reports for admin.reporting (CMD-001..003).
+  commandCenter: createCommandCenter(pool, { store }),
   vaults: vaultService,
   sync: syncModule.service,
   threads: {
