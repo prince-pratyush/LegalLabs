@@ -73,7 +73,7 @@ async function startStorage() {
   };
 }
 
-export async function startStack({ log = () => {} } = {}) {
+export async function startStack({ log = () => {}, env = {} } = {}) {
   const stops = [];
   // In reverse and each awaited, so the server is gone before its database is.
   const stop = async () => {
@@ -141,26 +141,28 @@ export async function startStack({ log = () => {} } = {}) {
     }
 
     const port = await freePort();
+    const serverEnv = {
+      PATH: process.env.PATH,
+      DATABASE_URL: api.toString(),
+      PORT: String(port),
+      S3_ENDPOINT: storage.endpoint,
+      S3_BUCKET: bucket,
+      S3_ACCESS_KEY_ID: storage.key,
+      S3_SECRET_ACCESS_KEY: storage.secret,
+      LEGALLABS_SCANNER: "stub",
+      OLLAMA_BASE_URL: modelUrl,
+      LEGALLABS_MODEL_TIMEOUT_MS: process.env.LEGALLABS_MODEL_TIMEOUT_MS ?? "900000",
+      ...(process.env.OLLAMA_CONTEXT_LENGTH
+        ? { OLLAMA_CONTEXT_LENGTH: process.env.OLLAMA_CONTEXT_LENGTH }
+        : {}),
+      ...(process.env.PILOT_OLLAMA_EMBED_URL
+        ? { OLLAMA_EMBED_URL: process.env.PILOT_OLLAMA_EMBED_URL }
+        : {}),
+      LEGALLABS_ASKS_PER_10_MIN: process.env.LEGALLABS_ASKS_PER_10_MIN ?? "1000",
+      ...env,
+    };
     const server = spawn(process.execPath, [`${API}/dist/server.js`], {
-      env: {
-        PATH: process.env.PATH,
-        DATABASE_URL: api.toString(),
-        PORT: String(port),
-        S3_ENDPOINT: storage.endpoint,
-        S3_BUCKET: bucket,
-        S3_ACCESS_KEY_ID: storage.key,
-        S3_SECRET_ACCESS_KEY: storage.secret,
-        LEGALLABS_SCANNER: "stub",
-        OLLAMA_BASE_URL: modelUrl,
-        LEGALLABS_MODEL_TIMEOUT_MS: process.env.LEGALLABS_MODEL_TIMEOUT_MS ?? "900000",
-        ...(process.env.OLLAMA_CONTEXT_LENGTH
-          ? { OLLAMA_CONTEXT_LENGTH: process.env.OLLAMA_CONTEXT_LENGTH }
-          : {}),
-        ...(process.env.PILOT_OLLAMA_EMBED_URL
-          ? { OLLAMA_EMBED_URL: process.env.PILOT_OLLAMA_EMBED_URL }
-          : {}),
-        LEGALLABS_ASKS_PER_10_MIN: process.env.LEGALLABS_ASKS_PER_10_MIN ?? "1000",
-      },
+      env: serverEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
     server.stdout.on("data", (d) => log(String(d)));
@@ -183,7 +185,7 @@ export async function startStack({ log = () => {} } = {}) {
       return (await fetch(`${url}/auth/session`)).status === 401;
     }, "the API");
     // The owner URL lets a test read what the app may not, such as the audit trail.
-    return { url, workspace, email, password, ownerUrl: db.url, stop };
+    return { url, workspace, email, password, ownerUrl: db.url, serverEnv, stop };
   } catch (err) {
     await stop();
     throw err;

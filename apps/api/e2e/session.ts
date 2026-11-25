@@ -9,6 +9,7 @@ interface Stack {
   email: string;
   password: string;
   ownerUrl: string;
+  serverEnv: Record<string, string>;
   stop: () => Promise<void>;
 }
 
@@ -33,13 +34,15 @@ function stopOnSignal() {
 }
 
 /** A clean stack for this test file, signed in as its admin, and helpers to drive the API. */
-export function useStack() {
+export function useStack(
+  options: { env?: Record<string, string>; log?: (line: string) => void } = {},
+) {
   let stack: Stack | undefined;
   let cookie = "";
   stopOnSignal();
 
   beforeAll(async () => {
-    stack = (await startStack()) as Stack;
+    stack = (await startStack(options)) as Stack;
     running.add(stack);
     const res = await fetch(`${stack.url}/auth/login`, {
       method: "POST",
@@ -115,7 +118,10 @@ export function useStack() {
 
   const workspace = () => stack?.workspace ?? "";
 
-  return { call, json, post, events, asOwner, workspace };
+  /** What the server was started with, for a second one that differs. */
+  const serverEnv = () => stack?.serverEnv ?? {};
+
+  return { call, json, post, events, asOwner, workspace, serverEnv };
 }
 
 export async function until<T>(
