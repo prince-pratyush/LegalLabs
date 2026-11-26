@@ -1,5 +1,6 @@
 import { Button, ConfirmDialog, Input, Label, toast } from "@legallabs/ui";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useStepUp } from "../retention/StepUp.js";
 import { formatDate, messageOf } from "../vaults/shared.js";
 import { type Guest, type Party, type Resource, type Space, spacesApi } from "./api.js";
 
@@ -90,7 +91,13 @@ export function GuestsTab({ space }: { space: Space }) {
       )}
       {!party ? (
         admin ? (
-          <PartyForm spaceId={space.id} act={act} />
+          <PartyForm
+            spaceId={space.id}
+            onAdded={() => {
+              setError(null);
+              load();
+            }}
+          />
         ) : (
           <p className="text-fg-muted">No guest organisation yet.</p>
         )
@@ -227,21 +234,23 @@ export function GuestsTab({ space }: { space: Space }) {
   );
 }
 
-function PartyForm({ spaceId, act }: { spaceId: string; act: Act }) {
+function PartyForm({ spaceId, onAdded }: { spaceId: string; onAdded: () => void }) {
+  // Adding a guest organisation needs a fresh second factor (SEC-007).
+  const stepUp = useStepUp();
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [approvers, setApprovers] = useState("");
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
-    await act(
-      spacesApi.addParty(spaceId, {
-        name: name.trim(),
-        domain: domain.trim(),
-        connection_admin_emails: approvers.split(/[,;\s]+/).filter(Boolean),
-      }),
-    );
+    const party = {
+      name: name.trim(),
+      domain: domain.trim(),
+      connection_admin_emails: approvers.split(/[,;\s]+/).filter(Boolean),
+    };
+    void stepUp.run(() => spacesApi.addParty(spaceId, party), onAdded);
   };
-  return (
+  // The step-up prompt is a form of its own, so it sits beside this one rather than inside it.
+  const form = (
     <form onSubmit={submit} aria-label="Add guest organisation" className="grid max-w-md gap-3">
       <h2 className="text-section font-semibold">Add a guest organisation</h2>
       <div className="grid gap-1">
@@ -276,11 +285,17 @@ function PartyForm({ spaceId, act }: { spaceId: string; act: Act }) {
       <Button
         type="submit"
         className="justify-self-start"
-        disabled={!name.trim() || !domain.trim()}
+        disabled={stepUp.busy || !name.trim() || !domain.trim()}
       >
         Add organisation
       </Button>
     </form>
+  );
+  return (
+    <div className="grid gap-3">
+      {form}
+      {stepUp.prompt}
+    </div>
   );
 }
 
