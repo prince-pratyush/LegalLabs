@@ -13,6 +13,7 @@ import {
 import { type Gateway, GatewayError } from "@legallabs/model-gateway";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 
 export type DraftKind = "notepad" | "editor";
@@ -309,6 +310,20 @@ export function createDrafts(
               uaHash(client),
             ],
           );
+          if (input.fromMessageId) {
+            // Saving a deep analysis report as a draft completes the research memo.
+            const { rows: report } = await db.query<{ id: string; created_at: Date }>(
+              "select id, created_at from work.run where answer_id = $1 and kind = 'deep_analysis'",
+              [input.fromMessageId],
+            );
+            if (report[0]) {
+              await trackOutcome(db, {
+                workflowType: "research_memo_completed",
+                since: report[0].created_at,
+                once: `research_memo:${report[0].id}`,
+              });
+            }
+          }
           const draft = await load(db, principal, draftId);
           return draft ? { ok: true, draft } : ({ ok: false, reason: "NOT_FOUND" } as const);
         });
@@ -409,6 +424,14 @@ export function createDrafts(
             uaHash(client),
           ],
         );
+        await trackUsage(db, {
+          surface: "web",
+          action: "draft.edited",
+          actionClass: "other",
+          objectType: "draft",
+          objectId: draftId,
+          model,
+        });
       });
     },
 
@@ -501,6 +524,33 @@ export function createDrafts(
             uaHash(client),
           ],
         );
+        await trackUsage(db, {
+          surface: "web",
+          action: "draft.exported",
+          actionClass: "other",
+          objectType: "draft",
+          objectId: draftId,
+        });
+        if (firmTemplate) {
+          await trackUsage(db, {
+            surface: "web",
+            action: "library.template_use",
+            actionClass: "other",
+            subsurface: "library",
+            objectType: "template_version",
+            objectId: firmTemplate.versionId,
+          });
+        }
+        const { rows: made } = await db.query<{ created_at: Date }>(
+          "select created_at from work.draft where id = $1",
+          [draftId],
+        );
+        // One draft is one piece of work, in however many formats it is downloaded.
+        await trackOutcome(db, {
+          workflowType: "draft_exported",
+          since: made[0]?.created_at,
+          once: `draft_exported:${draftId}`,
+        });
         const safe =
           draft.title
             .replace(/[^\p{L}\p{N} _-]+/gu, "")
