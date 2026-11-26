@@ -3,6 +3,7 @@ import { createGateway, type Message, type ModelProvider } from "@legallabs/mode
 import { afterAll, describe, expect, it } from "vitest";
 import type { Principal } from "../auth/auth.js";
 import type { Documents } from "../documents/documents.js";
+import { createDrafts } from "../drafts/drafts.js";
 import { type Seeded, seedMember, testDocuments, testPool, testThreads } from "../test-db.js";
 import type { ScopeDocument } from "./answer.js";
 import { coverageNote, planDeep, READ_CAP, readDeep } from "./deep.js";
@@ -113,6 +114,28 @@ describe("deep analysis", () => {
     expect(report?.content).toContain("Coverage: read 3 of 3 files (3 of 3 pages).");
     expect(report?.citations[0]).toMatchObject({ status: "ok", documentName: "a-supply.txt" });
     expect((await threads.history(principal, {})).rows[0]).toMatchObject({ type: "deep_analysis" });
+
+    // Saving the report twice is one research memo; planning, editing and approving are one query.
+    const drafts = createDrafts(pool, {
+      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+    });
+    for (let i = 0; i < 2; i++) {
+      await drafts.create(
+        principal,
+        asked.threadId,
+        { kind: "editor", fromMessageId: report?.id ?? "" },
+        client,
+      );
+    }
+    const counted = async (sql: string) => (await pool.query(sql, [m.workspaceId])).rows;
+    expect(
+      await counted(
+        "select action from analytics.usage_event where workspace_id = $1 order by action",
+      ),
+    ).toEqual([{ action: "thread.message_sent" }, { action: "thread.response_completed" }]);
+    expect(
+      await counted("select workflow_type from analytics.outcome_event where workspace_id = $1"),
+    ).toEqual([{ workflow_type: "research_memo_completed" }]);
   });
 
   it("won't approve someone else's plan or an ordinary run", async () => {

@@ -77,10 +77,27 @@ const paragraphs = z
 // A fixed list: the name goes into the prompt, so it can't carry instructions.
 const targetLanguage = z.enum(LANGUAGES);
 
-const proofreadBody = z.object({ paragraphs });
-const translateBody = z.object({ paragraphs, language: targetLanguage });
+// One action on a long document is several requests; the pane names it so it counts once.
+const batchId = z.uuid().optional();
+const proofreadBody = z.object({ paragraphs, batch_id: batchId });
+const translateBody = z.object({
+  paragraphs,
+  language: targetLanguage,
+  batch_id: batchId,
+  last: z.boolean().optional(),
+});
 
-export function addinRoutes(language: Language, now: () => number) {
+export interface AddinUse {
+  tool: "proofread" | "translate";
+  batchId?: string | undefined;
+  /** The last request of the action: for a translation, the document is now translated. */
+  last: boolean;
+}
+
+/** Counts one use of a pane tool; it must not throw. */
+export type CountAddinUse = (principal: Principal, use: AddinUse) => Promise<void>;
+
+export function addinRoutes(language: Language, now: () => number, count?: CountAddinUse) {
   // Each batch is a model call, and a long document is many batches.
   const perUser = createLimiter({ limit: 60, windowMs: 10 * 60_000, now });
   const app = new Hono<Env>();
@@ -110,6 +127,11 @@ export function addinRoutes(language: Language, now: () => number) {
     if (stop) return stop;
     const result = await language.proofread(c.get("principal").workspaceId, parsed.data.paragraphs);
     if (!result.ok) return unavailable(c);
+    await count?.(c.get("principal"), {
+      tool: "proofread",
+      batchId: parsed.data.batch_id,
+      last: false,
+    });
     return c.json({ suggestions: result.value, model: result.model });
   });
 
@@ -121,6 +143,11 @@ export function addinRoutes(language: Language, now: () => number) {
     const { paragraphs: list, language: target } = parsed.data;
     const result = await language.translate(c.get("principal").workspaceId, list, target);
     if (!result.ok) return unavailable(c);
+    await count?.(c.get("principal"), {
+      tool: "translate",
+      batchId: parsed.data.batch_id,
+      last: parsed.data.last ?? false,
+    });
     return c.json({ paragraphs: result.value, model: result.model });
   });
 

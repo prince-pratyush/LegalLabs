@@ -1,4 +1,6 @@
 import type pg from "pg";
+import { asApp, type Identity } from "../db.js";
+import { describeError } from "../log-error.js";
 
 export type Surface =
   | "web"
@@ -98,4 +100,72 @@ export async function recordOutcome(db: pg.PoolClient, e: OutcomeInput): Promise
     [e.workflowType, e.quantity ?? 1, e.turnaroundSeconds ?? null, e.at ?? null],
   );
   return rows[0]?.id ?? "";
+}
+
+// What features call. Recording is bookkeeping: it never fails the work it counts.
+
+/** A key of ids naming something that counts once, however often it is repeated. */
+export interface Once {
+  once?: string | undefined;
+}
+
+export interface TrackedOutcome extends Omit<OutcomeInput, "turnaroundSeconds">, Once {
+  /** When the originating object was created; turnaround runs from then. */
+  since?: Date | undefined;
+}
+
+const failed = (name: string, err: unknown) =>
+  console.error(`analytics: ${name} was not recorded: ${describeError(err)}`);
+
+/**
+ * Writes inside the caller's transaction, behind a savepoint: the event commits with the work
+ * it counts, and a failure to write it is logged and rolled back on its own.
+ */
+async function guarded(
+  db: pg.PoolClient,
+  name: string,
+  once: string | undefined,
+  write: () => Promise<unknown>,
+) {
+  try {
+    await db.query("savepoint analytics_record");
+    try {
+      const fresh =
+        once === undefined ||
+        (await db.query<{ ok: boolean }>("select analytics.claim_once($1) ok", [once])).rows[0]?.ok;
+      if (fresh) await write();
+      await db.query("release savepoint analytics_record");
+    } catch (err) {
+      await db.query("rollback to savepoint analytics_record");
+      throw err;
+    }
+  } catch (err) {
+    failed(name, err);
+  }
+}
+
+export const trackUsage = (db: pg.PoolClient, e: UsageInput & Once) =>
+  guarded(db, e.action, e.once, () => recordUsage(db, e));
+
+export const trackOutcome = (db: pg.PoolClient, { once, since, ...e }: TrackedOutcome) =>
+  guarded(db, e.workflowType, once, () =>
+    recordOutcome(db, {
+      ...e,
+      ...(since
+        ? { turnaroundSeconds: Math.max(0, Math.round((Date.now() - since.getTime()) / 1000)) }
+        : {}),
+    }),
+  );
+
+/** For work with no transaction left to join: writes as the person, in one of its own. */
+export async function track(
+  pool: pg.Pool,
+  who: Identity,
+  write: (db: pg.PoolClient) => Promise<unknown>,
+): Promise<void> {
+  try {
+    await asApp(pool, who, write);
+  } catch (err) {
+    failed("an event", err);
+  }
 }

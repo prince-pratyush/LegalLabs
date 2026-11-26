@@ -27,7 +27,7 @@ import { audit } from "./audit.js";
 import { CELL_MAX_OUTPUT } from "./cell.js";
 import { markDependentsStale } from "./dependencies.js";
 import { RESTRICTED_SQL, rowsSql, UnknownColumn } from "./query.js";
-import type { Runner } from "./runner.js";
+import type { Runner, RunRequest } from "./runner.js";
 import {
   type ColumnRow,
   type Db,
@@ -204,6 +204,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
     includeVerified: boolean,
     dryRun = scope === "dry_run",
     includeDependents = false,
+    counted: RunRequest["counted"] = "column_run",
   ): Promise<
     Result<{
       run_id: string | null;
@@ -246,6 +247,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         targets: picked.run,
         scope,
         dryRun,
+        counted,
         dependsOn: column.depends_on,
         contextDocumentId: column.context_document_id,
         labels: Object.fromEntries(columns.map((c) => [c.id, c.label])),
@@ -262,6 +264,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
           picked.run.map((t) => t.rowId),
           includeVerified,
           result,
+          counted,
         )
       : result;
   }
@@ -279,6 +282,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
     rowIds: string[],
     includeVerified: boolean,
     after: { ok: true; value: T },
+    counted: RunRequest["counted"] = "column_run",
   ): Promise<{ ok: true; value: T }> {
     const columns = await asApp(pool, principal, (db) => loadColumns(db, table.id));
     const edges = new Map(columns.map((c) => [c.id, c.depends_on]));
@@ -292,6 +296,9 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         next,
         { row_ids: rowIds },
         includeVerified,
+        false,
+        false,
+        counted,
       );
       if (started.ok && started.value.run_id) {
         after.value.dependent_run_ids.push(started.value.run_id);
@@ -713,6 +720,9 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
               column,
               { row_ids: rowIds },
               true,
+              false,
+              false,
+              "cell_rerun",
             );
             if (started.ok && started.value.run_id) {
               runIds.push(started.value.run_id);
@@ -761,6 +771,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         true,
         false,
         false,
+        "cell_rerun",
       );
       if (!started.ok || !options.includeDependents) return started;
       return startDependents(
@@ -771,6 +782,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         [rowId],
         options.includeVerified === true,
         started,
+        "cell_rerun",
       );
     },
 
@@ -794,6 +806,9 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         found.value.column,
         { row_ids: rowIds },
         false,
+        false,
+        false,
+        "sync_run",
       );
     },
 

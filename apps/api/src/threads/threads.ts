@@ -12,6 +12,7 @@ import type {
 import type { Gateway } from "@legallabs/model-gateway";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
 import { noPersonalisation, type Personalisation } from "../memory/port.js";
@@ -252,6 +253,11 @@ const toDocument = (row: DocumentRow): ThreadDocument => ({
 });
 
 /** The question as plain text, with each mention as its @label. */
+const surfaceOf = (principal: Principal) =>
+  principal.via === "word"
+    ? ({ surface: "word", accessPoint: "word" } as const)
+    : ({ surface: "web", accessPoint: "web" } as const);
+
 export const questionText = (blocks: readonly ContentBlock[]) =>
   blocks
     .map((block) => (block.type === "text" ? block.text : `@${block.label}`))
@@ -624,6 +630,22 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     );
     if (finished.rowCount === 0) throw new RunStopped();
     await db.query("update work.thread set last_activity_at = now() where id = $1", [run.threadId]);
+    // Here because only one save can move the run to done.
+    await trackUsage(db, {
+      ...surfaceOf(principal),
+      action: "thread.response_completed",
+      actionClass: "other",
+      objectType: "thread",
+      objectId: run.threadId,
+      ...(model
+        ? {
+            model: model.model,
+            inputTokens: model.usage.input_tokens,
+            outputTokens: model.usage.output_tokens,
+          }
+        : {}),
+      costUsd: (model?.cost_usd ?? 0) + spent,
+    });
     if (model) {
       const count = (status: CitationStatus) =>
         citations.filter((citation) => citation.status === status).length;
@@ -1110,6 +1132,25 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           );
           const runId = r[0]?.id;
           if (!runId) throw new Error("insert returned no run");
+          const kinds = [
+            ...(vaultIds.length > 0 ? ["vault"] : []),
+            ...(sources.length > 0 ? ["knowledge"] : []),
+            ...(attached.length > 0 ? ["file"] : []),
+          ];
+          await trackUsage(db, {
+            ...surfaceOf(principal),
+            action: "thread.message_sent",
+            actionClass: "query",
+            // A Word ask counts under Word; the rest as a new thread or a follow-up.
+            counter: principal.via ?? (existing ? "follow_ups" : "threads"),
+            subsurface: input.deepAnalysis ? "deep_analysis" : "thread",
+            objectType: "thread",
+            objectId: threadId,
+            ...(matterId ? { matterRef: matterId } : {}),
+            sourceKinds: kinds,
+            documentCount: attached.length,
+            ...(input.model ? { model: input.model } : {}),
+          });
           return { threadId, questionId, runId };
         });
       } catch (err) {
