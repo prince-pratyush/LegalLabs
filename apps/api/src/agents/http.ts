@@ -34,6 +34,10 @@ const FAILURES: Record<AgentFailure, { status: Status; message: string }> = {
     message: "Each attachment and source needs its own label.",
   },
   WALL_DENIED: { status: 403, message: "An attachment isn't available to you." },
+  WALL_SHARE_BLOCKED: {
+    status: 403,
+    message: "Someone you're sharing with is walled from a matter this agent draws on.",
+  },
   SCHEDULE_REQUIRES_LIVE: { status: 400, message: "Save the agent before scheduling it." },
   LEVEL_REQUIRES_BUILD_PERMISSION: {
     status: 400,

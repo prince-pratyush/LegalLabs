@@ -44,6 +44,7 @@ export type AgentFailure =
   | "AGENT_SOURCE_LIMIT"
   | "AGENT_LABEL_DUPLICATE"
   | "WALL_DENIED"
+  | "WALL_SHARE_BLOCKED"
   | "SCHEDULE_REQUIRES_LIVE"
   | "LEVEL_REQUIRES_BUILD_PERMISSION"
   | "GUEST_RUN_ONLY"
@@ -219,6 +220,14 @@ const toVersion = (r: VersionRow): VersionView => ({
 export function createAgents(pool: pg.Pool, deps: AgentsDeps = {}) {
   const attachments = deps.attachments ?? allAttachments;
   const spaces = deps.spaces ?? noSpaces;
+  /** An upload seen only through Run on someone's agent can't be taken into another. */
+  const linkable = (principal: Principal, ref: string) =>
+    asApp(pool, principal, async (db) => {
+      const { rows } = await db.query<{ ok: boolean }>("select work.agent_upload_linkable($1) ok", [
+        ref,
+      ]);
+      return rows[0]?.ok === true;
+    });
   const sources = deps.sources ?? noSources;
   const now = deps.now ?? (() => new Date());
   const imports = new Map<string, { userId: string; preview: BundlePreview; expires: number }>();
@@ -470,7 +479,10 @@ export function createAgents(pool: pg.Pool, deps: AgentsDeps = {}) {
 
       // A walled or missing attachment is refused by id, never by the matter behind it.
       for (const a of input.attachments) {
-        if (!(await attachments.available(principal, a)))
+        if (
+          !(await attachments.available(principal, a)) ||
+          (a.kind === "upload" && !(await linkable(principal, a.ref)))
+        )
           return fail("WALL_DENIED", { attachment: a.label });
       }
 
@@ -535,7 +547,11 @@ export function createAgents(pool: pg.Pool, deps: AgentsDeps = {}) {
           );
         }
         // Upload attachments are documents; link them so anyone who may run the agent can read them.
-        await db.query("delete from work.agent_document where agent_id = $1", [id]);
+        // Links that stay are left in place: they are what entitles an editor to keep them.
+        await db.query(
+          "delete from work.agent_document where agent_id = $1 and not (document_id::text = any ($2))",
+          [id, input.attachments.filter((x) => x.kind === "upload").map((x) => x.ref)],
+        );
         for (const att of input.attachments.filter((x) => x.kind === "upload")) {
           await db.query(
             `insert into work.agent_document (workspace_id, agent_id, document_id)
@@ -655,6 +671,15 @@ export function createAgents(pool: pg.Pool, deps: AgentsDeps = {}) {
           }
           const refusal = levelRefusal(body.level, grantee, scope);
           if (refusal) return fail(refusal);
+
+          // Nobody walled from the matter of a file it carries may be given it (§4.6).
+          if (body.principal_type !== "space") {
+            const { rows } = await db.query<{ n: number }>(
+              "select work.agent_grant_blocked($1, $2, $3) n",
+              [id, body.principal_type, principalId],
+            );
+            if (rows[0]?.n) return fail("WALL_SHARE_BLOCKED");
+          }
 
           const { rows: cfg } = await db.query<{
             require_individual: boolean;
@@ -895,7 +920,9 @@ export function createAgents(pool: pg.Pool, deps: AgentsDeps = {}) {
       // Source and reference checks need the database, so they run after the archive is read.
       for (const s of bundle.preview.sources) s.status = await sources.status(principal, s.source);
       for (const r of bundle.preview.refs) {
-        r.resolved = await attachments.available(principal, { kind: r.kind, ref: r.ref });
+        r.resolved =
+          (await attachments.available(principal, { kind: r.kind, ref: r.ref })) &&
+          (r.kind !== "upload" || (await linkable(principal, r.ref)));
       }
       const token = crypto.randomUUID();
       const now1 = Date.now();
