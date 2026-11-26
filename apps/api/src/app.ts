@@ -395,6 +395,8 @@ export function createApp({
   });
   // Before threads, so a table run's cancel is handled here and a thread run's falls through.
   if (tables) app.route("/api/v1", tableHttp({ ...tables, clientOf, asks }));
+  // Also before threads: an agent or workflow run is cancelled by telling its engine.
+  if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
   app.route("/api/v1", threadHttp({ ...threads, asks, clientOf, now }));
   app.route("/api/v1", draftHttp(drafts, clientOf));
   if (vaults) {
@@ -403,7 +405,6 @@ export function createApp({
   }
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
-  if (agentRuns) app.route("/api/v1", agentRunHttp(agentRuns, clientOf));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)
     app.route(
