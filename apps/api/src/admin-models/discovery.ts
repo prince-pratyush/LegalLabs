@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
-import { safeRequest } from "../auth/oidc/fetch.js";
+import { safeRequest } from "../net/fetch.js";
 import { rpcStream } from "./sse.js";
 
 export interface RawTool {

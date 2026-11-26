@@ -1,7 +1,7 @@
 import { createServer, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { safeRequest } from "../auth/oidc/fetch.js";
+import { safeRequest } from "../net/fetch.js";
 import { PUBLIC_URL, readTool, startFakeMcp } from "../test-mcp.js";
 import { listOnce, type McpTransport, mcpSession } from "./discovery.js";
 import { rpcStream } from "./sse.js";

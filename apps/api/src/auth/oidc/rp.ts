@@ -1,5 +1,5 @@
 import { createLocalJWKSet, errors, type JSONWebKeySet, jwtVerify } from "jose";
-import { type FetchPolicy, safeRequest } from "./fetch.js";
+import { type FetchPolicy, safeRequest } from "../../net/fetch.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 // Asymmetric only: "none" and the HS family would let a token vouch for itself.
