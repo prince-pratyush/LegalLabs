@@ -1,3 +1,5 @@
+export { ApiError, FALLBACK, type Pending, secondFactorApi } from "./auth/api.js";
+export { SecondFactor } from "./auth/second-factor.js";
 export { cn } from "./cn.js";
 export {
   type ActivityRun,

@@ -5,6 +5,8 @@ import {
   Field,
   Input,
   type PaletteCommand,
+  SecondFactor,
+  secondFactorApi,
   setThemeSetting,
 } from "@legallabs/ui";
 import {
@@ -25,8 +27,7 @@ import { adminModelsHash, parseAdminModelsRoute } from "./admin-models/route.js"
 import { AgentsApp } from "./agents/AgentsApp.js";
 import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
-import { handoffFrom, secondFactorApi } from "./auth/api.js";
-import { SecondFactor } from "./auth/SecondFactor.js";
+import { handoffFrom } from "./auth/handoff.js";
 import { CommandCenterApp } from "./command-center/CommandCenterApp.js";
 import { commandCenterHash, parseCommandCenterRoute } from "./command-center/route.js";
 import { GuestApp } from "./guest/GuestApp.js";

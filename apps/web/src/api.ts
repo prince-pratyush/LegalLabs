@@ -11,6 +11,7 @@ import {
   type ThreadScope,
   type VaultSummary,
 } from "@legallabs/contracts";
+import { ApiError, FALLBACK } from "@legallabs/ui";
 
 export type CitationStatus = "ok" | "mismatch" | "unresolved";
 
@@ -192,18 +193,7 @@ export interface DraftDiff {
   summary: unknown;
 }
 
-export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-export const FALLBACK = "Something went wrong. Try again.";
+export { ApiError, FALLBACK };
 
 /** What to tell the person: the server's own words when it gave any. */
 export const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : FALLBACK);
