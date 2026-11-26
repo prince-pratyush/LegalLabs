@@ -16,6 +16,7 @@ import {
 } from "../test-db.js";
 import { createSignInAudit } from "./audit.js";
 import type { Language } from "./language.js";
+import { createAddinUsage } from "./usage.js";
 
 const pool = testPool();
 afterAll(() => pool.end());
@@ -42,7 +43,12 @@ function harness(root?: string) {
       gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
     }),
     clientIp: () => "203.0.113.20",
-    addin: { language, recordSignIn: createSignInAudit(pool), ...(root ? { root } : {}) },
+    addin: {
+      language,
+      recordSignIn: createSignInAudit(pool),
+      countUse: createAddinUsage(pool),
+      ...(root ? { root } : {}),
+    },
   });
   const json = (path: string, body: unknown, headers: Record<string, string> = {}) =>
     app.request(path, {
@@ -122,6 +128,27 @@ describe("add-in tools", () => {
       bearer,
     );
     expect(await tr.json()).toMatchObject({ paragraphs: ["t", "t"] });
+  });
+
+  it("counts an action sent in several requests once", async () => {
+    const { m, h, bearer } = await paneToken();
+    const batch_id = "0192f0c1-2222-7000-8000-000000000001";
+    const body = { paragraphs: ["secret clause"], language: "French", batch_id };
+    for (const last of [false, true, true]) {
+      await h.json("/api/v1/addin/translate", { ...body, last }, bearer);
+    }
+    const events = await pool.query(
+      "select action, counter, surface, access_point from analytics.usage_event where workspace_id = $1",
+      [m.workspaceId],
+    );
+    expect(events.rows).toEqual([
+      { action: "word.translate", counter: "word", surface: "word", access_point: "word" },
+    ]);
+    const outcomes = await pool.query(
+      "select workflow_type from analytics.outcome_event where workspace_id = $1",
+      [m.workspaceId],
+    );
+    expect(outcomes.rows).toEqual([{ workflow_type: "translation_completed" }]);
   });
 
   it("refuses too much text, an odd language name, and anyone signed out", async () => {

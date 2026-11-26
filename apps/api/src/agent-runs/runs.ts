@@ -140,7 +140,7 @@ type StepRow = {
   cost_usd: number;
   started_at: Date;
   finished_at: Date | null;
-  output: { summary?: string };
+  output: { summary?: string; message_id?: string };
   error: unknown;
   input: unknown;
 };
@@ -165,6 +165,12 @@ const toStep = (r: StepRow): StepSummary => ({
   finished_at: r.finished_at?.toISOString() ?? null,
   summary: typeof r.output?.summary === "string" ? r.output.summary : null,
   error: r.error,
+});
+
+/** What someone else sees of a step: the one that wrote the answer doesn't quote it to them. */
+const forOthers = (r: StepRow): StepSummary => ({
+  ...toStep(r),
+  ...(r.output?.message_id ? { summary: "Wrote the answer." } : {}),
 });
 
 /** One agent, workflow or Space task run started, as Command Center counts it. */
@@ -323,13 +329,16 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
     async steps(principal, runId) {
       if (!UUID.test(runId)) return null;
       return asApp(pool, principal, async (db) => {
-        const { rows: run } = await db.query("select 1 from work.run where id = $1", [runId]);
+        const { rows: run } = await db.query<{ owner_id: string }>(
+          "select owner_id from work.run where id = $1",
+          [runId],
+        );
         if (run.length === 0) return null;
         const { rows } = await db.query<StepRow>(
           `select ${STEP_COLUMNS} from work.run_step where run_id = $1 order by ordinal`,
           [runId],
         );
-        return rows.map(toStep);
+        return rows.map(run[0]?.owner_id === principal.userId ? toStep : forOthers);
       });
     },
 
@@ -346,11 +355,10 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
         );
         const row = rows[0];
         if (!row) return null;
-        const summary = toStep(row);
         // Prompt and answer detail is the runner's; everyone else sees the summary.
         return row.owner_id === principal.userId
-          ? { ...summary, input: row.input, output: row.output }
-          : summary;
+          ? { ...toStep(row), input: row.input, output: row.output }
+          : forOthers(row);
       });
     },
 
