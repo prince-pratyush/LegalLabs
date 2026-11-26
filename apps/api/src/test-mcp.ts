@@ -7,7 +7,7 @@ import { createAdminConnectors } from "./admin-models/connectors.js";
 import { listOnce, type McpTransport, mcpSession, type RawTool } from "./admin-models/discovery.js";
 import { createSecretBox } from "./admin-models/secrets.js";
 import type { Principal } from "./auth/auth.js";
-import { safeRequest } from "./auth/oidc/fetch.js";
+import { safeRequest } from "./net/fetch.js";
 
 // Test support: an MCP server on loopback and the connector that points at it.
 

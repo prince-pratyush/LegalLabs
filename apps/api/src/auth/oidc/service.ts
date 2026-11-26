@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import type pg from "pg";
 import { asApp, type Identity } from "../../db.js";
+import type { FetchPolicy } from "../../net/fetch.js";
 import { type Client, type Principal, uaHash } from "../auth.js";
-import type { FetchPolicy } from "./fetch.js";
 import { createRp, RpError } from "./rp.js";
 import { insertSession } from "./session.js";
 
