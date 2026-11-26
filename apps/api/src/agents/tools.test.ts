@@ -245,6 +245,60 @@ describe("agent runs with connector tools", () => {
     ]);
   });
 
+  it("shows the approver characters that would otherwise be sent unseen", async () => {
+    // Tag characters spell text nobody sees; the others hide, reorder or pad it.
+    const smuggled = [
+      "\u{e0073}\u{e0065}\u{e0063}",
+      "\u061c",
+      "\u00ad",
+      "\ufe0f",
+      "\u3164",
+      "\u00a0",
+    ];
+    const body = `hello${smuggled.join("")}`;
+    const send = `TOOL: ${JSON.stringify({ tool: "vendor.send_mail", arguments: { to: "a@b.example", body } })}`;
+    const h = await harness([send, "Not sent."]);
+    const { run_id } = await h.start(await h.agent());
+    const { question, step_id } = await h.pending(run_id);
+    for (const hidden of smuggled) expect(question).not.toContain(hidden);
+    expect(question).toContain("\\udb40\\udc73");
+    expect(question).toContain("\\u061c\\u00ad\\ufe0f\\u3164\\u00a0");
+    await h.answer(run_id, step_id, { option_id: "deny" });
+    await h.engine.result(run_id);
+  });
+
+  it("takes no answer for a tool call that hasn't been put to anyone yet", async () => {
+    const h = await harness([SEND]);
+    const { run_id } = await h.start(await h.agent());
+    const { step_id } = await h.pending(run_id);
+    // As the step is while the connector is still being checked: made, not yet asked.
+    await pool.query("update work.run_step set status = 'running', output = '{}' where id = $1", [
+      step_id,
+    ]);
+    const colleague = (
+      await pool.query<{ id: string }>(
+        `insert into core."user" (workspace_id, email, role_id, status)
+         select workspace_id, 'col@' || id || '.test', role_id, 'active' from core."user"
+          where id = $1 returning id`,
+        [h.admin.userId],
+      )
+    ).rows[0]?.id as string;
+    const shared = await h.agents.share(
+      h.me,
+      (await pool.query("select subject_id from work.run where id = $1", [run_id])).rows[0]
+        .subject_id,
+      { principal_type: "user", principal_id: colleague, level: "full" },
+      CLIENT,
+    );
+    expect(shared.ok).toBe(true);
+    const them = { sessionId: randomUUID(), workspaceId: h.admin.workspaceId, userId: colleague };
+    expect(await h.answer(run_id, step_id, { option_id: "approve" }, them)).toBe("FORBIDDEN");
+    expect(await h.answer(run_id, step_id, { option_id: "approve" })).toBe("FORBIDDEN");
+    await h.runs.signal(h.me, run_id, { name: "cancel", reason: "done" }, CLIENT);
+    await h.engine.result(run_id);
+    expect(h.fake.calls).toHaveLength(0);
+  });
+
   it("blocks the write on an unattended run and carries on", async () => {
     const h = await harness([SEND, "Couldn't send."]);
     const { run_id } = await h.start(await h.agent(), { interactive: false });

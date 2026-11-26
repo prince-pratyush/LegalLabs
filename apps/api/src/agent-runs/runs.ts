@@ -339,17 +339,26 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
         ((await options.mayControl?.(principal, run)) ?? false);
       if (!allowed) return "FORBIDDEN";
       if (["done", "failed", "cancelled"].includes(run.status)) return "FINISHED";
-      // A tool call is approved only by the person whose run it is: the call goes out as them.
-      if (signal.name === "answer_question" && run.owner_id !== principal.userId) {
-        const approval = await asApp(pool, principal, async (db) => {
-          const { rows } = await db.query<{ awaiting: string | null }>(
-            "select output ->> 'awaiting' as awaiting from work.run_step where run_id = $1 and id::text = $2",
+      // A tool call is approved only by the person whose run it is, since it goes out as them,
+      // and only once it has been put to them: an answer sent while the connector is still being
+      // checked would wait in the queue and approve a call nobody has seen.
+      if (signal.name === "answer_question") {
+        const step = await asApp(pool, principal, async (db) => {
+          const { rows } = await db.query<{
+            kind: string;
+            status: string;
+            awaiting: string | null;
+          }>(
+            `select kind, status, output ->> 'awaiting' as awaiting from work.run_step
+              where run_id = $1 and id::text = $2`,
             [runId, signal.step_id],
           );
-          // A step that can't be read can't be shown to be an ordinary question.
-          return rows[0] ? rows[0].awaiting === "tool_approval" : true;
+          return rows[0] ?? null;
         });
-        if (approval) return "FORBIDDEN";
+        const unasked = step?.kind === "tool" && step.status === "running";
+        // A step that can't be read can't be shown to be an ordinary question.
+        const approval = !step || step.kind === "tool" || step.awaiting === "tool_approval";
+        if (unasked || (approval && run.owner_id !== principal.userId)) return "FORBIDDEN";
       }
       // The engine first, so a step that stops on the flag finds the signal already waiting.
       await engine.signal(runId, signal);
