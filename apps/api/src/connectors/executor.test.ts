@@ -156,6 +156,18 @@ describe("the tool executor", () => {
     expect(s.fake.calls).toHaveLength(0);
   });
 
+  it("keeps a reply the database can store, with no part of the key at the cut", async () => {
+    const s = await setup();
+    s.fake.replies.search = `a\u0000b\ud800c${"x".repeat(99_990 - 5)}${TOKEN}`;
+    const out = await s.run("vendor.search", { q: "x" });
+    if (out.status !== "ok") throw new Error(out.status);
+    for (const text of [out.raw, out.text]) {
+      expect(text).not.toContain("\u0000");
+      expect(text).not.toMatch(/\p{Surrogate}/u);
+    }
+    expect(out.raw).not.toContain(TOKEN.slice(0, 8));
+  });
+
   it("asks after twenty calls to one tool", async () => {
     const s = await setup();
     const out = await s.run("vendor.search", { q: "x" }, { priorCalls: () => 20 });

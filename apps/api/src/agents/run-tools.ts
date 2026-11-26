@@ -1,5 +1,6 @@
 import type { AgentSource } from "@legallabs/contracts";
 import type { OfferedTool } from "../admin-models/connectors.js";
+import { storable, stripInvisible } from "../connectors/sanitise.js";
 
 // How a model asks for a tool, and how what came back is shown to it. The gateway carries text
 // only, so a call is a reply that is nothing but one TOOL: line. Only the model's own reply is
@@ -33,13 +34,27 @@ export const TOOL_RULES = [
   "Writes need the person's approval, and a call may be refused; then carry on without it and say so.",
 ].join(" ");
 
+/**
+ * JSON a model wrote. Throws on text the database can't hold (NUL, half a surrogate pair), so
+ * it is treated as unreadable rather than failing the step that records it.
+ */
+export const parseModelJson = (text: string): unknown =>
+  JSON.parse(text, (key, value) => {
+    for (const part of [key, value]) {
+      if (typeof part === "string" && storable(part) !== part) {
+        throw new Error("unstorable text");
+      }
+    }
+    return value;
+  });
+
 const TOOL = /^(?:```[a-z]*\s*)?TOOL:\s*(\{[\s\S]*\})\s*(?:```)?$/;
 
 export function parseToolCall(text: string): ToolCall | null {
   const found = TOOL.exec(text);
   if (!found) return null;
   try {
-    const parsed = JSON.parse(found[1] as string) as { tool?: unknown; arguments?: unknown };
+    const parsed = parseModelJson(found[1] as string) as { tool?: unknown; arguments?: unknown };
     return { name: String(parsed.tool ?? ""), arguments: parsed.arguments ?? {} };
   } catch {
     // Unreadable, so it names no tool and the executor refuses it.
@@ -54,18 +69,26 @@ export function connectorScopes(sources: readonly AgentSource[]) {
       const tools = s.filters?.tools;
       return {
         connector: s.source.replace(/^mcp:/, ""),
-        ...(Array.isArray(tools) ? { tools: tools.map(String) } : {}),
+        // A filter that can't be read offers nothing, never everything.
+        ...(tools === undefined ? {} : { tools: Array.isArray(tools) ? tools.map(String) : [] }),
       };
     });
 }
 
+// What a server says about its tools, without the characters an admin couldn't have seen.
 export const toolList = (offered: readonly OfferedTool[]) =>
-  `Tools:\n${offered
-    .map(
-      (t) =>
-        `- ${t.name}: ${t.description.slice(0, 300)}\n  arguments: ${JSON.stringify(t.inputSchema).slice(0, 1_500)}`,
-    )
-    .join("\n")}`;
+  stripInvisible(
+    `Tools:\n${offered
+      .map(
+        (t) =>
+          `- ${t.name}: ${t.description.slice(0, 300)}\n  arguments: ${JSON.stringify(t.inputSchema).slice(0, 1_500)}`,
+      )
+      .join("\n")}`,
+  );
+
+// A name or reason holds words the model chose and sits outside the data blocks, so it is kept
+// to one short line.
+const oneLine = (text: string) => text.replace(/\s+/g, " ").slice(0, 200);
 
 /** Each earlier call and what came of it, with results fenced as data. */
 export function callHistory(log: readonly StepLog[], code: string): string {
@@ -75,8 +98,8 @@ export function callHistory(log: readonly StepLog[], code: string): string {
         | { name: string; status: string; text?: string; reason?: string }
         | undefined;
       if (!r) return [];
-      const head = `Call to ${r.name}:`;
-      if (r.status === "blocked") return [`${head} refused. ${r.reason ?? ""}`];
+      const head = `Call to ${oneLine(r.name)}:`;
+      if (r.status === "blocked") return [`${head} refused. ${oneLine(r.reason ?? "")}`];
       if (r.status === "declined") return [`${head} the person did not approve it.`];
       if (r.status === "unknown") {
         return [`${head} sent, but the outcome is unknown. Do not repeat it.`];
