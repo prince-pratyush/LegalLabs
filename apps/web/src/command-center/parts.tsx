@@ -164,11 +164,11 @@ export function Columns({
           <div
             key={p.key}
             title={`${p.key}: ${p.value} ${unit}`}
-            className="flex h-full max-w-6 min-w-0 flex-1 items-end"
+            className="flex h-full min-w-0 flex-1 items-end justify-center"
             onPointerEnter={() => setAt(i)}
           >
             <div
-              className="w-full rounded-t-sm bg-accent"
+              className="w-full max-w-6 rounded-t-sm bg-accent"
               style={{ height: `${(p.value / max) * 100}%` }}
             />
           </div>
