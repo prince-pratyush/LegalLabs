@@ -39,6 +39,27 @@ export interface Resource {
   resource_id: string;
   name: string | null;
   access: string;
+  /** Guest party id to level, in an external Space. */
+  per_party?: Record<string, string>;
+}
+
+export interface Party {
+  id: string;
+  name: string;
+  domain: string;
+  connection_admin_emails: string[];
+  connection: {
+    status: "action_required" | "in_progress" | "resolved" | "rejected";
+    approvals: { side: "internal" | "external"; at: string }[];
+  };
+}
+
+export interface Guest {
+  user_id: string;
+  email: string;
+  name: string;
+  expires_at: string;
+  status: "active" | "expired" | "deactivated";
 }
 
 export interface Phase {
@@ -117,7 +138,8 @@ const enc = encodeURIComponent;
 export const spacesApi = {
   list: async () => (await call<{ spaces: Space[] }>("/spaces?filter[member]=me")).spaces,
   directory: async () => (await call<{ spaces: DirectoryEntry[] }>("/spaces/directory")).spaces,
-  create: async (name: string) => (await send<{ space: Space }>("POST", "/spaces", { name })).space,
+  create: async (name: string, kind: Space["kind"] = "internal") =>
+    (await send<{ space: Space }>("POST", "/spaces", { name, kind })).space,
   get: async (id: string) => (await call<{ space: Space }>(`/spaces/${enc(id)}`)).space,
   setContext: async (id: string, context: Omit<Space["context"], "version">) =>
     (await send<{ space: Space }>("PUT", `/spaces/${enc(id)}/context`, context)).space,
@@ -129,6 +151,32 @@ export const spacesApi = {
     (await call<{ resources: Resource[] }>(`/spaces/${enc(id)}/resources`)).resources,
   activity: async (id: string) =>
     (await call<{ items: Activity[] }>(`/spaces/${enc(id)}/activity`)).items,
+
+  parties: async (id: string) =>
+    (await call<{ parties: Party[] }>(`/spaces/${enc(id)}/parties`)).parties,
+  addParty: (
+    id: string,
+    input: { name: string; domain: string; connection_admin_emails: string[] },
+  ) => send<unknown>("POST", `/spaces/${enc(id)}/parties`, input),
+  removeParty: (id: string, partyId: string) =>
+    send<unknown>("DELETE", `/spaces/${enc(id)}/parties/${enc(partyId)}`),
+  approveParty: (id: string, partyId: string) =>
+    send<unknown>("POST", `/spaces/${enc(id)}/parties/${enc(partyId)}/approve`),
+  rejectParty: (id: string, partyId: string) =>
+    send<unknown>("POST", `/spaces/${enc(id)}/parties/${enc(partyId)}/reject`, {}),
+  guests: async (id: string) =>
+    (await call<{ guests: Guest[] }>(`/spaces/${enc(id)}/guests`)).guests,
+  invite: (id: string, email: string, access_days: number) =>
+    send<{ invite: { email: string }; accept_url: string }>("POST", `/spaces/${enc(id)}/guests`, {
+      email,
+      access_days,
+    }),
+  removeGuest: (id: string, userId: string) =>
+    send<unknown>("DELETE", `/spaces/${enc(id)}/guests/${enc(userId)}`),
+  setPartyLevel: (id: string, resourceRowId: string, partyId: string, level: string) =>
+    send<unknown>("PATCH", `/spaces/${enc(id)}/resources/${enc(resourceRowId)}`, {
+      per_party: { [partyId]: level },
+    }),
 
   phases: async (id: string) =>
     (await call<{ phases: Phase[] }>(`/spaces/${enc(id)}/phases`)).phases,

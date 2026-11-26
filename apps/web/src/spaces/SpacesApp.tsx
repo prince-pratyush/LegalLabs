@@ -26,6 +26,7 @@ import {
   type Task,
   type TaskStatus,
 } from "./api.js";
+import { GuestsTab } from "./GuestsTab.js";
 import { parseSpaceRoute, type SpaceTab, spacesHash } from "./route.js";
 
 const STATUSES: { value: TaskStatus; label: string }[] = [
@@ -91,6 +92,7 @@ function SpaceList() {
   const [spaces, setSpaces] = useState<Space[] | null>(null);
   const [others, setOthers] = useState<DirectoryEntry[]>([]);
   const [name, setName] = useState("");
+  const [external, setExternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -103,7 +105,7 @@ function SpaceList() {
     event.preventDefault();
     if (!name.trim()) return;
     try {
-      const space = await spacesApi.create(name.trim());
+      const space = await spacesApi.create(name.trim(), external ? "external" : "internal");
       window.location.hash = spacesHash(space.id);
     } catch (err) {
       toast.error(messageOf(err));
@@ -116,7 +118,7 @@ function SpaceList() {
   return (
     <>
       <h1 className="mb-4 text-title font-semibold">Spaces</h1>
-      <form onSubmit={create} className="mb-6 flex max-w-lg items-end gap-2">
+      <form onSubmit={create} className="mb-6 flex max-w-lg flex-wrap items-end gap-2">
         <div className="grid flex-1 gap-1">
           <Label htmlFor="new-space">New Space</Label>
           <Input
@@ -130,6 +132,14 @@ function SpaceList() {
         <Button type="submit" disabled={!name.trim()}>
           Create
         </Button>
+        <label className="flex w-full items-center gap-2 text-ui">
+          <input
+            type="checkbox"
+            checked={external}
+            onChange={(e) => setExternal(e.target.checked)}
+          />
+          External: a guest organisation can be invited
+        </label>
       </form>
       {error && (
         <p role="alert" className="mb-4 text-destructive">
@@ -227,6 +237,12 @@ function SpacePage({ spaceId, tab }: { spaceId: string; tab: SpaceTab }) {
   const admin = space.my_role === "admin";
   return (
     <>
+      {space.kind === "external" && (
+        <p className="mb-3 rounded-md border border-control bg-bg-sunken p-2 text-dense">
+          <Lock aria-hidden className="mr-1 inline size-3" />
+          External Space. A guest organisation can see what you share with it.
+        </p>
+      )}
       <div className="mb-4">
         <h1 className="text-title font-semibold">{space.name}</h1>
         <p className="text-dense text-fg-muted">
@@ -244,6 +260,7 @@ function SpacePage({ spaceId, tab }: { spaceId: string; tab: SpaceTab }) {
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="resources">Resources</TabsTrigger>
+          {space.kind === "external" && <TabsTrigger value="guests">Guests</TabsTrigger>}
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="context">Context</TabsTrigger>
         </TabsList>
@@ -256,6 +273,11 @@ function SpacePage({ spaceId, tab }: { spaceId: string; tab: SpaceTab }) {
         <TabsContent value="resources">
           <ResourcesTab spaceId={spaceId} />
         </TabsContent>
+        {space.kind === "external" && (
+          <TabsContent value="guests">
+            <GuestsTab space={space} />
+          </TabsContent>
+        )}
         <TabsContent value="activity">
           <ActivityTab spaceId={spaceId} />
         </TabsContent>
