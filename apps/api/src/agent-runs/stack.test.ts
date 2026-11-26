@@ -9,8 +9,7 @@ import { seedMember, testDocuments, testPool } from "../test-db.js";
 import { createRunStack } from "./stack.js";
 
 /*
- * The server's own wiring (`createRunStack`, as server.ts calls it) with Spaces on top. Spaces
- * has no agent catalogue of its own yet, so one is registered here.
+ * The server's own wiring (`createRunStack`, as server.ts calls it) with Spaces on top.
  */
 
 const pool = testPool();
@@ -43,12 +42,6 @@ async function harness(replies: string[]) {
   const spaces = stack.attach(
     createSpaceModule(pool, {
       runs: stack.taskRuns,
-      catalog: {
-        agent: async (_db, id) =>
-          id === agentId
-            ? { name: "Diligence", ownerId: admin.userId, matterId: null, full: true }
-            : null,
-      },
     }),
   );
   const space = await spaces.spaces.create(me, { name: "Deal", kind: "internal" }, CLIENT);

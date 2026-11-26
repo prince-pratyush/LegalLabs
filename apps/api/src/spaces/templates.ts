@@ -74,6 +74,19 @@ const grant = (
     [p.workspaceId, spaceId, type, id, level, p.userId],
   );
 
+/** Why a template may not share an agent into this Space, or null when it may. */
+async function agentSkip(db: Db, spaceId: string, agentId: string, full: boolean) {
+  const row = await one<{ other_matter: boolean; blocked: number; outside: boolean }>(
+    db,
+    `select c.other_matter, c.blocked,
+            (s.kind = 'external' and not core.has_permission('spaces.external')) as outside
+       from work.space s, work.agent_share_check($1, $2) c where s.id = $1`,
+    [spaceId, agentId],
+  );
+  if (row?.blocked) return "wall" as const;
+  return !row || !full || row.outside || row.other_matter ? ("not_shared" as const) : null;
+}
+
 /**
  * Adds a template's phases, tasks and grants to a Space. Additive: nothing is removed. Tasks come
  * unassigned and undated. A reference the caller can't use is skipped and reported, never dropped
@@ -139,6 +152,14 @@ export async function applyTemplate(
       if (!found) {
         skipped.push({ kind: type, id: item.id, reason: "not_found" });
         continue;
+      }
+      // Applying a template shares what it names, so it needs what sharing by hand needs.
+      if (type === "agent") {
+        const reason = await agentSkip(db, spaceId, item.id, found.full);
+        if (reason) {
+          skipped.push({ kind: type, id: item.id, reason });
+          continue;
+        }
       }
       await grant(db, p, spaceId, type, item.id, item.level);
     }

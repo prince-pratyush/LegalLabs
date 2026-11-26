@@ -26,6 +26,7 @@ import type {
   ActivityView,
   DirectoryEntry,
   MemberView,
+  PendingShare,
   ResourceView,
   SpaceView,
 } from "./spaces.js";
@@ -65,6 +66,18 @@ export const FAILURES: Record<
   GATE_NEEDS_APPROVAL: { status: 409, message: "A gate task is finished by approving it." },
   NOT_AWAITING_APPROVAL: { status: 409, message: "That task isn't waiting for approval." },
   NOT_A_GATE: { status: 409, message: "That task isn't a gate." },
+  WALL_SHARE_BLOCKED: {
+    status: 403,
+    message: "An ethical wall stops this agent being shared with everyone in the Space.",
+  },
+  SHARE_REQUEST_COOLDOWN: {
+    status: 409,
+    message: "That share was declined recently. Try again later.",
+  },
+  SHARE_REQUEST_STALE: {
+    status: 409,
+    message: "Whoever asked can no longer share that agent. Decline the request.",
+  },
   AGENT_NOT_SHARED: { status: 400, message: "Share the agent into this Space to run it here." },
   INVALID_ASSIGNEE: { status: 400, message: "Assign to someone in this Space." },
   MENTION_NOT_VISIBLE: { status: 400, message: "Only people in this Space can be mentioned." },
@@ -136,6 +149,16 @@ const memberJson = (m: MemberView) => ({
   role: m.role,
   joined_at: m.joinedAt,
 });
+const pendingJson = (p: PendingShare) => ({
+  id: p.id,
+  resource_type: p.resourceType,
+  resource_id: p.resourceId,
+  access: p.access,
+  per_party: p.perParty,
+  status: "pending" as const,
+  created_at: p.createdAt,
+});
+
 const resourceJson = (r: ResourceView) => ({
   id: r.id,
   resource_type: r.resourceType,
@@ -377,7 +400,11 @@ export function spaceHttp(module: SpaceModule, clientOf: (c: Context) => Client)
     const input = await body(c, ResourceInput);
     if (!input) return invalid(c);
     const result = await spaces.addResource(me(c), param(c, "id"), input, client(c));
-    return respond(c, result, (r) => ({ resource: resourceJson(r) }), 201);
+    // Into an external Space it may only be asked for: 202 until a Space admin decides.
+    if (result.ok && "request" in result.value) {
+      return c.json({ request: pendingJson(result.value.request) }, 202);
+    }
+    return respond(c, result, (r) => ({ resource: resourceJson(r as ResourceView) }), 201);
   });
   app.patch("/spaces/:id/resources/:rid", small, async (c) => {
     const input = await body(c, levelBody);
@@ -416,7 +443,18 @@ export function spaceHttp(module: SpaceModule, clientOf: (c: Context) => Client)
   });
   app.get("/spaces/:id/requests", async (c) => {
     const list = await spaces.requests(me(c), param(c, "id"));
-    return list ? c.json({ access: list.map(requestJson) }) : notFound(c);
+    const shares = await spaces.shareRequests(me(c), param(c, "id"));
+    return list && shares
+      ? c.json({
+          access: list.map(requestJson),
+          shares: shares.map((s) => ({
+            ...pendingJson(s),
+            name: s.name,
+            requested_by: s.requestedBy,
+            requester_name: s.requesterName,
+          })),
+        })
+      : notFound(c);
   });
   app.post("/spaces/:id/access-requests", small, async (c) => {
     const input = await body(c, messageBody);
@@ -435,6 +473,15 @@ export function spaceHttp(module: SpaceModule, clientOf: (c: Context) => Client)
       client(c),
     );
     return respond(c, result, (r) => ({ request: requestJson(r) }));
+  });
+
+  app.post("/spaces/:id/share-requests/:rid", small, async (c) => {
+    const input = await body(c, decideBody);
+    if (!input) return invalid(c);
+    return empty(
+      c,
+      await spaces.decideShare(me(c), param(c, "id"), param(c, "rid"), input, client(c)),
+    );
   });
 
   // --- Phases ---

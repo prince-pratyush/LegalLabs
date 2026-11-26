@@ -112,6 +112,8 @@ Code: `agent-runs/`, `agents/`, `workflows/`, `spaces/agent-runs.ts`, migrations
 
 A second review of the tool and run work (F-19 to F-36 in [evidence.md](evidence.md)) changed this: others who may see an agent run now get its progress only, and not at all when walled from its matter (0190); cancelling by `/runs/{id}/cancel` reaches the engine; the approval question spells out hidden characters, and a tool call takes no answer before it is asked.
 
+Agents can be shared into Spaces, external ones included (0200). A Space grant never carries Full, a guest party gets Run or nothing and sees only the title, and no guest can read or start a run. Only someone with Full in their own right can share; into an external Space a Space admin decides unless the sharer is one. The grant is closed while anyone in the Space is walled from a matter of the agent's files that requires walls for sharing. A task run still acts as its assigner, so its tool calls are approved by that person alone.
+
 ## 8. Cross-cutting
 
 **Tenant isolation.** RLS is enabled and forced on every table (checked by `rls.test.ts`, including a test that catches a table added without protection). The definer functions are the weak point of any RLS design, so P-01 calls every one the app role may execute, as four kinds of caller, with the ids of everything in another workspace: nothing changed, and only three yes or no oracles remain (accepted, F-09).

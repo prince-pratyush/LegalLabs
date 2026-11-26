@@ -45,7 +45,10 @@ export type Failure =
   | "NO_PARTY"
   | "SPACE_NOT_EXTERNAL"
   | "INVALID_PARTY_LEVEL"
-  | "UNKNOWN_PARTY";
+  | "UNKNOWN_PARTY"
+  | "WALL_SHARE_BLOCKED"
+  | "SHARE_REQUEST_COOLDOWN"
+  | "SHARE_REQUEST_STALE";
 
 export type Result<T> = { ok: true; value: T } | { ok: false; reason: Failure };
 
@@ -78,6 +81,8 @@ const SQL_REFUSALS: Record<string, Failure> = {
   UNKNOWN_PARTY: "UNKNOWN_PARTY",
   PER_PARTY_NEEDS_EXTERNAL_SPACE: "SPACE_NOT_EXTERNAL",
   GUEST_MEMBERSHIP_INVALID: "INVALID",
+  // Agent grants (0200).
+  AGENT_LEVEL_INVALID: "INVALID",
 };
 
 // Unique indexes that mean something to the caller.
