@@ -64,7 +64,7 @@ export function AdminShell({
         </nav>
       }
     >
-      <main id="main" className="flex min-w-0 flex-1 flex-col overflow-auto p-6">
+      <main id="main" className="relative flex min-w-0 flex-1 flex-col overflow-auto p-6">
         <h1 className="mb-4 text-title font-semibold">{title}</h1>
         {children}
       </main>
