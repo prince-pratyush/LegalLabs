@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import type { ToolPolicy } from "@legallabs/contracts";
 import type pg from "pg";
 import { createAdminConnectors } from "./admin-models/connectors.js";
-import { type McpTransport, mcpSession, type RawTool } from "./admin-models/discovery.js";
+import { listOnce, type McpTransport, mcpSession, type RawTool } from "./admin-models/discovery.js";
 import { createSecretBox } from "./admin-models/secrets.js";
 import type { Principal } from "./auth/auth.js";
 import { safeRequest } from "./auth/oidc/fetch.js";
@@ -46,6 +46,12 @@ export interface FakeMcp {
   requests: { method: string; authorization: string }[];
   /** Holds tools/call open until the request is dropped. */
   hang: boolean;
+  /** Answers as an event stream, left open after the reply. */
+  sse: boolean;
+  /** Issues this session id at initialize and refuses requests that don't carry it. */
+  sessionId: string | null;
+  /** Session ids the client has ended. */
+  ended: string[];
   /** Where it really listens, on loopback. */
   url: string;
   transport: McpTransport;
@@ -59,6 +65,9 @@ export async function startFakeMcp(tools: RawTool[]): Promise<FakeMcp> {
     calls: [],
     requests: [],
     hang: false,
+    sse: false,
+    sessionId: null,
+    ended: [],
   };
   const server = createServer((req, res) => {
     let body = "";
@@ -66,12 +75,34 @@ export async function startFakeMcp(tools: RawTool[]): Promise<FakeMcp> {
       body += chunk;
     });
     req.on("end", () => {
+      if (req.method === "DELETE") {
+        fake.ended.push(String(req.headers["mcp-session-id"]));
+        return res.end();
+      }
       const { id, method, params } = JSON.parse(body);
       fake.requests.push({ method, authorization: req.headers.authorization ?? "" });
       const reply = (result: unknown) => {
+        const message = JSON.stringify({ jsonrpc: "2.0", id, result });
+        if (fake.sse) {
+          res.setHeader("content-type", "text/event-stream");
+          // A notification first, and no end: the client takes the reply and leaves.
+          res.write('data: {"jsonrpc":"2.0","method":"notifications/message","params":{}}\n\n');
+          return res.write(`event: message\ndata: ${message}\n\n`);
+        }
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ jsonrpc: "2.0", id, result }));
+        return res.end(message);
       };
+      if (fake.sessionId) {
+        if (method === "initialize") res.setHeader("mcp-session-id", fake.sessionId);
+        else if (req.headers["mcp-session-id"] !== fake.sessionId) {
+          res.statusCode = 400;
+          return res.end();
+        }
+      }
+      if (method.startsWith("notifications/")) {
+        res.statusCode = 202;
+        return res.end();
+      }
       if (method === "tools/list") {
         return reply({
           tools: fake.tools.map((t) => ({
@@ -115,7 +146,7 @@ export const testSecrets = createSecretBox(randomBytes(32).toString("base64"));
 export function testConnectors(pool: pg.Pool, fake: FakeMcp) {
   return createAdminConnectors(pool, {
     secrets: testSecrets,
-    discovery: (url, auth) => mcpSession(url, auth, { transport: fake.transport }).listTools(),
+    discovery: (url, auth) => listOnce(mcpSession(url, auth, { transport: fake.transport })),
   });
 }
 
