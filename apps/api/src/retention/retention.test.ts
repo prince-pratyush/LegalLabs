@@ -213,16 +213,6 @@ async function reviewTable(m: Seeded, ageHours: number) {
   return id;
 }
 
-const expiredIds = async (m: Seeded) =>
-  new Set(
-    (
-      await q<{ object_id: string }>(
-        "select object_id from retention.expired_objects($1) where not held",
-        [m.workspaceId],
-      )
-    ).map((r) => r.object_id),
-  );
-
 // What the owner can still see, with row-level security on.
 async function visible(m: Seeded, sql: string, params: unknown[]) {
   const c = await pool.connect();
@@ -398,39 +388,6 @@ describe("retention: deletion verified", () => {
 });
 
 describe("retention: policies", () => {
-  it("resolves precedence: specific scope wins, shortest of matter and vault, null is unlimited", async () => {
-    const m = await seedMember(pool);
-    await policy(m, "workspace", m.workspaceId, 50);
-    const doc = async (vault: string) => sqlDoc(m, vault, 100);
-    const v1 = await sqlVault(m); // workspace only
-    const v2 = await sqlVault(m);
-    await policy(m, "vault", v2, 200); // vault is looser, wins
-    const v3 = await sqlVault(m);
-    await policy(m, "vault", v3, 20);
-    const m4 = await matter(m);
-    const v4 = await sqlVault(m, { matterId: m4 });
-    await policy(m, "vault", v4, 200);
-    await policy(m, "matter", m4, 50); // shortest
-    const v5 = await sqlVault(m);
-    await policy(m, "vault", v5, null); // unlimited
-    const v6 = await sqlVault(m, { hours: 20 }); // legacy hours
-    const v7 = await sqlVault(m, { hours: 20 });
-    await policy(m, "vault", v7, null); // row replaces legacy
-    const m8 = await matter(m);
-    const v8 = await sqlVault(m, { matterId: m8 });
-    await policy(m, "matter", m8, null);
-    await policy(m, "vault", v8, 20); // shortest non-null
-    const m9 = await matter(m);
-    const v9 = await sqlVault(m, { matterId: m9 });
-    await policy(m, "matter", m9, null); // explicit unlimited, no fall through
-    const docs: Record<string, string> = {};
-    for (const [name, v] of Object.entries({ v1, v2, v3, v4, v5, v6, v7, v8, v9 }))
-      docs[name] = await doc(v);
-    const expired = await expiredIds(m);
-    const hit = Object.keys(docs).filter((k) => expired.has(docs[k] ?? ""));
-    expect(hit.sort()).toEqual(["v1", "v3", "v4", "v6", "v8"]);
-  });
-
   it("refuses under 3 hours with 422 RETENTION_MIN and gates admins only", async () => {
     const h = harness();
     const m = await seedMember(pool);

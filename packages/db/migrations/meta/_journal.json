@@ -684,7 +684,14 @@
     {
       "idx": 129,
       "version": "7",
-      "when": 1794010170011,
+      "when": 1794020500000,
+      "tag": "0205_retention_strictest_scope",
+      "breakpoints": false
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1794020500001,
       "tag": "0200_work_space_agent_sharing",
       "breakpoints": false
     }
