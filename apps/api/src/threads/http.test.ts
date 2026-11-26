@@ -82,7 +82,7 @@ const events = (text: string) =>
     });
 
 describe("thread API", () => {
-  it("still sends the end of a run that finishes between its two reads", async () => {
+  it("waits for the closing event of a run already marked finished", async () => {
     const { deps, signIn, upload, call } = harness();
     const m = await seedMember(pool);
     const cookie = await signIn(m);
@@ -94,8 +94,11 @@ describe("thread API", () => {
     const started = (await res.json()) as { run_id: string };
     await deps.threads.settled();
 
-    // The log read as it was before the run ended; the status read after it sees "done".
-    vi.spyOn(deps.log, "replay").mockResolvedValueOnce([]);
+    // The status says "done" before the closing event is saved: several reads find nothing.
+    vi.spyOn(deps.log, "replay")
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
     const stream = await call(cookie, `/api/v1/runs/${started.run_id}/events`);
     expect(events(await stream.text()).at(-1)?.event).toBe("done");
   });

@@ -46,6 +46,9 @@ export interface ThreadHttpOptions {
 export const ASK_WINDOW_MS = 10 * 60_000;
 // Polled as well as woken, so a run finished by another server process still reaches the reader.
 const POLL_MS = 5_000;
+/** How long a finished run's stream waits for its closing event: two seconds in all. */
+const FINISH_POLL_MS = 100;
+const FINISH_READS = 20;
 const MAX_STREAM_MS = 30 * 60_000;
 const MAX_STREAMS = 10;
 
@@ -422,7 +425,7 @@ export function threadHttp(options: ThreadHttpOptions) {
       stream.onAbort(() => wake?.());
       const opened = now();
       let last = start;
-      let sawFinished = false;
+      let finishedReads = 0;
       try {
         while (!stream.aborted && now() - opened < MAX_STREAM_MS) {
           // Read back as the caller each time, so a new wall or a revoked share ends the stream.
@@ -440,16 +443,13 @@ export function threadHttp(options: ThreadHttpOptions) {
           if (batch.length > 0) continue;
           const current = await threads.run(principal, runId);
           if (!current) return;
-          if (FINISHED.includes(current.status)) {
-            // It may have ended between the read above and this one, so read once more.
-            if (sawFinished) return;
-            sawFinished = true;
-            continue;
-          }
+          // The status is saved before the closing event, so wait a little for that event.
+          const finished = FINISHED.includes(current.status);
+          if (finished && ++finishedReads > FINISH_READS) return;
           let timer: ReturnType<typeof setTimeout> | undefined;
           await new Promise<void>((resolve) => {
             wake = resolve;
-            timer = setTimeout(resolve, POLL_MS);
+            timer = setTimeout(resolve, finished ? FINISH_POLL_MS : POLL_MS);
           });
           clearTimeout(timer);
           wake = null;
