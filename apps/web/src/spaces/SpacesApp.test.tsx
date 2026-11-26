@@ -1,12 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GuestsTab, partyLevels } from "./GuestsTab.js";
+import { ResourcesTab } from "./ResourcesTab.js";
 import { parseSpaceRoute, spacesHash } from "./route.js";
 import { SpacesApp } from "./SpacesApp.js";
 
 const SPACE = {
   id: "0190a000-0000-7000-8000-000000000010",
   name: "Acme share purchase",
-  kind: "internal",
+  kind: "internal" as "internal" | "external",
   matter: { id: "m1", display: "00123-0001 Acme Corp" },
   context: { version: 2, parties: [{ name: "Acme Holdings", role: "buyer" }], key_dates: [] },
   customization: {},
@@ -175,5 +177,152 @@ describe("SpacesApp", () => {
     window.location.hash = `#/spaces/${SPACE.id}/tasks`;
     render(<SpacesApp onLeave={() => {}} />);
     expect(await screen.findByText("That Space isn't available")).toBeTruthy();
+  });
+});
+
+describe("guest organisation", () => {
+  const party = (status: string) => ({
+    id: "pa",
+    name: "Other LLP",
+    domain: "other.test",
+    connection_admin_emails: [],
+    connection: { status, approvals: [] },
+  });
+  function guestServer(status: string) {
+    const calls: { method: string; url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({
+          method: init?.method ?? "GET",
+          url,
+          body: init?.body ? JSON.parse(init.body as string) : null,
+        });
+        const answer = url.endsWith("/parties")
+          ? { parties: [party(status)] }
+          : url.endsWith("/guests")
+            ? init?.method === "POST"
+              ? { invite: { email: "a@other.test" }, accept_url: "/guest/accept#token=t" }
+              : { guests: [] }
+            : url.endsWith("/resources")
+              ? {
+                  resources: [
+                    { id: "r1", resource_type: "agent", name: "NDA pass", per_party: {} },
+                  ],
+                }
+              : {};
+        return new Response(JSON.stringify(answer));
+      }),
+    );
+    return calls;
+  }
+  const space = { ...SPACE, kind: "external" as const, my_role: "admin" as const };
+
+  it("offers an agent to a guest party as Run or nothing", async () => {
+    expect(partyLevels("agent")).toEqual(["none", "run"]);
+    const calls = guestServer("resolved");
+    render(<GuestsTab space={space} />);
+    fireEvent.change(await screen.findByLabelText("Other LLP access to NDA pass"), {
+      target: { value: "run" },
+    });
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ per_party: { pa: "run" } }),
+    );
+  });
+
+  it("shows the invitation link once an invite is made", async () => {
+    guestServer("resolved");
+    render(<GuestsTab space={space} />);
+    fireEvent.change(await screen.findByLabelText("Guest email"), {
+      target: { value: "a@other.test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    const link = (await screen.findByLabelText("Invitation link")) as HTMLInputElement;
+    expect(link.value).toBe(`${window.location.origin}/guest/accept#token=t`);
+  });
+
+  it("asks only for the party when the viewer is not a Space admin", async () => {
+    const calls = guestServer("action_required");
+    render(<GuestsTab space={{ ...space, my_role: "collaborator" }} />);
+    await screen.findByText("Other LLP");
+    expect(calls).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Remove organisation" })).toBeNull();
+  });
+});
+
+describe("agents in a Space", () => {
+  function agentServer() {
+    const calls: { method: string; url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        calls.push({ method, url, body: init?.body ? JSON.parse(init.body as string) : null });
+        if (url.startsWith("/api/v1/agents")) {
+          return new Response(
+            JSON.stringify({
+              agents: [
+                { id: "a1", title: "NDA pass", my_access: "full" },
+                { id: "a2", title: "Borrowed", my_access: "run" },
+              ],
+            }),
+          );
+        }
+        if (url.endsWith("/resources") && method === "POST") {
+          return new Response(JSON.stringify({ request: { id: "q1" } }), { status: 202 });
+        }
+        if (url.endsWith("/share-requests/q1")) return new Response(null, { status: 204 });
+        const answer = url.endsWith("/requests")
+          ? {
+              access: [],
+              shares: [
+                {
+                  id: "q1",
+                  name: "NDA pass",
+                  access: "run",
+                  per_party: {},
+                  requester_name: "Ben",
+                },
+              ],
+            }
+          : url.endsWith("/parties")
+            ? { parties: [] }
+            : { resources: [] };
+        return new Response(JSON.stringify(answer));
+      }),
+    );
+    return calls;
+  }
+
+  it("shares only an agent held in full, and says when it waits for approval", async () => {
+    const calls = agentServer();
+    render(<ResourcesTab space={{ ...SPACE, kind: "external", my_role: "collaborator" }} />);
+    await screen.findByRole("option", { name: "NDA pass" });
+    expect(screen.queryByRole("option", { name: "Borrowed" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "a1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Share agent" }));
+    expect(await screen.findByText(/shared once one accepts/)).toBeTruthy();
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      resource_type: "agent",
+      resource_id: "a1",
+      access: "run",
+    });
+    expect(calls.some((c) => c.url.endsWith("/requests"))).toBe(false);
+  });
+
+  it("lets an admin decline a waiting share with a reason", async () => {
+    const calls = agentServer();
+    render(<ResourcesTab space={{ ...SPACE, kind: "external", my_role: "admin" }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Decline sharing NDA pass" }));
+    fireEvent.change(screen.getByLabelText("Reason for declining"), {
+      target: { value: "Not yet" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send decline" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url.endsWith("/share-requests/q1"))?.body).toEqual({
+        decision: "deny",
+        reason: "Not yet",
+      }),
+    );
   });
 });

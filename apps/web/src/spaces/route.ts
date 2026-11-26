@@ -1,6 +1,13 @@
-export type SpaceTab = "tasks" | "members" | "resources" | "activity" | "context";
+export type SpaceTab = "tasks" | "members" | "resources" | "guests" | "activity" | "context";
 
-const TABS: readonly SpaceTab[] = ["tasks", "members", "resources", "activity", "context"];
+const TABS: readonly SpaceTab[] = [
+  "tasks",
+  "members",
+  "resources",
+  "guests",
+  "activity",
+  "context",
+];
 
 export type SpaceRoute = { page: "list" } | { page: "space"; spaceId: string; tab: SpaceTab };
 

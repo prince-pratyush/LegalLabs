@@ -27,6 +27,8 @@ import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { CommandCenterApp } from "./command-center/CommandCenterApp.js";
 import { commandCenterHash, parseCommandCenterRoute } from "./command-center/route.js";
+import { GuestApp } from "./guest/GuestApp.js";
+import { GuestAccept, GuestSignIn, type Prefill } from "./guest/GuestEntry.js";
 import { HistoryPage } from "./history/HistoryPage.js";
 import { LibraryApp } from "./library/LibraryApp.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
@@ -56,14 +58,20 @@ import { useLocation, useReturnFocus } from "./viewer/open-citation.js";
 const FALLBACK = "Something went wrong. Try again.";
 const RECENTS = 5;
 
+type Session = "member" | "guest" | "none";
+
 export function App() {
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
-  useEffect(() => {
+  const [session, setSession] = useState<Session | null>(null);
+  // An invitation link is the one screen on a real path: it works with or without a session.
+  const [inviting, setInviting] = useState(() => window.location.pathname === "/guest/accept");
+  const [prefill, setPrefill] = useState<Prefill | null>(null);
+  const check = useCallback(() => {
     api.session().then(
-      () => setSignedIn(true),
-      () => setSignedIn(false),
+      (s) => setSession(s.guest ? "guest" : "member"),
+      () => setSession("none"),
     );
   }, []);
+  useEffect(check, [check]);
   const location = useLocation();
   const viewing = isDocumentHref(location.href);
   useReturnFocus(viewing);
@@ -71,8 +79,41 @@ export function App() {
   const current = useHash();
   const [hash, setHash] = useState(current);
   if (!viewing && hash !== current) setHash(current);
-  if (signedIn === null) return <p className="p-6 text-fg-muted">Loading…</p>;
-  if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
+  const signedOut = () => setSession("none");
+  if (inviting) {
+    return (
+      <GuestAccept
+        onJoined={(joined) => {
+          // Off the invitation's path, which also drops the spent token from the address bar.
+          window.history.replaceState(null, "", "/#/guest");
+          setPrefill(joined);
+          setInviting(false);
+          // Whoever was signed in here stays out of the guest's way.
+          setSession("none");
+        }}
+      />
+    );
+  }
+  if (session === null) return <p className="p-6 text-fg-muted">Loading…</p>;
+  if (session === "none") {
+    return current.startsWith("#/guest") ? (
+      <GuestSignIn prefill={prefill} onSignedIn={check} />
+    ) : (
+      <SignIn onSignedIn={check} />
+    );
+  }
+  if (session === "guest") {
+    return (
+      <GuestApp
+        onSignOut={() =>
+          void api
+            .logout()
+            .catch(() => undefined)
+            .then(signedOut)
+        }
+      />
+    );
+  }
   return (
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
@@ -102,7 +143,7 @@ export function App() {
         ) : parseVaultRoute(hash) ? (
           <VaultsApp onLeave={() => navigate(paths.new)} />
         ) : (
-          <Workspace hash={hash} onSignedOut={() => setSignedIn(false)} />
+          <Workspace hash={hash} onSignedOut={signedOut} />
         )}
       </div>
       {/* Over the page, not instead of it, so closing returns to the same place. */}
@@ -194,6 +235,11 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
           Sign in
         </Button>
       </form>
+      <p>
+        <a className="underline" href="#/guest">
+          Guest sign-in
+        </a>
+      </p>
     </main>
   );
 }
