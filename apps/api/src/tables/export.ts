@@ -1,6 +1,7 @@
 import { type ClassifyOption, type ExportBody, RT_LIMITS } from "@legallabs/contracts";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
+import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 import { audit } from "./audit.js";
 import { cellJson } from "./cells.js";
@@ -184,6 +185,27 @@ export function createExports(pool: pg.Pool, { maxCells = MAX_EXPORT_CELLS as nu
             filtered: body.only_filtered_rows !== undefined,
           },
         });
+        await trackUsage(db, {
+          surface: "review_tables",
+          action: "review_tables.export",
+          actionClass: "other",
+          objectType: "review_table",
+          objectId: tableId,
+          documentCount: rows.length,
+        });
+        const { rows: made } = await db.query<{ created_at: Date }>(
+          "select created_at from work.review_table where id = $1",
+          [tableId],
+        );
+        // One piece of work per table: downloading it again saves no more hours.
+        if (rows.length > 0) {
+          await trackOutcome(db, {
+            workflowType: "table_exported",
+            quantity: rows.length,
+            since: made[0]?.created_at,
+            once: `table_exported:${tableId}`,
+          });
+        }
         const base =
           table.name
             .replace(/[^\p{L}\p{N} _.-]+/gu, "")
