@@ -34,6 +34,9 @@ const Filter = z.object({
   status: CiReviewStatus.optional(),
   assigneeId: z.union([z.literal("me"), z.uuid()]).optional(),
   agentId: z.uuid().optional(),
+  counterparty: z.string().max(200).optional(),
+  from: z.iso.datetime({ offset: true }).optional(),
+  to: z.iso.datetime({ offset: true }).optional(),
   cursor: z.string().max(200).optional(),
 });
 
@@ -86,8 +89,18 @@ export function ciHttp(ci: Ci, clientOf: (c: Context) => Client, asks?: Limiter)
   );
 
   app.get("/apps/ci/agents/:id", async (c) => {
-    const agent = await ci.getAgent(c.get("principal"), c.req.param("id"));
-    return agent ? c.json({ agent }) : fail(c, "NOT_FOUND");
+    const me = c.get("principal");
+    const agent = await ci.getAgent(me, c.req.param("id"));
+    return agent
+      ? c.json({ agent, names: await ci.assigneeNames(me, agent) })
+      : fail(c, "NOT_FOUND");
+  });
+
+  app.get("/apps/ci/dashboard", async (c) => {
+    const since = z.iso.datetime({ offset: true }).optional().safeParse(c.req.query("since"));
+    return since.success
+      ? c.json(await ci.dashboard(c.get("principal"), since.data))
+      : invalid(c, since.error);
   });
 
   app.patch("/apps/ci/agents/:id", limitBody, async (c) => {
@@ -127,6 +140,9 @@ export function ciHttp(ci: Ci, clientOf: (c: Context) => Client, asks?: Limiter)
       status: c.req.query("filter[status]") || undefined,
       assigneeId: c.req.query("filter[assignee_id]") || undefined,
       agentId: c.req.query("filter[agent_id]") || undefined,
+      counterparty: c.req.query("filter[counterparty]") || undefined,
+      from: c.req.query("filter[from]") || undefined,
+      to: c.req.query("filter[to]") || undefined,
       cursor: c.req.query("cursor") || undefined,
     });
     if (!query.success) return invalid(c, query.error);

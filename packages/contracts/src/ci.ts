@@ -155,6 +155,16 @@ export const CiReview = z.object({
 });
 export type CiReview = z.infer<typeof CiReview>;
 
+/** The queue's counters, as the caller sees the queue. */
+export const CiDashboard = z.object({
+  since_last_visit: z.number().int().min(0),
+  ready_to_review: z.number().int().min(0),
+  assigned_to_me: z.number().int().min(0),
+  /** Server time of this count; the next visit asks for what finished after it. */
+  as_of: z.string(),
+});
+export type CiDashboard = z.infer<typeof CiDashboard>;
+
 export interface CiOutcome {
   results: readonly Pick<Finding, "status" | "flag" | "rule_title">[];
   gaps: readonly Pick<Gap, "severity">[];

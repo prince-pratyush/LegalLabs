@@ -25,7 +25,14 @@ const RUNNING = new Set(["planned", "running", "verifying"]);
 type Download = "redline" | "docx" | "xlsx";
 
 /** A review: progress while it runs, then the contract beside its cards. */
-export function ReviewPage({ reviewId }: { reviewId: string }) {
+export function ReviewPage({
+  reviewId,
+  titled = true,
+}: {
+  reviewId: string;
+  /** Off where the surrounding page already names the document. */
+  titled?: boolean;
+}) {
   const [review, setReview] = useState<Review | null>(null);
   const [body, setBody] = useState<ReviewBody | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +174,7 @@ export function ReviewPage({ reviewId }: { reviewId: string }) {
 
   const header = (
     <header className="grid gap-1">
-      <h1 className="text-title font-semibold">{review.document_name}</h1>
+      {titled && <h1 className="text-title font-semibold">{review.document_name}</h1>}
       <p className="text-fg-muted">
         Reviewed against {review.playbook_name} for{" "}
         {review.customisation.party || "an unnamed party"}, on{" "}

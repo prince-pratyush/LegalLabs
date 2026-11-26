@@ -722,6 +722,13 @@
       "when": 1794020900000,
       "tag": "0230_apps_contract_review",
       "breakpoints": false
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1794021000000,
+      "tag": "0231_apps_contract_reviewed_at",
+      "breakpoints": false
     }
   ]
 }
