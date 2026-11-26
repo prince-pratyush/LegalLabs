@@ -1,3 +1,4 @@
+import { buildDocx, markdownBlocks } from "@legallabs/docx";
 import { describe, expect, it } from "vitest";
 import { until, useStack } from "./session.js";
 
@@ -14,6 +15,21 @@ const CONTRACT = `MASTER SERVICES AGREEMENT
 13.1 Either party may terminate this agreement on ninety days written notice.
 `;
 
+// The scripted model finds fault with these.
+const RISKY = `# Supplier agreement
+
+1.1 The Customer's liability under this agreement is unlimited.
+
+2.1 Invoices are payable within 15 days of the invoice date.`;
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+const upload = (name: string, body: BlobPart, type = "text/plain") => {
+  const form = new FormData();
+  form.set("file", new File([body], name, { type }));
+  return form;
+};
+
+type Review = { status: string; results: { suggestion?: { id: string } }[] };
 type UserRow = Record<string, number | string>;
 const refresh = () => post("/api/v1/admin/analytics/refresh", {});
 
@@ -28,11 +44,9 @@ describe("Command Center counts real work", { concurrent: false }, () => {
       201,
     );
     shared.vault = vault.id;
-    const form = new FormData();
-    form.set("file", new File([CONTRACT], "msa.txt", { type: "text/plain" }));
     const { file } = await json<{ file: { id: string } }>(
       `/api/v1/vaults/${vault.id}/files`,
-      { method: "POST", body: form },
+      { method: "POST", body: upload("msa.txt", CONTRACT) },
       202,
     );
     shared.file = file.id;
@@ -116,6 +130,75 @@ describe("Command Center counts real work", { concurrent: false }, () => {
     }
   });
 
+  it("reviews a contract, applies a suggestion and takes the summary twice", async () => {
+    const { playbook } = await post<{ playbook: { id: string } }>(
+      "/api/v1/playbooks",
+      {
+        name: "Analytics playbook",
+        contract_type: "Master services agreement",
+        source: { kind: "starter", template: "msa" },
+      },
+      201,
+    );
+    await post(`/api/v1/playbooks/${playbook.id}/publish`, {});
+    const { file } = await json<{ file: { version_id: string } }>(
+      `/api/v1/vaults/${shared.vault}/files`,
+      {
+        method: "POST",
+        body: upload(
+          "risky.docx",
+          buildDocx({
+            title: "Supplier agreement",
+            blocks: markdownBlocks(RISKY),
+            author: "Other Side",
+            date: "2026-01-01T00:00:00Z",
+          }) as Uint8Array<ArrayBuffer>,
+          DOCX_MIME,
+        ),
+      },
+      202,
+    );
+    const started = await post<{ review_id: string }>(
+      `/api/v1/playbooks/${playbook.id}/reviews`,
+      { document_version_id: file.version_id, party: "Customer", surface: "web" },
+      201,
+    );
+    const base = `/api/v1/reviews/${started.review_id}`;
+    const { review } = await until(
+      () => json<{ review: Review }>(base),
+      (r) => ["done", "failed", "cancelled"].includes(r.review.status),
+      "the review to finish",
+    );
+    expect(review.status).toBe("done");
+    const sid = review.results.find((r) => r.suggestion)?.suggestion?.id;
+    for (let i = 0; i < 2; i++) {
+      await post(`${base}/suggestions/${sid}/apply`, { surface: "web" });
+      const res = await call(`${base}/export`, {
+        method: "POST",
+        body: JSON.stringify({ format: "xlsx" }),
+      });
+      expect(res.status).toBe(200);
+      await res.arrayBuffer();
+    }
+  });
+
+  it("drafts from an answer and downloads the draft twice", async () => {
+    const { thread } = await json<{ thread: { messages: { id: string; role: string }[] } }>(
+      `/api/v1/threads/${shared.thread}`,
+    );
+    const answer = thread.messages.find((m) => m.role === "assistant");
+    const { draft } = await post<{ draft: { id: string } }>(
+      `/api/v1/threads/${shared.thread}/drafts`,
+      { kind: "editor", from_message_id: answer?.id },
+      201,
+    );
+    for (let i = 0; i < 2; i++) {
+      const res = await call(`/api/v1/drafts/${draft.id}/export`);
+      expect(res.status).toBe(200);
+      await res.arrayBuffer();
+    }
+  });
+
   it("shows all of it after a rollup", async () => {
     await refresh();
     const { rows } = await json<{ rows: UserRow[] }>("/api/v1/admin/analytics/users");
@@ -125,6 +208,7 @@ describe("Command Center counts real work", { concurrent: false }, () => {
       follow_ups: 1,
       word: 1,
       agent_runs: 1,
+      playbook_runs: 1,
       rt_columns: 1,
     });
     const overview = await json<{
@@ -139,11 +223,20 @@ describe("Command Center counts real work", { concurrent: false }, () => {
     const total = (key: "with_sources" | "without_sources") =>
       report.queriesOverTime.series.reduce((n, day) => n + day[key], 0);
     // The agent reads nothing of its own; everything else read the vault or its file.
-    expect([total("with_sources"), total("without_sources")]).toEqual([4, 1]);
-    const outcomes = await json<{ workflows: { workflow_type: string; count: number }[] }>(
-      "/api/v1/admin/analytics/outcomes",
-    );
-    expect(outcomes.workflows).toMatchObject([{ workflow_type: "table_exported", count: 1 }]);
+    expect([total("with_sources"), total("without_sources")]).toEqual([5, 1]);
+    const outcomes = await json<{
+      hoursSaved: number;
+      workflows: { workflow_type: string; count: number }[];
+    }>("/api/v1/admin/analytics/outcomes");
+    // Everything done twice above still counts once.
+    expect(outcomes.workflows.map((w) => [w.workflow_type, w.count])).toEqual([
+      ["contract_reviewed", 1],
+      ["draft_exported", 1],
+      ["redline_applied", 1],
+      ["table_exported", 1],
+    ]);
+    // 2.0 + 1.5 + 1.0 + 0.1 for the table's one row, at the shipped baselines.
+    expect(outcomes.hoursSaved).toBe(4.6);
   });
 
   it("keeps ids and counts only", async () => {
@@ -152,7 +245,9 @@ describe("Command Center counts real work", { concurrent: false }, () => {
     );
     expect(stored.length).toBeGreaterThan(0);
     for (const { row } of stored) {
-      expect(row).not.toMatch(/liability|notice|termination|msa\.txt|deal room|pilot@/i);
+      expect(row).not.toMatch(
+        /liability|notice|termination|msa\.txt|risky|supplier|playbook msa|deal room|pilot@/i,
+      );
     }
   });
 });

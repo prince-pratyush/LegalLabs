@@ -9,6 +9,7 @@ import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createSignInAudit } from "./addins/audit.js";
 import { createLanguage } from "./addins/language.js";
+import { createAddinUsage } from "./addins/usage.js";
 import { createAdminConnectors } from "./admin-models/connectors.js";
 import { httpDiscovery } from "./admin-models/discovery.js";
 import { createAdminModels } from "./admin-models/models.js";
@@ -380,6 +381,7 @@ const app = createApp({
   addin: {
     language: createLanguage(gateway),
     recordSignIn: createSignInAudit(pool),
+    countUse: createAddinUsage(pool),
     ...(existsSync(addinRoot) ? { root: addinRoot } : {}),
   },
 });

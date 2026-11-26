@@ -30,6 +30,7 @@ import type { ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import type { z } from "zod";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp, RLS_REFUSED } from "../db.js";
 import type { Notifier } from "../notifications/notify.js";
 import { uuid7 } from "../playbooks/playbooks.js";
@@ -930,6 +931,24 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
       },
       client,
     );
+    if (status === "applied") {
+      // Once a suggestion, however often it is applied again; the outcome once a review.
+      await trackUsage(db, {
+        surface: request.surface,
+        accessPoint: request.surface,
+        action: request.surface === "word" ? "word.apply" : "playbook.suggestion_applied",
+        actionClass: "other",
+        ...(request.surface === "word" ? { counter: "word" as const } : {}),
+        objectType: "playbook_review",
+        objectId: row.id,
+        once: `apply:${sid}`,
+      });
+      await trackOutcome(db, {
+        workflowType: "redline_applied",
+        since: row.started_at,
+        once: `redline_applied:${row.id}`,
+      });
+    }
     return ok({
       suggestion_id: sid,
       status,
@@ -938,6 +957,25 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
       ...(comment ? { comment_text: comment } : {}),
       ...(chosen.before ? { search_text: chosen.before } : {}),
       replace_mode: found.kind === "insert_after" ? "insert_after" : "paragraph",
+    });
+  }
+
+  /** A review's redline or summary taken away: use each time, the contract reviewed once. */
+  async function countTaken(db: Db, principal: Principal, row: ReviewRow, action: string) {
+    await trackUsage(db, {
+      surface: principal.via ?? "web",
+      accessPoint: principal.via ?? "web",
+      action,
+      actionClass: "other",
+      objectType: "playbook_review",
+      objectId: row.id,
+    });
+    // A review still going, cancelled or failed has not reviewed the contract.
+    if (row.status !== "done") return;
+    await trackOutcome(db, {
+      workflowType: "contract_reviewed",
+      since: row.started_at,
+      once: `contract_reviewed:${row.id}`,
     });
   }
 
@@ -1160,6 +1198,18 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             },
             client,
           );
+          // A run of an unpublished draft is a try-out, kept out of the run counts.
+          await trackUsage(db, {
+            surface: request.surface,
+            accessPoint: request.surface,
+            action: opts.draft ? "playbook.review_test" : "playbook.review",
+            actionClass: opts.draft ? "other" : "query",
+            ...(opts.draft ? {} : { counter: "playbook_runs" as const }),
+            objectType: "playbook_review",
+            objectId: reviewId,
+            sourceKinds: ["file"],
+            documentCount: 1,
+          });
           return ok({ reviewId, runId, version, src, warnings, customisation, extra });
         }),
       );
@@ -1496,6 +1546,14 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             { run_id: runId, rule_id: ruleId },
             client,
           );
+          await trackUsage(db, {
+            surface: row.surface,
+            accessPoint: principal.via ?? "web",
+            action: "playbook.rule_rerun",
+            actionClass: "other",
+            objectType: "playbook_review",
+            objectId: row.id,
+          });
           return ok({ row, src, runId, sameVersion: meta.versionId === row.document_version_id });
         }),
       );
@@ -1645,6 +1703,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
               uaHash(client),
             ],
           );
+          await countTaken(db, principal, row, "playbook.redline_downloaded");
           return ok({
             name: `${stem(row.document_name)} (redline).docx`,
             mime: DOCX_MIME,
@@ -1671,6 +1730,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
               ? buildXlsx(sheets)
               : buildSummaryDocx(title, introLines(review), sheets);
           await audit(db, principal, "review.exported", row.id, { format }, client);
+          await countTaken(db, principal, row, "playbook.review_exported");
           return ok({
             name: `${stem(row.document_name)} (review).${format}`,
             mime: format === "xlsx" ? XLSX_MIME : DOCX_MIME,

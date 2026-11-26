@@ -64,11 +64,12 @@ export async function proofread(
   const { paragraphs, offset } = await inDocument(host, scope);
   const plan = batches(paragraphs);
   const cards: Card[] = [];
+  const batchId = crypto.randomUUID();
   for (const [i, batch] of plan.batches.entries()) {
     onProgress(i, plan.batches.length);
     const { suggestions } = await api.post<{
       suggestions: { paragraph: number; before: string; after: string; reason: string }[];
-    }>("/api/v1/addin/proofread", { paragraphs: batch.texts });
+    }>("/api/v1/addin/proofread", { paragraphs: batch.texts, batch_id: batchId });
     for (const s of suggestions) {
       const local = batch.indexes[s.paragraph];
       const text = batch.texts[s.paragraph];
@@ -105,11 +106,14 @@ export async function translate(
   const plan = batches(paragraphs);
   const edits: { index: number; text: string }[] = [];
   let missed = 0;
+  const batchId = crypto.randomUUID();
   for (const [i, batch] of plan.batches.entries()) {
     onProgress(i, plan.batches.length);
     const result = await api.post<{ paragraphs: (string | null)[] }>("/api/v1/addin/translate", {
       paragraphs: batch.texts,
       language,
+      batch_id: batchId,
+      last: i === plan.batches.length - 1,
     });
     for (const [j, index] of batch.indexes.entries()) {
       const text = result.paragraphs[j];
