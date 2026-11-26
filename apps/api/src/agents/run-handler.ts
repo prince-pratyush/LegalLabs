@@ -5,6 +5,7 @@ import type { RunContext, RunHandler, StepOutcome, StepRecord } from "@legallabs
 import type pg from "pg";
 import type { OfferedTool } from "../admin-models/connectors.js";
 import type { ToolExecutor } from "../connectors/executor.js";
+import { storable } from "../connectors/sanitise.js";
 import { asApp } from "../db.js";
 import type { ContextPort } from "./context.js";
 import { checkAnswer, citationEvent, type ShownDocument } from "./run-citations.js";
@@ -14,6 +15,7 @@ import {
   connectorScopes,
   MAX_TOOL_CALLS,
   type PendingCall,
+  parseModelJson,
   parseToolCall,
   type StepLog,
   TOOL_RULES,
@@ -156,7 +158,10 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
   async function answersSoFar(ctx: RunContext, before: number): Promise<string[]> {
     const { rows } = await asApp(deps.pool, principal(ctx.run), (db) =>
       db.query<{ output: { question?: { text: string }; answer?: unknown } }>(
+        // Tool approvals are left out: their text is the arguments, which may be planted words,
+        // and what came of each call is already in the call history.
         `select output from work.run_step where run_id = $1 and ordinal < $2 and output ? 'question'
+            and not output ? 'pending_call'
           order by ordinal`,
         [ctx.run.id, before],
       ),
@@ -338,6 +343,8 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
     });
     await step(ctx, s, "Do the work", "started");
     const messageId = randomUUID();
+    // What the model call cost, kept if anything after it fails.
+    let spent = {};
     try {
       const used = await ctx.store.totals();
       const result = await unlessCancelled(ctx, (signal) =>
@@ -363,7 +370,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
         input_tokens: result.usage.input_tokens,
         output_tokens: result.usage.output_tokens,
       };
-      const spent = { model, routing_class: "reason", usage, cost_usd: result.cost_usd };
+      spent = { model, routing_class: "reason", usage, cost_usd: result.cost_usd };
 
       const call = deps.tools ? parseToolCall(text) : null;
       if (call) {
@@ -393,7 +400,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
           allow_text?: boolean;
         };
         try {
-          q = JSON.parse(asked[1] as string);
+          q = parseModelJson(asked[1] as string) as typeof q;
         } catch {
           q = { question: "Can you give a little more detail?" };
         }
@@ -422,7 +429,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
         status: "done",
         ...spent,
         output: {
-          summary: answer.text.slice(0, 200),
+          summary: storable(answer.text.slice(0, 200)),
           message_id: messageId,
           citations: {
             total: answer.citations.length,
@@ -498,6 +505,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
           : "MODEL_UNAVAILABLE";
       await ctx.store.finishStep(ordinal, {
         status: "failed",
+        ...spent,
         error: { code, message, retryable: code === "MODEL_UNAVAILABLE" },
       });
       await step(ctx, s, "Do the work", "failed");

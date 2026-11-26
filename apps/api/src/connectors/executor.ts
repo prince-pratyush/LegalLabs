@@ -13,7 +13,7 @@ import { scrub } from "../admin-models/secrets.js";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
 import { argumentProblem } from "./arguments.js";
-import { sanitiseToolOutput } from "./sanitise.js";
+import { sanitiseToolOutput, storable } from "./sanitise.js";
 
 /**
  * The only code that calls an MCP tool. Every call is decided by the policy engine first, the
@@ -231,7 +231,9 @@ export function createToolExecutor(pool: pg.Pool, options: ToolExecutorOptions):
       reply = { text: "The connector didn't return a result.", isError: true };
     }
     const secret = endpoint.auth.kind === "bearer" ? [endpoint.auth.token] : [];
-    const raw = scrub(reply.text.slice(0, RAW_CAP), secret);
+    // Scrubbed before it is cut, so a key lying across the cut leaves no part of itself.
+    const overlap = secret[0]?.length ?? 0;
+    const raw = storable(scrub(reply.text.slice(0, RAW_CAP + overlap), secret).slice(0, RAW_CAP));
     const clean = sanitiseToolOutput(raw);
     const durationMs = Date.now() - started;
     const bytes = Buffer.byteLength(reply.text, "utf8");
@@ -247,7 +249,7 @@ export function createToolExecutor(pool: pg.Pool, options: ToolExecutorOptions):
     return {
       ...target,
       status: reply.isError ? "error" : "ok",
-      text: clean.text,
+      text: storable(clean.text),
       raw,
       flagged: clean.flagged,
       bytes,

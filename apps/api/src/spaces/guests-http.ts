@@ -256,6 +256,9 @@ export function guestPublicRoutes({
     return null;
   };
   const ip = (c: Context) => clientIp(c) ?? "unknown";
+  // One mailbox however its address is typed.
+  const account = (i: { workspace: string; email: string }) =>
+    `${i.workspace}|${i.email.toLowerCase()}`;
 
   app.post("/invites/preview", small, async (c) => {
     const input = await body(c, GuestPreviewInput);
@@ -287,7 +290,7 @@ export function guestPublicRoutes({
   app.post("/login/code", small, async (c) => {
     const input = await body(c, GuestLoginCodeInput);
     if (!input) return invalid(c);
-    const slow = limited(c, [perIp, ip(c)], [perCodeAccount, `${input.workspace}|${input.email}`]);
+    const slow = limited(c, [perIp, ip(c)], [perCodeAccount, account(input)]);
     if (slow) return slow;
     // Said to everyone alike, so it tells nothing about the address.
     if (!guests.canSendCodes()) {
@@ -302,7 +305,7 @@ export function guestPublicRoutes({
   app.post("/login/verify", small, async (c) => {
     const input = await body(c, GuestLoginVerifyInput);
     if (!input) return invalid(c);
-    const slow = limited(c, [perIp, ip(c)], [perGuessAccount, `${input.workspace}|${input.email}`]);
+    const slow = limited(c, [perIp, ip(c)], [perGuessAccount, account(input)]);
     if (slow) return slow;
     const result = await guests.verifyCode(input.workspace, input.email, input.code, client(c));
     if (!result) {

@@ -24,6 +24,14 @@ const INSTRUCTION = [
   /\b(?:now|please|immediately)\s+(?:send|delete|email|forward|share|upload|call|run|execute|file)\b/i,
 ];
 
+// With the u flag a paired surrogate is one character, so this finds only halves on their own.
+const LONE = /\p{Surrogate}/gu;
+
+/** The database holds neither NUL nor half of a surrogate pair, which a cut can leave. */
+export const storable = (text: string) => text.replaceAll("\0", "").replace(LONE, "\ufffd");
+
+export const stripInvisible = (text: string) => text.replace(INVISIBLE, "");
+
 export interface Sanitised {
   text: string;
   /** Lines marked as instruction-like. */
@@ -33,7 +41,7 @@ export interface Sanitised {
 
 export function sanitiseToolOutput(raw: string, cap: number = TOOL_OUTPUT_CAP): Sanitised {
   const truncated = raw.length > cap;
-  let text = raw.slice(0, cap).replace(INVISIBLE, "");
+  let text = stripInvisible(raw.slice(0, cap));
   if (HTML.test(text)) {
     text = text
       .replace(/<(script|style)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, "")
