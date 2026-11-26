@@ -2,6 +2,7 @@ import type { RunSignal, RunSummary } from "@legallabs/contracts";
 import type { RunEngine, RunRef } from "@legallabs/runs";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { track, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -139,7 +140,7 @@ type StepRow = {
   cost_usd: number;
   started_at: Date;
   finished_at: Date | null;
-  output: { summary?: string };
+  output: { summary?: string; message_id?: string };
   error: unknown;
   input: unknown;
 };
@@ -165,6 +166,43 @@ const toStep = (r: StepRow): StepSummary => ({
   summary: typeof r.output?.summary === "string" ? r.output.summary : null,
   error: r.error,
 });
+
+/** What someone else sees of a step: the one that wrote the answer doesn't quote it to them. */
+const forOthers = (r: StepRow): StepSummary => ({
+  ...toStep(r),
+  ...(r.output?.message_id ? { summary: "Wrote the answer." } : {}),
+});
+
+/** One agent, workflow or Space task run started, as Command Center counts it. */
+async function countRun(db: pg.PoolClient, req: StartRun, runId: string) {
+  // What the saved agent reads, by kind; names and references stay behind.
+  const { rows } = req.agent_version_id
+    ? await db.query<{ kinds: string[]; files: number }>(
+        `select array(select distinct s ->> 'kind' from jsonb_array_elements(sources) s) kinds,
+                jsonb_array_length(attachments) files
+           from work.agent_version where id = $1`,
+        [req.agent_version_id],
+      )
+    : { rows: [] };
+  const version = rows[0];
+  await trackUsage(db, {
+    surface: "agents",
+    action:
+      req.path === "schedule"
+        ? "agent.schedule_fire"
+        : req.space_id
+          ? "space.agent_run"
+          : `${req.kind}.run`,
+    actionClass: "query",
+    counter: "agent_runs",
+    subsurface: req.space_id ? "spaces" : req.kind,
+    objectType: "run",
+    objectId: runId,
+    ...(req.matter_id ? { matterRef: req.matter_id } : {}),
+    sourceKinds: [...(version?.kinds ?? []), ...(version?.files ? ["file"] : [])],
+    documentCount: version?.files ?? 0,
+  });
+}
 
 export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): AgentRuns {
   const { engine } = options;
@@ -246,6 +284,11 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
         );
         throw err;
       }
+      // Once the engine has it, so a run that never started isn't counted. Retries and resumes
+      // happen inside the engine and never come back through here.
+      if (!req.test_mode && req.kind !== "agent_builder") {
+        await track(pool, principal, (db) => countRun(db, req, ref.ref.runId));
+      }
       return { run_id: ref.ref.runId, thread_id: ref.threadId };
     },
 
@@ -286,13 +329,16 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
     async steps(principal, runId) {
       if (!UUID.test(runId)) return null;
       return asApp(pool, principal, async (db) => {
-        const { rows: run } = await db.query("select 1 from work.run where id = $1", [runId]);
+        const { rows: run } = await db.query<{ owner_id: string }>(
+          "select owner_id from work.run where id = $1",
+          [runId],
+        );
         if (run.length === 0) return null;
         const { rows } = await db.query<StepRow>(
           `select ${STEP_COLUMNS} from work.run_step where run_id = $1 order by ordinal`,
           [runId],
         );
-        return rows.map(toStep);
+        return rows.map(run[0]?.owner_id === principal.userId ? toStep : forOthers);
       });
     },
 
@@ -309,11 +355,10 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
         );
         const row = rows[0];
         if (!row) return null;
-        const summary = toStep(row);
         // Prompt and answer detail is the runner's; everyone else sees the summary.
         return row.owner_id === principal.userId
-          ? { ...summary, input: row.input, output: row.output }
-          : summary;
+          ? { ...toStep(row), input: row.input, output: row.output }
+          : forOthers(row);
       });
     },
 

@@ -7,7 +7,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { createCodeStore } from "./addins/codes.js";
 import type { Language } from "./addins/language.js";
-import { addinAuthRoutes, addinRoutes } from "./addins/routes.js";
+import { addinAuthRoutes, addinRoutes, type CountAddinUse } from "./addins/routes.js";
 import type { AdminConnectors } from "./admin-models/connectors.js";
 import type { AdminModels } from "./admin-models/models.js";
 import { adminModelRoutes } from "./admin-models/routes.js";
@@ -160,6 +160,8 @@ export interface AppOptions {
   webRoot?: string;
   /** The Word add-in: its tools, its audit hook and, when built, its pane under /addin/. */
   addin?: {
+    /** Counts a tool's use for Command Center. */
+    countUse?: CountAddinUse;
     language: Language;
     recordSignIn: (principal: Principal, client: Client) => Promise<void>;
     root?: string;
@@ -361,7 +363,9 @@ export function createApp({
       if (principal.guest && !c.req.path.startsWith("/api/v1/guest/")) {
         return c.json({ code: "FORBIDDEN", message: "Guests can't use this." }, 403);
       }
-      c.set("principal", principal);
+      // Only the Word pane carries a session as a bearer header; the web app uses the cookie.
+      const fromPane = BEARER.test(c.req.header("authorization") ?? "");
+      c.set("principal", fromPane ? { ...principal, via: "word" } : principal);
     }
     await next();
     c.header("Cache-Control", "no-store");
@@ -431,7 +435,7 @@ export function createApp({
     app.route("/api/v1", memoryRoutes(memory.memories, clientOf, { now }));
     app.route("/api/v1", styleRoutes(memory.styles, clientOf));
   }
-  if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now));
+  if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now, addin.countUse));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));
   }

@@ -2,6 +2,7 @@ import { dependentsOf, promptForModel, RT_LIMITS, type Settings } from "@legalla
 import type { Gateway } from "@legallabs/model-gateway";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
+import { trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
 import type { RunLog } from "../runs/log.js";
@@ -26,6 +27,8 @@ export interface RunTarget {
 }
 
 export interface RunRequest {
+  /** What this run is in Command Center; a column run unless said otherwise. */
+  counted?: "column_run" | "cell_rerun" | "sync_run" | undefined;
   tableId: string;
   columnId: string;
   column: CellColumn;
@@ -749,6 +752,20 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
           scope: request.scope,
           cells: request.targets.length,
           run_id: id,
+        });
+        const counted = request.counted ?? "column_run";
+        const asked = counted === "column_run";
+        await trackUsage(db, {
+          surface: "review_tables",
+          action: `review_tables.${request.dryRun ? "dry_run" : counted}`,
+          // A re-run cell or a sync filling new rows is use, not a question someone asked.
+          actionClass: asked ? "query" : "other",
+          ...(asked && !request.dryRun ? { counter: "rt_columns" as const } : {}),
+          objectType: "review_table",
+          objectId: request.tableId,
+          sourceKinds: ["file"],
+          documentCount: request.targets.length,
+          ...(request.column.model ? { model: request.column.model } : {}),
         });
         return id;
       });
