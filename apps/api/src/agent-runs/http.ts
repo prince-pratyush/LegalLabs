@@ -18,6 +18,14 @@ const listQuery = z.object({
 const notFound = (c: Context) =>
   c.json({ code: "NOT_FOUND", message: "That run wasn't found." }, 404);
 
+const answered = (c: Context, result: "ok" | "FORBIDDEN" | "FINISHED") => {
+  if (result === "ok") return c.body(null, 202);
+  if (result === "FORBIDDEN") {
+    return c.json({ code: "FORBIDDEN", message: "You can't control this run." }, 403);
+  }
+  return c.json({ code: "RUN_FINISHED", message: "That run has already finished." }, 409);
+};
+
 /** Run history and control (agents-workflows.md §5.3); the stream itself is /runs/{id}/events. */
 export function agentRunHttp(runs: AgentRuns, clientOf: (c: Context) => Client) {
   const app = new Hono<Env>();
@@ -49,6 +57,20 @@ export function agentRunHttp(runs: AgentRuns, clientOf: (c: Context) => Client) 
     return step ? c.json({ step }) : notFound(c);
   });
 
+  // The same address cancels a thread's run. Marking one of these cancelled in the database
+  // alone would leave it calling models and tools, so it goes through its engine; any other run
+  // falls through to the thread routes mounted after this.
+  app.post("/runs/:id/cancel", async (c, next) => {
+    const result = await runs.signal(
+      c.get("principal"),
+      c.req.param("id"),
+      { name: "cancel", reason: "cancelled" },
+      clientOf(c),
+    );
+    if (result === "NOT_FOUND") return next();
+    return answered(c, result);
+  });
+
   app.post(
     "/runs/:id/signal",
     bodyLimit({
@@ -67,12 +89,7 @@ export function agentRunHttp(runs: AgentRuns, clientOf: (c: Context) => Client) 
         parsed.data,
         clientOf(c),
       );
-      if (result === "ok") return c.body(null, 202);
-      if (result === "NOT_FOUND") return notFound(c);
-      if (result === "FORBIDDEN") {
-        return c.json({ code: "FORBIDDEN", message: "You can't control this run." }, 403);
-      }
-      return c.json({ code: "RUN_FINISHED", message: "That run has already finished." }, 409);
+      return result === "NOT_FOUND" ? notFound(c) : answered(c, result);
     },
   );
 
