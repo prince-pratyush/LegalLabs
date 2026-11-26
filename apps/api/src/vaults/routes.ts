@@ -510,6 +510,9 @@ export function adminVaultRoutes(vaults: Vaults, clientOf: (c: Context) => Clien
     if (!input) return invalid(c);
     const done = await vaults.purge(c.get("principal"), c.req.param("id"), clientOf(c));
     if (done === null) return forbidden(c);
+    if (done === "held") {
+      return c.json({ code: "HELD", message: "A legal hold covers this vault." }, 423);
+    }
     if (!done) return notFound(c);
     return c.json({ ok: true });
   });

@@ -701,6 +701,13 @@
       "when": 1794020600000,
       "tag": "0210_retention_vault_setting_bin",
       "breakpoints": false
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1794020700000,
+      "tag": "0225_retention_holds_every_purge",
+      "breakpoints": false
     }
   ]
 }

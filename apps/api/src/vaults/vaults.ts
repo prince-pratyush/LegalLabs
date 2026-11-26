@@ -209,7 +209,7 @@ export interface Vaults {
     client: Client,
   ): Promise<boolean | null>;
   restoreVault(p: Principal, vaultId: string, client: Client): Promise<boolean>;
-  purge(p: Principal, vaultId: string, client: Client): Promise<boolean | null>;
+  purge(p: Principal, vaultId: string, client: Client): Promise<boolean | "held" | null>;
 }
 
 export const BIN_DAYS = 30;
@@ -1075,6 +1075,8 @@ export function createVaults(
         });
       } catch (err) {
         if (codeOf(err) === RLS_REFUSED) return null;
+        // A legal hold covers the vault or something in it (06 5.6).
+        if (codeOf(err) === "55006") return "held";
         throw err;
       }
       // After commit: a failed delete leaves an unreachable object, never a dangling row.
