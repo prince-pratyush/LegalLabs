@@ -6,6 +6,9 @@ const api = "http://127.0.0.1:8787";
 
 export default defineConfig({
   plugins: [tailwind()],
-  server: { proxy: { "/api": api, "/auth": api } },
+  // Only the guest API: /guest/accept is a page of this app.
+  server: {
+    proxy: { "/api": api, "/auth": api, "/guest/invites": api, "/guest/login": api },
+  },
   test: { environment: "jsdom", testTimeout: 20_000 },
 });
