@@ -20,13 +20,13 @@ import {
   type DirectoryEntry,
   type Member,
   type Phase,
-  type Resource,
   type Space,
   spacesApi,
   type Task,
   type TaskStatus,
 } from "./api.js";
 import { GuestsTab } from "./GuestsTab.js";
+import { ResourcesTab } from "./ResourcesTab.js";
 import { parseSpaceRoute, type SpaceTab, spacesHash } from "./route.js";
 
 const STATUSES: { value: TaskStatus; label: string }[] = [
@@ -43,11 +43,12 @@ const toList = () => {
 
 const select = "h-8 rounded-md border border-control bg-bg-raised px-2 text-ui";
 
-const assigneeLabel = (task: Task, names: Map<string, string>) => {
+const assigneeLabel = (task: Task, names: Map<string, string>, agents: Map<string, string>) => {
   const a = task.assignee;
   if (!a) return "Unassigned";
   if (a.type === "assistant") return "Assistant";
-  if (a.type === "agent") return "Agent";
+  // An agent whose name the API withholds stays just "Agent".
+  if (a.type === "agent") return agents.get(a.agent_id) ?? "Agent";
   return names.get(a.user_id) ?? "A teammate";
 };
 
@@ -271,7 +272,7 @@ function SpacePage({ spaceId, tab }: { spaceId: string; tab: SpaceTab }) {
           <MembersTab spaceId={spaceId} />
         </TabsContent>
         <TabsContent value="resources">
-          <ResourcesTab spaceId={spaceId} />
+          <ResourcesTab space={space} />
         </TabsContent>
         {space.kind === "external" && (
           <TabsContent value="guests">
@@ -294,6 +295,7 @@ function TasksTab({ space }: { space: Space }) {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [agents, setAgents] = useState<Map<string, string>>(new Map());
   const [name, setName] = useState("");
   const [phaseId, setPhaseId] = useState("");
   const [gate, setGate] = useState(false);
@@ -309,6 +311,19 @@ function TasksTab({ space }: { space: Space }) {
     let current = true;
     spacesApi.members(space.id).then(
       (list) => current && setMembers(list),
+      (err) => toast.error(messageOf(err)),
+    );
+    // The agents shared into this Space are the ones a task here can go to.
+    spacesApi.resources(space.id).then(
+      (list) =>
+        current &&
+        setAgents(
+          new Map(
+            list.flatMap((r) =>
+              r.resource_type === "agent" && r.name ? [[r.resource_id, r.name] as const] : [],
+            ),
+          ),
+        ),
       (err) => toast.error(messageOf(err)),
     );
     return () => {
@@ -340,9 +355,11 @@ function TasksTab({ space }: { space: Space }) {
     const assignee =
       assign === "assistant"
         ? ({ type: "assistant" } as const)
-        : assign
-          ? ({ type: "user", user_id: assign } as const)
-          : undefined;
+        : assign.startsWith("agent:")
+          ? ({ type: "agent", agent_id: assign.slice("agent:".length) } as const)
+          : assign
+            ? ({ type: "user", user_id: assign } as const)
+            : undefined;
     const worked = await act(
       spacesApi.createTask(space.id, {
         name: name.trim(),
@@ -400,6 +417,11 @@ function TasksTab({ space }: { space: Space }) {
           >
             <option value="">Nobody</option>
             <option value="assistant">Assistant</option>
+            {[...agents].map(([id, label]) => (
+              <option key={id} value={`agent:${id}`}>
+                Agent: {label}
+              </option>
+            ))}
             {[...names].map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
@@ -483,7 +505,14 @@ function TasksTab({ space }: { space: Space }) {
             </h2>
             <ul className="grid gap-2">
               {list.map((t) => (
-                <TaskRow key={t.id} task={t} admin={admin} names={names} act={act} />
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  admin={admin}
+                  names={names}
+                  agents={agents}
+                  act={act}
+                />
               ))}
             </ul>
           </section>
@@ -497,11 +526,13 @@ function TaskRow({
   task,
   admin,
   names,
+  agents,
   act,
 }: {
   task: Task;
   admin: boolean;
   names: Map<string, string>;
+  agents: Map<string, string>;
   act: (work: Promise<unknown>) => Promise<boolean>;
 }) {
   const [rejecting, setRejecting] = useState(false);
@@ -517,7 +548,9 @@ function TaskRow({
         {task.run && (
           <span className="rounded bg-bg-sunken px-1.5 text-caption">Run: {task.run.status}</span>
         )}
-        <span className="ml-auto text-dense text-fg-muted">{assigneeLabel(task, names)}</span>
+        <span className="ml-auto text-dense text-fg-muted">
+          {assigneeLabel(task, names, agents)}
+        </span>
         <label className="sr-only" htmlFor={`status-${task.id}`}>
           Status of {task.name}
         </label>
@@ -606,39 +639,6 @@ function MembersTab({ spaceId }: { spaceId: string }) {
           <span className="text-dense text-fg-muted">
             {m.principal_type === "group" ? "Group · " : ""}
             {m.role === "admin" ? "Admin" : "Collaborator"}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function ResourcesTab({ spaceId }: { spaceId: string }) {
-  const resources = useLoaded<Resource[]>(() => spacesApi.resources(spaceId), spaceId);
-  if (!resources) {
-    return (
-      <p role="status" className="pt-4 text-fg-muted">
-        Loading resources
-      </p>
-    );
-  }
-  if (resources.length === 0) {
-    return (
-      <EmptyState
-        icon={Users}
-        title="Nothing shared here yet"
-        description="Share a vault, table or playbook into this Space from its own page."
-        action={{ label: "Back to Spaces", onClick: toList }}
-      />
-    );
-  }
-  return (
-    <ul aria-label="Resources" className="grid gap-2 pt-4">
-      {resources.map((r) => (
-        <li key={r.id} className="flex items-center gap-3 rounded-md border border-control p-3">
-          <span className="flex-1">{r.name ?? "A resource you can't open"}</span>
-          <span className="text-dense text-fg-muted">
-            {r.resource_type} · {r.access}
           </span>
         </li>
       ))}

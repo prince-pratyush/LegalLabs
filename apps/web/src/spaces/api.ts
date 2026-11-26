@@ -62,6 +62,14 @@ export interface Guest {
   status: "active" | "expired" | "deactivated";
 }
 
+export interface ShareRequest {
+  id: string;
+  name: string;
+  access: string;
+  per_party: Record<string, string>;
+  requester_name: string;
+}
+
 export interface Phase {
   id: string;
   ordinal: number;
@@ -177,6 +185,25 @@ export const spacesApi = {
     send<unknown>("PATCH", `/spaces/${enc(id)}/resources/${enc(resourceRowId)}`, {
       per_party: { [partyId]: level },
     }),
+
+  /** True when the share only waits for a Space admin (202). */
+  shareAgent: async (
+    id: string,
+    input: { resource_id: string; access: string; per_party?: Record<string, string> },
+  ) => {
+    const made = await send<{ request?: unknown }>("POST", `/spaces/${enc(id)}/resources`, {
+      resource_type: "agent",
+      ...input,
+    });
+    return Boolean(made.request);
+  },
+  shareRequests: async (id: string) =>
+    (await call<{ shares: ShareRequest[] }>(`/spaces/${enc(id)}/requests`)).shares,
+  decideShare: (
+    id: string,
+    requestId: string,
+    decision: { decision: "accept" } | { decision: "deny"; reason: string },
+  ) => send<unknown>("POST", `/spaces/${enc(id)}/share-requests/${enc(requestId)}`, decision),
 
   phases: async (id: string) =>
     (await call<{ phases: Phase[] }>(`/spaces/${enc(id)}/phases`)).phases,
