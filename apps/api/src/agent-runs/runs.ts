@@ -2,6 +2,7 @@ import type { RunSignal, RunSummary } from "@legallabs/contracts";
 import type { RunEngine, RunRef } from "@legallabs/runs";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
+import { track, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -172,6 +173,37 @@ const forOthers = (r: StepRow): StepSummary => ({
   ...(r.output?.message_id ? { summary: "Wrote the answer." } : {}),
 });
 
+/** One agent, workflow or Space task run started, as Command Center counts it. */
+async function countRun(db: pg.PoolClient, req: StartRun, runId: string) {
+  // What the saved agent reads, by kind; names and references stay behind.
+  const { rows } = req.agent_version_id
+    ? await db.query<{ kinds: string[]; files: number }>(
+        `select array(select distinct s ->> 'kind' from jsonb_array_elements(sources) s) kinds,
+                jsonb_array_length(attachments) files
+           from work.agent_version where id = $1`,
+        [req.agent_version_id],
+      )
+    : { rows: [] };
+  const version = rows[0];
+  await trackUsage(db, {
+    surface: "agents",
+    action:
+      req.path === "schedule"
+        ? "agent.schedule_fire"
+        : req.space_id
+          ? "space.agent_run"
+          : `${req.kind}.run`,
+    actionClass: "query",
+    counter: "agent_runs",
+    subsurface: req.space_id ? "spaces" : req.kind,
+    objectType: "run",
+    objectId: runId,
+    ...(req.matter_id ? { matterRef: req.matter_id } : {}),
+    sourceKinds: [...(version?.kinds ?? []), ...(version?.files ? ["file"] : [])],
+    documentCount: version?.files ?? 0,
+  });
+}
+
 export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): AgentRuns {
   const { engine } = options;
 
@@ -251,6 +283,11 @@ export function createAgentRuns(pool: pg.Pool, options: AgentRunsOptions): Agent
           ),
         );
         throw err;
+      }
+      // Once the engine has it, so a run that never started isn't counted. Retries and resumes
+      // happen inside the engine and never come back through here.
+      if (!req.test_mode && req.kind !== "agent_builder") {
+        await track(pool, principal, (db) => countRun(db, req, ref.ref.runId));
       }
       return { run_id: ref.ref.runId, thread_id: ref.threadId };
     },
