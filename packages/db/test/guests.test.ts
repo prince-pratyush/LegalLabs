@@ -72,7 +72,7 @@ describe("guests", () => {
         `select n.nspname || '.' || quote_ident(c.relname) as t
            from pg_class c join pg_namespace n on n.oid = c.relnamespace
           where c.relrowsecurity and c.relkind in ('r', 'p') and not c.relispartition
-            and n.nspname in ('core','work','content','admin','knowledge','notify','analytics','retention','memory')
+            and n.nspname in ('core','work','content','admin','knowledge','notify','analytics','retention','memory','apps')
             and has_table_privilege('legallabs_app', c.oid, 'select')
           order by 1`,
       );

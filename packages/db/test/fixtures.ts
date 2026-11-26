@@ -395,6 +395,32 @@ export async function seed(tx: Tx) {
     acme: await review(acme, ana, playbooks.acme, documents.acme),
     beta: await review(beta, bob, playbooks.beta, documents.beta),
   };
+  // A contract review agent over that playbook, with one finished contract in its queue.
+  const contractReview = async (
+    ws: string,
+    owner: string,
+    pb: { playbookId: string },
+    doc: { documentId: string; versionId: string },
+    done: { runId: string; reviewId: string },
+  ) => {
+    const agentId = await id(
+      `insert into apps.ci_review_agent (workspace_id, owner_id, name, contract_type,
+         playbook_id, party, paper, assignment, thresholds, status)
+       values ($1, $2, 'NDA intake', 'NDA', $3, 'Acme', 'theirs', '[]', '{}', 'live')
+       returning id`,
+      [ws, owner, pb.playbookId],
+    );
+    await tx.rows(
+      `insert into apps.ci_contract_review (workspace_id, ci_agent_id, agent_name, owner_id,
+         document_id, document_version_id, playbook_review_id, run_id, status, result,
+         assignee_id, playbook_id)
+       values ($1, $2, 'NDA intake', $3, $4, $5, $6, $7, 'aligned', 'aligned', $3, $8)`,
+      [ws, agentId, owner, doc.documentId, doc.versionId, done.reviewId, done.runId, pb.playbookId],
+    );
+  };
+  await contractReview(acme, ana, playbooks.acme, documents.acme, reviews.acme);
+  await contractReview(beta, bob, playbooks.beta, documents.beta, reviews.beta);
+
   // Seeded as the table owner, as the earlier objects are.
   const library = async (ws: string, owner: string) => {
     const promptId = await id(

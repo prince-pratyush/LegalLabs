@@ -205,6 +205,8 @@ export const auditActions: string[] = [
   "notification_settings.updated",
   "workspace_notification_settings.updated",
   "admin.memory_permission_changed",
+  ...family("ci.agent", ["created", "updated", "activated", "deactivated"]),
+  ...family("ci.review", ["queued", "assigned", "status_changed", "finished"]),
 ];
 
 export const AuditAction = z.enum(auditActions);

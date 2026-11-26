@@ -80,6 +80,7 @@ export const NOTIFICATION_KINDS = {
   "table.cell_mentioned": meta("review_tables", false),
   "playbook.review_completed": meta("playbooks", false, { completion: true }),
   "playbook.assigned": meta("playbooks", true),
+  "ci.review_assigned": meta("playbooks", true),
   "agent.shared": meta("agents", false),
   "workflow.shared": meta("agents", false),
   "agent.share_requested": meta("agents", true),

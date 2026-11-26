@@ -25,6 +25,7 @@ import { createAnchorJob } from "./audit/anchor-job.js";
 import { createAuth } from "./auth/auth.js";
 import { mfaFromEnv, mfaStartupCheck } from "./auth/mfa/config.js";
 import { createOidc } from "./auth/oidc/service.js";
+import { createCi } from "./ci/ci.js";
 import { createClientIp, trustedProxiesFromEnv } from "./client-ip.js";
 import { createAnalyticsJob } from "./command-center/job.js";
 import { createCommandCenter } from "./command-center/service.js";
@@ -285,6 +286,23 @@ tables.sync.start();
 process.once("SIGTERM", () => void tables.sync.stop());
 process.once("SIGINT", () => void tables.sync.stop());
 
+const reviews = createReviews(pool, {
+  gateway,
+  notifier,
+  store,
+  log,
+  // A local model serves about two calls at once; raise it for a hosted provider.
+  parallelism: Number(process.env.LEGALLABS_REVIEW_PARALLELISM) || 2,
+  // A run stops here and keeps what it finished.
+  maxCostUsd: Number(process.env.LEGALLABS_REVIEW_MAX_COST_USD) || 5,
+  validate: validatorFromEnv(process.env),
+});
+// Contract review queues: each queued contract is reviewed as its agent's owner.
+const ci = createCi(pool, { reviews, notifier, log: (line) => console.log(line) });
+ci.start();
+process.once("SIGTERM", () => void ci.stop());
+process.once("SIGINT", () => void ci.stop());
+
 const mfaOption = mfaFromEnv(process.env, pool);
 const mfaCheck = mfaStartupCheck(process.env, mfaOption.mfa !== undefined);
 if (mfaCheck.action === "refuse") {
@@ -341,17 +359,8 @@ const app = createApp({
   notifications,
   memory,
   adminModels,
-  reviews: createReviews(pool, {
-    gateway,
-    notifier,
-    store,
-    log,
-    // A local model serves about two calls at once; raise it for a hosted provider.
-    parallelism: Number(process.env.LEGALLABS_REVIEW_PARALLELISM) || 2,
-    // A run stops here and keeps what it finished.
-    maxCostUsd: Number(process.env.LEGALLABS_REVIEW_MAX_COST_USD) || 5,
-    validate: validatorFromEnv(process.env),
-  }),
+  reviews,
+  ci,
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),

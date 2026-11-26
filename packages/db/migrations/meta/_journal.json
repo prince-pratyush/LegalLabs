@@ -715,6 +715,13 @@
       "when": 1794020800000,
       "tag": "0226_work_agent_walls_uploads",
       "breakpoints": false
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1794020900000,
+      "tag": "0230_apps_contract_review",
+      "breakpoints": false
     }
   ]
 }
