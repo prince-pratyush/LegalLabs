@@ -6,10 +6,10 @@ Phase 4 epic "Security review" (roadmap: threat-model walkthrough, pen-test chec
 
 | Severity | Found | Fixed | Accepted | Open |
 | -------- | ----- | ----- | -------- | ---- |
-| High     | 1     | 1     | 0        | 0    |
-| Medium   | 11    | 11    | 0        | 0    |
-| Low      | 24    | 12    | 7        | 5    |
-| Total    | 36    | 24    | 7        | 5    |
+| High     | 2     | 2     | 0        | 0    |
+| Medium   | 14    | 14    | 0        | 0    |
+| Low      | 30    | 12    | 9        | 9    |
+| Total    | 46    | 28    | 9        | 9    |
 
 F-01 to F-18 are the Phase 4 review; F-19 to F-36 are a second, independent review of PRs #93 to #99 (below). The Phase 4 review found no High: its database policies held under a fuzz of every definer function and under every wall and guest test. The second review found one (F-23), in a read policy that predates those PRs. Medium findings are controls the design requires that were absent, unwired or too weak in a way an attacker with a stolen session, a connector or a proxy position could use.
 
@@ -70,6 +70,23 @@ Reviewed commit: `ef68a0c`, by someone other than the authors. Attacked: the too
 Held: a write cannot run without the owner's click; changed arguments ask again; the policy engine fails closed; a changed manifest shuts the connector; redirects are not followed and private addresses are refused on the address connected to; only the model's own whole reply is read as a tool call, and fenced data cannot guess the fence; every Command Center route checks `admin.reporting`; mail uses `requireTLS` for STARTTLS, passes recipients as an object and logs only an error code.
 
 Not checked: a real third-party MCP server or mail provider; the Temporal engine under worker failure (races were read, not run); nodemailer's own parsing and STARTTLS upgrade; the web app in a browser; the analytics recording added after `ef68a0c`.
+
+## Third review: retention and agent sharing (PRs #100, #104, #108 to #110)
+
+An independent review of usage recording, retention precedence, agents shared into Spaces and the vault retention change. F-39 to F-41 each had a failing test first. F-39 and F-41 predate those PRs.
+
+| ID   | Sev    | Surface       | Finding                                                                                                                                                                                                                       | Status                                                                                                            | Test                                   |
+| ---- | ------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| F-39 | High   | Legal holds   | A hold stopped the retention sweep but not the vault bin: purging a binned folder or vault, by the hourly job or by an admin, destroyed held files, and purging a parent file took a held attachment with it (06 section 5.6) | Fixed (0225): every purge drops what is held; an admin purge of a held vault answers 423                          | `db/test/retention-hold-purge.test.ts` |
+| F-40 | Medium | Agents        | Someone with only Run on an agent, through a Space too, could link its upload into an agent of their own, keeping the file after the share ended and able to hand it on                                                       | Fixed (0226): linking needs ownership of the file or View on an agent carrying it. Links made before the fix stay | `db/test/agent-share-walls.test.ts`    |
+| F-41 | Medium | Agents, walls | Direct, group and workspace shares of an agent ignored the walls of matters that require them for sharing; a walled person got the agent, and with View its instructions                                                      | Fixed (0226): such a share is refused, and a walled person gets nothing from an existing one                      | `db/test/agent-share-walls.test.ts`    |
+| F-42 | Low    | Spaces        | A Space share of an agent outlives its sharer's Full access; the owner sees and removes it only if they are in that Space (a Space admin can remove it; deleting the agent ends it)                                           | Open                                                                                                              |                                        |
+| F-43 | Low    | Spaces        | View on an agent through a Space allows Duplicate, and the copy can be shared elsewhere, externally with the usual approval                                                                                                   | Accepted: agents-workflows.md section 4.6 gives View duplicate                                                    |                                        |
+| F-44 | Low    | Legal holds   | A person can still bin a held thread or file; 06 section 5.6 wants 423. The content is kept                                                                                                                                   | Open                                                                                                              |                                        |
+| F-45 | Low    | Agents        | Run holders can open an agent's uploaded files directly, not only through a run                                                                                                                                               | Accepted: a run reads them as the runner (0065)                                                                   |                                        |
+| F-46 | Low    | Spaces        | A Space member who knows an agent's id can learn whether it draws on walled or another matter (`work.agent_share_check`), a count only                                                                                        | Open                                                                                                              |                                        |
+
+Also noted, by design: a Space admin approving an external share sees the agent's title, not its contents, and the owner can change them afterwards. The F-41 closure is per person; the whole grant is not suspended and `wall.share_suspended` is not audited.
 
 ## Spec versus implementation, and Phase 4 exit gates
 
