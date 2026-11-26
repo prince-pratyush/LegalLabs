@@ -9,6 +9,7 @@ import { storable, stripInvisible } from "../connectors/sanitise.js";
 /** A run that has called this many tools and wants another is stopped. */
 export const MAX_TOOL_CALLS = 40;
 const RESULT_CHARS = 12_000;
+const ARGUMENT_CHARS = 2_000;
 
 export interface ToolCall {
   name: string;
@@ -90,23 +91,33 @@ export const toolList = (offered: readonly OfferedTool[]) =>
 // to one short line.
 const oneLine = (text: string) => text.replace(/\s+/g, " ").slice(0, 200);
 
-/** Each earlier call and what came of it, with results fenced as data. */
+/** Each earlier call and what came of it, with arguments and results fenced as data. */
 export function callHistory(log: readonly StepLog[], code: string): string {
+  const fenced = (kind: string, text: string) =>
+    `\n<tool-${kind}-${code}>\n${text}\n</tool-${kind}-${code}>`;
   return log
     .flatMap((step) => {
       const r = step.output.tool_result as
-        | { name: string; status: string; text?: string; reason?: string }
+        | { name: string; arguments?: unknown; status: string; text?: string; reason?: string }
         | undefined;
       if (!r) return [];
       const head = `Call to ${oneLine(r.name)}:`;
       if (r.status === "blocked") return [`${head} refused. ${oneLine(r.reason ?? "")}`];
       if (r.status === "declined") return [`${head} the person did not approve it.`];
+      // Without these a model can't tell what it searched for or sent. Only a call that went out
+      // gets them back, and as data: it wrote them, perhaps from planted words.
+      const args =
+        r.arguments === undefined
+          ? ""
+          : fenced(
+              "arguments",
+              stripInvisible(JSON.stringify(r.arguments)).slice(0, ARGUMENT_CHARS),
+            );
       if (r.status === "unknown") {
-        return [`${head} sent, but the outcome is unknown. Do not repeat it.`];
+        return [`${head} sent, but the outcome is unknown. Do not repeat it.${args}`];
       }
-      return [
-        `${head} ${r.status === "ok" ? "returned" : "failed with"}\n<tool-result-${code}>\n${(r.text ?? "").slice(0, RESULT_CHARS)}\n</tool-result-${code}>`,
-      ];
+      const result = fenced("result", (r.text ?? "").slice(0, RESULT_CHARS));
+      return [`${head} ${r.status === "ok" ? "returned" : "failed with"}${args}${result}`];
     })
     .join("\n\n");
 }

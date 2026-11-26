@@ -223,6 +223,10 @@ describe("agent runs on the composed server", () => {
     });
     expect((await events(run.run_id)).at(-1)?.event).toBe("done");
     expect(mcp.calls.slice(before).map((c) => c.name)).toEqual(["search", "send_mail"]);
+    // The model is told what it sent, not only that a call returned.
+    expect(prompts.at(-1)).toMatch(
+      /<tool-arguments-\w+>\n\{"to":"attacker@evil\.example"\}\n<\/tool-arguments-/,
+    );
   });
 
   // No agent catalogue is registered for Spaces yet, so an agent can't be shared into one

@@ -6,12 +6,16 @@ import { isIP } from "node:net";
 export interface FetchPolicy {
   /** Test and local development only: plain http and private addresses. */
   insecureDev?: boolean;
+  /** How long the socket may be silent. */
   timeoutMs?: number;
+  /** How long the whole exchange may take, however steadily bytes arrive. */
+  deadlineMs?: number;
   maxBytes?: number;
 }
 
 export interface FetchResult {
   status: number;
+  headers: http.IncomingHttpHeaders;
   body: string;
 }
 
@@ -70,21 +74,26 @@ export function isPrivateAddress(address: string): boolean {
 }
 
 /**
- * GET with the checks a fetch of an operator-supplied URL needs: https only, no private
+ * A request with the checks a fetch of an operator-supplied URL needs: https only, no private
  * address (checked on the address actually connected to, so DNS rebinding can't slip past),
- * no redirects, a short timeout and a size cap.
+ * no redirects, timeouts and a size cap.
  */
 export function safeRequest(
   url: string,
   policy: FetchPolicy = {},
   init: {
-    method?: "GET" | "POST";
+    method?: "GET" | "POST" | "DELETE";
     headers?: Record<string, string>;
     body?: string;
     signal?: AbortSignal;
+    /**
+     * Shown each chunk as it arrives; true ends the exchange with what has been read. For a
+     * stream the server may hold open after it has said what was asked.
+     */
+    enough?: (chunk: Buffer, headers: http.IncomingHttpHeaders) => boolean;
   } = {},
 ): Promise<FetchResult> {
-  const { insecureDev = false, timeoutMs = 5000, maxBytes = 1_000_000 } = policy;
+  const { insecureDev = false, timeoutMs = 5000, deadlineMs, maxBytes = 1_000_000 } = policy;
   return new Promise((resolve, reject) => {
     let target: URL;
     try {
@@ -141,6 +150,12 @@ export function safeRequest(
         const chunks: Buffer[] = [];
         let size = 0;
         let tooBig = false;
+        const done = () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
         res.on("data", (chunk: Buffer) => {
           size += chunk.length;
           if (size > maxBytes) {
@@ -149,16 +164,27 @@ export function safeRequest(
             return;
           }
           chunks.push(chunk);
+          if (init.enough?.(chunk, res.headers)) {
+            done();
+            req.destroy();
+          }
         });
         res.on("end", () => {
           if (tooBig) return reject(new BlockedFetch("response too large"));
-          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });
+          done();
         });
         res.on("error", reject);
       },
     );
     req.on("timeout", () => req.destroy(new Error("request timed out")));
     req.on("error", reject);
+    if (deadlineMs) {
+      const timer = setTimeout(() => {
+        reject(new Error("request took too long"));
+        req.destroy();
+      }, deadlineMs);
+      req.on("close", () => clearTimeout(timer));
+    }
     req.end(init.body);
   });
 }

@@ -9,6 +9,7 @@ import {
 import { beforeAll, describe, expect, it } from "vitest";
 import { EXTRACT_CHUNK_CHARS } from "./clause-map.js";
 import { uuidv7 } from "./id.js";
+import { draftPrompt } from "./prompts.js";
 import { runReview } from "./review.js";
 import type { CompleteCall, ReviewInput, ReviewParagraph } from "./types.js";
 
@@ -145,6 +146,19 @@ const standard: Handler = (call) => {
   if (call.task === "verify") return noGaps;
   return ruleOf(call) === "Confidentiality" ? accept : reject;
 };
+
+describe("draftPrompt", () => {
+  it("sets a whole-sentence scenario apart from what to do about it", () => {
+    const actions = [{ scenario: "The cap has no floor.", instruction: "Counter." }];
+    const prompt = draftPrompt(
+      { rule: rule(0, "Cap", { actions }), paragraphs: [] } as unknown as Parameters<
+        typeof draftPrompt
+      >[0],
+      "c0de",
+    );
+    expect(prompt).toContain("\nIf this applies: The cap has no floor. Then: Counter.\n");
+  });
+});
 
 describe("runReview", () => {
   it("maps, reviews, skips and inserts, with outputs that match the contract", async () => {
