@@ -74,7 +74,7 @@ export class LastFactorError extends Error {
 }
 
 const NOBODY: Identity = { userId: null, workspaceId: null };
-const PENDING_SECONDS = 600;
+export const PENDING_SECONDS = 600;
 const CHALLENGE_SECONDS = 300;
 
 const sha256 = (text: string) => createHash("sha256").update(text).digest();

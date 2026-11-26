@@ -335,7 +335,13 @@ describe("the second factor", () => {
     it("asks for a second factor when the IdP asserted none", async () => {
       const { run, sessions } = await go({ amr: ["pwd"] });
       expect(run.callback.status).toBe(302);
-      expect(run.callback.headers.get("location")).toMatch(/^\/#\/auth\/mfa\?kind=enrol&token=/);
+      // The pending token stays out of the address bar: only this browser's cookie holds it.
+      expect(run.callback.headers.get("location")).toBe(
+        "/#/auth/mfa?kind=enrol&methods=totp,passkey",
+      );
+      expect(run.callback.headers.get("set-cookie")).toMatch(
+        /__Host-mfa=[^;]{20,}; Max-Age=600; Path=\/; HttpOnly; Secure; SameSite=Strict/,
+      );
       expect(sidOf(run.callback)).toBeUndefined();
       expect(sessions).toBe(0);
     });

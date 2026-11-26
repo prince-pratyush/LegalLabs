@@ -88,6 +88,16 @@ An independent review of usage recording, retention precedence, agents shared in
 
 Also noted, by design: a Space admin approving an external share sees the agent's title, not its contents, and the owner can change them afterwards. The F-41 closure is per person; the whole grant is not suspended and `wall.share_suspended` is not audited.
 
+## Pending sign-in binding (F-47)
+
+Found after the web second-factor step (PR #119). SAML reaches the app through Zitadel's OIDC callback, so one fix covers both. Failing tests first.
+
+| ID   | Severity | Area     | Finding | State |
+| ---- | -------- | -------- | ------- | ----- |
+| F-47 | Medium   | Identity | The pending second-factor token came back from single sign-on in the URL fragment and the web app used whatever token the address held, in any browser. Someone could send a link carrying their own pending enrolment: a signed-out recipient who followed it set up their factor on the sender's account and was signed into it. The token also sat in the redirect and, briefly, the address bar | Fixed: the token is only in an `__Host-` HttpOnly, Secure, SameSite=Strict cookie set on the browser that started sign-in (password or SSO), for its 10 minute life, still single use. The `/auth/mfa/*` routes ignore a token in the body. Tests: `api/auth/mfa/http.test.ts`, `api/auth/oidc/oidc.test.ts`, `web/src/auth/SecondFactor.test.tsx` |
+
+Checked for the same pattern, no change: OIDC `state` is bound to an HttpOnly cookie, hashed and consumed once; SAML relay state stays between Zitadel and the identity provider; the Word add-in code is never in a URL, is single use for 60 seconds and issuing it needs the session cookie; a guest invitation link opens no session, and sign-in needs the emailed code typed by the person. Seen on the way, not a security fault: the add-in sign-in dialog has no second-factor step, so an account that owes one cannot sign in there.
+
 ## Spec versus implementation, and Phase 4 exit gates
 
 Gaps found while walking the design, not code bugs. Items marked "exit" bear on a Phase 4 exit gate.

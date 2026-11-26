@@ -85,7 +85,7 @@ function Verify({ pending, onSignedIn, onRestart }: Props) {
   const { attempt, alert, busy } = useAttempt(onRestart);
   const [recovery, setRecovery] = useState(false);
   const [code, setCode] = useState("");
-  const { token, methods } = pending;
+  const { methods } = pending;
   const passkey = methods.includes("passkey") && passkeysWork("parseRequestOptionsFromJSON");
   // Someone with only a passkey has no code to type, apart from a recovery code.
   const codeless = !methods.includes("totp") && !recovery;
@@ -93,20 +93,20 @@ function Verify({ pending, onSignedIn, onRestart }: Props) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     void attempt(async () => {
-      await secondFactorApi[recovery ? "recovery" : "totp"](token, code.trim());
+      await secondFactorApi[recovery ? "recovery" : "totp"](code.trim());
       onSignedIn();
     });
   };
 
   const withPasskey = () =>
     attempt(async () => {
-      const { challenge_id, options } = await secondFactorApi.passkeyOptions(token);
+      const { challenge_id, options } = await secondFactorApi.passkeyOptions();
       const credential = (await navigator.credentials.get({
         publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(
           options as PublicKeyCredentialRequestOptionsJSON,
         ),
       })) as PublicKeyCredential;
-      await secondFactorApi.passkeyVerify(token, challenge_id, credential.toJSON());
+      await secondFactorApi.passkeyVerify(challenge_id, credential.toJSON());
       onSignedIn();
     });
 
@@ -156,12 +156,11 @@ function Verify({ pending, onSignedIn, onRestart }: Props) {
   );
 }
 
-function Enrol({ pending, onSignedIn, onRestart }: Props) {
+function Enrol({ onSignedIn, onRestart }: Props) {
   const { attempt, alert, busy } = useAttempt(onRestart);
   const [app, setApp] = useState<{ secret: string; uri: string } | null>(null);
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
-  const { token } = pending;
 
   // Recovery codes are shown only now, so the app waits until the person has them.
   const finished = (codes: string[] | null | undefined) =>
@@ -170,19 +169,19 @@ function Enrol({ pending, onSignedIn, onRestart }: Props) {
   const confirm = (event: FormEvent) => {
     event.preventDefault();
     void attempt(async () => {
-      finished((await secondFactorApi.totpConfirm(token, code.trim())).recovery_codes);
+      finished((await secondFactorApi.totpConfirm(code.trim())).recovery_codes);
     });
   };
 
   const withPasskey = () =>
     attempt(async () => {
-      const { challenge_id, options } = await secondFactorApi.registerOptions(token);
+      const { challenge_id, options } = await secondFactorApi.registerOptions();
       const credential = (await navigator.credentials.create({
         publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(
           options as PublicKeyCredentialCreationOptionsJSON,
         ),
       })) as PublicKeyCredential;
-      const done = await secondFactorApi.registerVerify(token, challenge_id, credential.toJSON());
+      const done = await secondFactorApi.registerVerify(challenge_id, credential.toJSON());
       finished(done.recovery_codes);
     });
 
@@ -239,7 +238,7 @@ function Enrol({ pending, onSignedIn, onRestart }: Props) {
         ) : (
           <Button
             disabled={busy}
-            onClick={() => attempt(async () => setApp(await secondFactorApi.totpBegin(token)))}
+            onClick={() => attempt(async () => setApp(await secondFactorApi.totpBegin()))}
           >
             Use an authenticator app
           </Button>

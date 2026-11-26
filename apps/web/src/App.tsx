@@ -166,7 +166,7 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(() => handoffFrom(window.location.hash));
 
-  // The single sign-on token comes off the address bar and the history as soon as it is read.
+  // The single sign-on handoff comes off the address bar and the history as soon as it is read.
   useEffect(() => {
     if (!handoffFrom(window.location.hash)) return;
     window.history.replaceState(null, "", "/");

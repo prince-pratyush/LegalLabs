@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Client, Principal } from "../auth.js";
 import { createLimiter } from "../limiter.js";
 import { MAX_PASSWORD_LENGTH } from "../password.js";
+import { clearPendingCookie, pendingCookie, setPendingCookie } from "./pending-cookie.js";
 import { LastFactorError, type Mfa, type Pending } from "./service.js";
 import { FRESH_MFA_MS, hasFreshMfa, POLICIES } from "./step-up.js";
 
@@ -29,9 +30,7 @@ const loginBody = z.object({
   email: text(3, 320),
   password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
 });
-const tokenBody = z.object({ mfa_token: text(20, 100) });
 const codeBody = z.object({ code: text(6, 40) });
-const pendingCode = tokenBody.extend(codeBody.shape);
 // Browser ceremonies are plain JSON; the library checks their contents, we only bound their size.
 const credential = z.record(z.string(), z.unknown());
 const passkeyBody = z.object({ challenge_id: text(36, 36), response: credential });
@@ -71,6 +70,7 @@ export function mfaAuthRoutes(opts: MfaRouteOptions) {
     extra: object = {},
   ) => {
     await startSession(c, result.token);
+    clearPendingCookie(c);
     return c.json({
       user_id: result.principal.userId,
       workspace_id: result.principal.workspaceId,
@@ -78,16 +78,16 @@ export function mfaAuthRoutes(opts: MfaRouteOptions) {
     });
   };
 
-  // Resolves the pending sign-in a request names, after the per-caller limit.
+  // Resolves the pending sign-in this browser holds, after the per-caller limit.
   const withPending = async (
     c: Context,
-    token: string,
     run: (p: Pending) => Promise<Response>,
   ): Promise<Response> => {
     const wait = factorsPerIp.take(clientIp(c) ?? "unknown");
     const refused = limited(c, wait);
     if (refused) return refused;
-    const pending = await mfa.pendingOf(token);
+    const token = pendingCookie(c);
+    const pending = token ? await mfa.pendingOf(token) : null;
     if (!pending) return c.json(BAD_TOKEN, 401);
     return run(pending);
   };
@@ -107,37 +107,35 @@ export function mfaAuthRoutes(opts: MfaRouteOptions) {
     const outcome = await mfa.login(parsed, clientOf(c));
     if (!outcome) return c.json({ error: "invalid_credentials" }, 401);
     if (outcome.kind === "session") return sessionReply(c, outcome);
-    // Not a session: the caller holds a token good only for the second step.
+    // Not a session: the browser gets a cookie good only for the second step.
+    setPendingCookie(c, outcome.mfaToken);
     return c.json({
       mfa_required: outcome.kind === "challenge",
       mfa_enrolment_required: outcome.kind === "enrol",
-      mfa_token: outcome.mfaToken,
       methods: outcome.methods,
     });
   });
 
   app.post("/mfa/totp", body, async (c) => {
-    const parsed = await readJson(c, pendingCode);
+    const parsed = await readJson(c, codeBody);
     if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return withPending(c, parsed.mfa_token, async (p) => {
+    return withPending(c, async (p) => {
       const result = await mfa.completeTotp(p, parsed.code, clientOf(c));
       return result ? sessionReply(c, result) : wrong(c);
     });
   });
 
   app.post("/mfa/recovery", body, async (c) => {
-    const parsed = await readJson(c, pendingCode);
+    const parsed = await readJson(c, codeBody);
     if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return withPending(c, parsed.mfa_token, async (p) => {
+    return withPending(c, async (p) => {
       const result = await mfa.completeRecovery(p, parsed.code, clientOf(c));
       return result ? sessionReply(c, result) : wrong(c);
     });
   });
 
   app.post("/mfa/passkey/options", body, async (c) => {
-    const parsed = await readJson(c, tokenBody);
-    if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return withPending(c, parsed.mfa_token, async (p) => {
+    return withPending(c, async (p) => {
       const challenge = p.purpose === "verify" ? await mfa.passkeyOptionsFor(p) : null;
       return challenge
         ? c.json({ challenge_id: challenge.challengeId, options: challenge.options })
@@ -146,9 +144,9 @@ export function mfaAuthRoutes(opts: MfaRouteOptions) {
   });
 
   app.post("/mfa/passkey/verify", body, async (c) => {
-    const parsed = await readJson(c, tokenBody.extend(passkeyBody.shape));
+    const parsed = await readJson(c, passkeyBody);
     if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return withPending(c, parsed.mfa_token, async (p) => {
+    return withPending(c, async (p) => {
       const result = await mfa.completePasskey(
         p,
         parsed.challenge_id,
@@ -160,24 +158,22 @@ export function mfaAuthRoutes(opts: MfaRouteOptions) {
   });
 
   // Enrolment before a session exists, for a person the policy covers who has no factor yet.
-  const enrolling = (c: Context, token: string, run: (p: Pending) => Promise<Response>) =>
-    withPending(c, token, (p) =>
+  const enrolling = (c: Context, run: (p: Pending) => Promise<Response>) =>
+    withPending(c, (p) =>
       p.purpose === "enrol" ? run(p) : Promise.resolve(c.json(FORBIDDEN, 403)),
     );
 
   app.post("/mfa/enrol/totp/begin", body, async (c) => {
-    const parsed = await readJson(c, tokenBody);
-    if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return enrolling(c, parsed.mfa_token, async (p) => {
+    return enrolling(c, async (p) => {
       const begun = await mfa.totpBegin(p);
       return begun ? c.json(begun) : c.json({ error: "already_enrolled" }, 409);
     });
   });
 
   app.post("/mfa/enrol/totp/confirm", body, async (c) => {
-    const parsed = await readJson(c, pendingCode);
+    const parsed = await readJson(c, codeBody);
     if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return enrolling(c, parsed.mfa_token, async (p) => {
+    return enrolling(c, async (p) => {
       const enrolled = await mfa.totpConfirm(p, parsed.code, clientOf(c));
       if (!enrolled.ok) {
         await mfa.strike(p, clientOf(c), "totp");
@@ -191,18 +187,16 @@ export function mfaAuthRoutes(opts: MfaRouteOptions) {
   });
 
   app.post("/mfa/enrol/passkey/options", body, async (c) => {
-    const parsed = await readJson(c, tokenBody);
-    if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return enrolling(c, parsed.mfa_token, async (p) => {
+    return enrolling(c, async (p) => {
       const challenge = await mfa.passkeyRegisterOptions(p);
       return c.json({ challenge_id: challenge.challengeId, options: challenge.options });
     });
   });
 
   app.post("/mfa/enrol/passkey/verify", body, async (c) => {
-    const parsed = await readJson(c, tokenBody.extend(registerBody.shape));
+    const parsed = await readJson(c, registerBody);
     if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    return enrolling(c, parsed.mfa_token, async (p) => {
+    return enrolling(c, async (p) => {
       const enrolled = await mfa.passkeyRegisterVerify(
         p,
         parsed.challenge_id,

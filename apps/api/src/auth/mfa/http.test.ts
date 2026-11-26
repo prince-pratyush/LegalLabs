@@ -46,6 +46,34 @@ function harness() {
 const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
 const json = async (res: Response) => (await res.json()) as Record<string, any>;
 
+describe("a pending sign-in", () => {
+  it("is held in a cookie of the browser that started it, and nowhere else", async () => {
+    const m = await seedMember(pool);
+    const h = harness();
+    const login = await h.post("/auth/login", {
+      workspace: m.slug,
+      email: m.email,
+      password: PASSWORD,
+    });
+
+    const set = login.headers.get("set-cookie") ?? "";
+    expect(set).toMatch(/^__Host-mfa=[^;]{20,};/);
+    for (const flag of ["HttpOnly", "Secure", "SameSite=Strict", "Path=/", "Max-Age=600"]) {
+      expect(set).toContain(flag);
+    }
+    expect(await json(login)).not.toHaveProperty("mfa_token");
+
+    // Naming the token is not enough: a crafted link or another client has no cookie.
+    const token = cookieOf(login).split("=")[1];
+    const elsewhere = await h.post("/auth/mfa/enrol/totp/begin", { mfa_token: token });
+    expect(elsewhere.status).toBe(401);
+    expect(await json(elsewhere)).toEqual({ error: "invalid_mfa_token" });
+
+    const here = await h.post("/auth/mfa/enrol/totp/begin", {}, cookieOf(login));
+    expect(here.status).toBe(200);
+  });
+});
+
 describe("password + passkey sign-in over HTTP", () => {
   it("enrols a passkey at first sign-in, then needs it on the next one", async () => {
     const m = await seedMember(pool); // an admin, so the default policy covers them
@@ -56,28 +84,30 @@ describe("password + passkey sign-in over HTTP", () => {
     // 1. Password alone gets no session, only an enrolment token.
     const first = await h.post("/auth/login", credentials);
     expect(first.status).toBe(200);
-    expect(first.headers.get("set-cookie")).toBeNull();
+    expect(first.headers.get("set-cookie")).not.toContain("__Host-sid");
     const firstBody = await json(first);
     expect(firstBody).toMatchObject({ mfa_enrolment_required: true, mfa_required: false });
-    const enrolToken = firstBody.mfa_token as string;
+    const pending = cookieOf(first);
+    const enrolToken = pending.split("=")[1] ?? "";
     expect((await h.get("/auth/session")).status).toBe(401);
 
     // 2. The enrolment token opens nothing else.
     const nothing = await h.get("/api/v1/mfa", `__Host-sid=${enrolToken}`);
     expect(nothing.status).toBe(401);
-    const noVerify = await h.post("/auth/mfa/passkey/options", { mfa_token: enrolToken });
+    const noVerify = await h.post("/auth/mfa/passkey/options", {}, pending);
     expect(noVerify.status).toBe(409);
 
     // 3. Registering a passkey finishes the sign-in and returns recovery codes once.
-    const regOptions = await json(
-      await h.post("/auth/mfa/enrol/passkey/options", { mfa_token: enrolToken }),
+    const regOptions = await json(await h.post("/auth/mfa/enrol/passkey/options", {}, pending));
+    const enrolled = await h.post(
+      "/auth/mfa/enrol/passkey/verify",
+      {
+        challenge_id: regOptions.challenge_id,
+        response: device.register(regOptions.options),
+        name: "Test key",
+      },
+      pending,
     );
-    const enrolled = await h.post("/auth/mfa/enrol/passkey/verify", {
-      mfa_token: enrolToken,
-      challenge_id: regOptions.challenge_id,
-      response: device.register(regOptions.options),
-      name: "Test key",
-    });
     expect(enrolled.status).toBe(200);
     const enrolledBody = await json(enrolled);
     expect(enrolledBody.recovery_codes).toHaveLength(10);
@@ -85,33 +115,40 @@ describe("password + passkey sign-in over HTTP", () => {
     expect(firstCookie).toMatch(/^__Host-sid=/);
     expect((await h.get("/auth/session", firstCookie)).status).toBe(200);
     // The token cannot be spent again.
-    const again = await h.post("/auth/mfa/enrol/passkey/options", { mfa_token: enrolToken });
+    const again = await h.post("/auth/mfa/enrol/passkey/options", {}, pending);
     expect(again.status).toBe(401);
 
     // 4. The next password sign-in is a challenge, with no cookie yet.
     const second = await h.post("/auth/login", credentials);
     const secondBody = await json(second);
-    expect(second.headers.get("set-cookie")).toBeNull();
+    expect(second.headers.get("set-cookie")).not.toContain("__Host-sid");
     expect(secondBody).toMatchObject({ mfa_required: true, methods: ["passkey", "recovery"] });
-    const token = secondBody.mfa_token as string;
+    const challenged = cookieOf(second);
 
     // 5. A wrong assertion fails; the right one from the same device succeeds.
-    const options = await json(await h.post("/auth/mfa/passkey/options", { mfa_token: token }));
-    const evil = await h.post("/auth/mfa/passkey/verify", {
-      mfa_token: token,
-      challenge_id: options.challenge_id,
-      response: device.assert(options.options, { origin: "https://evil.test" }),
-    });
+    const options = await json(await h.post("/auth/mfa/passkey/options", {}, challenged));
+    const evil = await h.post(
+      "/auth/mfa/passkey/verify",
+      {
+        challenge_id: options.challenge_id,
+        response: device.assert(options.options, { origin: "https://evil.test" }),
+      },
+      challenged,
+    );
     expect(evil.status).toBe(401);
-    const options2 = await json(await h.post("/auth/mfa/passkey/options", { mfa_token: token }));
-    const done = await h.post("/auth/mfa/passkey/verify", {
-      mfa_token: token,
-      challenge_id: options2.challenge_id,
-      response: device.assert(options2.options),
-    });
+    const options2 = await json(await h.post("/auth/mfa/passkey/options", {}, challenged));
+    const done = await h.post(
+      "/auth/mfa/passkey/verify",
+      {
+        challenge_id: options2.challenge_id,
+        response: device.assert(options2.options),
+      },
+      challenged,
+    );
     expect(done.status).toBe(200);
     const cookie = cookieOf(done);
     expect(done.headers.get("set-cookie")).toMatch(/HttpOnly/);
+    expect(done.headers.get("set-cookie")).toContain("__Host-mfa=; Max-Age=0");
     expect(await json(done)).toEqual({ user_id: m.userId, workspace_id: m.workspaceId });
 
     // 6. The session works, and carries mfa_at.
@@ -127,17 +164,18 @@ describe("password + passkey sign-in over HTTP", () => {
     const other = await seedMember(pool);
     const h = harness();
     const device = createAuthenticator({ rpID, origin });
-    const login = await json(
+    const login = cookieOf(
       await h.post("/auth/login", { workspace: m.slug, email: m.email, password: PASSWORD }),
     );
-    const reg = await json(
-      await h.post("/auth/mfa/enrol/passkey/options", { mfa_token: login.mfa_token }),
+    const reg = await json(await h.post("/auth/mfa/enrol/passkey/options", {}, login));
+    await h.post(
+      "/auth/mfa/enrol/passkey/verify",
+      {
+        challenge_id: reg.challenge_id,
+        response: device.register(reg.options),
+      },
+      login,
     );
-    await h.post("/auth/mfa/enrol/passkey/verify", {
-      mfa_token: login.mfa_token,
-      challenge_id: reg.challenge_id,
-      response: device.register(reg.options),
-    });
 
     const options = await json(await h.post("/auth/passkey/options", { workspace: m.slug }));
     const ok = await h.post("/auth/passkey/verify", {
@@ -165,10 +203,8 @@ describe("authenticator app over HTTP", () => {
     const m = await seedMember(pool);
     const h = harness();
     const credentials = { workspace: m.slug, email: m.email, password: PASSWORD };
-    const enrol = await json(await h.post("/auth/login", credentials));
-    const begun = await json(
-      await h.post("/auth/mfa/enrol/totp/begin", { mfa_token: enrol.mfa_token }),
-    );
+    const enrol = cookieOf(await h.post("/auth/login", credentials));
+    const begun = await json(await h.post("/auth/mfa/enrol/totp/begin", {}, enrol));
     expect(begun.uri).toMatch(/^otpauth:\/\/totp\//);
     const secret = Buffer.from(
       // base32 secret from the begin response
@@ -189,24 +225,33 @@ describe("authenticator app over HTTP", () => {
       })(),
     );
     const step = stepOf(Date.now());
-    const confirmed = await h.post("/auth/mfa/enrol/totp/confirm", {
-      mfa_token: enrol.mfa_token,
-      code: hotp(secret, step),
-    });
+    const confirmed = await h.post(
+      "/auth/mfa/enrol/totp/confirm",
+      {
+        code: hotp(secret, step),
+      },
+      enrol,
+    );
     expect(confirmed.status).toBe(200);
     const cookie = cookieOf(confirmed);
 
     // The same step cannot sign in again (replay), but the next one can.
-    const challenge = await json(await h.post("/auth/login", credentials));
-    const replay = await h.post("/auth/mfa/totp", {
-      mfa_token: challenge.mfa_token,
-      code: hotp(secret, step),
-    });
+    const challenge = cookieOf(await h.post("/auth/login", credentials));
+    const replay = await h.post(
+      "/auth/mfa/totp",
+      {
+        code: hotp(secret, step),
+      },
+      challenge,
+    );
     expect(replay.status).toBe(401);
-    const next = await h.post("/auth/mfa/totp", {
-      mfa_token: challenge.mfa_token,
-      code: hotp(secret, step + 1),
-    });
+    const next = await h.post(
+      "/auth/mfa/totp",
+      {
+        code: hotp(secret, step + 1),
+      },
+      challenge,
+    );
     expect(next.status).toBe(200);
 
     // A session that has not shown a factor recently cannot remove one.

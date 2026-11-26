@@ -2,6 +2,7 @@ import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Client } from "../auth.js";
 import { createLimiter } from "../limiter.js";
+import { setPendingCookie } from "../mfa/pending-cookie.js";
 import type { Oidc } from "./service.js";
 
 // Short and path-scoped: it only has to survive the round trip to the IdP.
@@ -65,13 +66,11 @@ export function oidcRoutes({ oidc, clientOf, signedIn, now = Date.now }: OidcRou
     );
     // The reason stays in the audit log: the caller learns only that sign-in failed.
     if (!result.ok) return c.json({ error: "sso_failed" }, 401);
-    // The token rides in the fragment, which the browser never sends to a server.
     if ("pending" in result) {
       const { kind, mfaToken, methods } = result.pending;
-      return c.redirect(
-        `/#/auth/mfa?kind=${kind}&token=${encodeURIComponent(mfaToken)}&methods=${methods.join(",")}`,
-        302,
-      );
+      // Never in the address: only the browser that started sign-in gets to finish it.
+      setPendingCookie(c, mfaToken);
+      return c.redirect(`/#/auth/mfa?kind=${kind}&methods=${methods.join(",")}`, 302);
     }
     await signedIn(c, result.token);
     return c.redirect(result.returnTo, 302);
