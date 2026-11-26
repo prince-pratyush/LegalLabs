@@ -105,8 +105,8 @@ function Prompt({ onConfirmed, onCancel }: { onConfirmed: () => void; onCancel: 
     >
       <h3 className="text-section font-semibold">Confirm it's you</h3>
       <p className="text-dense text-fg-muted">
-        Retention and hold changes need your second factor from the last 15 minutes. Your change is
-        saved as soon as you confirm.
+        This change needs your second factor from the last 15 minutes. It is saved as soon as you
+        confirm.
       </p>
       {!codeless && (
         <Field label={recovery ? "Recovery code" : "Code from your authenticator app"}>

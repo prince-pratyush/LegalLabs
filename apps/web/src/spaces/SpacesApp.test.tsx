@@ -218,6 +218,47 @@ describe("guest organisation", () => {
   }
   const space = { ...SPACE, kind: "external" as const, my_role: "admin" as const };
 
+  it("asks for the second factor before adding an organisation, then adds it", async () => {
+    let fresh = false;
+    const added: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const reply = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), { status });
+        if (url.endsWith("/mfa")) return reply({ totp: true, passkeys: [] });
+        if (url.endsWith("/mfa/step-up/totp")) {
+          fresh = true;
+          return reply({ mfa_at: "2026-11-26T00:00:00Z" });
+        }
+        if (url.endsWith("/parties") && init?.method === "POST") {
+          if (!fresh) return reply({ code: "MFA_REQUIRED", message: "Confirm." }, 403);
+          added.push(JSON.parse(init.body as string));
+          return reply({});
+        }
+        return reply({ parties: [], guests: [], resources: [] });
+      }),
+    );
+    render(<GuestsTab space={space} />);
+    fireEvent.change(await screen.findByLabelText("Organisation name"), {
+      target: { value: "Other LLP" },
+    });
+    fireEvent.change(screen.getByLabelText("Email domain"), { target: { value: "other.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add organisation" }));
+    fireEvent.change(await screen.findByLabelText("Code from your authenticator app"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect(added).toEqual([
+        { name: "Other LLP", domain: "other.test", connection_admin_emails: [] },
+      ]),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "Confirm it's you" })).toBeNull(),
+    );
+  });
+
   it("offers an agent to a guest party as Run or nothing", async () => {
     expect(partyLevels("agent")).toEqual(["none", "run"]);
     const calls = guestServer("resolved");
