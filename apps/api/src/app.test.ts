@@ -231,6 +231,7 @@ describe("the web page", () => {
     for (const link of [
       "/documents/01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f?page=2",
       "/d/01933b8a-7c2e-7d4a-9f10-3c5e8b2a1d4f/v/1?p=2",
+      "/guest/accept",
     ]) {
       const res = await h.app.request(link);
       expect(res.status).toBe(200);
