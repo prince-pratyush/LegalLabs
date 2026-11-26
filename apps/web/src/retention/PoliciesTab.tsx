@@ -231,12 +231,12 @@ function Editor({ policies, onSaved }: { policies: Policies; onSaved: () => void
           <p className="font-medium">
             {estimate.total === 0
               ? "Nothing would be deleted in the next 24 hours."
-              : `${estimate.total} items would be deleted within 24 hours.`}
+              : `${estimate.total} ${estimate.total === 1 ? "item" : "items"} would be deleted within 24 hours.`}
           </p>
           <p className="text-dense text-fg-muted">
-            {estimate.threads} threads, {estimate.documents} files, {estimate.reviewTables} review
-            tables. {estimate.held} held items are skipped. Deleted items stay in the recycle bin
-            for 30 days.
+            Threads: {estimate.threads}. Files: {estimate.documents}. Review tables:{" "}
+            {estimate.reviewTables}. Held and skipped: {estimate.held}. Deleted items stay in the
+            recycle bin for 30 days.
             {estimate.firstDeletionAt
               ? ` First deletion about ${when(estimate.firstDeletionAt)}.`
               : ""}
