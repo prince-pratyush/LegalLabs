@@ -4,8 +4,11 @@ import { asWorker } from "../db.js";
 import { BIN_DAYS } from "./vaults.js";
 
 export interface RetentionJob {
-  /** One pass: applies each vault's retention, then empties the bin of old items. */
-  runOnce(): Promise<{ moved: number; purgedFiles: number }>;
+  /**
+   * One pass: empties the vault bin of items older than 30 days. Retention, including a vault's
+   * own setting, is the policy sweep's work (retention/job.ts).
+   */
+  runOnce(): Promise<{ purgedFiles: number }>;
   start(): void;
   stop(): Promise<void>;
 }
@@ -19,10 +22,6 @@ export function createRetentionJob(
   let running: Promise<unknown> | null = null;
 
   async function runOnce() {
-    const moved = await asWorker(pool, async (db) => {
-      const { rows } = await db.query<{ n: number }>("select content.sweep_vault_retention() n");
-      return rows[0]?.n ?? 0;
-    });
     const gone = await asWorker(pool, async (db) => {
       const { rows } = await db.query<{ workspace_id: string; sha256: Buffer }>(
         "select workspace_id, sha256 from content.purge_expired_bin($1)",
@@ -34,17 +33,18 @@ export function createRetentionJob(
     for (const row of gone) {
       await options.store.delete(contentKey(row.workspace_id, row.sha256.toString("hex")));
     }
-    return { moved, purgedFiles: gone.length };
+    return { purgedFiles: gone.length };
   }
 
   const tick = () => {
     running = runOnce()
-      .then(({ moved, purgedFiles }) => {
-        if (moved || purgedFiles)
-          options.log?.(`retention: ${moved} moved to bin, ${purgedFiles} files purged`);
+      .then(({ purgedFiles }) => {
+        if (purgedFiles) options.log?.(`vault bin: ${purgedFiles} files purged`);
       })
       .catch((err: unknown) =>
-        options.log?.(`retention failed: ${err instanceof Error ? err.message : String(err)}`),
+        options.log?.(
+          `vault bin purge failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
       )
       .finally(() => {
         running = null;
