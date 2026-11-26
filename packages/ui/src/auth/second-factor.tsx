@@ -1,7 +1,7 @@
-import { Button, Field, Input } from "@legallabs/ui";
 import { type FormEvent, useState } from "react";
-import { ApiError, FALLBACK } from "../api.js";
-import { type Pending, secondFactorApi } from "./api.js";
+import { Button } from "../components/button.js";
+import { Field, Input } from "../components/field.js";
+import { ApiError, FALLBACK, type Pending, secondFactorApi } from "./api.js";
 
 const EXPIRED = "That sign-in expired. Sign in again.";
 
@@ -22,6 +22,8 @@ interface Props {
   onSignedIn: () => void;
   /** Back to the password form, saying why if the sign-in was lost. */
   onRestart: (why: string | null) => void;
+  /** What to tell someone whose passkey can't be used here. */
+  noPasskey?: string;
 }
 
 /** One request at a time; a pending sign-in the server no longer knows starts over. */
@@ -81,7 +83,12 @@ export function SecondFactor(props: Props) {
   return props.pending.enrol ? <Enrol {...props} /> : <Verify {...props} />;
 }
 
-function Verify({ pending, onSignedIn, onRestart }: Props) {
+function Verify({
+  pending,
+  onSignedIn,
+  onRestart,
+  noPasskey = "This browser can't use your passkey. Use a recovery code, or another browser.",
+}: Props) {
   const { attempt, alert, busy } = useAttempt(onRestart);
   const [recovery, setRecovery] = useState(false);
   const [code, setCode] = useState("");
@@ -115,9 +122,7 @@ function Verify({ pending, onSignedIn, onRestart }: Props) {
       <h2 className="text-section font-semibold">Confirm it's you</h2>
       {codeless ? (
         <p className="text-dense text-fg-muted">
-          {passkey
-            ? "Use your passkey to finish signing in."
-            : "This browser can't use your passkey. Use a recovery code, or another browser."}
+          {passkey ? "Use your passkey to finish signing in." : noPasskey}
         </p>
       ) : (
         <CodeField

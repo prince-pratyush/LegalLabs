@@ -1,4 +1,16 @@
-import { ApiError, FALLBACK } from "../api.js";
+/** An API failure, with its code so a screen can say what to do next. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export const FALLBACK = "Something went wrong. Try again.";
 
 /** A sign-in that has passed the password (or the identity provider) and still owes a factor. */
 export interface Pending {
@@ -57,14 +69,3 @@ export const secondFactorApi = {
   registerVerify: (challenge_id: string, response: unknown) =>
     post<Enrolled>("/mfa/enrol/passkey/verify", { challenge_id, response }),
 };
-
-/** Single sign-on comes back to #/auth/mfa?kind=…&methods=… when a factor is owed. */
-export function handoffFrom(hash: string): Pending | null {
-  const [path, query] = hash.split("?");
-  if (path !== "#/auth/mfa") return null;
-  const params = new URLSearchParams(query);
-  const kind = params.get("kind");
-  return kind === "enrol" || kind === "challenge"
-    ? { enrol: kind === "enrol", methods: (params.get("methods") ?? "").split(",").filter(Boolean) }
-    : null;
-}

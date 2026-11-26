@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
+import type { Language } from "../../addins/language.js";
 import { createApp } from "../../app.js";
 import { createDrafts } from "../../drafts/drafts.js";
 import { PASSWORD, seedMember, testDocuments, testPool, testThreads } from "../../test-db.js";
@@ -31,6 +32,8 @@ function harness() {
       gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
     }),
     clientIp: () => "203.0.113.9",
+    // The code route never reaches the language tools.
+    addin: { language: {} as Language, recordSignIn: async () => {} },
   });
   const post = (path: string, body: unknown, cookie?: string) =>
     app.request(path, {
@@ -45,6 +48,23 @@ function harness() {
 
 const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
 const json = async (res: Response) => (await res.json()) as Record<string, any>;
+
+/** The base32 secret an enrolment begins with. */
+function decodeSecret(base32: string) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const ch of base32) {
+    value = (value << 5) | alphabet.indexOf(ch);
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
 
 describe("a pending sign-in", () => {
   it("is held in a cookie of the browser that started it, and nowhere else", async () => {
@@ -71,6 +91,34 @@ describe("a pending sign-in", () => {
 
     const here = await h.post("/auth/mfa/enrol/totp/begin", {}, cookieOf(login));
     expect(here.status).toBe(200);
+  });
+});
+
+describe("the Word add-in's one-time code", () => {
+  it("is refused until the second factor has passed", async () => {
+    const m = await seedMember(pool);
+    const h = harness();
+    const login = await h.post("/auth/login", {
+      workspace: m.slug,
+      email: m.email,
+      password: PASSWORD,
+    });
+    const pending = cookieOf(login);
+
+    // Neither the pending cookie nor its token passed off as a session gets one.
+    for (const cookie of [pending, `__Host-sid=${pending.split("=")[1]}`]) {
+      expect((await h.post("/auth/addin/code", {}, cookie)).status).toBe(401);
+    }
+
+    const begun = await json(await h.post("/auth/mfa/enrol/totp/begin", {}, pending));
+    const done = await h.post(
+      "/auth/mfa/enrol/totp/confirm",
+      { code: hotp(decodeSecret(begun.secret), stepOf(Date.now())) },
+      pending,
+    );
+    const sid = done.headers.getSetCookie().find((c) => c.startsWith("__Host-sid="));
+    const issued = await h.post("/auth/addin/code", {}, sid?.split(";")[0]);
+    expect(await json(issued)).toHaveProperty("code");
   });
 });
 
@@ -206,24 +254,7 @@ describe("authenticator app over HTTP", () => {
     const enrol = cookieOf(await h.post("/auth/login", credentials));
     const begun = await json(await h.post("/auth/mfa/enrol/totp/begin", {}, enrol));
     expect(begun.uri).toMatch(/^otpauth:\/\/totp\//);
-    const secret = Buffer.from(
-      // base32 secret from the begin response
-      (() => {
-        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-        let bits = 0;
-        let value = 0;
-        const out: number[] = [];
-        for (const ch of begun.secret as string) {
-          value = (value << 5) | alphabet.indexOf(ch);
-          bits += 5;
-          if (bits >= 8) {
-            out.push((value >>> (bits - 8)) & 255);
-            bits -= 8;
-          }
-        }
-        return out;
-      })(),
-    );
+    const secret = decodeSecret(begun.secret);
     const step = stepOf(Date.now());
     const confirmed = await h.post(
       "/auth/mfa/enrol/totp/confirm",
