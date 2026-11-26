@@ -25,6 +25,8 @@ import { adminModelsHash, parseAdminModelsRoute } from "./admin-models/route.js"
 import { AgentsApp } from "./agents/AgentsApp.js";
 import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
+import { CommandCenterApp } from "./command-center/CommandCenterApp.js";
+import { commandCenterHash, parseCommandCenterRoute } from "./command-center/route.js";
 import { HistoryPage } from "./history/HistoryPage.js";
 import { LibraryApp } from "./library/LibraryApp.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
@@ -83,6 +85,8 @@ export function App() {
           <ReviewsApp onLeave={() => navigate(paths.new)} />
         ) : parsePlaybookRoute(hash) ? (
           <PlaybooksApp onLeave={() => navigate(paths.new)} />
+        ) : parseCommandCenterRoute(hash) ? (
+          <CommandCenterApp onLeave={() => navigate(paths.new)} />
         ) : parseAdminModelsRoute(hash) ? (
           <AdminModelsApp onLeave={() => navigate(paths.new)} />
         ) : parseSettingsRoute(hash) ? (
@@ -279,6 +283,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       group: "Go to",
       label: "Settings",
       run: () => navigate(settingsHash().slice(1)),
+    },
+    {
+      id: "admin-command-center",
+      kind: "action",
+      group: "Go to",
+      label: "Admin: Command Center",
+      run: () => navigate(commandCenterHash().slice(1)),
     },
     {
       id: "admin-models",
