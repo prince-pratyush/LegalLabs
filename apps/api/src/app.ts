@@ -361,7 +361,9 @@ export function createApp({
       if (principal.guest && !c.req.path.startsWith("/api/v1/guest/")) {
         return c.json({ code: "FORBIDDEN", message: "Guests can't use this." }, 403);
       }
-      c.set("principal", principal);
+      // Only the Word pane carries a session as a bearer header; the web app uses the cookie.
+      const fromPane = BEARER.test(c.req.header("authorization") ?? "");
+      c.set("principal", fromPane ? { ...principal, via: "word" } : principal);
     }
     await next();
     c.header("Cache-Control", "no-store");

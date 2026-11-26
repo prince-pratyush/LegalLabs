@@ -125,11 +125,13 @@ export function useStack(options: StackOptions = {}) {
   }
 
   const workspace = () => stack?.workspace ?? "";
+  /** The session token, as the Word pane would send it. */
+  const token = () => cookie.slice(cookie.indexOf("=") + 1);
 
   /** What the server was started with, for a second one that differs. */
   const serverEnv = () => stack?.serverEnv ?? {};
 
-  return { call, json, post, events, asOwner, workspace, serverEnv };
+  return { call, json, post, events, asOwner, workspace, serverEnv, token };
 }
 
 export async function until<T>(

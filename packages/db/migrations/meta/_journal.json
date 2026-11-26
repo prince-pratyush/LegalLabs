@@ -666,6 +666,13 @@
       "when": 1794010170008,
       "tag": "0180_admin_guests_in_use",
       "breakpoints": false
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1794010170009,
+      "tag": "0195_analytics_recorded_once",
+      "breakpoints": false
     }
   ]
 }
