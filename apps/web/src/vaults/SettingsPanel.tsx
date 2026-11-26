@@ -84,8 +84,9 @@ export function SettingsPanel({
           <legend className="text-ui font-medium">Retention</legend>
           <CheckRow checked={keep} onChange={setKeep} label="Delete files after a set time" />
           <p className="text-dense text-fg-muted">
-            Files this setting deletes can't be restored. A retention policy for this vault or its
-            matter replaces it. A shorter workspace policy still applies.
+            Files this setting deletes go to the recycle bin for 30 days, restorable, then are gone
+            for good. Files on legal hold stay. A retention policy for this vault or its matter
+            replaces this setting. A shorter workspace policy still applies.
           </p>
           {keep && (
             <Field

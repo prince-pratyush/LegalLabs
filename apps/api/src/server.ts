@@ -156,8 +156,8 @@ analyticsJob.start();
 const notifications = createNotifications(pool);
 const notifier = notifications.notifier;
 // The policy-driven sweep (ADM-004): bins what a retention policy has expired, empties the bin
-// after 30 days, deletes the stored files and warns owners. The job above only knows a vault's
-// own hours; without this one no retention policy is ever carried out.
+// after 30 days, deletes the stored files and warns owners. It also carries out a vault's own
+// retention setting; the job above only empties the vault bin.
 const retentionSweep = createRetentionSweepJob(pool, {
   store,
   notifications: notifier,

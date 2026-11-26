@@ -452,42 +452,35 @@ describe("limits, transfer and retention", () => {
     });
   });
 
-  it("deletes files past a vault's retention for good, with no way back", async () => {
+  it("bins files past a vault's retention, restorably, through the policy sweep", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
       const { vaultId, documentId } = s.vaults.acme;
       await tx.asOwner();
       await tx.rows("update content.vault set retention_hours = 3 where id = $1", [vaultId]);
       await tx.rows(
-        "update content.document set created_at = now() - interval '4 hours' where id = $1",
+        `update content.document set created_at = now() - interval '4 hours' where id = $1`,
+        [documentId],
+      );
+      await tx.rows(
+        `update content.document_version set created_at = now() - interval '4 hours'
+          where document_id = $1`,
         [documentId],
       );
       await tx.asWorker();
-      expect((await tx.one<{ n: number }>("select content.sweep_vault_retention() n")).n).toBe(1);
+      await tx.rows("select retention.sweep_all()");
       await tx.asOwner();
       expect(
         await tx.one("select deleted_reason from content.document where id = $1", [documentId]),
-      ).toEqual({ deleted_reason: "retention" });
-      const actions = await tx.rows<{ action: string; reason: string | null }>(
-        `select action, details ->> 'deleted_reason' reason from admin.audit_event
-          where workspace_id = $1 order by seq desc limit 2`,
-        [s.acme],
-      );
-      expect(actions).toEqual([
-        { action: "retention.sweep", reason: null },
-        { action: "document.deleted", reason: "retention" },
-      ]);
+      ).toEqual({ deleted_reason: "user" });
+      await tx.asWorker();
+      await tx.rows("select * from content.purge_expired_bin(30)");
       await tx.as(s.ana, s.acme);
       await tx.rows("select content.restore_items($1, $2, '{}')", [vaultId, [documentId]]);
       await tx.asOwner();
       expect(
         await tx.one("select deleted_reason from content.document where id = $1", [documentId]),
-      ).toEqual({ deleted_reason: "retention" });
-      // Retention is final: the purge removes it at once, not after 30 days.
-      await tx.asWorker();
-      await tx.rows("select * from content.purge_expired_bin(30)");
-      await tx.asOwner();
-      expect(await count(tx, "content.document where id = $1", [documentId])).toBe(0);
+      ).toEqual({ deleted_reason: null });
     });
   });
 });

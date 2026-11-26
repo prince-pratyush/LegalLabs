@@ -6,6 +6,7 @@ import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
 import { hashPassword } from "../auth/password.js";
 import { createDrafts } from "../drafts/drafts.js";
+import { createRetentionSweepJob } from "../retention/job.js";
 import {
   auditTrail,
   PASSWORD,
@@ -418,7 +419,7 @@ describe("the recycle bin, limits and admin", () => {
     expect((await h.call(ana, "GET", "/admin/vaults")).body.vaults).toEqual([]);
   });
 
-  it("applies a vault's retention and deletes those files for good", async () => {
+  it("bins what a vault's retention takes, beside what people delete", async () => {
     const h = harness();
     const m = await seedMember(pool);
     const cookie = await h.signIn(m);
@@ -430,6 +431,10 @@ describe("the recycle bin, limits and admin", () => {
       "update content.document set created_at = now() - interval '2 days' where id = $1",
       [file.body.file.id],
     );
+    await pool.query(
+      "update content.document_version set created_at = now() - interval '2 days' where document_id = $1",
+      [file.body.file.id],
+    );
     const estimate = await h.call(cookie, "GET", `/vaults/${vault}/retention/estimate?hours=24`);
     expect(estimate.body.documents).toBe(1);
     expect((await h.call(cookie, "PATCH", `/vaults/${vault}`, { retention_hours: 2 })).status).toBe(
@@ -439,29 +444,29 @@ describe("the recycle bin, limits and admin", () => {
       (await h.call(cookie, "PATCH", `/vaults/${vault}`, { retention_hours: 24 })).status,
     ).toBe(200);
 
-    // A file someone deleted waits in the bin; retention doesn't.
+    // Retention and a person's delete share the bin and its 30 days (F-37).
     await h.call(cookie, "POST", `/vaults/${vault}/trash`, { document_ids: [kept.body.file.id] });
-    const job = createRetentionJob(pool, { store: h.store });
-    expect((await job.runOnce()).moved).toBeGreaterThanOrEqual(1);
-    const bin = await h.call(cookie, "GET", `/vaults/${vault}/bin`);
-    expect(bin.body.items.map((i: { id: string }) => i.id)).toEqual([kept.body.file.id]);
-    const gone = await pool.query("select 1 from content.document where id = $1", [
-      file.body.file.id,
-    ]);
-    expect(gone.rows).toEqual([]);
+    await createRetentionSweepJob(pool, { store: h.store }).runOnce();
+    const binned = async () =>
+      (await h.call(cookie, "GET", `/vaults/${vault}/bin`)).body.items
+        .map((i: { id: string }) => i.id)
+        .sort();
+    expect(await binned()).toEqual([file.body.file.id, kept.body.file.id].sort());
+    const after = await h.call(cookie, "GET", `/vaults/${vault}/retention/estimate?hours=24`);
+    expect(after.body.documents).toBe(0);
 
     await pool.query(
-      "update content.document set deleted_at = now() - interval '31 days' where id = $1",
-      [kept.body.file.id],
+      "update content.document set deleted_at = now() - interval '31 days' where vault_id = $1",
+      [vault],
     );
-    await job.runOnce();
-    expect((await h.call(cookie, "GET", `/vaults/${vault}/bin`)).body.items).toEqual([]);
+    await createRetentionJob(pool, { store: h.store }).runOnce();
+    expect(await binned()).toEqual([]);
     const actions = (await auditTrail(pool, m.workspaceId)).map((row) => row.action);
     expect(actions).toEqual(
       expect.arrayContaining([
         "retention.policy_changed",
         "retention.sweep",
-        "document.deleted",
+        "retention.object_binned",
         "deletion.completed",
       ]),
     );

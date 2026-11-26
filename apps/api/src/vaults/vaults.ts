@@ -973,7 +973,7 @@ export function createVaults(
         const { rows } = await db.query<{ n: string; earliest: Date | null }>(
           `select count(*) filter (where created_at < now() - make_interval(hours => $2)) n,
                   min(created_at) + make_interval(hours => $2) earliest
-             from content.document where vault_id = $1`,
+             from content.document where vault_id = $1 and deleted_at is null`,
           [vaultId, hours],
         );
         const row = rows[0];

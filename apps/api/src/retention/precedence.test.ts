@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { createMemoryStore } from "@legallabs/storage";
+import { contentKey, createMemoryStore } from "@legallabs/storage";
 import { afterAll, describe, expect, it } from "vitest";
 import { type Seeded, seedMember, testPool } from "../test-db.js";
 import { createRetentionJob } from "../vaults/retention.js";
@@ -76,6 +76,25 @@ const table = (m: Seeded, matterId: string) =>
      values ($1, $2, 'Table', 'uploads', $3) returning id`,
     [m.workspaceId, m.userId, matterId],
   );
+
+/** Makes a vault a read-only mirror of a drive (P-02), after its files are in. */
+async function sync(m: Seeded, vaultId: string) {
+  const ref = `sec_${randomUUID().replaceAll("-", "")}`;
+  await q(
+    "insert into admin.secret (id, workspace_id, ciphertext) values ($1, $2, decode(repeat('00', 40), 'hex'))",
+    [ref, m.workspaceId],
+  );
+  const connection = await one(
+    `insert into content.sync_connection (workspace_id, user_id, provider, secret_ref)
+     values ($1, $2, 'google_drive', $3) returning id`,
+    [m.workspaceId, m.userId, ref],
+  );
+  await q(
+    `insert into content.vault_sync (vault_id, workspace_id, connection_id, provider, root_remote_id)
+     values ($1, $2, $3, 'google_drive', 'root')`,
+    [vaultId, m.workspaceId, connection],
+  );
+}
 
 /** Moves one workspace `hours` into the past, which is the same as that much time going by. */
 async function advance(m: Seeded, hours: number) {
@@ -233,7 +252,7 @@ describe("retention: the strictest applicable scope wins (SEC-029)", () => {
       );
     await sweep.runOnce();
     await vaultJob.runOnce();
-    // 'user' is the bin that waits 30 days; 'retention' would be removed at the next pass.
+    // 'user' is the bin that waits 30 days.
     expect(await state()).toEqual({ [free]: "user", [held]: null });
 
     await advance(m, 29 * 24);
@@ -255,34 +274,71 @@ describe("retention: the strictest applicable scope wins (SEC-029)", () => {
     const kept = await doc(m, replaced);
     await doc(m, await vault(m, { legacy: 20 }));
     await advance(m, 21);
-    await vaultJob.runOnce();
-    const left = await q<{ id: string }>(
-      "select id from content.document where workspace_id = $1 and deleted_at is null",
-      [m.workspaceId],
-    );
-    expect(left.map((r) => r.id).sort()).toEqual([inMatter, kept].sort());
+    await sweep.runOnce();
+    expect(await live(m)).toEqual([inMatter, kept].sort());
   });
 
-  it("does not delete a restored file at once under the vault setting", async () => {
-    const m = await seedMember(pool);
-    await policy(m, "workspace", m.workspaceId, 24);
-    const id = await doc(m, await vault(m, { legacy: 100 }));
-    await advance(m, 25);
-    await sweep.runOnce();
-    await advance(m, 100);
+  const live = async (m: Seeded) =>
+    (
+      await q<{ id: string }>(
+        "select id from content.document where workspace_id = $1 and deleted_at is null",
+        [m.workspaceId],
+      )
+    )
+      .map((r) => r.id)
+      .sort();
+
+  const restore = async (m: Seeded) => {
     const [item] = await q<{ id: string }>(
-      "select id from retention.recycle_bin where workspace_id = $1",
+      "select id from retention.recycle_bin where workspace_id = $1 and restored_at is null",
       [m.workspaceId],
     );
-    const restored = await retention.restore(
-      principal(m),
-      { ip: null, userAgent: null },
-      item?.id ?? "",
-    );
-    expect(restored.ok).toBe(true);
-    await vaultJob.runOnce();
-    expect(await q("select deleted_at from content.document where id = $1", [id])).toEqual([
-      { deleted_at: null },
-    ]);
-  });
+    return retention.restore(principal(m), { ip: null, userAgent: null }, item?.id ?? "");
+  };
+
+  // F-37: the vault's own setting bins, like any policy; it used to delete for good.
+  it.each([false, true])(
+    "bins under the vault setting, restorably, and purges after 30 days (synced: %s)",
+    async (synced) => {
+      const m = await seedMember(pool);
+      const v = await vault(m, { legacy: 20 });
+      const free = await doc(m, v);
+      const held = await doc(m, v);
+      await q(
+        `insert into retention.hold (workspace_id, object_type, object_id, reason, set_by)
+         values ($1, 'document', $2, 'Case', $3)`,
+        [m.workspaceId, held, m.userId],
+      );
+      if (synced) await sync(m, v);
+      const [version] = await q<{ sha256: Buffer }>(
+        "select sha256 from content.document_version where document_id = $1",
+        [free],
+      );
+      const key = contentKey(m.workspaceId, version?.sha256.toString("hex") ?? "");
+      await store.putIfAbsent(key, Buffer.from("x"));
+      await advance(m, 21);
+
+      await vaultJob.runOnce();
+      expect(await live(m)).toEqual([free, held].sort());
+      await sweep.runOnce();
+      await vaultJob.runOnce();
+      expect(await live(m)).toEqual([held]);
+
+      expect((await restore(m)).ok).toBe(true);
+      await sweep.runOnce();
+      expect(await live(m)).toEqual([free, held].sort());
+
+      await advance(m, 21);
+      await sweep.runOnce();
+      await advance(m, 29 * 24);
+      await sweep.runOnce();
+      await vaultJob.runOnce();
+      expect(await store.get(key)).not.toBeNull();
+      await advance(m, 2 * 24);
+      await sweep.runOnce();
+      expect(await q("select 1 from content.document where id = $1", [free])).toEqual([]);
+      expect(await store.get(key)).toBeNull();
+      expect(await live(m)).toEqual([held]);
+    },
+  );
 });
