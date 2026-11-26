@@ -2,7 +2,6 @@ import { ApiError, FALLBACK } from "../api.js";
 
 /** A sign-in that has passed the password (or the identity provider) and still owes a factor. */
 export interface Pending {
-  token: string;
   /** A factor is required and none is set up yet. */
   enrol: boolean;
   methods: string[];
@@ -35,45 +34,37 @@ export const secondFactorApi = {
   /** Resolves to the second step still owed, or null once the session cookie is set. */
   async login(workspace: string, email: string, password: string): Promise<Pending | null> {
     const reply = await post<{
-      mfa_token?: string;
+      mfa_required?: boolean;
       mfa_enrolment_required?: boolean;
       methods?: string[];
     }>("/login", { workspace, email, password });
-    return reply.mfa_token
+    return reply.mfa_required || reply.mfa_enrolment_required
       ? {
-          token: reply.mfa_token,
           enrol: reply.mfa_enrolment_required === true,
           methods: reply.methods ?? [],
         }
       : null;
   },
-  totp: (mfa_token: string, code: string) => post<unknown>("/mfa/totp", { mfa_token, code }),
-  recovery: (mfa_token: string, code: string) =>
-    post<unknown>("/mfa/recovery", { mfa_token, code }),
-  passkeyOptions: (mfa_token: string) => post<Challenge>("/mfa/passkey/options", { mfa_token }),
-  passkeyVerify: (mfa_token: string, challenge_id: string, response: unknown) =>
-    post<unknown>("/mfa/passkey/verify", { mfa_token, challenge_id, response }),
-  totpBegin: (mfa_token: string) =>
-    post<{ secret: string; uri: string }>("/mfa/enrol/totp/begin", { mfa_token }),
-  totpConfirm: (mfa_token: string, code: string) =>
-    post<Enrolled>("/mfa/enrol/totp/confirm", { mfa_token, code }),
-  registerOptions: (mfa_token: string) =>
-    post<Challenge>("/mfa/enrol/passkey/options", { mfa_token }),
-  registerVerify: (mfa_token: string, challenge_id: string, response: unknown) =>
-    post<Enrolled>("/mfa/enrol/passkey/verify", { mfa_token, challenge_id, response }),
+  // Which sign-in these finish is the server's HttpOnly cookie; the page never holds a token.
+  totp: (code: string) => post<unknown>("/mfa/totp", { code }),
+  recovery: (code: string) => post<unknown>("/mfa/recovery", { code }),
+  passkeyOptions: () => post<Challenge>("/mfa/passkey/options", {}),
+  passkeyVerify: (challenge_id: string, response: unknown) =>
+    post<unknown>("/mfa/passkey/verify", { challenge_id, response }),
+  totpBegin: () => post<{ secret: string; uri: string }>("/mfa/enrol/totp/begin", {}),
+  totpConfirm: (code: string) => post<Enrolled>("/mfa/enrol/totp/confirm", { code }),
+  registerOptions: () => post<Challenge>("/mfa/enrol/passkey/options", {}),
+  registerVerify: (challenge_id: string, response: unknown) =>
+    post<Enrolled>("/mfa/enrol/passkey/verify", { challenge_id, response }),
 };
 
-/** Single sign-on comes back to #/auth/mfa?kind=…&token=…&methods=… when a factor is owed. */
+/** Single sign-on comes back to #/auth/mfa?kind=…&methods=… when a factor is owed. */
 export function handoffFrom(hash: string): Pending | null {
   const [path, query] = hash.split("?");
   if (path !== "#/auth/mfa") return null;
   const params = new URLSearchParams(query);
-  const token = params.get("token");
-  return token
-    ? {
-        token,
-        enrol: params.get("kind") === "enrol",
-        methods: (params.get("methods") ?? "").split(",").filter(Boolean),
-      }
+  const kind = params.get("kind");
+  return kind === "enrol" || kind === "challenge"
+    ? { enrol: kind === "enrol", methods: (params.get("methods") ?? "").split(",").filter(Boolean) }
     : null;
 }

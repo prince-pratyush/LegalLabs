@@ -64,7 +64,6 @@ describe("second factor at sign-in", () => {
     click("Confirm");
     await signedInNow();
     expect(sent.find((s) => s.route === "POST /auth/mfa/totp")?.body).toEqual({
-      mfa_token: "pending-token",
       code: "000000",
     });
   });
@@ -102,7 +101,6 @@ describe("second factor at sign-in", () => {
     click("Use a passkey");
     await signedInNow();
     expect(sent.find((s) => s.route === "POST /auth/mfa/passkey/verify")?.body).toEqual({
-      mfa_token: "pending-token",
       challenge_id: "c",
       response: { id: "key" },
     });
@@ -143,11 +141,24 @@ describe("second factor at sign-in", () => {
     await signedInNow();
   });
 
-  it("takes over from single sign-on and clears the token from the address", async () => {
-    window.location.hash = "#/auth/mfa?kind=verify&token=sso-token&methods=totp,recovery";
+  it("takes over from single sign-on, whose token is only ever in the cookie", async () => {
+    window.location.hash = "#/auth/mfa?kind=challenge&methods=totp,recovery";
     server({}, () => ({}));
     render(<App />);
     await screen.findByLabelText(CODE);
+    expect(window.location.hash).toBe("");
+  });
+
+  it("never sends a token that a link put in the address", async () => {
+    window.location.hash = "#/auth/mfa?kind=enrol&token=planted&methods=totp";
+    const sent = server({}, () => ({
+      "POST /auth/mfa/enrol/totp/begin": () => [401, { error: "invalid_mfa_token" }],
+    }));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Use an authenticator app" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("expired");
+    const begun = sent.find((s) => s.route === "POST /auth/mfa/enrol/totp/begin");
+    expect(JSON.stringify(begun?.body ?? {})).not.toContain("planted");
     expect(window.location.hash).toBe("");
   });
 });

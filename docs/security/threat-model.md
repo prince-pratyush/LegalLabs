@@ -34,6 +34,8 @@ Code: `apps/api/src/auth/` (`auth.ts`, `oidc/`, `mfa/`), `apps/api/src/scim/`, m
 | D   | SCIM mass delete empties a workspace                 | `scim.record_deprovision` pauses past 10 percent per hour (and a floor of 2), webhook, admin resume (`0107`)                                                                                                                                 | Webhook has no deployer configuration in `server.ts`; default is a no-op, so the pause is silent until an admin looks (open, evidence.md) |
 | I   | Deprovisioned person keeps access                    | `core.resolve_session` and `resolve_public_token` join the user's status on every request, so suspension is immediate; SCIM `DELETE` or `active=false` also revokes sessions and tokens in the same transaction (`scim.revoke_user_access`)  | None known                                                                                                                                |
 
+A sign-in that still owes a factor is held in a cookie of the browser that started it, never in a URL or a request body, so a link cannot hand one person's pending sign-in to another (F-47).
+
 ## 2. Public API tokens and scopes
 
 Code: `public-api/service.ts`, `public-api/routes.ts`, `app.ts` (`tokenGate`), migrations 0150 to 0152.
