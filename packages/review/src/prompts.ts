@@ -60,7 +60,10 @@ export function draftPrompt(c: DraftContext, code: string): string {
   });
   if (r.unacceptable) lines.push(`Unacceptable: ${r.unacceptable}`);
   if (r.guidance) lines.push(`Rule guidance: ${r.guidance}`);
-  for (const a of r.actions) lines.push(`If ${a.scenario}: ${a.instruction}`);
+  // A scenario is often a whole sentence, so it is set apart from what to do about it.
+  for (const a of r.actions) {
+    lines.push(`If this applies: ${a.scenario.replace(/[.:\s]+$/, "")}. Then: ${a.instruction}`);
+  }
   const redline = c.mode === "redline_only";
   const extra = c.extraContext
     ? `\nBackground from the user, between <doc-${code}> tags:\n${tagged(code, clip(c.extraContext, 4000))}\n`

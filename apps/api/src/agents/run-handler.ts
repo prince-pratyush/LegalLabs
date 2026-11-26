@@ -537,7 +537,10 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
     ): Promise<StepOutcome> => {
       await ctx.store.finishStep(ordinal, {
         status,
-        output: { summary: summary.slice(0, 200), tool_result: { name: call.name, ...result } },
+        output: {
+          summary: summary.slice(0, 200),
+          tool_result: { name: call.name, arguments: call.arguments, ...result },
+        },
       });
       await step(ctx, s, title, status === "done" ? "finished" : "failed");
       return { kind: "continue" };
