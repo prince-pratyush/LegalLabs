@@ -289,6 +289,11 @@ export function guestPublicRoutes({
     if (!input) return invalid(c);
     const slow = limited(c, [perIp, ip(c)], [perCodeAccount, `${input.workspace}|${input.email}`]);
     if (slow) return slow;
+    // Said to everyone alike, so it tells nothing about the address.
+    if (!guests.canSendCodes()) {
+      const failure = FAILURES.MAIL_UNAVAILABLE;
+      return c.json({ code: "MAIL_UNAVAILABLE", message: failure.message }, failure.status);
+    }
     await guests.requestCode(input.workspace, input.email, client(c));
     // The same answer whether or not the address is a guest.
     return c.body(null, 204);

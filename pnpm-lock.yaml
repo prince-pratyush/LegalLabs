@@ -235,6 +235,9 @@ importers:
       jose:
         specifier: 6.2.18
         version: 6.2.18
+      nodemailer:
+        specifier: 10.4.1
+        version: 10.4.1
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -3932,6 +3935,10 @@ packages:
     resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
     engines: {node: '>=18'}
 
+  nodemailer@10.4.1:
+    resolution: {integrity: sha512-CyGM/J+n6W72v2B44BOkIrrQ/cvhm2fOa7fkQDHYOqtjM8stumU5ey3uv9oJ2ryShNit79NaEW/vXznvt/35vA==}
+    engines: {node: '>=20.0.0'}
+
   obug@3.0.0:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
     engines: {node: '>=12.20.0'}
@@ -7494,6 +7501,8 @@ snapshots:
   nexus-rpc@0.0.3: {}
 
   node-releases@2.0.63: {}
+
+  nodemailer@10.4.1: {}
 
   obug@3.0.0: {}
 

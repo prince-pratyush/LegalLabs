@@ -9,6 +9,7 @@ interface Stack {
   email: string;
   password: string;
   ownerUrl: string;
+  serverEnv: Record<string, string>;
   stop: () => Promise<void>;
 }
 
@@ -34,6 +35,8 @@ function stopOnSignal() {
 
 export interface StackOptions {
   env?: Record<string, string>;
+  /** Receives what the server prints. */
+  log?: (line: string) => void;
   /** Flags for the server's own node process. */
   nodeArgs?: string[];
   /** A model server of the test's own; read when the stack starts. */
@@ -123,7 +126,10 @@ export function useStack(options: StackOptions = {}) {
 
   const workspace = () => stack?.workspace ?? "";
 
-  return { call, json, post, events, asOwner, workspace };
+  /** What the server was started with, for a second one that differs. */
+  const serverEnv = () => stack?.serverEnv ?? {};
+
+  return { call, json, post, events, asOwner, workspace, serverEnv };
 }
 
 export async function until<T>(

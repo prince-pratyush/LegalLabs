@@ -15,7 +15,7 @@ import {
   testThreads,
 } from "../test-db.js";
 import { createVaults } from "../vaults/vaults.js";
-import { recordingGuestMailer } from "./guests.js";
+import { type GuestsOptions, noGuestMail, recordingGuestMailer } from "./guests.js";
 import { createSpaceModule } from "./module.js";
 import { scriptedTaskRuns } from "./ports.js";
 
@@ -32,9 +32,12 @@ type Reply = {
   cookie: string;
 };
 
-async function world() {
+async function world(
+  guest: GuestsOptions & { sent?: ReturnType<typeof recordingGuestMailer>["sent"] } = {},
+) {
   const ana = await seedMember(pool);
-  const mailer = recordingGuestMailer();
+  const recording = recordingGuestMailer();
+  const mailer = { ...recording, sent: guest.sent ?? recording.sent };
   const store = createMemoryStore();
   const documents = testDocuments(pool, { store });
   const app = createApp({
@@ -46,7 +49,10 @@ async function world() {
       templates: { resolve: async () => null },
     }),
     vaults: createVaults(pool, { documents, store }),
-    spaces: createSpaceModule(pool, { runs: scriptedTaskRuns(), guest: { mailer } }),
+    spaces: createSpaceModule(pool, {
+      runs: scriptedTaskRuns(),
+      guest: { mailer: recording, ...guest },
+    }),
     clientIp: () => "203.0.113.9",
   });
   const send = async (
@@ -410,6 +416,46 @@ describe("external Spaces and guests", () => {
       ).status,
     ).toBe(401);
     expect((await w.pub("POST", "/login/code", { workspace: "x", email: "bad" })).status).toBe(400);
+  });
+
+  it("refuses invites and code requests aloud when there is no mail server", async () => {
+    const w = await world({ mailer: noGuestMail });
+    const { space } = await external(w);
+    const invited = await w.a("POST", `/spaces/${space}/guests`, { email: OTHER });
+    expect([invited.status, invited.body.code]).toEqual([503, "MAIL_UNAVAILABLE"]);
+    const asked = await w.pub("POST", "/login/code", { workspace: w.ana.slug, email: OTHER });
+    expect([asked.status, asked.body.code]).toEqual([503, "MAIL_UNAVAILABLE"]);
+  });
+
+  it("logs a code that could not be sent, naming neither the code nor the address", async () => {
+    const lines: string[] = [];
+    let code = "";
+    let failing = false;
+    const recording = recordingGuestMailer();
+    const w = await world({
+      mailer: {
+        configured: true,
+        async sendCode(to, sent) {
+          if (!failing) return recording.sendCode(to, sent);
+          code = sent;
+          throw Object.assign(new Error(`no mailbox ${to.email}, code ${sent}`), {
+            name: "EENVELOPE",
+          });
+        },
+      },
+      log: (line) => lines.push(line),
+      sent: recording.sent,
+    });
+    const { space } = await external(w);
+    const { slug } = await guestIn(w, space);
+    failing = true;
+    const res = await w.pub("POST", "/login/code", { workspace: slug, email: OTHER });
+    // The same answer as for anyone, so a failure tells a stranger nothing.
+    expect(res.status).toBe(204);
+    await expect.poll(() => lines.length).toBe(1);
+    expect(lines[0]).toContain("EENVELOPE");
+    expect(lines[0]).not.toContain(code);
+    expect(lines[0]).not.toContain(OTHER);
   });
 
   it("refuses an expired guest's existing session", async () => {

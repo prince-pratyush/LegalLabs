@@ -13,6 +13,7 @@ export type Failure =
   | "MATTER_HAS_SPACE"
   | "NAME_TAKEN"
   | "EXTERNAL_NOT_ENABLED"
+  | "MAIL_UNAVAILABLE"
   | "ALREADY_MEMBER"
   | "NOT_MEMBER"
   | "LAST_ADMIN"
