@@ -1,10 +1,9 @@
-import { randomUUID } from "node:crypto";
 import { AGENT_LIMITS } from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
 import type { RunContext, RunHandler } from "@legallabs/runs";
 import type pg from "pg";
 import { z } from "zod";
-import { asApp } from "../db.js";
+import { asApp, newMessageId } from "../db.js";
 import type { Agents } from "./agents.js";
 
 /** At most this many clarifying questions before the builder writes (§3.1). */
@@ -112,7 +111,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
     });
 
   async function say(ctx: RunContext, text: string): Promise<string> {
-    const id = randomUUID();
+    const id = await asApp(deps.pool, principal(ctx.run), newMessageId);
     await asApp(deps.pool, principal(ctx.run), async (db) => {
       await db.query(
         `insert into work.message (id, workspace_id, thread_id, role, content) values ($1, $2, $3, 'assistant', $4)`,

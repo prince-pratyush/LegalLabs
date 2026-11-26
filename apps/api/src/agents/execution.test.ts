@@ -183,10 +183,13 @@ describe("running an agent", () => {
     expect(prompt).toContain("This NDA lasts two years from signing.");
     expect(prompt).toContain("keep it short");
     const reply = (
-      await pool.query("select content, role from work.message where thread_id = $1 order by id", [
-        started.body.thread_id,
-      ])
+      await pool.query(
+        "select id, content, role from work.message where thread_id = $1 order by id",
+        [started.body.thread_id],
+      )
     ).rows;
+    // A random (v4) id sorts before the question now and then; every message id is time-ordered.
+    expect(reply.map((r) => r.id.charAt(14))).toEqual(["7", "7"]);
     expect(reply.map((r) => r.role)).toEqual(["user", "assistant"]);
     expect(reply[1].content).toBe("The NDA lasts two years.");
 
@@ -418,6 +421,12 @@ describe("the builder", () => {
       });
     }
     expect(await finish(h, started.body.run_id)).toEqual({ status: "done" });
+    const said = await pool.query<{ id: string }>(
+      "select id from work.message where thread_id = $1 and role = 'assistant'",
+      [started.body.thread_id],
+    );
+    expect(said.rows.length).toBeGreaterThan(0);
+    expect(said.rows.every((m) => m.id.charAt(14) === "7")).toBe(true);
 
     const agent = (await h.call(bea, "GET", `/agents/${id}`)).body.agent;
     expect(agent).toMatchObject({
