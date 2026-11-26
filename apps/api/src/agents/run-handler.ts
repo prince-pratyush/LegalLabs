@@ -566,6 +566,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
         ...(decided
           ? {
               approval: {
+                connectorId: decided.pending.connector_id,
                 toolHash: decided.pending.tool_hash,
                 argsHash: decided.pending.args_hash,
               },

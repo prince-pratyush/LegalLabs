@@ -156,6 +156,28 @@ describe("agent run endpoints", () => {
     await h.engine.result(started.run_id);
   });
 
+  it("stops the engine, not only the row, when a run is cancelled by id", async () => {
+    const h = harness();
+    const ana = await seedMember(pool);
+    const cookie = await h.signIn(ana);
+    const { run_id } = await h.runs.start(h.principal(ana), {
+      kind: "agent",
+      subject_id: randomUUID(),
+      title: "Stop me",
+      path: "page",
+    });
+    await until(run_id, "awaiting_approval");
+
+    expect((await h.call(cookie, "POST", `/runs/${run_id}/cancel`)).status).toBe(202);
+    const ended = await Promise.race([
+      h.engine.result(run_id),
+      new Promise((r) => setTimeout(() => r("still running"), 2_000)),
+    ]);
+    expect(ended).toMatchObject({ status: "cancelled" });
+    expect(await status(run_id)).toBe("cancelled");
+    expect((await h.call(cookie, "POST", `/runs/${run_id}/cancel`)).status).toBe(409);
+  });
+
   it("refuses a signal nobody defined and a bad id", async () => {
     const h = harness();
     const ana = await seedMember(pool);

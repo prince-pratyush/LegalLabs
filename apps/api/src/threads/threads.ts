@@ -1362,6 +1362,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         const { rows } = await db.query<{ thread_id: string }>(
           `update work.run set status = 'cancelled', updated_at = now()
             where id = $1 and owner_id = $2 and status not in ('done', 'failed', 'cancelled')
+              and kind not in ('agent', 'workflow', 'agent_builder', 'assistant')
             returning thread_id`,
           [runId, principal.userId],
         );

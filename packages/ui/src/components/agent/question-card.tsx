@@ -70,7 +70,8 @@ export function QuestionCard({
           className="mt-0.5 size-4 shrink-0 text-accent"
           strokeWidth={1.5}
         />
-        {text}
+        {/* Line breaks and spaces count: a tool approval shows the arguments as they'll go. */}
+        <span className="min-w-0 whitespace-pre-wrap break-words">{text}</span>
       </p>
       {shown.length > 0 && (
         <ul aria-label="Suggested answers" className="flex flex-wrap gap-2">

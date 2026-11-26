@@ -111,8 +111,21 @@ export function callHistory(log: readonly StepLog[], code: string): string {
     .join("\n\n");
 }
 
-// Characters that would let arguments read differently from what they are.
-const HIDDEN = /[\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g;
+// Characters that would let a call read differently from what is sent: controls, formats (bidi,
+// zero width, the invisible Unicode tags), anything else that draws nothing (variation selectors,
+// fillers, the blank braille cell), line separators, look-alike spaces, private and unassigned.
+const HIDDEN =
+  /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]|(?! )\p{Zs}/gu;
+
+const escapeUnits = (c: string) =>
+  Array.from(
+    { length: c.length },
+    (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, "0")}`,
+  ).join("");
+
+/** Every hidden character spelled out; `lines` keeps the line breaks the layout itself made. */
+const spelledOut = (text: string, lines = false) =>
+  text.replace(HIDDEN, (c) => (lines && c === "\n" ? c : escapeUnits(c)));
 
 /** Written by the server, never the model, and it shows the arguments exactly as they'd go. */
 export function approvalQuestion(call: {
@@ -121,12 +134,12 @@ export function approvalQuestion(call: {
   reason: string;
   args: Record<string, unknown>;
 }) {
-  const args = JSON.stringify(call.args, null, 2).replace(
-    HIDDEN,
-    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
+  // Newlines inside a value are already escaped by JSON; these are only the indentation's.
+  const args = spelledOut(JSON.stringify(call.args, null, 2), true);
+  const tool = spelledOut(call.tool);
+  const connector = spelledOut(call.connectorName);
   return {
-    text: `Approve calling "${call.tool}" on "${call.connectorName}"?\n${call.reason}\nArguments:\n${args}`,
+    text: `Approve calling "${tool}" on "${connector}"?\n${spelledOut(call.reason)}\nArguments:\n${args}`,
     options: [
       { id: "approve", label: "Approve this call" },
       { id: "deny", label: "Don't run it" },
