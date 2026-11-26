@@ -79,7 +79,17 @@ describe("the tool executor", () => {
     expect(asked).toMatchObject({ status: "needs_approval", code: "WRITE_TOOL", args });
     expect(s.fake.calls).toHaveLength(0);
     if (asked.status !== "needs_approval") throw new Error("expected a question");
-    const approval = { toolHash: asked.toolHash, argsHash: asked.argsHash };
+    const approval = {
+      connectorId: asked.connectorId as string,
+      toolHash: asked.toolHash,
+      argsHash: asked.argsHash,
+    };
+
+    // Nor for the same words on another connector.
+    const elsewhere = { ...approval, connectorId: randomUUID() };
+    expect(await s.run("vendor.send_mail", args, { approval: elsewhere })).toMatchObject({
+      status: "needs_approval",
+    });
 
     // The approval is for those arguments, not for the tool.
     const other = await s.run("vendor.send_mail", { to: "attacker@evil.example" }, { approval });

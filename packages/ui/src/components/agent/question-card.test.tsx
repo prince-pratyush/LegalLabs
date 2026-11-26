@@ -39,6 +39,22 @@ describe("QuestionCard", () => {
     expect(onAnswer.mock.calls).toEqual([[{ option_id: "a" }], [{ skip: true }]]);
   });
 
+  it("keeps the question's line breaks and spacing, as a tool's arguments need", () => {
+    const text = 'Approve?\nArguments:\n{\n  "body": "a    b"\n}';
+    render(
+      <QuestionCard
+        text={text}
+        options={[]}
+        allowText={false}
+        allowSkip={false}
+        onAnswer={() => {}}
+      />,
+    );
+    const shown = screen.getByText(/Arguments/);
+    expect(shown.textContent).toBe(text);
+    expect(shown.className).toContain("whitespace-pre-wrap");
+  });
+
   it("names the builder's skip", () => {
     render(
       <QuestionCard

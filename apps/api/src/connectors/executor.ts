@@ -32,8 +32,8 @@ export interface ToolCallInput {
   call: { name: string; arguments: unknown };
   /** Earlier calls to the same tool in this run. */
   priorCalls(connectorId: string, tool: string): number;
-  /** What a person approved. It counts only for these arguments and this pinned tool. */
-  approval?: { toolHash: string; argsHash: string };
+  /** What a person approved. It counts only for this connector, tool and these arguments. */
+  approval?: { connectorId: string; toolHash: string; argsHash: string };
   signal?: AbortSignal;
   /** Called just before the request leaves, so a retry knows the call may have happened. */
   onSend?: () => Promise<void>;
@@ -191,9 +191,14 @@ export function createToolExecutor(pool: pg.Pool, options: ToolExecutorOptions):
     if (decision.decision === "block") return blocked(decision.code, decision.reason);
 
     if (decision.decision === "ask_user") {
+      // The tool as the server presents it now, not as it was pinned when this call began: an
+      // admin may have re-approved a changed tool in between.
+      const presented = live.find((t) => t.name === known.tool);
+      const liveHash = presented ? toolHash(presented) : endpoint.toolHash;
       const approved =
         input.approval?.argsHash === target.argsHash &&
-        input.approval.toolHash === endpoint.toolHash;
+        input.approval.connectorId === known.connectorId &&
+        input.approval.toolHash === liveHash;
       if (!approved) {
         if (!input.interactive) {
           return blocked(
@@ -208,7 +213,7 @@ export function createToolExecutor(pool: pg.Pool, options: ToolExecutorOptions):
           code: decision.code,
           reason: decision.reason,
           args,
-          toolHash: endpoint.toolHash,
+          toolHash: liveHash,
         };
       }
     }
