@@ -122,6 +122,21 @@ export function createToolExecutor(pool: pg.Pool, options: ToolExecutorOptions):
     );
 
   async function execute(p: Principal, input: ToolCallInput): Promise<ToolOutcome> {
+    let session: ReturnType<typeof mcpSession> | undefined;
+    try {
+      return await decideAndCall(p, input, (opened) => {
+        session = opened;
+      });
+    } finally {
+      await session?.close();
+    }
+  }
+
+  async function decideAndCall(
+    p: Principal,
+    input: ToolCallInput,
+    opened: (session: ReturnType<typeof mcpSession>) => void,
+  ): Promise<ToolOutcome> {
     const { runId } = input;
     const known = input.offered.find((t) => t.name === input.call.name);
     const target: Target = {
@@ -172,6 +187,7 @@ export function createToolExecutor(pool: pg.Pool, options: ToolExecutorOptions):
       ...(input.signal ? { signal: input.signal } : {}),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
     });
+    opened(session);
     let live: RawTool[];
     try {
       live = uniqueTools(await session.listTools());
