@@ -88,7 +88,7 @@ function Prompt({ onConfirmed, onCancel }: { onConfirmed: () => void; onCancel: 
     void confirm(() => (recovery ? stepUpApi.recovery(typed) : stepUpApi.totp(typed)));
   };
 
-  const usePasskey = () =>
+  const withPasskey = () =>
     confirm(async () => {
       const { challenge_id, options } = await stepUpApi.passkeyOptions();
       const credential = (await navigator.credentials.get({
@@ -136,7 +136,7 @@ function Prompt({ onConfirmed, onCancel }: { onConfirmed: () => void; onCancel: 
           </Button>
         )}
         {passkeys && (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={usePasskey}>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={withPasskey}>
             Use a passkey
           </Button>
         )}
