@@ -1,16 +1,17 @@
-import type {
-  MemberInput,
-  PerParty,
-  ResourceInput,
-  SpaceContext,
-  SpaceContextInput,
-  SpaceCreate,
-  SpaceCustomisation,
-  SpaceLevel,
-  SpacePatch,
-  SpaceResourceType,
-  SpaceRole,
-  SpaceSkipped,
+import {
+  AGENT_LIMITS,
+  type MemberInput,
+  type PerParty,
+  type ResourceInput,
+  type SpaceContext,
+  type SpaceContextInput,
+  type SpaceCreate,
+  type SpaceCustomisation,
+  type SpaceLevel,
+  type SpacePatch,
+  type SpaceResourceType,
+  type SpaceRole,
+  type SpaceSkipped,
 } from "@legallabs/contracts";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
@@ -37,7 +38,7 @@ type InfoRow = { name: string; owner_id: string | null; matter_id: string | null
 const info = (row: InfoRow | null): ResourceInfo | null =>
   row ? { name: row.name, ownerId: row.owner_id, matterId: row.matter_id, full: row.full } : null;
 
-/** What exists today. Agents, workflows and scans register themselves when their epics land. */
+/** What can be shared today. Workflows and scans register themselves when their epics land. */
 const defaultCatalog: ResourceCatalog = {
   vault: async (db, id) =>
     info(
@@ -50,6 +51,24 @@ const defaultCatalog: ResourceCatalog = {
       ),
     ),
   // Review tables, playbooks and threads are owner-only until their policies honour Space grants.
+  // Read as the caller. A guest can't read the agent's row: only, through a definer function,
+  // the title of one their party may run. Full is theirs in their own right, never a Space's.
+  agent: async (db, id) => {
+    const own = await one<InfoRow>(
+      db,
+      `select title as name, owner_id, null::uuid as matter_id,
+              work.my_agent_full(id) as full
+         from work.agent where id = $1 and deleted_at is null`,
+      [id],
+    );
+    if (own) return info(own);
+    const guest = await one<{ name: string | null }>(
+      db,
+      "select work.guest_agent_title($1) as name",
+      [id],
+    );
+    return guest?.name ? { name: guest.name, ownerId: null, matterId: null, full: false } : null;
+  },
 };
 
 /** Resources a person runs rather than edits. */
@@ -57,7 +76,15 @@ const RUNNABLE = new Set<SpaceResourceType>(["agent", "workflow", "playbook", "s
 const RANK = { view: 1, run: 2, edit: 3, full: 4 } as const;
 
 const levelAllowed = (type: SpaceResourceType, level: SpaceLevel) =>
-  RUNNABLE.has(type) || level !== "run";
+  // An agent is never shared at Full: that would pass on sharing, deleting and others' runs.
+  type === "agent" ? level !== "full" : RUNNABLE.has(type) || level !== "run";
+
+/** For agents Run sits below view, which reads the instructions (agents-workflows.md §4.6). */
+const AGENT_RANK = { run: 1, view: 2, edit: 3, full: 4 } as const;
+const raises = (type: SpaceResourceType, from: SpaceLevel, to: SpaceLevel) => {
+  const rank = type === "agent" ? AGENT_RANK : RANK;
+  return rank[to] > rank[from];
+};
 
 export interface SpaceView {
   id: string;
@@ -179,7 +206,7 @@ export interface Spaces {
     id: string,
     input: ResourceInput,
     client: Client,
-  ): Promise<Result<ResourceView>>;
+  ): Promise<Result<ResourceView | { request: PendingShare }>>;
   setResourceLevel(
     p: Principal,
     id: string,
@@ -207,6 +234,15 @@ export interface Spaces {
     client: Client,
   ): Promise<Result<AccessRequestView>>;
   requests(p: Principal, id: string): Promise<AccessRequestView[] | null>;
+  /** Agent shares waiting on this Space's admins; null for anyone else. */
+  shareRequests(p: Principal, id: string): Promise<ShareRequestView[] | null>;
+  decideShare(
+    p: Principal,
+    id: string,
+    requestId: string,
+    decision: { accept: true } | { accept: false; reason: string },
+    client: Client,
+  ): Promise<Result<null>>;
   decideRequest(
     p: Principal,
     id: string,
@@ -343,8 +379,28 @@ const requestView = (r: RequestRow): AccessRequestView => ({
 /** The same rule as a Space level: only runnable things can be given Run. */
 function checkPartyLevels(type: SpaceResourceType, perParty: PerParty) {
   for (const level of Object.values(perParty)) {
+    // A guest party may only run an agent: view would give them its instructions.
+    if (type === "agent" && level !== "run" && level !== "none") {
+      throw refusal("INVALID_PARTY_LEVEL");
+    }
     if (level === "run" && !RUNNABLE.has(type)) throw refusal("INVALID_PARTY_LEVEL");
   }
+}
+
+/** An agent share into an external Space, waiting for one of its admins. */
+export interface PendingShare {
+  id: string;
+  resourceType: SpaceResourceType;
+  resourceId: string;
+  access: SpaceLevel;
+  perParty: PerParty;
+  createdAt: string;
+}
+
+export interface ShareRequestView extends PendingShare {
+  name: string;
+  requestedBy: string;
+  requesterName: string;
 }
 
 export interface SpacesOptions {
@@ -442,9 +498,138 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
     return row;
   };
 
+  /** The walls and matters of what an agent carries (agents-workflows.md §7). */
+  const checkAgentShare = async (db: Db, spaceId: string, agentId: string) => {
+    const check = await one<{ other_matter: boolean; blocked: number }>(
+      db,
+      "select * from work.agent_share_check($1, $2)",
+      [spaceId, agentId],
+    );
+    if (!check) throw refusal("NOT_FOUND");
+    if (check.blocked > 0) throw refusal("WALL_SHARE_BLOCKED");
+    if (check.other_matter && !(await allowMismatch(db))) throw refusal("MATTER_MISMATCH");
+  };
+
+  const requestShare = async (
+    db: Db,
+    p: Principal,
+    client: Client,
+    spaceId: string,
+    input: ResourceInput,
+  ): Promise<{ request: PendingShare }> => {
+    const denied = await one<{ denied: boolean }>(
+      db,
+      "select work.space_share_denied($1, $2, $3) as denied",
+      [spaceId, input.resource_id, AGENT_LIMITS.cooldownDays],
+    );
+    if (denied?.denied) throw refusal("SHARE_REQUEST_COOLDOWN");
+    const made = await one<{ id: string; created_at: Date }>(
+      db,
+      `insert into work.share_request (workspace_id, resource_type, resource_id, principal_type,
+                                       principal_id, level, per_party, approver, requested_by)
+       values ($1, 'agent', $2, 'space', $3, $4, $5, 'space_admin', $6)
+       on conflict (resource_type, resource_id, principal_type, principal_id)
+         where status = 'pending' do nothing
+       returning id, created_at`,
+      [
+        p.workspaceId,
+        input.resource_id,
+        spaceId,
+        input.access,
+        JSON.stringify(input.per_party ?? {}),
+        p.userId,
+      ],
+    );
+    if (!made) throw refusal("ALREADY_REQUESTED");
+    await kit.audit(db, p, client, "share.requested", "space", spaceId, {
+      resource_type: "agent",
+      resource_id: input.resource_id,
+      level: input.access,
+      approver: "space_admin",
+    });
+    return {
+      request: {
+        id: made.id,
+        resourceType: "agent",
+        resourceId: input.resource_id,
+        access: input.access,
+        perParty: input.per_party ?? {},
+        createdAt: made.created_at.toISOString(),
+      },
+    };
+  };
+
   return {
     kit,
     catalog,
+
+    async shareRequests(p, id) {
+      const r = await kit.attempt(p, async (db) => {
+        if ((await roleOf(db, id)) !== "admin") return null;
+        const { rows } = await db.query<{
+          id: string;
+          agent_id: string;
+          title: string;
+          level: SpaceLevel;
+          per_party: PerParty;
+          requested_by: string;
+          requester_name: string;
+          created_at: Date;
+        }>("select * from work.space_share_requests($1)", [id]);
+        return rows.map((row) => ({
+          id: row.id,
+          resourceType: "agent" as const,
+          resourceId: row.agent_id,
+          name: row.title,
+          access: row.level,
+          perParty: row.per_party,
+          requestedBy: row.requested_by,
+          requesterName: row.requester_name,
+          createdAt: row.created_at.toISOString(),
+        }));
+      });
+      return r.ok ? r.value : null;
+    },
+
+    async decideShare(p, id, requestId, decision, client) {
+      return kit.attempt(p, async (db) => {
+        await needAdmin(db, id);
+        const waiting = await db.query<{ id: string; agent_id: string; level: SpaceLevel }>(
+          "select id, agent_id, level from work.space_share_requests($1)",
+          [id],
+        );
+        const request = waiting.rows.find((row) => row.id === requestId);
+        if (!request) throw refusal("NOT_FOUND");
+        // Walls and matters may have changed while it waited.
+        if (decision.accept) await checkAgentShare(db, id, request.agent_id);
+        const done = await one<{ r: string }>(
+          db,
+          "select work.decide_space_share($1, $2, $3, $4) as r",
+          [id, requestId, decision.accept, decision.accept ? null : decision.reason],
+        );
+        if (done?.r === "STALE") throw refusal("SHARE_REQUEST_STALE");
+        if (done?.r === "FORBIDDEN") throw refusal("FORBIDDEN");
+        if (done?.r !== "OK") throw refusal("NOT_FOUND");
+        const details = { resource_type: "agent", resource_id: request.agent_id };
+        const action = decision.accept ? "share.accepted" : "share.denied";
+        await kit.audit(db, p, client, action, "space", id, details);
+        if (decision.accept) {
+          await kit.audit(db, p, client, "space.resource_added", "space", id, {
+            ...details,
+            access: request.level,
+          });
+          await kit.activity(
+            db,
+            p,
+            id,
+            "resource.added",
+            { type: "agent", id: request.agent_id },
+            { access: request.level },
+          );
+        }
+        return null;
+      });
+    },
 
     async list(p, q) {
       const r = await kit.attempt(p, async (db) => {
@@ -746,8 +931,17 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
     async addResource(p, id, input, client) {
       return kit.attempt(p, async (db) => {
         const role = await needMember(db, id);
+        const agent = input.resource_type === "agent";
+        const space = await one<{ kind: "internal" | "external"; matter_id: string | null }>(
+          db,
+          "select kind, matter_id from work.space where id = $1",
+          [id],
+        );
+        const outward = agent && space?.kind === "external";
+        // Leaving the workspace: a collaborator's agent share waits for a Space admin.
+        const needsApproval = outward && role !== "admin";
         // Sharing outside the workspace is an admin's call.
-        if (input.per_party && role !== "admin") throw refusal("FORBIDDEN");
+        if (input.per_party && role !== "admin" && !needsApproval) throw refusal("FORBIDDEN");
         const lookup = catalog[input.resource_type];
         if (!lookup) throw refusal("RESOURCE_UNSUPPORTED");
         if (!levelAllowed(input.resource_type, input.access)) throw refusal("INVALID");
@@ -755,11 +949,6 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
         const found = isId(input.resource_id) ? await lookup(db, input.resource_id) : null;
         if (!found) throw refusal("RESOURCE_NOT_FOUND");
         if (!found.full) throw refusal("FORBIDDEN");
-        const space = await one<{ matter_id: string | null }>(
-          db,
-          "select matter_id from work.space where id = $1",
-          [id],
-        );
         if (
           space?.matter_id &&
           found.matterId &&
@@ -769,11 +958,25 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
           throw refusal("MATTER_MISMATCH");
         }
         if (input.per_party) checkPartyLevels(input.resource_type, input.per_party);
+        if (agent) await checkAgentShare(db, id, input.resource_id);
+        if (outward) {
+          const may = await one<{ ok: boolean }>(
+            db,
+            "select core.has_permission('spaces.external') as ok",
+            [],
+          );
+          if (!may?.ok) throw refusal("FORBIDDEN");
+        }
         const existing = await one<{ id: string; access: SpaceLevel }>(
           db,
           "select id, access from work.space_resource where space_id = $1 and resource_type = $2 and resource_id = $3",
           [id, input.resource_type, input.resource_id],
         );
+        if (needsApproval) {
+          // Changing what is already shared is the admin's own act.
+          if (existing) throw refusal("FORBIDDEN");
+          return requestShare(db, p, client, id, input);
+        }
         let rowId = existing?.id ?? "";
         if (existing) {
           if (existing.access !== input.access) {
@@ -844,6 +1047,12 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
         const row = await find(db, id, resourceId);
         const access = patch.access ?? row.access;
         if (!levelAllowed(row.resource_type, access)) throw refusal("INVALID");
+        const widens =
+          raises(row.resource_type, row.access, access) ||
+          Object.values(patch.perParty ?? {}).some((level) => level !== "none");
+        if (row.resource_type === "agent" && widens) {
+          await checkAgentShare(db, id, row.resource_id);
+        }
         if (patch.perParty) {
           checkPartyLevels(row.resource_type, patch.perParty);
           // Sharing outward is sharing onward: the caller must hold the resource in their own right.
@@ -865,7 +1074,7 @@ export function createSpaces(pool: pg.Pool, options: SpacesOptions = {}): Spaces
           return resourceView(db, await find(db, id, resourceId));
         }
         // Raising a level hands out access the caller must hold on their own, not through a Space.
-        if (RANK[access] > RANK[row.access]) {
+        if (raises(row.resource_type, row.access, access)) {
           const lookup = catalog[row.resource_type];
           const found = lookup ? await lookup(db, row.resource_id) : null;
           if (!found?.full) throw refusal("FORBIDDEN");

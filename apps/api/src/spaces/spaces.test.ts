@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
+import { createAgents } from "../agents/agents.js";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
 import { hashPassword } from "../auth/password.js";
@@ -56,7 +57,7 @@ const vault = (m: Seeded, owner: string, matterId: string | null = null) =>
     [m.workspaceId, owner, matterId],
   );
 
-const USER = ["threads.use", "spaces.create"];
+const USER = ["threads.use", "spaces.create", "agents.use"];
 
 /** Ids in the API are version 7, as the database makes them. */
 const uuid7 = () => one("select core.uuid7() as id", []);
@@ -65,7 +66,13 @@ async function world(runOptions: ScriptedOptions = {}) {
   const ana = await seedMember(pool);
   const ben = await person(ana, "ben", USER);
   const cal = await person(ana, "cal", USER);
-  const agentId = await uuid7();
+  const made = await createAgents(pool).create(
+    { sessionId: randomUUID(), ...ana },
+    { title: "Diligence agent", mode: "scratch" },
+    { ip: null, userAgent: null },
+  );
+  if (!made.ok) throw new Error(made.code);
+  const agentId = made.agent.id;
   const runs = scriptedTaskRuns({
     firstLook: () => ({ status: "running", outputs: [] }),
     ...runOptions,
@@ -78,13 +85,6 @@ async function world(runOptions: ScriptedOptions = {}) {
       notify: async (_p, event) => {
         events.push(event);
       },
-    },
-    // The agents epic registers real agents; here one agent exists, owned by Ana.
-    catalog: {
-      agent: async (_db, id) =>
-        id === agentId
-          ? { name: "Diligence agent", ownerId: ana.userId, matterId: null, full: true }
-          : null,
     },
   });
   const app = createApp({

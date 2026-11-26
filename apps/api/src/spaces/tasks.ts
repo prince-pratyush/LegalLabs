@@ -347,7 +347,8 @@ export function createTasks(kit: Kit, catalog: ResourceCatalog, options: TasksOp
       const shared = await one<{ ok: boolean }>(
         db,
         `select (core.level_rank(r.access) >= core.level_rank('run')
-                 and core.has_access('agent', r.resource_id, 'run')) as ok
+                 and core.has_access('agent', r.resource_id, 'run')
+                 and not work.agent_wall_closed(r.space_id, r.resource_id)) as ok
            from work.space_resource r
           where r.space_id = $1 and r.resource_type = 'agent' and r.resource_id = $2
             and r.suspended_reason is null`,
