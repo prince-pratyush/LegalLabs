@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 /** The admin screens, in the order the sidebar and the command palette list them. */
 export const ADMIN_PAGES = [
   { id: "command-center", label: "Command Center", hash: "#/admin/command-center/overview" },
+  { id: "retention", label: "Retention", hash: "#/admin/retention/policies" },
   { id: "models", label: "Models and connectors", hash: "#/admin/models" },
 ] as const;
 

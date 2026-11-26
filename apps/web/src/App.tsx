@@ -35,6 +35,8 @@ import { mattersHash, parseMattersRoute } from "./matters/route.js";
 import { NotificationBell } from "./notifications/NotificationHub.js";
 import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
+import { RetentionApp } from "./retention/RetentionApp.js";
+import { parseRetentionRoute, retentionHash } from "./retention/route.js";
 import { ReviewsApp } from "./reviews/ReviewsApp.js";
 import { parseReviewRoute } from "./reviews/route.js";
 import { navigate, parseRoute, paths, useHash } from "./router.js";
@@ -87,6 +89,8 @@ export function App() {
           <PlaybooksApp onLeave={() => navigate(paths.new)} />
         ) : parseCommandCenterRoute(hash) ? (
           <CommandCenterApp onLeave={() => navigate(paths.new)} />
+        ) : parseRetentionRoute(hash) ? (
+          <RetentionApp onLeave={() => navigate(paths.new)} />
         ) : parseAdminModelsRoute(hash) ? (
           <AdminModelsApp onLeave={() => navigate(paths.new)} />
         ) : parseSettingsRoute(hash) ? (
@@ -290,6 +294,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       group: "Go to",
       label: "Admin: Command Center",
       run: () => navigate(commandCenterHash().slice(1)),
+    },
+    {
+      id: "admin-retention",
+      kind: "action",
+      group: "Go to",
+      label: "Admin: Retention and legal holds",
+      run: () => navigate(retentionHash().slice(1)),
     },
     {
       id: "admin-models",
