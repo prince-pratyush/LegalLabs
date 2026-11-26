@@ -1,4 +1,5 @@
-import { diffWords } from "@legallabs/docx";
+// The root entry also reads .docx files with node:crypto, which kills the pane in Word.
+import { diffWords } from "@legallabs/docx/diff";
 
 /** One change inside `before`: replace characters [from, to) with `insert`. */
 export type Hunk = {

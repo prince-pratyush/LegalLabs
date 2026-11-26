@@ -1,4 +1,4 @@
-import { diffWords } from "@legallabs/docx";
+import { diffWords } from "@legallabs/docx/diff";
 import { Button, DiffView, StatusText, type Tone } from "@legallabs/ui";
 import { useState } from "react";
 import type { Anchor } from "../edits/anchor.js";

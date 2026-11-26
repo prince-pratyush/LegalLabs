@@ -17,7 +17,18 @@ const https = existsSync(join(certs, "localhost.crt"))
 export default defineConfig({
   // Served by the API under /addin/, so the pane, its dialog and the API share one origin.
   base: "/addin/",
-  plugins: [tailwind()],
+  plugins: [
+    tailwind(),
+    {
+      // Vite only warns here and ships a stub that throws on load, leaving a blank pane.
+      name: "no-node-modules",
+      apply: "build",
+      enforce: "pre",
+      resolveId(id, importer) {
+        if (id.startsWith("node:")) this.error(`${importer} imports ${id}`);
+      },
+    },
+  ],
   server: {
     port: 3000,
     strictPort: true,
