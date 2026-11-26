@@ -82,17 +82,17 @@ export function SettingsPanel({
         </Field>
         <fieldset className="grid gap-2">
           <legend className="text-ui font-medium">Retention</legend>
-          <CheckRow
-            checked={keep}
-            onChange={setKeep}
-            label="Move files to the recycle bin after a set time"
-          />
+          <CheckRow checked={keep} onChange={setKeep} label="Delete files after a set time" />
+          <p className="text-dense text-fg-muted">
+            Files this setting deletes can't be restored. A retention policy for this vault or its
+            matter replaces it. A shorter workspace policy still applies.
+          </p>
           {keep && (
             <Field
               label="Hours to keep each file"
               hint={
                 estimate
-                  ? `${estimate.documents.toLocaleString()} ${estimate.documents === 1 ? "file is" : "files are"} older than this and would go to the bin within a day.`
+                  ? `${estimate.documents.toLocaleString()} ${estimate.documents === 1 ? "file is" : "files are"} older than this.`
                   : "At least 3. 720 hours is 30 days."
               }
               {...(validHours ? {} : { error: "Enter a whole number of hours, at least 3." })}
