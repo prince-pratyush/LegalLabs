@@ -306,7 +306,12 @@ export function createApp({
     const token = tokenOf(c);
     const principal = token ? await auth.resolve(token) : null;
     if (!principal) return c.json({ error: "unauthenticated" }, 401);
-    return c.json({ user_id: principal.userId, workspace_id: principal.workspaceId });
+    return c.json({
+      user_id: principal.userId,
+      workspace_id: principal.workspaceId,
+      // So the web app shows a guest their own screens, not ones that would all be refused.
+      ...(principal.guest ? { guest: true } : {}),
+    });
   });
 
   if (oidc) {
@@ -445,6 +450,8 @@ export function createApp({
     // A deep link to a document loads the app, which then opens the viewer.
     app.get("/documents/*", serveStatic({ root: webRoot, path: "index.html" }));
     app.get("/d/*", serveStatic({ root: webRoot, path: "index.html" }));
+    // Where an invitation link points.
+    app.get("/guest/accept", serveStatic({ root: webRoot, path: "index.html" }));
     // Build files carry a hash of their content in the name, so a copy never goes stale.
     app.use("/assets/*", async (c, next) => {
       await next();

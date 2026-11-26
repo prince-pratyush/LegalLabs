@@ -320,6 +320,9 @@ describe("external Spaces and guests", () => {
     const w = await world();
     const { space, party } = await external(w);
     const { g, cookie } = await guestIn(w, space);
+    // The web app learns it has a guest, and shows only their screens.
+    const session = await w.request("/auth/session", { headers: { cookie } });
+    expect(await session.json()).toMatchObject({ guest: true });
     await w.a("POST", `/spaces/${space}/parties/${party}/approve`);
     await g("POST", `/guest/spaces/${space}/connection/approve`);
 
