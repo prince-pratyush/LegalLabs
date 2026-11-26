@@ -50,3 +50,9 @@ async function asRole<T>(
     throw err;
   }
 }
+
+// For a message whose id is needed before its row: reads sort by id, so it must be time-ordered.
+export async function newMessageId(client: pg.PoolClient): Promise<string> {
+  const { rows } = await client.query<{ id: string }>("select core.uuid7() id");
+  return rows[0]?.id as string;
+}

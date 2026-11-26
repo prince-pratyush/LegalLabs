@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { AgentAttachment, AgentSource, RoutingClass } from "@legallabs/contracts";
 import { type Gateway, GatewayError, type Message } from "@legallabs/model-gateway";
 import type { RunContext, RunHandler, StepOutcome, StepRecord } from "@legallabs/runs";
@@ -6,7 +6,7 @@ import type pg from "pg";
 import type { OfferedTool } from "../admin-models/connectors.js";
 import type { ToolExecutor } from "../connectors/executor.js";
 import { storable } from "../connectors/sanitise.js";
-import { asApp } from "../db.js";
+import { asApp, newMessageId } from "../db.js";
 import type { ContextPort } from "./context.js";
 import { checkAnswer, citationEvent, type ShownDocument } from "./run-citations.js";
 import {
@@ -342,7 +342,8 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
       idempotency_key: hash(`${ctx.run.id}:${ordinal}:${prompt.replaceAll(code, "")}`),
     });
     await step(ctx, s, "Do the work", "started");
-    const messageId = randomUUID();
+    // Time-ordered like every other message id, and needed before the row exists.
+    const messageId = await asApp(deps.pool, principal(ctx.run), newMessageId);
     // What the model call cost, kept if anything after it fails.
     let spent = {};
     try {
