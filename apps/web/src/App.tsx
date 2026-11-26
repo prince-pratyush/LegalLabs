@@ -25,6 +25,8 @@ import { adminModelsHash, parseAdminModelsRoute } from "./admin-models/route.js"
 import { AgentsApp } from "./agents/AgentsApp.js";
 import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
+import { handoffFrom, secondFactorApi } from "./auth/api.js";
+import { SecondFactor } from "./auth/SecondFactor.js";
 import { CommandCenterApp } from "./command-center/CommandCenterApp.js";
 import { commandCenterHash, parseCommandCenterRoute } from "./command-center/route.js";
 import { GuestApp } from "./guest/GuestApp.js";
@@ -162,14 +164,25 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(() => handoffFrom(window.location.hash));
+
+  // The single sign-on token comes off the address bar and the history as soon as it is read.
+  useEffect(() => {
+    if (!handoffFrom(window.location.hash)) return;
+    window.history.replaceState(null, "", "/");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }, []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api.login(workspace.trim(), email.trim(), password);
-      onSignedIn();
+      const owed = await secondFactorApi.login(workspace.trim(), email.trim(), password);
+      // The password has done its work either way, so it isn't kept on the page.
+      setPassword("");
+      if (owed) setPending(owed);
+      else onSignedIn();
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 0;
       setError(
@@ -185,6 +198,22 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
       setBusy(false);
     }
   };
+
+  if (pending) {
+    return (
+      <main className="mx-auto grid max-w-sm gap-6 px-4 py-12">
+        <h1 className="text-title font-semibold">LegalLabs</h1>
+        <SecondFactor
+          pending={pending}
+          onSignedIn={onSignedIn}
+          onRestart={(why) => {
+            setPending(null);
+            setError(why);
+          }}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto grid max-w-sm gap-6 px-4 py-12">
