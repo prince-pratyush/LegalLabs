@@ -44,6 +44,7 @@ export interface PolicyRow {
 
 export interface Policies {
   workspace: PolicyRow | null;
+  /** `effectiveHours` is what applies: never longer than the workspace's (SEC-029). */
   vaults: (PolicyRow & { effectiveHours: number | null })[];
   matters: (PolicyRow & { effectiveHours: number | null })[];
 }
@@ -227,8 +228,9 @@ export function createRetention(
           source: "policy" | "legacy";
           updated_at: Date;
           updated_by: string | null;
+          effective_hours: number | null;
         }>("select * from retention.list_policies()");
-        const all: PolicyRow[] = rows.map((r) => ({
+        const all = rows.map((r) => ({
           policyId: r.policy_id,
           scope: r.scope,
           scopeId: r.scope_id,
@@ -238,12 +240,14 @@ export function createRetention(
           source: r.source,
           updatedAt: r.updated_at.toISOString(),
           updatedBy: r.updated_by,
+          effectiveHours: r.effective_hours,
         }));
-        const workspace = all.find((r) => r.scope === "workspace") ?? null;
-        // A vault or matter with its own row uses it; every other one inherits the workspace's.
-        const withEffective = (scope: Scope) =>
-          all.filter((r) => r.scope === scope).map((r) => ({ ...r, effectiveHours: r.hours }));
-        return { workspace, vaults: withEffective("vault"), matters: withEffective("matter") };
+        const at = (scope: Scope) => all.filter((r) => r.scope === scope);
+        return {
+          workspace: at("workspace")[0] ?? null,
+          vaults: at("vault"),
+          matters: at("matter"),
+        };
       }),
 
     estimate: (p, scope, scopeId, hours) =>
