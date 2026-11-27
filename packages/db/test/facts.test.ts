@@ -137,6 +137,54 @@ describe("fact tables in the database", () => {
     });
   });
 
+  it("won't open a read name to the Space by changing only its case or spacing", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const d = await shared(tx, s);
+      await tx.as(s.ana, s.acme);
+      const { entityId } = await fact(tx, s, d);
+      expect(
+        await tx.error(
+          "update apps.entity set canonical_name = ' zed ', origin = 'manual' where id = $1",
+          [entityId],
+        ),
+      ).toMatch(/same name/);
+    });
+  });
+
+  it("keeps a read name while any fact links it, and drops it with the last link", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const d = await shared(tx, s);
+      await tx.as(s.ana, s.acme);
+      const first = await fact(tx, s, d);
+      const second = await fact(tx, s, d);
+      await tx.rows(
+        `insert into apps.fact_entity (workspace_id, space_id, fact_id, entity_id, via)
+         values ($1, $2, $3, $4, 'manual')`,
+        [s.acme, d.spaceId, second.factId, first.entityId],
+      );
+      const unlink = (factId: string) =>
+        tx.rows("delete from apps.fact_entity where fact_id = $1 and entity_id = $2", [
+          factId,
+          first.entityId,
+        ]);
+      const left = async (table: string, column: string) => {
+        await tx.asOwner();
+        const n = await count(tx, `apps.${table} where ${column} = $1`, [first.entityId]);
+        await tx.as(s.ana, s.acme);
+        return n;
+      };
+      await unlink(first.factId);
+      // Still linked by hand elsewhere: kept, but no longer open through that link.
+      expect(await count(tx, "apps.entity where id = $1", [first.entityId])).toBe(0);
+      expect(await left("entity", "id")).toBe(1);
+      expect(await left("fact_entity", "entity_id")).toBe(1);
+      await unlink(second.factId);
+      expect(await left("entity", "id")).toBe(0);
+    });
+  });
+
   it("takes facts, their trail and extracted names away with a purged document", async () => {
     await withTx(async (tx) => {
       const s = await seed(tx);
