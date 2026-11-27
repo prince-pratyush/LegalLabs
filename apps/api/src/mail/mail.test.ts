@@ -53,6 +53,18 @@ describe("SMTP sender", () => {
     expect(server.received[0]?.to).toEqual(["ana@firm.test"]);
   });
 
+  it("marks system mail so mail systems don't answer it", async () => {
+    server = await startFakeSmtp();
+    const sender = provider(server.port);
+    const to = { email: "jo@acme.example", name: "" };
+    await sender.send({ to, subject: "s", text: "t", auto: true });
+    await sender.send({ to, subject: "s", text: "t" });
+    const [system, person] = server.received.map((m) => m.data.split("\r\n\r\n")[0]);
+    expect(system).toContain("Auto-Submitted: auto-replied");
+    expect(system).toContain("X-Auto-Response-Suppress: All");
+    expect(person).not.toContain("Auto-Response-Suppress");
+  });
+
   it("reports a refusal without repeating the address or the message", async () => {
     server = await startFakeSmtp();
     server.rejectRecipients();

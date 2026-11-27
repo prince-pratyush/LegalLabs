@@ -271,3 +271,76 @@ describe("my tasks", () => {
     });
   });
 });
+
+describe("limits on system mail", () => {
+  const asking = async () => {
+    const d = await desk.open();
+    await d.type();
+    return d;
+  };
+  const statuses = async (workspaceId: string) =>
+    (
+      await pool.query(
+        `select status, count(*)::int n from apps.intake_outbound
+          where workspace_id = $1 group by status order by status`,
+        [workspaceId],
+      )
+    ).rows;
+  /** Queues more of the system's mail for the newest request. */
+  const queue = (id: string, count: number, set = "") =>
+    pool.query(
+      `insert into apps.intake_outbound (workspace_id, request_id, kind, ref)
+       select workspace_id, id, 'done', 'extra:' || n || $3
+         from apps.intake_request, generate_series(1, $2::int) n where id = $1`,
+      [id, count, set],
+    );
+
+  it("drops, not defers, what is over the day's limit, and still sends a lawyer's reply", async () => {
+    const d = await asking();
+    await d.deliver(NDA);
+    const { id } = await d.request();
+    await queue(id, 24);
+    await d.tick();
+    expect(desk.provider.sent).toHaveLength(20);
+    expect(await statuses(d.admin.workspaceId)).toEqual([
+      { status: "failed", n: 5 },
+      { status: "sent", n: 20 },
+    ]);
+    await desk.call(d.lawyer, "POST", `/apps/intake/requests/${id}/reply`, { text: "Hello" });
+    await d.tick();
+    expect(desk.provider.sent.at(-1)?.text).toContain("Hello");
+  });
+
+  it("answers only so many new requests from one address in a day", async () => {
+    const d = await asking();
+    for (let i = 0; i < 7; i++) await d.deliver(NDA);
+    expect(desk.provider.sent).toHaveLength(5);
+    expect(await statuses(d.admin.workspaceId)).toEqual([
+      { status: "failed", n: 2 },
+      { status: "sent", n: 5 },
+    ]);
+  });
+
+  it("gives up on mail already claimed five times, and counts claims against the limit", async () => {
+    const d = await asking();
+    await d.deliver(NDA);
+    const { id } = await d.request();
+    desk.provider.clear();
+    // Four others that were each claimed five times and never recorded as sent.
+    await queue(id, 4);
+    await pool.query(
+      `update apps.intake_outbound set attempts = 5, claimed_at = now()
+        where workspace_id = $1 and status = 'queued'`,
+      [d.admin.workspaceId],
+    );
+    await d.tick();
+    expect(desk.provider.sent).toHaveLength(0);
+    expect(await statuses(d.admin.workspaceId)).toEqual([
+      { status: "failed", n: 4 },
+      { status: "sent", n: 1 },
+    ]);
+    await queue(id, 1, "later");
+    await d.tick();
+    expect(desk.provider.sent).toHaveLength(0);
+  });
+});
