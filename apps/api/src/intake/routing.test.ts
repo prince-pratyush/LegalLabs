@@ -201,6 +201,23 @@ describe("an email request", () => {
   });
 });
 
+describe("a status set by hand", () => {
+  it("is not undone when the worker reaches the request", async () => {
+    const d = await desk.open();
+    const typeId = await d.type({ routing: null });
+    const made = await desk.call(d.admin, "POST", "/apps/intake/requests", {
+      type_id: typeId,
+      requester: { display_name: "Phone call" },
+    });
+    const { id } = made.body.request;
+    await desk.call(d.lawyer, "POST", `/apps/intake/requests/${id}/status`, {
+      status: "awaiting_requester",
+    });
+    await d.tick();
+    expect((await d.request()).status).toBe("awaiting_requester");
+  });
+});
+
 describe("replies from the queue", () => {
   const ready = async () => {
     const d = await desk.open();
