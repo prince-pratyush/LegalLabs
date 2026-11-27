@@ -5,6 +5,8 @@ import {
   type IntakeEvent,
   type IntakeFieldDef,
   type IntakeFieldValues,
+  type IntakeMine,
+  type IntakeMyTask,
   type IntakeRequest,
   type IntakeRequestCreate,
   type IntakeRequestDetail,
@@ -110,6 +112,15 @@ export interface Intake {
     change: IntakeStatusChange,
     client: Client,
   ): Promise<Result<IntakeRequestDetail>>;
+  /** Queues words to an email requester; the worker sends them from the intake address. */
+  reply(
+    principal: Principal,
+    id: string,
+    text: string,
+    client: Client,
+  ): Promise<Result<{ delivery: "queued" }>>;
+  /** The caller's own open requests and Space tasks. Needs no intake permission. */
+  mine(principal: Principal): Promise<Result<IntakeMine>>;
 }
 
 export interface IntakeOptions {
@@ -221,7 +232,8 @@ async function checkRouting(db: Db, routing: IntakeRouting) {
         ? ["select 1 from apps.ci_review_agent where id = $1", routing.ci_agent_id]
         : [
             `select 1 from work.space
-              where id = $1 and deleted_at is null and work.space_role(id) is not null`,
+              where id = $1 and deleted_at is null
+                and work.space_role(id) in ('admin', 'collaborator')`,
             routing.space_id,
           ];
   const { rowCount } = await db.query(sql as string, [id]);
@@ -276,6 +288,8 @@ interface RequestRow {
   assignee_name: string | null;
   matter_id: string | null;
   sla_due_at: Date | null;
+  classification_confidence: number | null;
+  task_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -284,7 +298,7 @@ const REQUEST_COLUMNS = `r.id, r.number, r.channel, r.external_ref, r.requester_
   r.requester_email, q.external_user_id, r.type_id, t.name type_name, r.fields, r.missing_fields,
   r.status, r.closed_reason, r.assignee_id,
   nullif(coalesce(nullif(u.name, ''), u.email), '') assignee_name, r.matter_id, r.sla_due_at,
-  r.created_at, r.updated_at`;
+  r.classification_confidence, r.task_id, r.created_at, r.updated_at`;
 const REQUEST_FROM = `apps.intake_request r
   join apps.intake_requester q on q.id = r.requester_id
   left join apps.intake_request_type t on t.id = r.type_id
@@ -310,6 +324,8 @@ function toRequest(row: RequestRow): IntakeRequest {
     assignee_id: row.assignee_id,
     assignee_name: row.assignee_name,
     matter_id: row.matter_id,
+    classification_confidence: row.classification_confidence,
+    task_id: row.task_id,
     // A finished request's clock has stopped where it was.
     sla: row.sla_due_at
       ? {
@@ -879,6 +895,45 @@ export function createIntake(pool: pg.Pool, options: IntakeOptions): Intake {
           client,
         );
         return loadDetail(db, id);
+      });
+    },
+
+    reply(principal, id, text, client) {
+      return audited(principal, id, client, async (db) => {
+        await openRequest(db, id);
+        const request = await loadRequest(db, id);
+        if (request.channel !== "email" || !request.requester_email) refuse("WRONG_STATE");
+        // The words wait here until they are sent; the audit log never holds them.
+        await db.query(
+          `insert into apps.intake_outbound (workspace_id, request_id, kind, ref, body, created_by)
+           values ($1, $2, 'reply', 'reply:' || core.uuid7()::text, $3, $4)`,
+          [principal.workspaceId, id, text, principal.userId],
+        );
+        await event(db, principal, id, "outbound", { mail: "reply", outcome: "queued" });
+        await audit(db, principal, "intake.request.replied", ["intake_request", id], {}, client);
+        return { delivery: "queued" as const };
+      });
+    },
+
+    mine(principal) {
+      return guarded(principal, async (db) => {
+        // Policies decide what is visible: requests need triage, tasks need the Space.
+        const requests = await db.query<RequestRow>(
+          `select ${REQUEST_COLUMNS} from ${REQUEST_FROM}
+            where r.assignee_id = $1 and r.status not in ('done', 'closed')
+            order by r.sla_due_at nulls last, r.number limit $2`,
+          [principal.userId, pageSize],
+        );
+        const tasks = await db.query<IntakeMyTask>(
+          `select t.id, t.space_id, t.name, to_char(t.due_at, 'YYYY-MM-DD') due_at, t.status
+             from work.task t
+             join work.space s on s.id = t.space_id and s.deleted_at is null
+            where t.assignee_type = 'user' and t.assignee_id = $1
+              and t.status in ('todo', 'in_progress')
+            order by t.due_at nulls last, t.id limit $2`,
+          [principal.userId, pageSize],
+        );
+        return { requests: requests.rows.map(toRequest), tasks: tasks.rows };
       });
     },
   };

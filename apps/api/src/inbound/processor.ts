@@ -7,7 +7,7 @@ import { type InboundAttachment, type InboundMessage, readEmail, senderHash } fr
 
 // Reads the queue of received mail. Each message becomes one request, with the message itself
 // and its files filed in the Inbox by the intake service user, through the same upload,
-// scan and ingest path as any file. No mail is ever sent from here.
+// scan and ingest path as any file. No mail is ever sent from here (see intake/worker.ts).
 
 export interface EmailProcessorOptions {
   documents: Pick<Documents, "upload">;
@@ -187,12 +187,21 @@ export function createEmailProcessor(pool: pg.Pool, options: EmailProcessorOptio
       );
       if (why) return refuse(job, "failed", "message_unreadable");
     }
+    const kept = judged.length - dropped.length;
+    // An answer to our own question joins its request; anything else starts one.
+    if (message.replyTokens.length > 0) {
+      const [joined] = await query<{ id: string | null }>(
+        "select apps.append_inbound_reply($1, $2, $3, $4, $5) id",
+        [job.id, job.lease, message.from, message.replyTokens, kept],
+      );
+      if (joined?.id) return;
+    }
     await query("select apps.file_inbound_email($1, $2, $3, $4, $5)", [
       job.id,
       job.lease,
       message.fromName,
       message.from,
-      judged.length - dropped.length,
+      kept,
     ]);
   }
 

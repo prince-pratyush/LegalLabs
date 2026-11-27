@@ -46,6 +46,8 @@ export interface InboundMessage {
   from: string;
   fromName: string;
   messageId: string | null;
+  /** Tokens of our own mail that this one says it answers. */
+  replyTokens: string[];
   subject: string;
   date: string;
   body: string;
@@ -285,6 +287,10 @@ export async function checkSender(
   return { ok: true, from: from.address };
 }
 
+/** Our Message-IDs are `<lli.{token}@domain>`; the newest references are last. */
+const replyTokens = (header: string) =>
+  [...header.slice(-4000).matchAll(/<lli\.([0-9a-f]{32})@/g)].map((m) => m[1] as string).slice(-20);
+
 export async function readEmail(raw: Uint8Array, rules: EmailRules): Promise<ReadEmail> {
   const sent = await checkSender(raw, rules);
   if (!sent.ok) return sent;
@@ -306,6 +312,7 @@ export async function readEmail(raw: Uint8Array, rules: EmailRules): Promise<Rea
         printable(email.from?.name ?? "", EMAIL_LIMITS.name_chars) ||
         sent.from.slice(0, EMAIL_LIMITS.name_chars),
       messageId: id,
+      replyTokens: replyTokens(`${email.inReplyTo ?? ""} ${email.references ?? ""}`),
       subject: printable(email.subject ?? "", EMAIL_LIMITS.subject_chars),
       date: printable(email.headers.find((h) => h.key === "date")?.value ?? "", 100),
       body: bodyText(email),

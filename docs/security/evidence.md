@@ -132,6 +132,16 @@ A review of PR #134 before it merged. Failing tests first (`api/inbound/email.te
 | F-59 | Low      | Intake email               | A display name of only invisible characters became empty, and the accepted message was then lost                                                                                                    | Fixed: the fallback to the address is applied after cleaning                                                                                                                                 |
 | F-60 | Low      | Audit                      | A change to a channel's allowed domains, server name or status was audited by field name only                                                                                                       | Fixed: the old and new values are recorded                                                                                                                                                   |
 
+## Intake routing and mail (F-61 to F-63)
+
+A review of PR #136 before it merged. Migration 0234 was changed in place, as it had not been applied anywhere.
+
+| ID   | Severity | Area           | Finding                                                                                                                                  | State                                                                                                                                                                  |
+| ---- | -------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-61 | Medium   | Intake mail    | The only limit on mail to one address was hourly and deferred what was over, so a loop with an auto-responder was slowed and never ended | Fixed: a daily limit that drops, a limit on how many requests are answered, and `X-Auto-Response-Suppress`; lawyers' replies are exempt (`api/intake/routing.test.ts`) |
+| F-62 | Low      | Intake mail    | A mail whose sending was claimed and never recorded could be claimed without end                                                         | Fixed: five claims at most, and every claim counts against the limit                                                                                                   |
+| F-63 | Low      | Intake routing | Setting and using a route needed any role in the Space                                                                                   | Fixed: admin or collaborator in both places. No member can hold another role today, so there is no test that fails without it                                          |
+
 ## Spec versus implementation, and Phase 4 exit gates
 
 Gaps found while walking the design, not code bugs. Items marked "exit" bear on a Phase 4 exit gate.

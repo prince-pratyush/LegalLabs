@@ -479,6 +479,15 @@ export async function seed(tx: Tx) {
        values ($1, $2, sha256('mail'), 4, 'queued', 'mail')`,
       [ws, channelId],
     );
+    await tx.rows(
+      "insert into apps.intake_work (request_id, workspace_id) values ($1, $2) on conflict do nothing",
+      [requestId, ws],
+    );
+    await tx.rows(
+      `insert into apps.intake_outbound (workspace_id, request_id, kind, ref)
+       values ($1, $2, 'done', 'done')`,
+      [ws, requestId],
+    );
     return { serviceId, vaultId, typeId, requestId, documentId, channelId };
   };
   const intakes = { acme: await intake(acme, ana), beta: await intake(beta, bob) };

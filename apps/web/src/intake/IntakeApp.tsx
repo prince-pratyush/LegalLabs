@@ -1,5 +1,6 @@
 import { AppShell, Button } from "@legallabs/ui";
 import { useHash } from "../router.js";
+import { MyTasksPage } from "./MyTasksPage.js";
 import { QueuePage } from "./QueuePage.js";
 import { RequestPage } from "./RequestPage.js";
 import { goIntake, type IntakeRoute, parseIntakeRoute } from "./route.js";
@@ -8,6 +9,7 @@ import { TypesPage } from "./TypesPage.js";
 
 const LINKS: { label: string; route: IntakeRoute; pages: IntakeRoute["page"][] }[] = [
   { label: "Triage queue", route: { page: "queue" }, pages: ["queue", "request"] },
+  { label: "My tasks", route: { page: "mine" }, pages: ["mine"] },
   { label: "Request types", route: { page: "types" }, pages: ["types", "type", "new-type"] },
 ];
 
@@ -52,6 +54,8 @@ export function IntakeApp({ onLeave }: { onLeave: () => void }) {
       <div className="grid min-w-0 content-start p-6">
         {route.page === "queue" ? (
           <QueuePage />
+        ) : route.page === "mine" ? (
+          <MyTasksPage />
         ) : route.page === "request" ? (
           <RequestPage key={route.requestId} requestId={route.requestId} />
         ) : route.page === "types" ? (

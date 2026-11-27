@@ -1,5 +1,6 @@
 export type IntakeRoute =
   | { page: "queue" }
+  | { page: "mine" }
   | { page: "request"; requestId: string }
   | { page: "types" }
   | { page: "new-type" }
@@ -17,6 +18,7 @@ export function parseIntakeRoute(hash: string): IntakeRoute | null {
   const [app, page, itemId] = parts;
   if (app !== "intake") return null;
   if (!page) return { page: "queue" };
+  if (page === "mine") return { page: "mine" };
   if (page === "requests" && itemId) return { page: "request", requestId: itemId };
   if (page !== "types") return null;
   if (!itemId) return { page: "types" };
@@ -28,6 +30,8 @@ export function intakeHash(route: IntakeRoute): string {
   switch (route.page) {
     case "queue":
       return "#/intake";
+    case "mine":
+      return "#/intake/mine";
     case "request":
       return `#/intake/requests/${e(route.requestId)}`;
     case "types":

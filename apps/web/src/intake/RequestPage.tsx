@@ -43,7 +43,11 @@ function happened(event: IntakeEvent, types: IntakeType[]): string {
     case "status":
       return `Status changed from ${statusLabel(details.from)} to ${statusLabel(details.to)}`;
     case "outbound":
-      return "Message sent";
+      return details.outcome === "failed"
+        ? "Message to the requester not delivered"
+        : details.outcome === "queued"
+          ? "Reply queued"
+          : "Message sent";
     case "routed":
       return "Routed";
     case "escalated":
@@ -74,6 +78,7 @@ export function RequestPage({ requestId }: { requestId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
 
   const history = useCallback(
     () => intakeApi.events(requestId).then(setEvents, (err) => setError(messageOf(err))),
@@ -149,6 +154,21 @@ export function RequestPage({ requestId }: { requestId: string }) {
     e.preventDefault();
     const why = reason?.trim();
     if (why) act(() => intakeApi.setStatus(request.id, { status: "closed", reason: why }));
+  };
+
+  const reply = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await intakeApi.reply(request.id, answer.trim());
+      setAnswer("");
+      await history();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -259,6 +279,24 @@ export function RequestPage({ requestId }: { requestId: string }) {
               </form>
             )}
           </>
+        )}
+        {open && request.channel === "email" && request.requester.email && (
+          <form className="grid justify-items-start gap-2" onSubmit={reply}>
+            <Field label="Reply by email" className="w-full">
+              {(props) => (
+                <textarea
+                  {...props}
+                  className="min-h-20 w-full rounded-md border border-border bg-transparent p-2"
+                  value={answer}
+                  maxLength={INTAKE_LIMITS.value_chars}
+                  onChange={(e) => setAnswer(e.target.value)}
+                />
+              )}
+            </Field>
+            <Button type="submit" size="sm" disabled={busy || !answer.trim()}>
+              Send reply
+            </Button>
+          </form>
         )}
         {error && (
           <p role="alert" className="text-destructive">

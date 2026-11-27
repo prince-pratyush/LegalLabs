@@ -79,6 +79,8 @@ const request = (over: Partial<IntakeRequest> = {}): IntakeRequest => ({
   assignee_name: null,
   matter_id: null,
   sla: { due_at: "2026-11-10T08:00:00.000Z", state: "breached" },
+  classification_confidence: null,
+  task_id: null,
   created_at: "2026-11-10T00:00:00.000Z",
   updated_at: "2026-11-10T00:00:00.000Z",
   ...over,
@@ -168,6 +170,7 @@ describe("intake routes", () => {
   it("round-trip through the address", () => {
     for (const route of [
       { page: "queue" } as const,
+      { page: "mine" } as const,
       { page: "request", requestId: REQUEST } as const,
       { page: "types" } as const,
       { page: "new-type" } as const,
@@ -394,6 +397,43 @@ describe("a request", () => {
     serve({ [`GET /api/v1/apps/intake/requests/${REQUEST}`]: () => undefined });
     openRequest();
     expect(await screen.findByText("Request not found")).toBeTruthy();
+  });
+});
+
+describe("replying and my tasks", () => {
+  it("sends a reply on an open email request", async () => {
+    serve({
+      [`GET /api/v1/apps/intake/requests/${REQUEST}`]: () => detail({ channel: "email" }),
+      [`POST /api/v1/apps/intake/requests/${REQUEST}/reply`]: () => ({ delivery: "queued" }),
+    });
+    openRequest();
+    await screen.findByLabelText("Reply by email");
+    choose("Reply by email", " Tomorrow. ");
+    click("Send reply");
+    await waitFor(() =>
+      expect(sent("POST", `/apps/intake/requests/${REQUEST}/reply`)[0]?.body).toEqual({
+        text: "Tomorrow.",
+      }),
+    );
+  });
+
+  it("lists my requests and tasks together, soonest first", async () => {
+    serve({
+      "GET /api/v1/apps/intake/my-tasks": () => ({
+        requests: [request({ task_id: id(60) })],
+        tasks: [
+          { id: id(60), space_id: id(61), name: "Same", due_at: null, status: "todo" },
+          { id: id(62), space_id: id(61), name: "Draft", due_at: "2026-11-09", status: "todo" },
+        ],
+      }),
+    });
+    open("#/intake/mine");
+    const list = await screen.findByRole("list", { name: "My tasks" });
+    expect(
+      within(list)
+        .getAllByRole("link")
+        .map((a) => a.textContent),
+    ).toEqual(["Draft", "Request #1042: NDA"]);
   });
 });
 
