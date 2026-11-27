@@ -16,6 +16,9 @@ export const FACT_LIMITS = {
   page_size: 100,
   /** Names or issues a Space lists at once. */
   list_size: 2000,
+  /** Facts one chronology holds; more is refused, never cut. */
+  chronology_facts: 2000,
+  chronology_files: 2000,
   /** Files a Space lists for choosing and citing. */
   files_listed: 500,
   /** Files one extraction reads. Choosing more is refused, never silently cut. */
@@ -305,3 +308,40 @@ export interface FactExtraction {
   created_at: string;
   finished_at: string | null;
 }
+
+/** The date as exact as the fact claims to be, never more. */
+export function factDateLabel(when: FactWhen): string {
+  if (!when.event_date) return "Undated";
+  const show = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
+      timeZone: "UTC",
+      year: "numeric",
+      ...(when.date_precision === "year" ? {} : { month: "short" }),
+      ...(when.date_precision === "day" ? { day: "numeric" } : {}),
+    });
+  const start = show(when.event_date);
+  return when.event_date_end ? `${start} to ${show(when.event_date_end)}` : start;
+}
+
+export const ChronologyStyle = z.enum(["table", "narrative"]);
+export type ChronologyStyle = z.infer<typeof ChronologyStyle>;
+
+export const ChronologyFilter = z
+  .object({
+    entity_ids: ids(50).optional(),
+    issue_ids: ids(50).optional(),
+    from: FactDate.optional(),
+    to: FactDate.optional(),
+    include_disputed: z.boolean().default(false),
+  })
+  .strict();
+export type ChronologyFilter = z.infer<typeof ChronologyFilter>;
+
+export const ChronologyRequest = z
+  .object({
+    kind: z.literal("chronology").default("chronology"),
+    filter: ChronologyFilter.default({ include_disputed: false }),
+    style: ChronologyStyle.default("table"),
+  })
+  .strict();
+export type ChronologyRequest = z.infer<typeof ChronologyRequest>;

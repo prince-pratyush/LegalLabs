@@ -1,4 +1,7 @@
 import {
+  ChronologyFilter,
+  ChronologyRequest,
+  ChronologyStyle,
   EntityCreate,
   EntityPatch,
   FactCreate,
@@ -15,6 +18,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import type { Limiter } from "../auth/limiter.js";
+import type { Chronologies } from "./chronology.js";
 import type { FactExtractions } from "./extraction.js";
 import type { FactFailure, FactResult, Facts } from "./facts.js";
 
@@ -46,6 +50,15 @@ export const FACT_FAILURES: Record<
     message: "Three extractions are already running. Wait for one to finish.",
   },
   TOO_MANY_REQUESTS: { status: 429, message: "You've asked a lot just now. Try again shortly." },
+  TOO_MANY_FACTS: {
+    status: 422,
+    message: "That is too much for one chronology. Narrow the dates, issues or names.",
+  },
+  NOTHING_TO_INCLUDE: { status: 422, message: "No facts match that." },
+  EXPORT_DISABLED: {
+    status: 403,
+    message: "A source vault doesn't allow copies or downloads.",
+  },
   BAD_CURSOR: { status: 400, message: "Check the request." },
 };
 
@@ -61,11 +74,18 @@ export const FactFilterQuery = z.object({
 
 const BASE = "/apps/chronology/spaces/:space";
 
+const ExportQuery = z.object({
+  format: z.enum(["docx", "xlsx"]),
+  view: ChronologyStyle.default("table"),
+  filter: ChronologyFilter,
+});
+
 export function factHttp(
   facts: Facts,
   clientOf: (c: Context) => Client,
   extraction?: FactExtractions,
   asks?: Limiter,
+  chronologies?: Chronologies,
 ) {
   const app = new Hono<Env>();
   const limitBody = bodyLimit({
@@ -167,6 +187,46 @@ export function factHttp(
     app.get(`${BASE}/facts/extractions/:run`, async (c) =>
       answer(c, await extraction.get(me(c), param(c, "space"), param(c, "run")), "extraction"),
     );
+  }
+
+  if (chronologies) {
+    app.post(`${BASE}/facts/generate`, limitBody, async (c) => {
+      const parsed = await body(c, ChronologyRequest);
+      if (!parsed.success) return invalid(c);
+      return answer(
+        c,
+        await chronologies.generate(me(c), param(c, "space"), parsed.data, clientOf(c)),
+        null,
+        201,
+      );
+    });
+
+    app.get(`${BASE}/facts/export`, async (c) => {
+      const many = (name: string) => c.req.queries(name);
+      const parsed = ExportQuery.safeParse({
+        format: c.req.query("format"),
+        view: c.req.query("view"),
+        filter: {
+          entity_ids: many("filter[entity_id]"),
+          issue_ids: many("filter[issue_id]"),
+          from: c.req.query("filter[from]"),
+          to: c.req.query("filter[to]"),
+          include_disputed: c.req.query("include_disputed") === "true",
+        },
+      });
+      if (!parsed.success) return invalid(c);
+      const { format, view, filter } = parsed.data;
+      const result = await chronologies.export(
+        me(c),
+        param(c, "space"),
+        { format, style: view, filter },
+        clientOf(c),
+      );
+      if (!result.ok) return answer(c, result, null);
+      c.header("Content-Type", result.value.contentType);
+      c.header("Content-Disposition", `attachment; filename="${result.value.filename}"`);
+      return c.body(new Uint8Array(result.value.bytes));
+    });
   }
 
   app.get(`${BASE}/facts/:id`, async (c) =>

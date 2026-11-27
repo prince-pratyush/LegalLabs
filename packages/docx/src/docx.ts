@@ -189,3 +189,43 @@ export const citationFootnote = (citation: {
   page?: number | null;
   quote: string;
 }) => `${citation.document}${citation.page ? `, p. ${citation.page}` : ""}: "${citation.quote}"`;
+
+export interface TableDocxInput {
+  title?: string;
+  author: string;
+  date: Date | string;
+  header: readonly string[];
+  /** Cell texts; a newline starts a new line inside the cell. */
+  rows: readonly (readonly string[])[];
+  /** Paragraphs under the table. */
+  after?: readonly Block[];
+}
+
+const BORDERS = ["top", "left", "bottom", "right", "insideH", "insideV"]
+  .map((side) => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="999999"/>`)
+  .join("");
+
+/** One bordered table, its first row repeated as the heading on every page. */
+export function buildTableDocx(input: TableDocxInput): Uint8Array {
+  const cell = (text: string, bold: boolean) =>
+    `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${text
+      .split("\n")
+      .map((line) => `<w:p>${runXml({ text: line, bold })}</w:p>`)
+      .join("")}</w:tc>`;
+  const row = (cells: readonly string[], head: boolean) =>
+    `<w:tr>${head ? "<w:trPr><w:tblHeader/></w:trPr>" : ""}${cells.map((text) => cell(text, head)).join("")}</w:tr>`;
+  const table = `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${BORDERS}</w:tblBorders></w:tblPr><w:tblGrid>${input.header.map(() => "<w:gridCol/>").join("")}</w:tblGrid>${row(input.header, true)}${input.rows.map((cells) => row(cells, false)).join("")}</w:tbl>`;
+  const lists = new Lists();
+  const after = (input.after ?? []).map(
+    (block) =>
+      `<w:p>${pPrXml(block.kind, lists.numId(block.kind))}${block.runs.map((run) => runXml(run)).join("")}</w:p>`,
+  );
+  return pack({
+    ...(input.title ? { title: input.title } : {}),
+    author: input.author,
+    date: input.date,
+    // Word wants a paragraph between a table and the section's end.
+    paragraphs: [table, ...(after.length ? after : ["<w:p/>"])],
+    lists,
+  });
+}

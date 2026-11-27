@@ -40,6 +40,9 @@ export type FactFailure =
   | "TOO_MANY_DOCUMENTS"
   | "TOO_MANY_RUNS"
   | "TOO_MANY_REQUESTS"
+  | "TOO_MANY_FACTS"
+  | "NOTHING_TO_INCLUDE"
+  | "EXPORT_DISABLED"
   | "BAD_CURSOR";
 
 export type FactResult<T> = { ok: true; value: T } | { ok: false; reason: FactFailure };
