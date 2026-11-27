@@ -539,6 +539,38 @@ describe("Inbox files as material for other features", () => {
   });
 });
 
+describe("agent uploads that are not from intake", () => {
+  for (const withInbox of [true, false]) {
+    it(`stay readable ${withInbox ? "beside an Inbox" : "where there is no Inbox yet"}`, async () => {
+      await withTx(async (tx) => {
+        const s = await seed(tx);
+        await tx.asOwner();
+        if (!withInbox) {
+          await tx.rows("delete from apps.intake_inbox where workspace_id = $1", [s.acme]);
+        }
+        const { documentId } = s.documents.acme;
+        const { agentId } = s.agents.acme;
+        await tx.rows(
+          `insert into work.agent_document (workspace_id, agent_id, document_id)
+           values ($1, $2, $3) on conflict do nothing`,
+          [s.acme, agentId, documentId],
+        );
+        await tx.rows(
+          "update core.role set permissions = '{threads.use,agents.use}' where id = $1",
+          [s.roles.acmeUser],
+        );
+        await tx.rows(
+          `insert into core.share_grant (workspace_id, object_type, object_id, principal_type,
+             principal_id, level, granted_by) values ($1, 'agent', $2, 'user', $3, 'run', $4)`,
+          [s.acme, agentId, s.ben, s.ana],
+        );
+        await tx.as(s.ben, s.acme);
+        expect(await count(tx, "content.document where id = $1", [documentId])).toBe(1);
+      });
+    });
+  }
+});
+
 describe("a matter's holds and retention reach its intake files", () => {
   it("holds them, and what they unpack into, with the matter", async () => {
     await withTx(async (tx) => {
