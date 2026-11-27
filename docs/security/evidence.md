@@ -228,3 +228,14 @@ was merged.
 | F-66 | Low      | Fact extraction | Access or the permission taken away while a file was being read was not checked again, so later model calls were still made and, without `threads.use`, facts still saved                                  | Fixed: both are checked before every model call and inside the saving transaction (`api/facts/extraction.test.ts`)                                                                                                          |
 | F-67 | Low      | Fact tables     | Renaming a name or issue read from a file by case or spacing alone marked it as typed, which showed the file's name to the whole Space                                                                     | Fixed: names are compared without case, spacing or punctuation, in the API and in a database trigger (`api/facts/facts.test.ts`, `db/test/facts.test.ts`)                                                                   |
 | F-68 | Low      | Fact tables     | Removing the last extracted link deleted the name or issue, and with it links made by hand on facts the editor could not see                                                                               | Fixed: it is deleted only when no fact links it; it stays visible only through an extracted link (`db/test/facts.test.ts`). A purged file's name can stay stored, unseen, while a hand-made link remains                    |
+
+## Horizon scanning (F-69 to F-72)
+
+Found by a review of the horizon scanning, dashboard and item action changes before any of them
+was merged.
+
+| ID | Severity | Area | Finding | Status |
+| -- | -------- | ---- | ------- | ------ |
+| F-69 | Low | Horizon refresh | One column held both the schedule and the worker's lease, so editing a scan mid-refresh let a second worker grade and pay for the same items, and the first could write back a deleted cursor and push the next run out; two workers could also both pass the daily cap | Fixed: the lease is separate from the schedule, edits are counted, cursor and schedule are written only over an unedited scan, and each call's budget is reserved under a per-workspace lock (`api/horizon/horizon.test.ts`, `db/test/horizon.test.ts`) |
+| F-70 | Low | Horizon budget | A failed model attempt recorded no spend, and the refresh went on to the next source | Fixed: the most each attempted model could charge is recorded, and the refresh ends there (`api/horizon/horizon.test.ts`) |
+

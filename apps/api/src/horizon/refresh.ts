@@ -52,7 +52,12 @@ interface Claim {
   id: string;
   workspace_id: string;
   owner_id: string;
+  lease: string;
+  revision: number;
 }
+
+// The most one call may cost, held against the caps while it runs.
+const CALL_BUDGET = 0.1;
 
 interface Scan extends Wanted {
   sources: HorizonSource[];
@@ -66,7 +71,7 @@ interface State {
 
 /** The owner can no longer run the scan: the whole refresh ends and the scan stops. */
 class Lost extends Error {}
-/** Scanning was turned off, or the scan was deleted, while it was being worked. */
+/** Turned off, deleted, edited or taken over while it was being worked: write no more. */
 class Gone extends Error {}
 
 /** The scan as its owner may run it right now, or the reason they may not. */
@@ -94,14 +99,43 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
   const now = options.now ?? (() => new Date());
   const print = options.print ?? (() => {});
 
-  const check = (p: Principal, id: string) => asApp(pool, p, (db) => current(db, id));
+  /**
+   * Locks the scan for the transaction and says whether it is still as it was claimed. The
+   * lease must still be this worker's; `unedited` also asks that nobody has changed the scan.
+   */
+  async function held(db: Db, claim: Claim, unedited: boolean) {
+    const { rows } = await db.query<{ lease_token: string | null; revision: number }>(
+      "select lease_token, revision from apps.horizon_scan where id = $1 for update",
+      [claim.id],
+    );
+    const scan = rows[0];
+    if (scan?.lease_token !== claim.lease) throw new Gone();
+    if (unedited && scan.revision !== claim.revision) throw new Gone();
+  }
 
-  const lease = (p: Principal, id: string, seconds: number) =>
+  const check = (p: Principal, claim: Claim) =>
+    asApp(pool, p, async (db) => {
+      const scan = await current(db, claim.id);
+      await held(db, claim, true);
+      return scan;
+    });
+
+  const renew = (p: Principal, claim: Claim) =>
     asApp(pool, p, (db) =>
-      db.query("update apps.horizon_scan set next_refresh_at = $2 where id = $1", [
-        id,
-        new Date(now().getTime() + seconds * 1000),
+      db.query("update apps.horizon_scan set lease_until = $3 where id = $1 and lease_token = $2", [
+        claim.id,
+        claim.lease,
+        new Date(now().getTime() + leaseSeconds * 1000),
       ]),
+    );
+
+  const release = (p: Principal, claim: Claim) =>
+    asApp(pool, p, (db) =>
+      db.query(
+        `update apps.horizon_scan set lease_until = null, lease_token = null
+          where id = $1 and lease_token = $2`,
+        [claim.id, claim.lease],
+      ),
     );
 
   const stateOf = (p: Principal, id: string, source: string, from: string) =>
@@ -126,8 +160,10 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
       [p.workspaceId, id, source, JSON.stringify({ ...state.cursor, bad: state.bad }), now()],
     );
 
-  const failed = (p: Principal, id: string, source: string, state: State, why: string) =>
+  const failed = (p: Principal, claim: Claim, source: string, state: State, why: string) =>
     asApp(pool, p, async (db) => {
+      await held(db, claim, true);
+      const { id } = claim;
       const { rows } = await db.query<{ failures: number }>(
         `insert into apps.horizon_cursor as c
            (workspace_id, scan_id, source_id, cursor, failures, last_error)
@@ -172,14 +208,17 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
 
   async function save(
     p: Principal,
-    id: string,
+    claim: Claim,
     source: HorizonSource,
     graded: [ScanCandidate, Assessment][],
   ) {
     const jurisdiction = HORIZON_SOURCES.find((s) => s.id === source)?.jurisdiction;
+    const { id } = claim;
     await asApp(pool, p, async (db) => {
-      // Asked again in the writing transaction: the model call took time.
+      // Asked again in the writing transaction: the model call took time. What was paid for is
+      // kept even if the scan was edited meanwhile.
       await current(db, id);
+      await held(db, claim, false);
       for (const [item, grade] of graded) {
         await db.query(
           `insert into apps.horizon_item (workspace_id, scan_id, source_id, external_id, url,
@@ -208,6 +247,22 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
     });
   }
 
+  /** Holds the call's whole budget against the day's cap, or null when the cap is reached. */
+  const reserve = (p: Principal) =>
+    asApp(pool, p, async (db) => {
+      // One reservation at a time in a workspace, so two workers can't both see room.
+      await db.query("select pg_advisory_xact_lock(hashtextextended('horizon_spend:' || $1, 0))", [
+        p.workspaceId,
+      ]);
+      if ((await spentToday(db)) >= dailyCost) return null;
+      const { rows } = await db.query<{ id: string }>(
+        `insert into apps.horizon_spend (workspace_id, owner_id, usd, at, settled)
+         values ($1, $2, $3, $4, false) returning id`,
+        [p.workspaceId, p.userId, CALL_BUDGET, now()],
+      );
+      return rows[0]?.id ?? null;
+    });
+
   /** One batch through the model. Null: no usable answer; "stop": nothing more this time. */
   async function grade(
     p: Principal,
@@ -215,46 +270,67 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
     items: ScanCandidate[],
     spend: { usd: number },
   ): Promise<Map<number, Assessment> | null | "stop"> {
-    if (spend.usd >= maxCost || (await asApp(pool, p, spentToday)) >= dailyCost) return "stop";
+    if (spend.usd >= maxCost) return "stop";
+    const messages = [
+      { role: "system" as const, content: SYSTEM },
+      { role: "user" as const, content: prompt(wanted, items) },
+    ];
+    // The most a model could charge for these, counted as the gateway counts them.
+    const input = messages.reduce((n, m) => n + 16 + Buffer.byteLength(m.content), 0);
+    const models = gateway.models("read_extract");
+    const worst = (ids: readonly string[]) =>
+      models
+        .filter((m) => ids.includes(m.id))
+        .reduce((n, m) => n + (input * m.price.input + MAX_OUTPUT * m.price.output) / 1e6, 0);
+    const reserved = await reserve(p);
+    if (!reserved) return "stop";
+    const settle = async (usd: number) => {
+      spend.usd += usd;
+      await asApp(pool, p, (db) =>
+        db.query("select apps.settle_horizon_spend($1, $2)", [reserved, usd]),
+      );
+    };
     let output: string;
     try {
       const result = await gateway.call({
         task_class: "read_extract",
-        messages: [
-          { role: "system", content: SYSTEM },
-          { role: "user", content: prompt(wanted, items) },
-        ],
-        budget: { max_output: MAX_OUTPUT, max_cost_usd: 0.1 },
+        messages,
+        budget: { max_output: MAX_OUTPUT, max_cost_usd: CALL_BUDGET },
         routing: { workspace: p.workspaceId },
         trace: randomUUID(),
       });
       output = result.output;
-      spend.usd += result.cost_usd;
-      // Spent is spent, whatever becomes of the answer.
-      await asApp(pool, p, (db) =>
-        db.query(
-          "insert into apps.horizon_spend (workspace_id, owner_id, usd, at) values ($1, $2, $3, $4)",
-          [p.workspaceId, p.userId, result.cost_usd, now()],
-        ),
+      // Models ahead of the one that answered were tried and may have charged.
+      const ahead = models.slice(
+        0,
+        models.findIndex((m) => m.id === result.model),
       );
+      await settle(result.cost_usd + worst(ahead.map((m) => m.id)));
     } catch (err) {
-      if (err instanceof GatewayError) return "stop";
-      throw err;
+      if (!(err instanceof GatewayError)) throw err;
+      await settle(worst(err.attempted));
+      return "stop";
     }
     return parse(output, wanted);
   }
 
-  async function source(p: Principal, claim: Claim, name: HorizonSource, spend: { usd: number }) {
-    const scan = await check(p, claim.id);
+  /** Reads one source on. False when the refresh should end here. */
+  async function source(
+    p: Principal,
+    claim: Claim,
+    name: HorizonSource,
+    spend: { usd: number },
+  ): Promise<boolean> {
+    const scan = await check(p, claim);
     const state = await stateOf(p, claim.id, name, scan.from_date);
-    await lease(p, claim.id, leaseSeconds);
+    await renew(p, claim);
     let found: Awaited<ReturnType<Scanners[HorizonSource]>>;
     try {
       found = await scanners[name](state.cursor);
     } catch (err) {
       print(`horizon ${claim.id}: ${name} failed: ${(err as Error).constructor.name}`);
-      await failed(p, claim.id, name, state, (err as Error).constructor.name);
-      return;
+      await failed(p, claim, name, state, (err as Error).constructor.name);
+      return true;
     }
     const fresh = await unseen(
       p,
@@ -263,14 +339,16 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
     );
     let bad = state.bad;
     let complete = true;
+    let carryOn = true;
     for (let at = 0; at < fresh.length; at += BATCH) {
       const items = fresh.slice(at, at + BATCH);
       // What the owner may do, and what the scan now asks for, right before each call.
-      const wanted = await check(p, claim.id);
-      await lease(p, claim.id, leaseSeconds);
+      const wanted = await check(p, claim);
+      await renew(p, claim);
       const answer = await grade(p, wanted, items, spend);
       if (answer === "stop") {
         complete = false;
+        carryOn = false;
         break;
       }
       if (!answer && ++bad < BAD_ANSWERS) {
@@ -280,15 +358,17 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
       bad = 0;
       await save(
         p,
-        claim.id,
+        claim,
         name,
         items.map((item, i) => [item, answer?.get(i + 1) ?? NOT_ASSESSED]),
       );
     }
     // The cursor only moves once everything up to it is held.
-    await asApp(pool, p, (db) =>
-      keep(db, p, claim.id, name, { cursor: complete ? found.cursor : state.cursor, bad }),
-    );
+    await asApp(pool, p, async (db) => {
+      await held(db, claim, true);
+      await keep(db, p, claim.id, name, { cursor: complete ? found.cursor : state.cursor, bad });
+    });
+    return carryOn;
   }
 
   async function refresh(claim: Claim) {
@@ -298,19 +378,27 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
       workspaceId: claim.workspace_id,
     };
     try {
-      const scan = await check(p, claim.id);
+      const scan = await check(p, claim);
       const spend = { usd: 0 };
-      for (const name of scan.sources) await source(p, claim, name, spend);
-      await asApp(pool, p, (db) =>
-        db.query(
-          "update apps.horizon_scan set last_refresh_at = $2, next_refresh_at = $3 where id = $1",
+      for (const name of scan.sources) {
+        if (!(await source(p, claim, name, spend))) break;
+      }
+      await asApp(pool, p, async (db) => {
+        await held(db, claim, true);
+        await db.query(
+          `update apps.horizon_scan set last_refresh_at = $2, next_refresh_at = $3,
+              lease_until = null, lease_token = null
+            where id = $1`,
           [claim.id, now(), new Date(now().getTime() + HOUR)],
-        ),
-      );
+        );
+      });
     } catch (err) {
       if (err instanceof Lost || (err as { code?: string }).code === RLS_REFUSED) {
         await asWorker(pool, (w) => w.query("select apps.stop_horizon_scan($1)", [claim.id]));
-      } else if (!(err instanceof Gone)) {
+      } else if (err instanceof Gone) {
+        // Let go, so an edited scan is picked up again without waiting out the lease.
+        await release(p, claim);
+      } else {
         // Left for the lease to run out; a database error names no values here.
         print(`horizon ${claim.id} failed: ${describeError(err)}`);
       }

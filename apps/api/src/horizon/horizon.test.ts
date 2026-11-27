@@ -131,7 +131,38 @@ async function world(setup: Setup = {}) {
         where id = (select role_id from core."user" where id = $1)`,
       [scanner.userId, list],
     );
-  return { ...w, m, s, scanner, create, made, tick, later, items, scan, permissions };
+  /** Another server's worker over the same database. */
+  const second = () =>
+    createHorizonRefresh(pool, {
+      gateway: m.gateway,
+      scanners: s.scanners,
+      now: () => new Date(Math.max(clock, Date.now() + 1000)),
+      ...setup.options,
+    }).tick(w.ana.workspaceId);
+  const spent = async () =>
+    Number(
+      (
+        await pool.query<{ usd: string }>(
+          "select coalesce(sum(usd), 0) usd from apps.horizon_spend where workspace_id = $1",
+          [w.ana.workspaceId],
+        )
+      ).rows[0]?.usd,
+    );
+  return {
+    ...w,
+    second,
+    spent,
+    m,
+    s,
+    scanner,
+    create,
+    made,
+    tick,
+    later,
+    items,
+    scan,
+    permissions,
+  };
 }
 
 describe("horizon scans", () => {
@@ -376,5 +407,58 @@ describe("horizon scans", () => {
     await w.call(w.ana, "PUT", "/horizon/settings", { enabled: false });
     await w.tick();
     expect(w.s.asked).toEqual([]);
+  });
+});
+
+describe("a refresh and what happens around it", () => {
+  const forty = () => Array.from({ length: 45 }, (_, i) => candidate(i + 10));
+
+  it("keeps its lease when the scan is edited, and writes no cursor or schedule over it", async () => {
+    const w = await world({ found: { fr: forty }, options: { batch: 1 } });
+    const id = await w.made({ from_date: daysAgo(3) });
+    w.m.hooks.during = async () => {
+      w.m.hooks.during = undefined as never;
+      await w.call(w.scanner, "PATCH", `/horizon/scans/${id}`, { from_date: daysAgo(5) });
+      // Due again at once, but still held: no second worker grades the same items.
+      await w.second();
+    };
+    await w.tick();
+    expect(w.m.asked).toHaveLength(1);
+    const { rows: cursors } = await pool.query(
+      "select 1 from apps.horizon_cursor where scan_id = $1",
+      [id],
+    );
+    expect(cursors).toEqual([]);
+    expect((await w.scan(id)).last_refresh_at).toBeNull();
+    // The lease is let go, so the changed scan is read from its new start straight away.
+    await w.tick();
+    expect(w.s.asked.at(-1)?.[1]).toEqual({ since: daysAgo(5) });
+    expect((await w.scan(id)).items).toBe(45);
+  });
+
+  it("counts a call in flight against the daily cap", async () => {
+    const w = await world({ options: { dailyCostUsd: 0.000001 } });
+    await w.made();
+    await w.made();
+    w.m.hooks.during = async () => {
+      w.m.hooks.during = undefined as never;
+      await w.second();
+    };
+    await w.tick();
+    expect(w.m.asked).toHaveLength(1);
+  });
+
+  it("records what a failed model call may have cost, and ends the refresh there", async () => {
+    const w = await world({
+      found: { fr: () => [candidate(1)], ecfr: () => [candidate(2)] },
+      answer: () => {
+        throw new Error("provider down");
+      },
+    });
+    const id = await w.made({ sources: ["fr", "ecfr"] });
+    await w.tick();
+    expect(w.s.asked.map(([source]) => source)).toEqual(["fr"]);
+    expect(await w.spent()).toBeGreaterThan(0);
+    expect((await w.scan(id)).items).toBe(0);
   });
 });

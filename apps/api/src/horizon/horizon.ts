@@ -326,7 +326,7 @@ export function createHorizon(pool: pg.Pool) {
         await db.query(
           `update apps.horizon_scan set name = $2, purpose = $3, jurisdictions = $4,
              industries = $5, topics = $6, sources = $7, from_date = $8, relevance_floor = $9,
-             stopped = false, updated_at = now(),
+             stopped = false, updated_at = now(), revision = revision + 1,
              next_refresh_at = case when $10 then least(next_refresh_at, now())
                                     else next_refresh_at end
            where id = $1`,
