@@ -73,6 +73,9 @@ export {
 export { type DiffOp, diffList, diffWords, type ListChange } from "./diff.js";
 export { ErrorBody } from "./error.js";
 export {
+  ChronologyFilter,
+  ChronologyRequest,
+  ChronologyStyle,
   DatePrecision,
   EntityCreate,
   EntityKind,
@@ -97,6 +100,7 @@ export {
   FactStatusRequest,
   type FactVersion,
   type FactWhen,
+  factDateLabel,
   factWhenProblem,
   IssueCreate,
   IssuePatch,

@@ -1,4 +1,5 @@
 import type {
+  ChronologyStyle,
   EntityKind,
   Fact,
   FactEntity,
@@ -9,6 +10,7 @@ import type {
   FactWhen,
   PageLayout,
 } from "@legallabs/contracts";
+import { ApiError, FALLBACK } from "../api.js";
 import { request, send } from "../http.js";
 
 export interface FactFilter {
@@ -42,7 +44,62 @@ export function filterQuery(filter: FactFilter, cursor?: string): string {
   return text ? `?${text}` : "";
 }
 
+export interface ChronologyChoice {
+  style: ChronologyStyle;
+  include_disputed: boolean;
+}
+
+/** The part of the table's filters a chronology takes: names, issues and dates. */
+const chronologyFilter = (filter: FactFilter, include_disputed: boolean) => ({
+  ...(filter.entity_id ? { entity_ids: [filter.entity_id] } : {}),
+  ...(filter.issue_id ? { issue_ids: [filter.issue_id] } : {}),
+  ...(filter.from ? { from: filter.from } : {}),
+  ...(filter.to ? { to: filter.to } : {}),
+  include_disputed,
+});
+
+export function exportUrl(
+  space: string,
+  format: "docx" | "xlsx",
+  filter: FactFilter,
+  choice: ChronologyChoice,
+): string {
+  const { entity_id, issue_id, from, to } = filter;
+  const query = new URLSearchParams({ format, view: choice.style });
+  for (const [key, value] of Object.entries({ entity_id, issue_id, from, to })) {
+    if (value) query.set(`filter[${key}]`, value);
+  }
+  if (choice.include_disputed) query.set("include_disputed", "true");
+  return `${base(space)}/facts/export?${query}`;
+}
+
+/** Fetched rather than linked, so a refusal is shown as words and not saved as a file. */
+async function download(path: string, filename: string) {
+  const res = await fetch(`/api/v1${path}`, { credentials: "same-origin" });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as {
+      code?: string;
+      message?: string;
+    } | null;
+    throw new ApiError(res.status, body?.code ?? "UNKNOWN", body?.message ?? FALLBACK);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export const factsApi = {
+  generate: (space: string, filter: FactFilter, choice: ChronologyChoice) =>
+    send<{ thread_id: string; facts: number; left_out: number }>(
+      "POST",
+      `${base(space)}/facts/generate`,
+      { style: choice.style, filter: chronologyFilter(filter, choice.include_disputed) },
+    ),
+  export: (space: string, format: "docx" | "xlsx", filter: FactFilter, choice: ChronologyChoice) =>
+    download(exportUrl(space, format, filter, choice), `chronology.${format}`),
   list: (space: string, filter: FactFilter, cursor?: string) =>
     request<{ facts: Fact[]; next_cursor: string | null }>(
       `${base(space)}/facts${filterQuery(filter, cursor)}`,

@@ -6,6 +6,7 @@ import { createApp } from "./app.js";
 import { createAuth } from "./auth/auth.js";
 import { hashPassword } from "./auth/password.js";
 import { createDrafts } from "./drafts/drafts.js";
+import { createChronologies } from "./facts/chronology.js";
 import { createFacts } from "./facts/facts.js";
 import { createSpaceModule } from "./spaces/module.js";
 import { scriptedTaskRuns } from "./spaces/ports.js";
@@ -42,6 +43,7 @@ export async function factWorld(
     vaults: createVaults(pool, { documents, store }),
     spaces: createSpaceModule(pool, { runs: scriptedTaskRuns() }),
     facts: createFacts(pool),
+    chronologies: createChronologies(pool),
     clientIp: () => "203.0.113.9",
     ...extra({ documents }),
   });

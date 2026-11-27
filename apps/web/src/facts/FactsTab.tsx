@@ -1,11 +1,12 @@
-import type {
-  Anchor,
-  EntityKind,
-  Fact,
-  FactEntity,
-  FactFile,
-  FactIssue,
-  FactStatus,
+import {
+  type Anchor,
+  type EntityKind,
+  type Fact,
+  type FactEntity,
+  type FactFile,
+  type FactIssue,
+  type FactStatus,
+  factDateLabel,
 } from "@legallabs/contracts";
 import { Button, Input, Label, StatusText, Textarea, type Tone, toast } from "@legallabs/ui";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
@@ -14,6 +15,7 @@ import { formatDate } from "../vaults/shared.js";
 import { openCitation } from "../viewer/open-citation.js";
 import { AddFact, DateFields, toWhen, type When } from "./AddFact.js";
 import { type FactFilter, factsApi } from "./api.js";
+import { ChronologyPanel } from "./ChronologyPanel.js";
 import { ExtractPanel } from "./ExtractPanel.js";
 
 const select = "h-8 rounded-md border border-control bg-bg-raised px-2 text-ui";
@@ -30,20 +32,6 @@ const DECIDE: { status: FactStatus; verb: string }[] = [
   { status: "disputed", verb: "Dispute" },
   { status: "rejected", verb: "Reject" },
 ];
-
-/** The date as exact as the fact claims to be, never more. */
-export function factDate(fact: Pick<Fact, "event_date" | "event_date_end" | "date_precision">) {
-  if (!fact.event_date) return "Undated";
-  const show = (iso: string) =>
-    new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
-      timeZone: "UTC",
-      year: "numeric",
-      ...(fact.date_precision === "year" ? {} : { month: "short" }),
-      ...(fact.date_precision === "day" ? { day: "numeric" } : {}),
-    });
-  const start = show(fact.event_date);
-  return fact.event_date_end ? `${start} to ${show(fact.event_date_end)}` : start;
-}
 
 type GroupBy = "none" | "issue" | "entity";
 
@@ -141,7 +129,7 @@ function Row({
 
   return (
     <tr className="border-t border-control align-top">
-      <td className="p-2 whitespace-nowrap">{factDate(fact)}</td>
+      <td className="p-2 whitespace-nowrap">{factDateLabel(fact)}</td>
       <td className="p-2">
         {editing ? (
           <form onSubmit={save} className="grid gap-2">
@@ -556,6 +544,7 @@ export function FactsTab({ spaceId }: { spaceId: string }) {
           />
         )}
       </section>
+      <ChronologyPanel spaceId={spaceId} filter={filter} />
       <Registry spaceId={spaceId} entities={entities} issues={issues} onChanged={loadNames} />
     </div>
   );

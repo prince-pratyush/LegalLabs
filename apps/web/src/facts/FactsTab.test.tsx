@@ -1,9 +1,10 @@
-import type { Fact, FactExtraction } from "@legallabs/contracts";
+import { type Fact, type FactExtraction, factDateLabel } from "@legallabs/contracts";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { parseSpaceRoute } from "../spaces/route.js";
 import { DOC, FakeSource, type Handler, RUN_ID, serve, VERSION } from "../testing.js";
-import { FactsTab, factDate, grouped } from "./FactsTab.js";
+import { exportUrl } from "./api.js";
+import { FactsTab, grouped } from "./FactsTab.js";
 
 const SPACE = "0190a000-0000-7000-8000-000000000010";
 const BASE = `/api/v1/apps/chronology/spaces/${SPACE}`;
@@ -120,11 +121,11 @@ describe("facts screen", () => {
 
   it("shows a date only as exactly as it is known", () => {
     const when = (date_precision: Fact["date_precision"]) =>
-      factDate({ event_date: "2021-03-01", event_date_end: null, date_precision });
+      factDateLabel({ event_date: "2021-03-01", event_date_end: null, date_precision });
     expect([when("day"), when("month"), when("year")]).toEqual(["1 Mar 2021", "Mar 2021", "2021"]);
-    expect(factDate({ event_date: null, event_date_end: null, date_precision: "unknown" })).toBe(
-      "Undated",
-    );
+    expect(
+      factDateLabel({ event_date: null, event_date_end: null, date_precision: "unknown" }),
+    ).toBe("Undated");
   });
 
   it("groups by name, keeping facts that name no one", () => {
@@ -256,6 +257,41 @@ describe("facts screen", () => {
         issue_ids: [],
         citations: [{ document_version_id: VERSION, page_no: 1, quote: QUOTE }],
       }),
+    );
+  });
+
+  it("drafts a chronology in a thread from the filters in view", async () => {
+    const sent = serve(
+      routes({
+        [`GET ${BASE}/facts?filter%5Bfrom%5D=2021-01-01`]: () => [
+          200,
+          { facts: [fact()], next_cursor: null },
+        ],
+        [`POST ${BASE}/facts/generate`]: () => [201, { thread_id: "t1", facts: 1, left_out: 0 }],
+      }),
+    );
+    render(<FactsTab spaceId={SPACE} />);
+    await screen.findByRole("table", { name: "Facts" });
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2021-01-01" } });
+    fireEvent.change(screen.getByLabelText("Layout"), { target: { value: "narrative" } });
+    fireEvent.click(screen.getByRole("button", { name: "Draft in a thread" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/t/t1"));
+    expect(sent.find((c) => c.route === `POST ${BASE}/facts/generate`)?.body).toEqual({
+      style: "narrative",
+      filter: { from: "2021-01-01", include_disputed: false },
+    });
+  });
+
+  it("asks for an export of the same view", () => {
+    expect(
+      exportUrl(
+        SPACE,
+        "docx",
+        { issue_id: "i1", status: "confirmed" },
+        { style: "table", include_disputed: true },
+      ),
+    ).toBe(
+      `/apps/chronology/spaces/${SPACE}/facts/export?format=docx&view=table&filter%5Bissue_id%5D=i1&include_disputed=true`,
     );
   });
 });

@@ -3,7 +3,13 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
-import type { DraftFailure, DraftResult, Drafts, DraftView } from "./drafts.js";
+import {
+  CopyRefused,
+  type DraftFailure,
+  type DraftResult,
+  type Drafts,
+  type DraftView,
+} from "./drafts.js";
 
 type Env = { Variables: { principal: Principal } };
 
@@ -150,16 +156,25 @@ export function draftHttp(drafts: Drafts, clientOf: (c: Context) => Client) {
     const template = TemplateChoice.safeParse(c.req.query("template") ?? "default");
     if ((tracked && !tracked.success) || !format.success || !template.success) return invalid(c);
     if (tracked && format.data === "pdf") return invalid(c);
-    const file = await drafts.export(
-      c.get("principal"),
-      c.req.param("id"),
-      {
-        ...(tracked?.success ? { trackedFrom: tracked.data } : {}),
-        format: format.data,
-        template: template.data,
-      },
-      clientOf(c),
-    );
+    let file: Awaited<ReturnType<Drafts["export"]>>;
+    try {
+      file = await drafts.export(
+        c.get("principal"),
+        c.req.param("id"),
+        {
+          ...(tracked?.success ? { trackedFrom: tracked.data } : {}),
+          format: format.data,
+          template: template.data,
+        },
+        clientOf(c),
+      );
+    } catch (err) {
+      if (!(err instanceof CopyRefused)) throw err;
+      return c.json(
+        { code: "EXPORT_DISABLED", message: "A source vault doesn't allow copies or downloads." },
+        403,
+      );
+    }
     if (!file) return notFound(c);
     c.header(
       "Content-Type",

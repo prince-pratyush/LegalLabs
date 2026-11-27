@@ -15,6 +15,7 @@ import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
+import { mayCopy } from "../documents/copy.js";
 
 export type DraftKind = "notepad" | "editor";
 
@@ -45,6 +46,9 @@ export type DraftFailure =
   | "STALE"
   | "TOO_LONG_TO_EDIT"
   | "TOO_LARGE";
+/** A source vault of the draft's thread doesn't let this person take a copy. */
+export class CopyRefused extends Error {}
+
 export type DraftResult = { ok: true; draft: DraftView } | { ok: false; reason: DraftFailure };
 
 export interface Drafts {
@@ -477,6 +481,13 @@ export function createDrafts(
       return asApp(pool, principal, async (db) => {
         const draft = await load(db, principal, draftId);
         if (!draft) return null;
+        // Asked of whoever is downloading, now: not of the maker when the draft was made.
+        const { rows: thread } = await db.query<{ source_documents: string[] }>(
+          "select source_documents from work.thread where id = $1",
+          [draft.threadId],
+        );
+        const sources = thread[0]?.source_documents ?? [];
+        if (sources.length > 0 && !(await mayCopy(db, sources))) throw new CopyRefused();
         const { rows: author } = await db.query<{ name: string; email: string }>(
           `select name, email from core."user" where id = $1`,
           [principal.userId],
