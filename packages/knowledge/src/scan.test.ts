@@ -70,6 +70,24 @@ describe("Federal Register scan", () => {
     expect(found.items.map((i) => i.externalId)).toEqual(["2026-00002"]);
   });
 
+  it("leaves out what could not be stored, and never cuts a character in half", async () => {
+    const found = await scan(
+      "fr",
+      {
+        [FR]: {
+          total_pages: 1,
+          results: [
+            frDoc(1, { title: "   " }),
+            frDoc(2, { publication_date: "2026-02-31" }),
+            frDoc(3, { title: `${"a".repeat(999)}\u{1F600}` }),
+          ],
+        },
+      },
+      { since: "2026-03-01" },
+    );
+    expect(found.items.map((i) => i.title)).toEqual([`${"a".repeat(999)}\ufffd`]);
+  });
+
   it("fails on an answer that is not the API's", async () => {
     await expect(scan("fr", { [FR]: "<html>" }, { since: "2026-03-01" })).rejects.toThrow();
   });

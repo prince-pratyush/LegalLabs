@@ -92,11 +92,14 @@ export function parse(output: string, wanted: Wanted): Map<number, Assessment> |
     const entry = Entry.safeParse(one).data;
     if (!entry || found.has(entry.n)) continue;
     // A link in the explanation could only come from the published text or be made up.
-    const explanation = storable(stripInvisible(entry.explanation))
-      .replace(/\bhttps?:\/\/\S+/gi, "[link removed]")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, HORIZON_LIMITS.purpose_chars - 10);
+    // Made storable after the cut, which can leave half of a character.
+    const explanation = storable(
+      stripInvisible(entry.explanation)
+        .replace(/\bhttps?:\/\/\S+/gi, "[link removed]")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, HORIZON_LIMITS.purpose_chars - 10),
+    );
     if (!explanation) continue;
     found.set(entry.n, {
       relevance: entry.relevance,

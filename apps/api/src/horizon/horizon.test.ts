@@ -112,7 +112,11 @@ async function world(setup: Setup = {}) {
     if (res.status !== 201) throw new Error(JSON.stringify(res.body));
     return res.body.scan.id as string;
   };
-  const tick = () => refresh.tick(w.ana.workspaceId);
+  // A scan is due from the database's own "now", which a slow setup leaves ahead of this clock.
+  const tick = () => {
+    clock = Math.max(clock, Date.now() + 1000);
+    return refresh.tick(w.ana.workspaceId);
+  };
   const later = async (hours = 1) => {
     clock += hours * HOUR + 1000;
     await tick();
