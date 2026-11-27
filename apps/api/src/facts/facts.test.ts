@@ -240,6 +240,27 @@ describe("fact tables", () => {
     expect(unlinked.body.fact).toMatchObject({ entity_ids: [], version_no: 2 });
   });
 
+  it("lists the files a fact can come from, only while the caller can open them", async () => {
+    const r = await room();
+    const listed = await r.call(r.ben, "GET", `${r.base}/files`);
+    expect(listed.body).toEqual({
+      files: [
+        {
+          document_id: r.letter.documentId,
+          version_id: r.letter.versionId,
+          name: "letter.txt",
+          vault_id: r.vaultId,
+          vault_name: "Data room",
+          page_count: 1,
+          ready: true,
+        },
+      ],
+      truncated: false,
+    });
+    await r.call(r.ana, "DELETE", `/spaces/${r.spaceId}/resources/${r.resourceId}`);
+    expect((await r.call(r.ben, "GET", `${r.base}/files`)).body.files).toEqual([]);
+  });
+
   it("pages by date with a cursor", async () => {
     const r = await room();
     const one = await r.add({ event_date: null, date_precision: "unknown" });

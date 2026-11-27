@@ -8,6 +8,7 @@ import {
   type FactCitationInput,
   type FactCreate,
   type FactEntity,
+  type FactFile,
   type FactIssue,
   type FactPatch,
   type FactStatus,
@@ -60,6 +61,10 @@ export interface FactPage {
 }
 
 export interface Facts {
+  files(
+    p: Principal,
+    spaceId: string,
+  ): Promise<FactResult<{ files: FactFile[]; truncated: boolean }>>;
   list(p: Principal, spaceId: string, filter: FactFilter): Promise<FactResult<FactPage>>;
   get(p: Principal, spaceId: string, id: string): Promise<FactResult<Fact>>;
   create(
@@ -462,6 +467,29 @@ export function createFacts(pool: pg.Pool): Facts {
   }
 
   return {
+    async files(p, spaceId) {
+      return within(p, spaceId, async (db) => {
+        const { rows } = await db.query<FactFile>(
+          `select d.id document_id, v.id version_id, d.name, s.id vault_id, s.name vault_name,
+                  v.page_count, coalesce(j.status = 'indexed', false) ready
+             from content.document d
+             join work.space_resource r on r.resource_type = 'vault' and r.resource_id = d.vault_id
+                                       and r.space_id = $1 and r.suspended_reason is null
+             join content.vault s on s.id = d.vault_id
+             join lateral (select x.id, x.page_count from content.document_version x
+                            where x.document_id = d.id order by x.version_no desc limit 1) v on true
+             left join content.ingest_job j on j.version_id = v.id
+            order by lower(s.name), s.id, lower(d.name), d.id
+            limit ${FACT_LIMITS.files_listed + 1}`,
+          [spaceId],
+        );
+        return {
+          files: rows.slice(0, FACT_LIMITS.files_listed),
+          truncated: rows.length > FACT_LIMITS.files_listed,
+        };
+      });
+    },
+
     async list(p, spaceId, filter) {
       return within(p, spaceId, async (db) => {
         const { where, params } = factWhere(spaceId, filter);

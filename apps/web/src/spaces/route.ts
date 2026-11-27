@@ -1,9 +1,17 @@
-export type SpaceTab = "tasks" | "members" | "resources" | "guests" | "activity" | "context";
+export type SpaceTab =
+  | "tasks"
+  | "members"
+  | "resources"
+  | "facts"
+  | "guests"
+  | "activity"
+  | "context";
 
 const TABS: readonly SpaceTab[] = [
   "tasks",
   "members",
   "resources",
+  "facts",
   "guests",
   "activity",
   "context",
