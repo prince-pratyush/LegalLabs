@@ -72,7 +72,10 @@ export function intakeDesk(pool: pg.Pool) {
   });
   const provider = createFakeEmailProvider();
   const processor = createEmailProcessor(pool, { documents: raw, scanner: createStubScanner() });
+  /** Null for the real time. */
+  const clock = { at: null as Date | null };
   const worker = createIntakeWorker(pool, {
+    now: () => clock.at ?? new Date(),
     gateway,
     store: documents.store,
     mail: { provider },
@@ -195,5 +198,5 @@ export function intakeDesk(pool: pg.Pool) {
     return { admin, lawyer, spaceId, channelId, type, deliver, tick, requests, request, answer };
   };
 
-  return { app, call, member, workspace, open, model, provider, worker, intake, channels };
+  return { app, call, member, workspace, open, model, provider, worker, intake, channels, clock };
 }

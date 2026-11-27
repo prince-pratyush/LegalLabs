@@ -211,7 +211,14 @@ export const auditActions: string[] = [
   ...family("intake.type", ["created", "updated", "deleted"]),
   ...family("intake.request", ["created", "classified", "assigned", "status_changed", "refused"]),
   "intake.attachment_added",
-  ...family("intake.request", ["routed", "replied", "delivery_failed"]),
+  ...family("intake.request", [
+    "routed",
+    "replied",
+    "delivery_failed",
+    "sla_breached",
+    "escalated",
+    "merged",
+  ]),
   ...family("intake.channel", ["created", "updated", "secret_rotated"]),
   ...family("email", ["inbound_rejected", "inbound_failed"]),
 ];

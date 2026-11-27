@@ -91,6 +91,7 @@ export const NOTIFICATION_KINDS = {
   "agent.schedule_run_failed": meta("agents", false),
   "task.assigned": meta("tasks", true),
   "intake.request_assigned": meta("tasks", true),
+  "intake.request_escalated": meta("tasks", true),
   "task.status_changed": meta("tasks", false),
   "task.commented": meta("tasks", false),
   "task.mentioned": meta("tasks", false),

@@ -1,6 +1,8 @@
 import {
   IntakeAssign,
   IntakeChannel,
+  IntakeEscalate,
+  IntakeMerge,
   IntakeReply,
   IntakeRequestCreate,
   IntakeSetType,
@@ -33,6 +35,7 @@ const FAILURES: Record<IntakeFailure, { status: Status; message: string }> = {
   DUPLICATE: { status: 409, message: "That request was already received." },
   TYPE_REQUIRED: { status: 409, message: "Give the request a type first." },
   WRONG_STATE: { status: 409, message: "That request isn't in a state that allows this." },
+  CANNOT_MERGE: { status: 409, message: "Those requests can't be merged." },
   BAD_CURSOR: { status: 400, message: "Check the request." },
   UNSUPPORTED_TYPE: { status: 415, message: "That kind of file can't be read." },
   FILE_TOO_LARGE: { status: 413, message: "The file is too large." },
@@ -207,6 +210,19 @@ export function intakeHttp(intake: Intake, clientOf: (c: Context) => Client) {
     if (!("data" in body)) return body.response;
     const result = await intake.reply(me(c), id(c), body.data.text, clientOf(c));
     return reply(c, result, (v) => v);
+  });
+
+  app.post("/apps/intake/requests/:id/merge", limitBody, async (c) => {
+    const body = await parse(c, IntakeMerge);
+    if (!("data" in body)) return body.response;
+    const result = await intake.merge(me(c), id(c), body.data.into_request_id, clientOf(c));
+    return reply(c, result, one);
+  });
+
+  app.post("/apps/intake/requests/:id/escalate", limitBody, async (c) => {
+    const body = await parse(c, IntakeEscalate);
+    if (!("data" in body)) return body.response;
+    return reply(c, await intake.escalate(me(c), id(c), body.data, clientOf(c)), one);
   });
 
   app.get("/apps/intake/my-tasks", async (c) => reply(c, await intake.mine(me(c)), (v) => v));

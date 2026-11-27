@@ -7,6 +7,7 @@ import {
   IntakeTypePatch,
   intakeCanMove,
   intakeCheckFields,
+  intakeEscalationHolds,
   intakeSlaState,
 } from "./intake.js";
 
@@ -210,5 +211,32 @@ describe("SLA state", () => {
     expect(intakeSlaState(made, due, at(6))).toBe("at_risk");
     expect(intakeSlaState(made, due, at(7.99))).toBe("at_risk");
     expect(intakeSlaState(made, due, at(8))).toBe("breached");
+  });
+});
+
+describe("escalation conditions", () => {
+  const context = {
+    fields: { value: 100, region: "EU", note: "process.exit()" },
+    assigned: false,
+    created: new Date("2026-01-01T00:00:00Z"),
+    sla: "at_risk" as const,
+    now: new Date("2026-01-01T04:00:00Z"),
+  };
+  const holds = (...when: Parameters<typeof intakeEscalationHolds>[0]) =>
+    intakeEscalationHolds(when, context);
+
+  it("compares values as data and needs every one to hold", () => {
+    expect(holds({ field: "value", op: "gte", value: 100 })).toBe(true);
+    expect(holds({ field: "value", op: "gt", value: 100 })).toBe(false);
+    expect(holds({ field: "region", op: "in", value: ["EU"] }, { sla: "at_risk" })).toBe(true);
+    expect(holds({ field: "region", op: "eq", value: "EU" }, { sla: "breached" })).toBe(false);
+    expect(holds({ unassigned_for_hours: 4 })).toBe(true);
+    expect(holds({ unassigned_for_hours: 5 })).toBe(false);
+  });
+
+  it("holds nothing for a field that is missing or not a number", () => {
+    expect(holds({ field: "absent", op: "lt", value: 1 })).toBe(false);
+    expect(holds({ field: "constructor", op: "eq", value: "x" })).toBe(false);
+    expect(holds({ field: "note", op: "gt", value: 0 })).toBe(false);
   });
 });

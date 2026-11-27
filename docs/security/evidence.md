@@ -142,6 +142,14 @@ A review of PR #136 before it merged. Migration 0234 was changed in place, as it
 | F-62 | Low      | Intake mail    | A mail whose sending was claimed and never recorded could be claimed without end                                                         | Fixed: five claims at most, and every claim counts against the limit                                                                                                   |
 | F-63 | Low      | Intake routing | Setting and using a route needed any role in the Space                                                                                   | Fixed: admin or collaborator in both places. No member can hold another role today, so there is no test that fails without it                                          |
 
+## Intake silent requesters (F-64)
+
+A review of PR #137 before it merged. Migration 0235 was changed in place, as it had not been applied anywhere.
+
+| ID   | Severity | Area         | Finding                                                                                                                                     | State                                                                                                                           |
+| ---- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| F-64 | Medium   | Intake sweep | A request staff set waiting, with no mail queued, was later closed as unanswered and the requester told so; manual requests closed silently | Fixed: reminders and closing need an email request with a question or reply sent in the current wait (`api/intake/sla.test.ts`) |
+
 ## Spec versus implementation, and Phase 4 exit gates
 
 Gaps found while walking the design, not code bugs. Items marked "exit" bear on a Phase 4 exit gate.

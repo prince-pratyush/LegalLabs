@@ -13,9 +13,11 @@ import { asWorker } from "../db.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 import { type Classifiable, classify, requestText } from "./classify.js";
 import { type IntakeMail, sendIntakeMail } from "./mail.js";
+import { sweepIntake } from "./sweep.js";
 
 // Takes each request that has something new: classifies it, asks for what is missing and
-// routes it; then sends the mail that is queued. It has no identity of its own.
+// routes it; judges what is late; then sends the mail that is queued. It has no identity of
+// its own.
 
 export interface IntakeWorkerOptions {
   gateway: Gateway;
@@ -25,6 +27,8 @@ export interface IntakeWorkerOptions {
   mail?: IntakeMail;
   notifier?: Notifier;
   intervalMs?: number;
+  /** What the sweep judges lateness against. */
+  now?: () => Date;
   /** Ids and codes only: never an address, a name or any text. */
   log?: (line: string) => void;
 }
@@ -176,6 +180,7 @@ export function createIntakeWorker(pool: pg.Pool, options: IntakeWorkerOptions) 
   /** Works through what is due. Tests name workspaces to keep to their own. */
   async function tick(...only: string[]): Promise<void> {
     await classifyDue(only);
+    await sweepIntake(pool, { now: options.now?.() ?? new Date(), notifier, log }, only);
     if (options.mail) await sendIntakeMail(pool, options.mail, only, log);
   }
 

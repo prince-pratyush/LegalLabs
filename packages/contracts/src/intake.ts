@@ -302,6 +302,47 @@ export function intakeSlaState(created: Date, due: Date, now: Date): IntakeSlaSt
   return used >= 0.75 * (due.getTime() - created.getTime()) ? "at_risk" : "ok";
 }
 
+export interface IntakeEscalationContext {
+  fields: IntakeFieldValues;
+  assigned: boolean;
+  created: Date;
+  sla: IntakeSlaState;
+  now: Date;
+}
+
+/** Whether every condition holds. A field that is missing or of another kind holds nothing. */
+export function intakeEscalationHolds(
+  when: IntakeEscalation["when"],
+  context: IntakeEscalationContext,
+): boolean {
+  return when.every((condition) => {
+    if ("sla" in condition) {
+      return context.sla === "breached" || context.sla === condition.sla;
+    }
+    if ("unassigned_for_hours" in condition) {
+      const hours = (context.now.getTime() - context.created.getTime()) / 3_600_000;
+      return !context.assigned && hours >= condition.unassigned_for_hours;
+    }
+    const value = Object.hasOwn(context.fields, condition.field)
+      ? context.fields[condition.field]
+      : undefined;
+    if (value === undefined) return false;
+    if (condition.op === "eq") return value === condition.value;
+    if (condition.op === "in") return (condition.value as unknown[]).includes(value);
+    if (typeof value !== "number") return false;
+    if (condition.op === "gt") return value > condition.value;
+    if (condition.op === "gte") return value >= condition.value;
+    if (condition.op === "lt") return value < condition.value;
+    return value <= condition.value;
+  });
+}
+
+export const IntakeMerge = z.object({ into_request_id: Id }).strict();
+export const IntakeEscalate = z
+  .object({ to: Principal, note: Text(INTAKE_LIMITS.reason_chars).default("") })
+  .strict();
+export type IntakeEscalate = z.infer<typeof IntakeEscalate>;
+
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isDate = (value: string) => {
   if (!DATE.test(value)) return false;
@@ -381,6 +422,8 @@ export const IntakeRequest = z.object({
   classification_confidence: z.number().nullable(),
   /** The lawyer's task; finishing it finishes the request. */
   task_id: Id.nullable(),
+  /** The older request this one was combined into. */
+  merged_into: Id.nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
