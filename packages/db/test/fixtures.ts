@@ -820,7 +820,24 @@ export async function seed(tx: Tx) {
        values ($1, $2, $3, $4, 'created')`,
       [ws, spaceId, factId, owner],
     );
-    return { factId, entityId, issueId };
+    // An extraction of that document into the table, as a run of its own kind.
+    const runId = await id(
+      `insert into work.run (workspace_id, owner_id, kind, status, space_id)
+       values ($1, $2, 'fact_extraction', 'done', $3) returning id`,
+      [ws, owner, spaceId],
+    );
+    await tx.rows(
+      `insert into apps.fact_extraction (id, workspace_id, space_id, requested_by, state)
+       values ($1, $2, $3, $4, 'done')`,
+      [runId, ws, spaceId, owner],
+    );
+    await tx.rows(
+      `insert into apps.fact_extraction_document (extraction_id, workspace_id, document_id,
+         document_version_id, position, state, reason)
+       values ($1, $2, $3, $4, 0, 'failed', 'NO_TEXT')`,
+      [runId, ws, doc.documentId, doc.versionId],
+    );
+    return { factId, entityId, issueId, runId };
   };
   const factTables = {
     acme: await facts(acme, ana, spaces.acme.spaceId, documents.acme),

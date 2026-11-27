@@ -16,6 +16,12 @@ export const FACT_LIMITS = {
   page_size: 100,
   /** Names or issues a Space lists at once. */
   list_size: 2000,
+  /** Files one extraction reads. Choosing more is refused, never silently cut. */
+  documents_per_run: 200,
+  /** Extractions one person can have going at once. */
+  active_runs: 3,
+  /** Files that cost one ask from the person's model budget. */
+  documents_per_ask: 20,
 } as const;
 
 export const FactStatus = z.enum(["extracted", "confirmed", "disputed", "rejected"]);
@@ -209,4 +215,79 @@ export interface FactAuditEntry {
   action: string;
   details: Record<string, unknown>;
   at: string;
+}
+
+export const FactExtractRequest = z
+  .object({
+    document_ids: ids(FACT_LIMITS.documents_per_run).min(1).optional(),
+    vault_id: Id.optional(),
+    folder_id: Id.optional(),
+    issue_ids: ids(50).optional(),
+  })
+  .strict()
+  .refine((r) => (r.document_ids === undefined) !== (r.vault_id === undefined), {
+    message: "Choose files or a vault.",
+  })
+  .refine((r) => r.folder_id === undefined || r.vault_id !== undefined, {
+    message: "A folder needs its vault.",
+  });
+export type FactExtractRequest = z.infer<typeof FactExtractRequest>;
+
+export const FactExtractionState = z.enum([
+  "queued",
+  "running",
+  "done",
+  "partial",
+  "failed",
+  "cancelled",
+]);
+export type FactExtractionState = z.infer<typeof FactExtractionState>;
+
+/** Why a file, or part of one, wasn't read. */
+export const FactSkipReason = z.enum([
+  "NOT_READY",
+  "PARSE_FAILED",
+  "NO_TEXT",
+  "ACCESS_LOST",
+  "MODEL_NOT_ALLOWED",
+  "MODEL_UNAVAILABLE",
+  "COST_LIMIT",
+  "BAD_OUTPUT",
+  "PAGE_TOO_LONG",
+  "TOO_MANY_PAGES",
+  "TOO_MANY_FACTS",
+  "FAILED",
+]);
+export type FactSkipReason = z.infer<typeof FactSkipReason>;
+
+export interface FactExtraction {
+  run_id: string;
+  space_id: string;
+  state: FactExtractionState;
+  /** True only when every chosen file was read to its last page. */
+  complete: boolean;
+  failure: string | null;
+  documents_total: number;
+  documents_read: number;
+  documents_partial: number;
+  documents_failed: number;
+  documents_pending: number;
+  facts_found: number;
+  /** Facts thrown away because their quote wasn't on the page. */
+  rejected_unverified: number;
+  rejected_invalid: number;
+  cost_usd: number;
+  documents: {
+    document_id: string;
+    /** Null once the caller can no longer open the file. */
+    name: string | null;
+    state: "pending" | "read" | "partial" | "failed";
+    reason: FactSkipReason | null;
+    pages_total: number;
+    pages_read: number;
+    facts: number;
+    rejected: number;
+  }[];
+  created_at: string;
+  finished_at: string | null;
 }

@@ -35,6 +35,7 @@ import { createDocuments } from "./documents/documents.js";
 import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
+import { createFactExtractions } from "./facts/extraction.js";
 import { createFacts } from "./facts/facts.js";
 import { createEmailProcessor } from "./inbound/processor.js";
 import { createEmailChannels } from "./intake/channels.js";
@@ -307,6 +308,15 @@ const ci = createCi(pool, { reviews, notifier, log: (line) => console.log(line) 
 ci.start();
 process.once("SIGTERM", () => void ci.stop());
 process.once("SIGINT", () => void ci.stop());
+// Reads documents into Spaces' fact tables, each as the person who asked.
+const factExtraction = createFactExtractions(pool, {
+  gateway,
+  log,
+  print: (line) => console.log(line),
+});
+factExtraction.start();
+process.once("SIGTERM", () => void factExtraction.stop());
+process.once("SIGINT", () => void factExtraction.stop());
 // Attachments sent in with requests queue for ingest like any other upload.
 const intake = createIntake(pool, { documents, notifier });
 // Intake by email: mail posted to /hooks waits in a queue that this reads. Channels need the
@@ -393,6 +403,7 @@ const app = createApp({
   ci,
   intake,
   facts: createFacts(pool),
+  factExtraction,
   emailChannels,
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
