@@ -15,6 +15,7 @@ import {
   type Documents,
   freeName,
   MAX_FILE_BYTES,
+  type UploadInput,
   type UploadResult,
 } from "../documents/documents.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
@@ -189,7 +190,14 @@ export interface Vaults {
   upload(
     p: Principal,
     vaultId: string,
-    input: { name: string; bytes: Uint8Array; folderId: string | null; relativePath?: string },
+    input: {
+      name: string;
+      bytes: Uint8Array;
+      folderId: string | null;
+      relativePath?: string;
+      /** Writes more in the upload's transaction, so the file never exists without it. */
+      within?: UploadInput["within"];
+    },
     client: Client,
   ): Promise<UploadResult | { ok: false; reason: "NOT_FOUND" }>;
   retentionEstimate(
@@ -961,6 +969,7 @@ export function createVaults(
           matterId: target.vault.matterId,
           vaultId,
           folderId: target.folderId,
+          ...(input.within ? { within: input.within } : {}),
         },
         client,
       );

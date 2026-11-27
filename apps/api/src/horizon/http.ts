@@ -11,6 +11,8 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
+import type { Limiter } from "../auth/limiter.js";
+import type { ActionFailure, ActionResult, HorizonActions } from "./actions.js";
 import type { Horizon, HorizonFailure, HorizonResult } from "./horizon.js";
 
 type Env = { Variables: { principal: Principal } };
@@ -60,7 +62,31 @@ const itemQuery = z.object({
   cursor: z.string().max(100).optional(),
 });
 
-export function horizonHttp(horizon: Horizon, clientOf: (c: Context) => Client) {
+const ACTION_FAILURES: Record<ActionFailure, { status: 403 | 404 | 422 | 502; message: string }> = {
+  NOT_FOUND: { status: 404, message: "That item wasn't found." },
+  FORBIDDEN: { status: 403, message: "You don't have access to do that." },
+  DISABLED: { status: 403, message: "Horizon scanning is turned off for this workspace." },
+  SOURCE_UNAVAILABLE: {
+    status: 502,
+    message: "The source didn't give the text just now. Try again shortly.",
+  },
+  VAULT_NOT_FOUND: { status: 404, message: "That vault or folder wasn't found." },
+  MATTER_REQUIRED: {
+    status: 422,
+    message: "This workspace needs a matter for new threads. Save to a vault instead.",
+  },
+  UPLOAD_REFUSED: { status: 422, message: "The file couldn't be stored there." },
+};
+
+const saveBody = z.strictObject({ vault_id: z.uuid(), folder_id: z.uuid().optional() });
+const threadBody = z.strictObject({ matter_id: z.uuid().optional() });
+
+export function horizonHttp(
+  horizon: Horizon,
+  clientOf: (c: Context) => Client,
+  actions?: HorizonActions,
+  asks?: Limiter,
+) {
   const app = new Hono<Env>();
   const json = bodyLimit({
     maxSize: 32 * 1024,
@@ -152,6 +178,61 @@ export function horizonHttp(horizon: Horizon, clientOf: (c: Context) => Client) 
     const result = await horizon.bulk(c.get("principal"), parsed.data);
     return reply(c, result, (changed) => c.json(changed));
   });
+
+  if (actions) {
+    // Each of these fetches from a source or stores a file, so it counts as an ask.
+    const limited = (c: Context<Env>) => {
+      const wait = asks?.take(c.get("principal").userId) ?? 0;
+      if (wait === 0) return null;
+      c.header("Retry-After", String(wait));
+      return c.json(
+        { code: "TOO_MANY_REQUESTS", message: "You've asked a lot just now. Try again shortly." },
+        429,
+      );
+    };
+    const acted = <T>(c: Context, result: ActionResult<T>): Response => {
+      if (result.ok) return c.json(result.value as object, 201);
+      const { status, message } = ACTION_FAILURES[result.reason];
+      return c.json({ code: result.reason, message }, status);
+    };
+
+    app.post("/horizon/items/:id/save-to-vault", json, async (c) => {
+      const parsed = saveBody.safeParse(await body(c));
+      if (!parsed.success) return invalid(c);
+      const wait = limited(c);
+      if (wait) return wait;
+      const { vault_id, folder_id } = parsed.data;
+      return acted(
+        c,
+        await actions.saveToVault(
+          c.get("principal"),
+          c.req.param("id") as string,
+          { vaultId: vault_id, folderId: folder_id ?? null },
+          clientOf(c),
+        ),
+      );
+    });
+
+    type Open = (...args: Parameters<HorizonActions["ask"]>) => Promise<ActionResult<object>>;
+    const toThread = (path: "ask" | "draft-email", run: Open) =>
+      app.post(`/horizon/items/:id/${path}`, json, async (c) => {
+        const parsed = threadBody.safeParse((await body(c)) ?? {});
+        if (!parsed.success) return invalid(c);
+        const wait = limited(c);
+        if (wait) return wait;
+        return acted(
+          c,
+          await run(
+            c.get("principal"),
+            c.req.param("id") as string,
+            parsed.data.matter_id ?? null,
+            clientOf(c),
+          ),
+        );
+      });
+    toThread("ask", actions.ask);
+    toThread("draft-email", actions.draftEmail);
+  }
 
   return app;
 }

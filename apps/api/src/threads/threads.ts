@@ -200,6 +200,20 @@ export interface Threads {
   shares(principal: Principal, threadId: string): Promise<Share[] | null>;
   revoke(principal: Principal, threadId: string, shareId: string, client: Client): Promise<boolean>;
   duplicate(principal: Principal, threadId: string, client: Client): Promise<string | null>;
+  /** Whether a new thread could be made in this matter, before anything is stored for it. */
+  canOpen(
+    principal: Principal,
+    matterId: string | null,
+  ): Promise<"ok" | "FORBIDDEN" | "MATTER_REQUIRED">;
+  /** A thread of the caller's with files attached and nothing asked yet. */
+  open(
+    principal: Principal,
+    input: { title: string; matterId: string | null; documentIds: string[] },
+    client: Client,
+  ): Promise<
+    | { ok: true; threadId: string }
+    | { ok: false; reason: "FORBIDDEN" | "NOT_FOUND" | "MATTER_REQUIRED" }
+  >;
   members(principal: Principal, query: string): Promise<Member[]>;
   /** Waits for every run this process started; for tests and shutdown. */
   settled(): Promise<void>;
@@ -1538,6 +1552,61 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         await audit(db, principal, "thread.share_revoked", threadId, { share_id: shareId }, client);
         return true;
       });
+    },
+
+    canOpen(principal, matterId) {
+      return asApp(pool, principal, async (db) => {
+        if (!(await permitted(db))) return "FORBIDDEN";
+        if (matterId === null) return (await matterRequired(db)) ? "MATTER_REQUIRED" : "ok";
+        const { rows } = await db.query<{ ok: boolean }>("select core.can_access_matter($1) ok", [
+          matterId,
+        ]);
+        return rows[0]?.ok ? "ok" : "FORBIDDEN";
+      });
+    },
+
+    async open(principal, input, client) {
+      try {
+        return await asApp(pool, principal, async (db) => {
+          if (!(await permitted(db))) return { ok: false, reason: "FORBIDDEN" } as const;
+          if (input.matterId === null && (await matterRequired(db))) {
+            return { ok: false, reason: "MATTER_REQUIRED" } as const;
+          }
+          const files = await latestVersions(db, input.documentIds);
+          if (
+            files.length !== input.documentIds.length ||
+            files.some((f) => f.matter_id !== input.matterId)
+          ) {
+            return { ok: false, reason: "NOT_FOUND" } as const;
+          }
+          const { rows } = await db.query<{ id: string }>(
+            `insert into work.thread (workspace_id, owner_id, matter_id, title, vault_ids, sources)
+             values ($1, $2, $3, $4, '{}', '[]') returning id`,
+            [principal.workspaceId, principal.userId, input.matterId, titleOf(input.title)],
+          );
+          const threadId = rows[0]?.id;
+          if (!threadId) throw new Error("insert returned no thread");
+          if (files.length > 0) {
+            await db.query(
+              `insert into work.thread_document (workspace_id, thread_id, version_id)
+               select $1, $2, unnest($3::uuid[])`,
+              [principal.workspaceId, threadId, files.map((f) => f.version_id)],
+            );
+          }
+          await audit(
+            db,
+            principal,
+            "thread.created",
+            threadId,
+            { document_count: files.length, matter_id: input.matterId },
+            client,
+          );
+          return { ok: true, threadId } as const;
+        });
+      } catch (err) {
+        if (isRefusal(err)) return { ok: false, reason: "FORBIDDEN" };
+        throw err;
+      }
     },
 
     async duplicate(principal, threadId, client) {

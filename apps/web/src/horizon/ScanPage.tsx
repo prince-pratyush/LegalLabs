@@ -25,6 +25,7 @@ import { messageOf } from "../api.js";
 import { latestOnly } from "../latest.js";
 import { formatDate } from "../vaults/shared.js";
 import { horizonApi, type ItemFilter } from "./api.js";
+import { ItemActions } from "./ItemActions.js";
 import { goHorizon } from "./route.js";
 
 const RANK: Record<HorizonRelevance, number> = { low: 0, medium: 1, high: 2 };
@@ -360,6 +361,7 @@ export function ScanPage({ scanId }: { scanId: string }) {
           <h2 className="font-semibold">{opened.development}</h2>
           <p>{opened.explanation}</p>
           {opened.summary && <p className="text-fg-muted">{opened.summary}</p>}
+          <ItemActions key={opened.id} itemId={opened.id} />
           <div className="flex flex-wrap items-center gap-2">
             {safeLink(opened.source_url) && (
               <a

@@ -108,6 +108,20 @@ beforeEach(() => {
     if (url === "/scans") return answer({ scans });
     if (url === `/scans/${SCAN}`) return answer({ scan: scan() });
     if (url.startsWith(`/scans/${SCAN}/items`)) return answer({ items, next_cursor: null });
+    if (input === "/api/v1/vaults") {
+      return answer({
+        vaults: [
+          { id: id(30), name: "Mine", my_access: "owner" },
+          { id: id(31), name: "Read only", my_access: "view" },
+        ],
+      });
+    }
+    if (input.startsWith("/api/v1/documents/")) {
+      return answer({ document: { id: id(40), status: "indexed" } });
+    }
+    if (url.endsWith("/save-to-vault")) return answer({ document_id: id(40) }, 201);
+    if (url.endsWith("/ask")) return answer({ thread_id: id(50), document_id: id(40) }, 201);
+    if (url.endsWith("/draft-email")) return answer({ thread_id: id(50), draft_id: id(51) }, 201);
     if (url === "/items/bulk") return answer({ changed: body.ids.length });
     if (url.endsWith("/state")) return answer(undefined, 204);
     return answer({ code: "NOT_FOUND", message: "That wasn't found." }, 404);
@@ -213,5 +227,34 @@ describe("horizon screens", () => {
       expect(last("/items/bulk")?.body).toEqual({ ids: [id(11)], action: "archive" }),
     );
     await waitFor(() => expect(screen.queryByText("1 selected")).toBeNull());
+  });
+
+  const open = async () => {
+    at(`#/horizon/${SCAN}`);
+    fireEvent.click(await screen.findByRole("button", { name: "Widget rule 1" }));
+  };
+
+  it("saves an item only into a vault that can be written to", async () => {
+    await open();
+    await screen.findByRole("option", { name: "Mine" });
+    expect(screen.queryByRole("option", { name: "Read only" })).toBeNull();
+    const save = screen.getByRole("button", { name: "Save to vault" });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Vault"), { target: { value: id(30) } });
+    fireEvent.click(save);
+    expect(await screen.findByText("Saved to the vault.")).toBeTruthy();
+    expect(last("/save-to-vault")?.body).toEqual({ vault_id: id(30) });
+  });
+
+  it("goes to the new thread once the file has been read", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Ask about this" }));
+    await waitFor(() => expect(window.location.hash).toBe(`#/t/${id(50)}`));
+  });
+
+  it("goes to the email draft", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Draft email" }));
+    await waitFor(() => expect(window.location.hash).toBe(`#/t/${id(50)}?drafts=${id(51)}`));
   });
 });

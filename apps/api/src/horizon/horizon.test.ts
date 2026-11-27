@@ -1,8 +1,11 @@
 import type { ScanCandidate, ScanCursor, Scanners, ScanSourceId } from "@legallabs/knowledge";
 import { createGateway, type Message } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
-import { auditTrail, testPool } from "../test-db.js";
+import { createDrafts } from "../drafts/drafts.js";
+import { auditTrail, testPool, testThreads } from "../test-db.js";
 import { factWorld, type Person } from "../test-facts.js";
+import { createVaults } from "../vaults/vaults.js";
+import { createHorizonActions, emailDraft, fileName } from "./actions.js";
 import { createHorizon } from "./horizon.js";
 import { createHorizonRefresh, type HorizonRefreshOptions } from "./refresh.js";
 
@@ -90,6 +93,8 @@ interface Setup {
   answer?: (prompt: string) => unknown;
   options?: Partial<HorizonRefreshOptions>;
   off?: boolean;
+  /** The source's text for an item; null when it has none to give. */
+  text?: () => string | null;
 }
 
 async function world(setup: Setup = {}) {
@@ -102,7 +107,27 @@ async function world(setup: Setup = {}) {
     now: () => new Date(clock),
     ...setup.options,
   });
-  const w = await factWorld(pool, () => ({ horizon: createHorizon(pool) }));
+  const read: [string, string][] = [];
+  const w = await factWorld(pool, ({ documents }) => {
+    const threads = testThreads(pool, documents);
+    return {
+      threads,
+      horizon: createHorizon(pool),
+      horizonActions: createHorizonActions(pool, {
+        documents,
+        vaults: createVaults(pool, { documents, store: documents.store }),
+        threads: threads.threads,
+        drafts: createDrafts(pool, {
+          gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+          templates: { resolve: async () => null },
+        }),
+        text: async (source, externalId) => {
+          read.push([source, externalId]);
+          return setup.text ? setup.text() : "Every widget must carry a label.";
+        },
+      }),
+    };
+  });
   if (!setup.off) await w.call(w.ana, "PUT", "/horizon/settings", { enabled: true });
   const scanner = await w.person("sam", ["threads.use", "horizon.create", "vaults.create"]);
   const create = async (over: object = {}, who: Person = scanner) =>
@@ -131,7 +156,7 @@ async function world(setup: Setup = {}) {
         where id = (select role_id from core."user" where id = $1)`,
       [scanner.userId, list],
     );
-  return { ...w, m, s, scanner, create, made, tick, later, items, scan, permissions };
+  return { ...w, read, m, s, scanner, create, made, tick, later, items, scan, permissions };
 }
 
 describe("horizon scans", () => {
@@ -476,5 +501,151 @@ describe("horizon item state", () => {
         )
       ).status,
     ).toBe(400);
+  });
+});
+
+describe("acting on a horizon item", () => {
+  const ready = async (setup: Setup = {}) => {
+    const w = await world({
+      found: { fr: () => [candidate(1, { title: "Widgets: new/old ../rules" })] },
+      ...setup,
+    });
+    const id = await w.made();
+    await w.tick();
+    const item = (await w.items(id))[0].id as string;
+    const act = (path: string, body: object = {}, who: Person = w.scanner) =>
+      w.call(who, "POST", `/horizon/items/${item}/${path}`, body);
+    const vaultOf = async (who: Person) => w.vault(who, `Box ${who.userId.slice(-6)}`);
+    const documents = async (userId: string) =>
+      (
+        await pool.query<{ id: string; name: string; vault_id: string | null }>(
+          "select id, name, vault_id from content.document where owner_id = $1",
+          [userId],
+        )
+      ).rows;
+    return { ...w, item, act, vaultOf, documents };
+  };
+
+  it("saves the published text to a vault, and nothing of the scan", async () => {
+    const w = await ready();
+    const vault = await w.vaultOf(w.scanner);
+    const res = await w.act("save-to-vault", { vault_id: vault });
+    expect(res.status).toBe(201);
+    expect(w.read).toEqual([["fr", "2026-00001"]]);
+    expect(await w.documents(w.scanner.userId)).toEqual([
+      { id: res.body.document_id, name: "Widgets new old .. rules.txt", vault_id: vault },
+    ]);
+    const { rows } = await pool.query<{ text: string }>(
+      `select p.text from content.page p
+         join content.document_version v on v.id = p.version_id
+        where v.document_id = $1`,
+      [res.body.document_id],
+    );
+    const saved = rows.map((r) => r.text).join("\n");
+    expect(saved).toContain("https://www.federalregister.gov/d/2026-00001");
+    expect(saved).toContain("Every widget must carry a label.");
+    // The purpose and the model's explanation would tell a reader what is being watched for.
+    expect(saved).not.toContain("Falcon");
+    expect(saved).not.toContain("About labelling");
+    const trail = await auditTrail(pool, w.ana.workspaceId);
+    expect(trail.find((e) => e.action === "horizon.item.saved_to_vault")).toMatchObject({
+      object_id: res.body.document_id,
+      details: { item_id: w.item },
+    });
+  });
+
+  it("holds to the vault's access", async () => {
+    const w = await ready();
+    const hers = await w.vaultOf(w.ana);
+    const res = await w.act("save-to-vault", { vault_id: hers });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("VAULT_NOT_FOUND");
+    expect(await w.documents(w.scanner.userId)).toEqual([]);
+  });
+
+  it("is the owner's item only", async () => {
+    const w = await ready();
+    const vault = await w.vaultOf(w.ana);
+    for (const [path, body] of [
+      ["save-to-vault", { vault_id: vault }],
+      ["ask", {}],
+      ["draft-email", {}],
+    ] as const) {
+      expect((await w.act(path, body, w.ana)).status).toBe(404);
+    }
+    expect(w.read).toEqual([]);
+  });
+
+  it("stores nothing when the source has no text", async () => {
+    const w = await ready({ text: () => null });
+    const vault = await w.vaultOf(w.scanner);
+    for (const [path, body] of [
+      ["save-to-vault", { vault_id: vault }],
+      ["ask", {}],
+    ] as const) {
+      const res = await w.act(path, body);
+      expect([res.status, res.body.code]).toEqual([502, "SOURCE_UNAVAILABLE"]);
+    }
+    expect(await w.documents(w.scanner.userId)).toEqual([]);
+  });
+
+  it("opens a thread of the owner's own with the item attached, asking nothing", async () => {
+    const w = await ready();
+    const calls = w.m.asked.length;
+    const res = await w.act("ask");
+    expect(res.status).toBe(201);
+    const thread = await w.call(w.scanner, "GET", `/threads/${res.body.thread_id}`);
+    expect(thread.body.thread.messages).toEqual([]);
+    expect(thread.body.thread.documents.map((d: { id: string }) => d.id)).toEqual([
+      res.body.document_id,
+    ]);
+    expect((await w.call(w.ana, "GET", `/threads/${res.body.thread_id}`)).status).toBe(404);
+    expect(w.m.asked.length).toBe(calls);
+  });
+
+  it("drafts an email from the published details alone", async () => {
+    const w = await ready();
+    const res = await w.act("draft-email");
+    expect(res.status).toBe(201);
+    const draft = await w.call(w.scanner, "GET", `/drafts/${res.body.draft_id}`);
+    const body = JSON.stringify(draft.body);
+    expect(body).toContain("Subject: Widgets");
+    expect(body).toContain("https://www.federalregister.gov/d/2026-00001");
+    expect(body).not.toContain("Falcon");
+    expect(body).not.toContain("About labelling");
+    expect(w.read).toEqual([]);
+  });
+
+  it("stores nothing for someone who may no longer use threads", async () => {
+    const w = await ready();
+    await w.permissions(["horizon.create"]);
+    expect((await w.act("ask")).status).toBe(403);
+    expect((await w.act("draft-email")).status).toBe(403);
+    expect(await w.documents(w.scanner.userId)).toEqual([]);
+  });
+
+  it("asks for a matter where the workspace insists, before storing anything", async () => {
+    const w = await ready();
+    await pool.query(
+      "insert into core.matter_options (workspace_id, require_for_queries) values ($1, true)",
+      [w.ana.workspaceId],
+    );
+    expect((await w.act("ask")).body.code).toBe("MATTER_REQUIRED");
+    expect((await w.act("draft-email")).body.code).toBe("MATTER_REQUIRED");
+    expect(await w.documents(w.scanner.userId)).toEqual([]);
+  });
+
+  it("makes safe names and takes no address out of published words", () => {
+    expect(fileName("../..\\a\u202Eb<c>")).toBe("a b c.txt");
+    expect(fileName("  ...  ")).toBe("Development.txt");
+    const body = emailDraft({
+      development: "Rule [click](https://evil.test/a)",
+      summary: "See https://evil.test/b now",
+      source_url: "https://www.federalregister.gov/d/1",
+      published_at: "2026-03-01",
+      source: "Federal Register",
+    });
+    expect(body).not.toContain("evil.test");
+    expect(body).toContain("https://www.federalregister.gov/d/1");
   });
 });
