@@ -118,6 +118,16 @@ const audit = (
     uaHash(client),
   ]);
 
+/** The requester lost the permission part way: the whole extraction stops. */
+class Revoked extends Error {}
+
+/** Asked again before every model call and write, as the requester, right then. */
+async function stillMay(db: Db, spaceId: string, versionId: string) {
+  const { rows } = await db.query<{ ok: boolean }>("select core.has_permission('threads.use') ok");
+  if (!rows[0]?.ok) throw new Revoked();
+  return (await spaceVersion(db, spaceId, versionId)) !== null;
+}
+
 const fold = (name: string) => name.toLowerCase();
 
 /** "J. Smith" could be any J Smith already in the table. */
@@ -338,6 +348,11 @@ export function createFactExtractions(
         reason = stop;
         break;
       }
+      const open = await asApp(pool, p, (db) =>
+        stillMay(db, claim.space_id, doc.document_version_id),
+      );
+      // Nothing already taken from the file is kept either.
+      if (!open) return { ...none, reason: "ACCESS_LOST" };
       await lease(p, claim.id, leaseSeconds);
       let output: string;
       try {
@@ -412,6 +427,9 @@ export function createFactExtractions(
         [claim.id, doc.document_id],
       );
       if (!rowCount) return;
+      if (!(await stillMay(db, claim.space_id, doc.document_version_id))) {
+        out = { ...out, state: "failed", reason: "ACCESS_LOST", pagesRead: 0, facts: [] };
+      }
       let stored = 0;
       for (const { read: fact, citation } of out.facts) {
         // The same words from the same place are already in the table: read once is enough.
@@ -619,6 +637,7 @@ export function createFactExtractions(
           if (!out) return void (await lease(p, claim.id, retrySeconds));
           await save(p, claim, doc, out, found.issue_ids);
         } catch (err) {
+          if (err instanceof Revoked) return void (await lost(claim.id));
           // Access taken away between reading and saving: nothing of it is kept.
           if ((err as { code?: string }).code !== RLS_REFUSED) throw err;
           await fail("ACCESS_LOST");

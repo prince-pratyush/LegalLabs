@@ -261,6 +261,58 @@ describe("fact extraction", () => {
     }
   });
 
+  it("asks no more of the model once access or the permission is taken away mid-file", async () => {
+    for (const revoke of [
+      (r: Awaited<ReturnType<typeof room>>) =>
+        r.call(r.ana, "DELETE", `/spaces/${r.spaceId}/resources/${r.resourceId}`),
+      (r: Awaited<ReturnType<typeof room>>) =>
+        pool.query(
+          `update core.role set permissions = '{spaces.create,vaults.create}'
+            where id = (select role_id from core."user" where id = $1)`,
+          [r.ben.userId],
+        ),
+    ]) {
+      // A window per page, so a two-page file takes two calls.
+      const r = await room(goodAnswer, { windowChars: GOODS.length + 5 });
+      await pool.query(
+        `insert into content.page (version_id, page_no, workspace_id, width, height, text, layout)
+         select version_id, 2, workspace_id, width, height, text, layout
+           from content.page where version_id = $1 and page_no = 1`,
+        [r.goods.versionId],
+      );
+      await pool.query("update content.document_version set page_count = 2 where id = $1", [
+        r.goods.versionId,
+      ]);
+      await r.start({ document_ids: [r.goods.documentId] });
+      r.hooks.during = async () => {
+        if (r.asked.length === 1) await revoke(r);
+      };
+      await r.tick();
+      expect(r.asked).toHaveLength(1);
+      expect(await r.facts(r.ana)).toEqual([]);
+    }
+  });
+
+  it("saves nothing once the permission is gone, even after the last call", async () => {
+    const r = await room();
+    const runId = await r.start({ document_ids: [r.goods.documentId] });
+    r.hooks.during = () =>
+      pool.query(
+        `update core.role set permissions = '{spaces.create,vaults.create}'
+          where id = (select role_id from core."user" where id = $1)`,
+        [r.ben.userId],
+      );
+    await r.tick();
+    expect(await r.facts(r.ana)).toEqual([]);
+    const { rows } = await pool.query(
+      "select state, failure, facts_found from apps.fact_extraction where id = $1",
+      [runId],
+    );
+    expect(rows[0]).toEqual({ state: "failed", failure: "ACCESS_LOST", facts_found: 0 });
+    const events = await auditTrail(pool, r.ana.workspaceId);
+    expect(events.map((e) => e.action)).toContain("facts.extraction_failed");
+  });
+
   it("stops when the run is cancelled", async () => {
     const r = await room();
     const runId = await r.start();
