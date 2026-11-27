@@ -56,6 +56,7 @@ export {
   CiAgentStatus,
   type CiAssignee,
   CiAssignRequest,
+  CiDashboard,
   CiField,
   CiFields,
   type CiOutcome,

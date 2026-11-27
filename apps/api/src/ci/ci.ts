@@ -5,6 +5,7 @@ import {
   type CiAgentCreate,
   type CiAgentPatch,
   type CiAgentStatus,
+  type CiDashboard,
   type CiFields,
   CiResult,
   type CiReview,
@@ -50,6 +51,11 @@ export interface CiFilter {
   status?: CiReviewStatus | undefined;
   assigneeId?: string | undefined;
   agentId?: string | undefined;
+  /** Any part of the counterparty's name. */
+  counterparty?: string | undefined;
+  /** Last changed at or after `from` and before `to`. */
+  from?: string | undefined;
+  to?: string | undefined;
   cursor?: string | undefined;
 }
 
@@ -57,6 +63,9 @@ export interface Ci {
   createAgent(principal: Principal, input: AgentIn, client: Client): Promise<Result<CiAgent>>;
   listAgents(principal: Principal): Promise<CiAgent[]>;
   getAgent(principal: Principal, id: string): Promise<CiAgent | null>;
+  /** Names of the people and groups the agent's assignment rules point at, by id. */
+  assigneeNames(principal: Principal, agent: CiAgent): Promise<Record<string, string>>;
+  dashboard(principal: Principal, since?: string): Promise<CiDashboard>;
   patchAgent(
     principal: Principal,
     id: string,
@@ -302,13 +311,7 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       return rowCount === 1;
     });
 
-  const tell = (
-    principal: Principal,
-    row: ReviewRow,
-    assignee: string,
-    playbookReviewId: string | null,
-    actorId: string | null,
-  ) =>
+  const tell = (principal: Principal, row: ReviewRow, assignee: string, actorId: string | null) =>
     notifier.notify(principal, {
       kind: "ci.review_assigned",
       actorId,
@@ -318,7 +321,7 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       objectTitle: row.agent_name,
       matterId: row.matter_id,
       people: { assignee },
-      ...(playbookReviewId ? { url: `#/reviews/${playbookReviewId}` } : {}),
+      url: `#/ci/reviews/${row.id}`,
     });
 
   const later = (principal: Identity, id: string, seconds: number) =>
@@ -451,7 +454,8 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       }
       await db.query(
         `update apps.ci_contract_review
-            set status = $2, result = $2, summary = $3, assignee_id = $4, updated_at = now()
+            set status = $2, result = $2, summary = $3, assignee_id = $4, reviewed_at = now(),
+                updated_at = now()
           where id = $1`,
         [row.id, result, summary, user],
       );
@@ -467,7 +471,7 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       );
       return user;
     });
-    if (assignee) await tell(principal, row, assignee, review.id, null);
+    if (assignee) await tell(principal, row, assignee, null);
   }
 
   /** Looks at a running review and records how it ended, if it has. */
@@ -600,6 +604,40 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       return row ? toAgent(row) : null;
     },
 
+    async assigneeNames(principal, agent) {
+      const targets = agent.assignment.flatMap((rule): { user_id?: string; group_id?: string }[] =>
+        rule.kind === "field" ? rule.cases.map((c) => c.assignee) : [rule],
+      );
+      const users = targets.flatMap((t) => (t.user_id ? [t.user_id] : []));
+      const groups = targets.flatMap((t) => (t.group_id ? [t.group_id] : []));
+      return asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{ id: string; name: string }>(
+          `select id, coalesce(nullif(name, ''), email) name from core."user" where id = any ($1)
+           union all
+           select id, name from core."group" where id = any ($2)`,
+          [users, groups],
+        );
+        return Object.fromEntries(rows.map((r) => [r.id, r.name]));
+      });
+    },
+
+    async dashboard(principal, since) {
+      return asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<Omit<CiDashboard, "as_of"> & { as_of: Date }>(
+          `select count(*) filter (where r.reviewed_at > $1)::int since_last_visit,
+                  count(*) filter (where r.status = any ($2))::int ready_to_review,
+                  count(*) filter (where r.assignee_id = $3
+                                     and r.status <> 'done')::int assigned_to_me,
+                  now() as_of
+             from apps.ci_contract_review r
+             join content.document d on d.id = r.document_id`,
+          [since ?? null, CiResult.options, principal.userId],
+        );
+        const row = rows[0] as Omit<CiDashboard, "as_of"> & { as_of: Date };
+        return { ...row, as_of: row.as_of.toISOString() };
+      });
+    },
+
     async patchAgent(principal, id, patch, client) {
       return guarded(principal, async (db) => {
         const before = (await loadAgent(db, id)) ?? refuse("NOT_FOUND");
@@ -718,13 +756,19 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
               and ($2::uuid is null or r.assignee_id = $2)
               and ($3::uuid is null or r.ci_agent_id = $3)
               and ($4::timestamptz is null or (r.updated_at, r.id) < ($4, $5::uuid))
-            order by r.updated_at desc, r.id desc limit $6`,
+              and ($6::text is null or strpos(lower(r.counterparty), lower($6)) > 0)
+              and ($7::timestamptz is null or r.updated_at >= $7)
+              and ($8::timestamptz is null or r.updated_at < $8)
+            order by r.updated_at desc, r.id desc limit $9`,
           [
             filter.status ?? null,
             filter.assigneeId ?? null,
             filter.agentId ?? null,
             after?.[1] ?? null,
             after?.[2] ?? null,
+            filter.counterparty?.replaceAll("\0", "") ?? null,
+            filter.from ?? null,
+            filter.to ?? null,
             pageSize + 1,
           ],
         );
@@ -775,7 +819,7 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
         return toReview((await loadReview(db, id)) ?? refuse("NOT_FOUND"));
       });
       if (saved.ok) {
-        await tell(principal, row, assigneeId, row.playbook_review_id, principal.userId);
+        await tell(principal, row, assigneeId, principal.userId);
       }
       return saved;
     },
@@ -823,7 +867,7 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
           `update apps.ci_contract_review
               set status = 'queued', result = null, summary = null, failure = null,
                   playbook_review_id = null, run_id = null, started_at = null, done_at = null,
-                  assigned_by = null,
+                  reviewed_at = null, assigned_by = null,
                   next_attempt_at = now(), updated_at = now()
             where id = $1 and status not in ('queued', 'running')`,
           [id],

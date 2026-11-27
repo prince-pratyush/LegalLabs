@@ -14,6 +14,7 @@ import {
   Bot,
   Briefcase,
   ClipboardList,
+  FileCheck,
   History,
   Library,
   Settings,
@@ -28,6 +29,8 @@ import { AgentsApp } from "./agents/AgentsApp.js";
 import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { handoffFrom } from "./auth/handoff.js";
+import { CiApp } from "./ci/CiApp.js";
+import { goCi, parseCiRoute } from "./ci/route.js";
 import { CommandCenterApp } from "./command-center/CommandCenterApp.js";
 import { commandCenterHash, parseCommandCenterRoute } from "./command-center/route.js";
 import { GuestApp } from "./guest/GuestApp.js";
@@ -121,7 +124,9 @@ export function App() {
     <>
       {/* Inert while the viewer covers it, so Tab and screen readers stay in the viewer. */}
       <div className="contents" inert={viewing}>
-        {parseAgentRoute(hash) ? (
+        {parseCiRoute(hash) ? (
+          <CiApp onLeave={() => navigate(paths.new)} />
+        ) : parseAgentRoute(hash) ? (
           <AgentsApp onLeave={() => navigate(paths.new)} />
         ) : parseMattersRoute(hash) ? (
           <MattersApp onLeave={() => navigate(paths.new)} />
@@ -330,6 +335,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => goPlaybooks({ page: "list" }),
     },
     {
+      id: "contracts",
+      kind: "action",
+      group: "Go to",
+      label: "Contract queue",
+      run: () => goCi({ page: "queue" }),
+    },
+    {
       id: "tables",
       kind: "action",
       group: "Go to",
@@ -467,6 +479,15 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <ClipboardList aria-hidden />
           Playbooks
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => goCi({ page: "queue" })}
+        >
+          <FileCheck aria-hidden />
+          Contracts
         </Button>
         <Button
           variant="quiet"

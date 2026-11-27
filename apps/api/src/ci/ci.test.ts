@@ -496,7 +496,7 @@ describe("contract reviews", () => {
       {
         kind: "ci.review_assigned",
         action_required: true,
-        url: `#/reviews/${done.playbook_review_id}`,
+        url: `#/ci/reviews/${id}`,
         title: expect.stringContaining("MSA intake"),
       },
     ]);
@@ -671,6 +671,94 @@ describe("contract reviews", () => {
       id,
     ]);
     expect(rowCount).toBe(0);
+  });
+});
+
+describe("the queue screens", () => {
+  it("counts what was reviewed since a time, what is ready and what is the caller's", async () => {
+    const h = harness();
+    const owner = await h.workspace();
+    const ana = await h.member(owner);
+    const playbookId = await h.playbook(owner, [ana]);
+    const { versionId } = await h.contract(owner, [ana]);
+    const agentId = await h.agent(owner, playbookId, {
+      assignment: [{ kind: "fixed", user_id: ana.userId }],
+    });
+    const dashboard = async (who: Person, query = "") =>
+      (await h.call(who, "GET", `/apps/ci/dashboard${query}`)).body;
+    const before = new Date(Date.now() - 60_000).toISOString();
+
+    const first = await h.submit(owner, agentId, versionId);
+    const second = await h.submit(owner, agentId, versionId);
+    expect(await dashboard(ana, `?since=${before}`)).toMatchObject({
+      since_last_visit: 0,
+      ready_to_review: 0,
+      assigned_to_me: 0,
+    });
+    await h.settle(owner, first, second);
+
+    const seen = await dashboard(ana, `?since=${before}`);
+    expect(seen).toMatchObject({ since_last_visit: 2, ready_to_review: 2, assigned_to_me: 2 });
+    expect(await dashboard(owner)).toMatchObject({
+      since_last_visit: 0,
+      ready_to_review: 2,
+      assigned_to_me: 0,
+    });
+
+    // Marking one done is not a new review, and takes it off both counts.
+    await h.call(ana, "POST", `/apps/ci/reviews/${first}/status`, { status: "done" });
+    expect(await dashboard(ana, `?since=${seen.as_of}`)).toMatchObject({
+      since_last_visit: 0,
+      ready_to_review: 1,
+      assigned_to_me: 1,
+    });
+    const bad = await h.call(ana, "GET", "/apps/ci/dashboard?since=yesterday");
+    expect(bad.status).toBe(400);
+  });
+
+  it("filters the queue by counterparty and by when it last changed", async () => {
+    const h = harness();
+    const owner = await h.workspace();
+    const playbookId = await h.playbook(owner);
+    const { versionId } = await h.contract(owner);
+    const agentId = await h.agent(owner, playbookId);
+    const globex = await h.submit(owner, agentId, versionId, { counterparty: "Globex Ltd" });
+    await h.submit(owner, agentId, versionId, { counterparty: "Initech_100%" });
+    const found = async (query: string) => {
+      const res = await h.call(owner, "GET", `/apps/ci/reviews?${query}`);
+      expect(res.status).toBe(200);
+      return res.body.reviews.map((r: Json) => r.id as string);
+    };
+    expect(await found("filter[counterparty]=glob")).toEqual([globex]);
+    // Wildcard characters are matched as written.
+    expect(await found("filter[counterparty]=%25")).toHaveLength(1);
+    const past = new Date(Date.now() - 3_600_000).toISOString();
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    expect(await found(`filter[from]=${past}&filter[to]=${future}`)).toHaveLength(2);
+    expect(await found(`filter[from]=${future}`)).toEqual([]);
+    expect(await found(`filter[to]=${past}`)).toEqual([]);
+    expect((await h.call(owner, "GET", "/apps/ci/reviews?filter[from]=soon")).status).toBe(400);
+  });
+
+  it("names the people and groups an agent's rules point at", async () => {
+    const h = harness();
+    const owner = await h.workspace();
+    const ana = await h.member(owner);
+    const team = await h.group(owner, [ana]);
+    const playbookId = await h.playbook(owner);
+    const agentId = await h.agent(owner, playbookId, {
+      assignment: [
+        {
+          kind: "field",
+          field: "governing_law",
+          cases: [{ op: "eq", value: "DE", assignee: { user_id: ana.userId } }],
+        },
+        { kind: "round_robin", group_id: team },
+      ],
+    });
+    const res = await h.call(owner, "GET", `/apps/ci/agents/${agentId}`);
+    expect(res.body.names[ana.userId]).toBe(ana.email);
+    expect(res.body.names[team]).toMatch(/^g-/);
   });
 });
 
