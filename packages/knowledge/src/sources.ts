@@ -41,6 +41,13 @@ export const filterSchemas = {
   ecfr: z.strictObject({
     titles: list(z.string().regex(/^\d{1,2}$/)).optional(),
   }),
+  uk_legislation: z.strictObject({
+    doc_types: z
+      .array(z.enum(["act", "statutory_instrument"]))
+      .min(1)
+      .optional(),
+    ...dates,
+  }),
 } as const;
 
 export type SourceId = keyof typeof filterSchemas;
@@ -101,6 +108,17 @@ export const SOURCES: readonly SourceInfo[] = [
     jurisdiction: "US",
     termsUrl: "https://www.ecfr.gov/reader-aids/understanding-the-ecfr/ecfr-developer-resources",
     attribution: "eCFR, not the official legal edition",
+  },
+  {
+    id: "uk_legislation",
+    name: "UK legislation",
+    group: "public_law",
+    mode: "indexed",
+    jurisdiction: "UK",
+    termsUrl: "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+    attribution:
+      "legislation.gov.uk. Contains public sector information licensed under the " +
+      "Open Government Licence v3.0",
   },
 ];
 

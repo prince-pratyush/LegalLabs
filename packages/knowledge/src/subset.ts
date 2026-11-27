@@ -7,6 +7,7 @@ import { createEurLexLoader } from "./eurlex.js";
 import { createFederalRegisterLoader, FR_DOCUMENT_NUMBER } from "./fr.js";
 import { createHttp } from "./http.js";
 import type { Loader, SourceId } from "./sources.js";
+import { createUkLegislationLoader, UK_TYPES, ukHttp } from "./uk.js";
 
 /** Identifiers only: the repository never carries the documents themselves. */
 export const subsetSchema = z.strictObject({
@@ -43,6 +44,20 @@ export const subsetSchema = z.strictObject({
         )
         .max(10_000),
       as_of: z.iso.date().optional(),
+    })
+    .optional(),
+  uk_legislation: z
+    .strictObject({
+      items: z
+        .array(
+          z.strictObject({
+            type: z.enum(UK_TYPES),
+            year: z.number().int().min(1200).max(2200),
+            number: z.number().int().min(1).max(100_000),
+            as_of: z.iso.date().optional(),
+          }),
+        )
+        .max(10_000),
     })
     .optional(),
 });
@@ -112,6 +127,13 @@ export const DEFAULT_SUBSET: Subset = {
       { title: "45", section: "164.502" },
     ],
   },
+  uk_legislation: {
+    items: [
+      { type: "ukpga", year: 2018, number: 12 },
+      { type: "ukpga", year: 2010, number: 15 },
+      { type: "uksi", year: 2019, number: 419 },
+    ],
+  },
 };
 
 export interface LoaderEnv {
@@ -152,6 +174,14 @@ export function loaderFor(source: SourceId, subset: Subset, env: LoaderEnv): Loa
         sections: subset.ecfr?.sections ?? [],
         ...(subset.ecfr?.as_of ? { asOf: subset.ecfr.as_of } : {}),
         http: createHttp({ perSecond: 1, userAgent }),
+      });
+    case "uk_legislation":
+      return createUkLegislationLoader({
+        items: (subset.uk_legislation?.items ?? []).map(({ as_of, ...item }) => ({
+          ...item,
+          asOf: as_of,
+        })),
+        http: ukHttp(userAgent),
       });
   }
 }

@@ -147,6 +147,24 @@ const cfr: AuthorityRecord = {
   ],
 };
 
+const dpa: AuthorityRecord = {
+  ref: `uk_legislation:item:ukpga-${VOL}-12`,
+  title: `Data ${tag} Protection Act 2018`,
+  jurisdiction: "UK",
+  docType: "act",
+  decidedOn: "2018-05-23",
+  citations: [{ text: `Data ${tag} Protection Act 2018`, kind: "act" }],
+  sections: ["s 2", "s 3", "s 3(2)"],
+  meta: { as_of: "2020-01-01" },
+  chunks: [
+    { sectionPath: "s 2", text: `2 Protection of ${tag} personal data.` },
+    {
+      sectionPath: "s 3",
+      text: `(2) Personal data means any information relating to a ${tag} living individual.`,
+    },
+  ],
+};
+
 const knowledge = createKnowledge(pool);
 let member: Seeded;
 
@@ -477,6 +495,25 @@ describe("eCFR", () => {
   });
 });
 
+describe("UK legislation", () => {
+  beforeAll(() => knowledge.writer().upsert(dpa));
+
+  it("resolves a section pin written into the citation, located in that section", async () => {
+    const caller = asPrincipal(member);
+    const citation = `Data ${tag} Protection Act 2018, s. 3(2)`;
+    expect(await knowledge.resolve(caller, { citation })).toMatchObject({
+      status: "ok",
+      authorityRef: dpa.ref,
+    });
+    const quoted = await knowledge.resolve(caller, {
+      citation,
+      quote: "any information relating to",
+    });
+    const page = await knowledge.text(caller, dpa.ref, 0);
+    expect(quoted?.located?.chunkId).toBe(page?.chunks.find((c) => c.sectionPath === "s 3")?.id);
+  });
+});
+
 describe("knowledge port for threads", () => {
   const caller = () => ({ userId: member.userId, workspaceId: member.workspaceId });
 
@@ -488,6 +525,7 @@ describe("knowledge port for threads", () => {
       "eurlex",
       "fr",
       "ecfr",
+      "uk_legislation",
     ]);
     const found = await port.search(
       caller(),
@@ -553,7 +591,14 @@ describe("knowledge API", () => {
   it("lists the sources with their filter schemas and facets", async () => {
     const cookie = await signIn(member);
     const list = await json<Items<{ id: string }>>(get(cookie, "/sources"));
-    expect(list.items.map((s) => s.id)).toEqual(["us_caselaw", "edgar", "eurlex", "fr", "ecfr"]);
+    expect(list.items.map((s) => s.id)).toEqual([
+      "us_caselaw",
+      "edgar",
+      "eurlex",
+      "fr",
+      "ecfr",
+      "uk_legislation",
+    ]);
     const detail = await json<{
       filter_schema: unknown;
       facets: { courts: { value: string }[] };
