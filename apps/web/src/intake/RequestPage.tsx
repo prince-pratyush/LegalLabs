@@ -331,7 +331,8 @@ export function RequestPage({ requestId }: { requestId: string }) {
             <li key={event.id} className="flex flex-wrap gap-x-3">
               <span>{happened(event, types)}</span>
               <span className="text-fg-muted">
-                {event.actor_name ?? "System"} · {at(event.at)}
+                {event.actor_type === "requester" ? "Requester" : (event.actor_name ?? "System")} ·{" "}
+                {at(event.at)}
               </span>
             </li>
           ))}

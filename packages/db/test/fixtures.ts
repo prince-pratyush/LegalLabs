@@ -467,7 +467,19 @@ export async function seed(tx: Tx) {
        values ($1, $2, 'inbound', 'user', $3)`,
       [ws, requestId, owner],
     );
-    return { serviceId, vaultId, typeId, requestId, documentId };
+    const channelId = await id(
+      `insert into apps.intake_channel (workspace_id, key, name, address, authserv_id,
+         allowed_domains, secret_sealed, created_by)
+       values ($1, replace(gen_random_uuid()::text, '-', ''), 'Legal', 'legal@firm.test',
+         'mx.firm.test', array['acme.example'], 'sealed', $2) returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into apps.inbound_email (workspace_id, channel_id, event_hash, size_bytes, status, raw)
+       values ($1, $2, sha256('mail'), 4, 'queued', 'mail')`,
+      [ws, channelId],
+    );
+    return { serviceId, vaultId, typeId, requestId, documentId, channelId };
   };
   const intakes = { acme: await intake(acme, ana), beta: await intake(beta, bob) };
 
