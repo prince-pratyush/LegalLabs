@@ -41,8 +41,16 @@ const PAGE = 100;
 const ECFR_TITLES = 50;
 const UK_PAGES = 15;
 
-const line = (raw: string, cap: number) => clean(raw).replace(/\s+/g, " ").trim().slice(0, cap);
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+// Cleaned after the cut, which can leave half of a character the database won't hold.
+const line = (raw: string, cap: number) => clean(raw.replace(/\s+/g, " ").trim().slice(0, cap));
+/** A real calendar day. */
+const day = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
+  });
 
 const FR_HOST = "www.federalregister.gov";
 const FR_TYPES: Record<string, string> = {
@@ -85,11 +93,12 @@ async function scanFederalRegister(http: Http, cursor: ScanCursor): Promise<Scan
   const items: ScanCandidate[] = [];
   for (const raw of (answer.results ?? []).slice(0, PAGE)) {
     const entry = frEntry.safeParse(raw).data;
-    if (!entry) continue;
+    const title = line(entry?.title ?? "", 1000);
+    if (!entry || !title) continue;
     items.push({
       externalId: entry.document_number,
       url: onFederalRegister(entry.html_url) ?? `https://${FR_HOST}/d/${entry.document_number}`,
-      title: line(entry.title, 1000),
+      title,
       summary: line(entry.abstract ?? "", 4000),
       docType: FR_TYPES[entry.type] ?? "other",
       publishedOn: entry.publication_date,
