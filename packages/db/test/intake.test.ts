@@ -25,6 +25,10 @@ async function staff(tx: Tx, s: Seed, name: string, permissions: string[]) {
   return user.id;
 }
 
+/** What the intake screens and the document viewer set to show an Inbox file. */
+const reading = (tx: Tx, on = true) =>
+  tx.rows("select set_config('legallabs.intake_read', $1, true)", [on ? "on" : ""]);
+
 const inbox = async (tx: Tx, s: Seed, who: string) => {
   await tx.as(who, s.acme);
   return tx.one<{ service_user_id: string; vault_id: string }>(
@@ -140,6 +144,7 @@ describe("the intake inbox", () => {
       const manager = await staff(tx, s, "mgr", ["intake.manage", "threads.use"]);
       const { service_user_id: service, vault_id: vault } = await inbox(tx, s, triage);
       const doc = await inboxFile(tx, s, service, vault);
+      await reading(tx);
 
       await tx.as(triage, s.acme);
       const level = await tx.one("select content.vault_level($1) l", [vault]);
@@ -239,6 +244,7 @@ describe("who can see an intake request", () => {
       ]);
       // What ingest spawns from a mailbox follows its source.
       const child = await inboxFile(tx, s, service, vault, doc);
+      await reading(tx);
 
       await tx.as(s.cal, s.acme);
       expect(await count(tx, "apps.intake_request where id = $1", [made.id])).toBe(0);
@@ -267,6 +273,7 @@ describe("who can see an intake request", () => {
       const two = await staff(tx, s, "two", ["intake.triage", "threads.use"]);
       const { service_user_id: service, vault_id: vault } = await inbox(tx, s, one);
       const doc = await added(tx, s, one, service, vault);
+      await reading(tx);
       await tx.as(one, s.acme);
       expect(await count(tx, "content.document where id = $1", [doc])).toBe(1);
       await tx.as(two, s.acme);
@@ -438,6 +445,161 @@ describe("what a request will accept", () => {
       );
       await tx.as(s.ben, s.acme);
       expect(await count(tx, "apps.intake_request_type")).toBe(0);
+    });
+  });
+});
+
+/** An Inbox file, with what it unpacks into, attached to a request on a matter. */
+async function attached(tx: Tx, s: Seed, matter: string | null) {
+  const { service_user_id: service, vault_id: vault } = await inbox(tx, s, s.ana);
+  const doc = await added(tx, s, s.ana, service, vault);
+  const made = await request(tx, s, s.ana, matter);
+  await tx.rows("update apps.intake_attachment set request_id = $2 where document_id = $1", [
+    doc,
+    made.id,
+  ]);
+  const child = await inboxFile(tx, s, service, vault, doc);
+  await tx.asOwner();
+  const version = await tx.one<{ id: string }>(
+    "select id from content.document_version where document_id = $1",
+    [doc],
+  );
+  return { service, vault, doc, child, version: version.id };
+}
+
+describe("Inbox files as material for other features", () => {
+  it("are invisible outside the intake screens and the viewer, even to triage", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { doc, child, version } = await attached(tx, s, null);
+      await tx.as(s.ana, s.acme);
+      expect(await count(tx, "content.document where id = any($1)", [[doc, child]])).toBe(0);
+      expect(await count(tx, "content.document_version where id = $1", [version])).toBe(0);
+      // Threads, review tables and contract reviews all ask this before taking a file.
+      const thread = await tx.one<{ id: string }>(
+        "insert into work.thread (workspace_id, owner_id, title) values ($1, $2, 't') returning id",
+        [s.acme, s.ana],
+      );
+      expect(
+        await tx.error(
+          "insert into work.thread_document (workspace_id, thread_id, version_id) values ($1, $2, $3)",
+          [s.acme, thread.id, version],
+        ),
+      ).toMatch(/row-level security/);
+      expect(
+        await tx.error(
+          `insert into work.rt_row (workspace_id, table_id, document_ids, ordinal)
+           values ($1, $2, array[$3]::uuid[], 99)`,
+          [s.acme, s.reviewTables.acme.tableId, doc],
+        ),
+      ).toMatch(/row-level security/);
+      await reading(tx);
+      expect(await count(tx, "content.document where id = any($1)", [[doc, child]])).toBe(2);
+    });
+  });
+
+  it("can't become an agent's upload, and no agent share makes one readable", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { doc } = await attached(tx, s, null);
+      const { agentId } = s.agents.acme;
+      await tx.as(s.ana, s.acme);
+      expect(await tx.one("select work.agent_upload_linkable($1) ok", [doc])).toEqual({
+        ok: false,
+      });
+      expect(
+        await tx.error(
+          "insert into work.agent_document (workspace_id, agent_id, document_id) values ($1, $2, $3)",
+          [s.acme, agentId, doc],
+        ),
+      ).toMatch(/row-level security/);
+      // Even a link that got there some other way gives nobody the file.
+      await tx.asOwner();
+      await tx.rows("update core.role set permissions = '{threads.use,agents.use}' where id = $1", [
+        s.roles.acmeUser,
+      ]);
+      await tx.rows(
+        "insert into work.agent_document (workspace_id, agent_id, document_id) values ($1, $2, $3)",
+        [s.acme, agentId, doc],
+      );
+      await tx.rows(
+        `insert into core.share_grant (workspace_id, object_type, object_id, principal_type,
+           principal_id, level, granted_by) values ($1, 'agent', $2, 'user', $3, 'run', $4)`,
+        [s.acme, agentId, s.ben, s.ana],
+      );
+      await tx.as(s.ben, s.acme);
+      expect(await tx.one("select work.agent_upload_readable($1) ok", [doc])).toEqual({
+        ok: true,
+      });
+      for (const on of [false, true]) {
+        await reading(tx, on);
+        expect(await count(tx, "content.document where id = $1", [doc])).toBe(0);
+      }
+    });
+  });
+});
+
+describe("a matter's holds and retention reach its intake files", () => {
+  it("holds them, and what they unpack into, with the matter", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { doc, child } = await attached(tx, s, s.matters.m2);
+      const held = async (id: string) =>
+        (
+          await tx.one<{ ok: boolean }>("select retention._is_held($1, 'document', $2) ok", [
+            s.acme,
+            id,
+          ])
+        ).ok;
+      await tx.asOwner();
+      expect(await held(child)).toBe(false);
+      await tx.rows(
+        `insert into retention.hold (workspace_id, object_type, object_id, reason, set_by)
+         values ($1, 'matter', $2, 'Dispute', $3)`,
+        [s.acme, s.matters.m2, s.ana],
+      );
+      expect(await held(doc)).toBe(true);
+      expect(await held(child)).toBe(true);
+      await tx.rows(
+        `update content.document set deleted_at = now() - interval '40 days',
+                deleted_reason = 'retention' where id = any($1)`,
+        [[doc, child]],
+      );
+      await tx.rows("select 1 from content.purge_expired_bin(30)");
+      expect(await count(tx, "content.document where id = any($1)", [[doc, child]])).toBe(2);
+    });
+  });
+
+  it("expires them under the matter's policy and shows them held", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { doc, child } = await attached(tx, s, s.matters.m2);
+      await tx.asOwner();
+      await tx.rows(
+        "update content.document set created_at = now() - interval '90 days' where id = any($1)",
+        [[doc, child]],
+      );
+      await tx.rows(
+        "update content.document_version set created_at = now() - interval '90 days' where document_id = any($1)",
+        [[doc, child]],
+      );
+      const expired = () =>
+        tx.rows<{ matter_id: string; policy_scope: string; held: boolean }>(
+          `select matter_id, policy_scope, held
+             from retention.expired_objects($1, 'matter', $2, 720) where object_id = any($3)`,
+          [s.acme, s.matters.m2, [doc, child]],
+        );
+      const row = { matter_id: s.matters.m2, policy_scope: "matter", held: false };
+      expect(await expired()).toEqual([row, row]);
+      await tx.rows(
+        `insert into retention.hold (workspace_id, object_type, object_id, reason, set_by)
+         values ($1, 'matter', $2, 'Dispute', $3)`,
+        [s.acme, s.matters.m2, s.ana],
+      );
+      expect(await expired()).toEqual([
+        { ...row, held: true },
+        { ...row, held: true },
+      ]);
     });
   });
 });

@@ -9,6 +9,7 @@ import { createAuth } from "../auth/auth.js";
 import { hashPassword } from "../auth/password.js";
 import { asApp } from "../db.js";
 import { createDrafts } from "../drafts/drafts.js";
+import { createIntake } from "../intake/intake.js";
 import { createHub } from "../notifications/hub.js";
 import { createNotifier } from "../notifications/notify.js";
 import { createPlaybooks } from "../playbooks/playbooks.js";
@@ -356,6 +357,7 @@ function harness(options: { maxActive?: number; ci?: Partial<CiOptions> } = {}) 
     get,
     settle,
     hold,
+    documents,
   };
 }
 
@@ -567,6 +569,39 @@ describe("contract reviews", () => {
     expect((await post(owner, theirs.versionId)).status).toBe(404);
     await h.call(owner, "POST", `/apps/ci/agents/${agentId}/deactivate`);
     expect((await post(owner, versionId)).body.code).toBe("AGENT_NOT_LIVE");
+  });
+
+  it("never take a file from the intake inbox", async () => {
+    const h = harness();
+    const owner = await h.workspace();
+    const playbookId = await h.playbook(owner);
+    const agentId = await h.agent(owner, playbookId);
+    const me = { sessionId: "t", userId: owner.userId, workspaceId: owner.workspaceId };
+    const intake = createIntake(pool, { documents: h.documents.raw });
+    const sent = await intake.upload(
+      me,
+      { name: "theirs.txt", bytes: new TextEncoder().encode("1. Liability is unlimited.") },
+      { ip: null, userAgent: null },
+    );
+    if (!sent.ok) throw new Error("upload failed");
+    await h.documents.worker.drain(owner.workspaceId);
+    const { rows } = await pool.query<{ id: string }>(
+      "select id from content.document_version where document_id = $1",
+      [sent.value.document_id],
+    );
+    const versionId = rows[0]?.id;
+    const queued = await h.call(owner, "POST", "/apps/ci/reviews", {
+      agent_id: agentId,
+      document_version_id: versionId,
+    });
+    expect(queued.status).toBe(404);
+    const reviewed = await h.call(owner, "POST", `/playbooks/${playbookId}/reviews`, {
+      document_version_id: versionId,
+      party: "Acme",
+      paper: "theirs",
+      surface: "web",
+    });
+    expect(reviewed.status).toBe(404);
   });
 
   it("wait while their agent is paused", async () => {
