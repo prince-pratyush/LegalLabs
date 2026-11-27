@@ -94,6 +94,9 @@ export function createSmtpEmailProvider(config: SmtpConfig): SmtpProvider {
           to: { name: message.to.name, address: message.to.email },
           subject: message.subject,
           text: message.text,
+          ...(message.replyTo ? { replyTo: { name: "", address: message.replyTo } } : {}),
+          ...(message.messageId ? { messageId: message.messageId } : {}),
+          ...(message.auto ? { headers: { "Auto-Submitted": "auto-replied" } } : {}),
         });
       } catch (err) {
         throw plainError(err);

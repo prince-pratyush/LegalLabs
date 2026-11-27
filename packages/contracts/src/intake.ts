@@ -377,6 +377,10 @@ export const IntakeRequest = z.object({
   assignee_name: z.string().nullable(),
   matter_id: Id.nullable(),
   sla: z.object({ due_at: z.string(), state: IntakeSlaState }).nullable(),
+  /** How sure the classifier was: 1 for a keyword rule, null when a person chose the type. */
+  classification_confidence: z.number().nullable(),
+  /** The lawyer's task; finishing it finishes the request. */
+  task_id: Id.nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -404,3 +408,23 @@ export const IntakeEvent = z.object({
 export type IntakeEvent = z.infer<typeof IntakeEvent>;
 
 export type IntakeRequestDetail = IntakeRequest & { attachments: IntakeAttachment[] };
+
+/** Words sent back to an email requester. */
+export const IntakeReply = z
+  .object({ text: Text(INTAKE_LIMITS.value_chars).trim().min(1) })
+  .strict();
+
+export const IntakeMyTask = z.object({
+  id: Id,
+  space_id: Id,
+  name: z.string(),
+  /** A date, not a time. */
+  due_at: z.string().nullable(),
+  status: z.enum(["todo", "in_progress"]),
+});
+export type IntakeMyTask = z.infer<typeof IntakeMyTask>;
+
+export interface IntakeMine {
+  requests: IntakeRequest[];
+  tasks: IntakeMyTask[];
+}

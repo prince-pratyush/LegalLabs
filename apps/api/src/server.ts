@@ -38,6 +38,7 @@ import { createDrafts } from "./drafts/drafts.js";
 import { createEmailProcessor } from "./inbound/processor.js";
 import { createEmailChannels } from "./intake/channels.js";
 import { createIntake } from "./intake/intake.js";
+import { createIntakeWorker } from "./intake/worker.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
@@ -318,6 +319,18 @@ const emailProcessor = createEmailProcessor(pool, {
 emailProcessor.start();
 process.once("SIGTERM", () => void emailProcessor.stop());
 process.once("SIGINT", () => void emailProcessor.stop());
+// Classifies and routes intake requests, and mails requesters. Without a mail server the
+// mail waits in its queue.
+const intakeWorker = createIntakeWorker(pool, {
+  gateway,
+  store,
+  notifier,
+  ...(smtp ? { mail: { provider: smtp } } : {}),
+  log: (line) => console.log(line),
+});
+intakeWorker.start();
+process.once("SIGTERM", () => void intakeWorker.stop());
+process.once("SIGINT", () => void intakeWorker.stop());
 
 const mfaOption = mfaFromEnv(process.env, pool);
 const mfaCheck = mfaStartupCheck(process.env, mfaOption.mfa !== undefined);

@@ -1,5 +1,6 @@
 import type {
   IntakeEvent,
+  IntakeMine,
   IntakeRequest,
   IntakeRequestDetail,
   IntakeStatusChange,
@@ -54,6 +55,9 @@ export const intakeApi = {
     change(id, "assign", { assignee_id: assigneeId }),
   setType: (id: string, typeId: string) => change(id, "type", { type_id: typeId }),
   setStatus: (id: string, status: IntakeStatusChange) => change(id, "status", status),
+  reply: (id: string, text: string) =>
+    send<{ delivery: "queued" }>("POST", `${requestPath(id)}/reply`, { text }),
+  mine: () => request<IntakeMine>("/apps/intake/my-tasks"),
 
   types: () => request<{ types: IntakeType[]; can_manage: boolean }>("/apps/intake/request-types"),
   createType: (input: IntakeTypeCreate) =>

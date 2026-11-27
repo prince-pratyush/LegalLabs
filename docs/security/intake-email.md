@@ -5,11 +5,11 @@ session. Code: `apps/api/src/inbound/`, `apps/api/src/intake/channels.ts`, migra
 
 ## Trust
 
-| Party                           | What it is trusted for                                                                             |
-| ------------------------------- | -------------------------------------------------------------------------------------------------- |
-| The receiving mail server (MTA) | Holds the channel secret. Its topmost `Authentication-Results` header is believed                  |
-| The sender of an email          | Nothing. `From` is a name to answer: it never selects a user, matter, assignee, type or permission |
-| Message content                 | Nothing. It is stored as files; none of it is run, fetched, put into a prompt or logged            |
+| Party                           | What it is trusted for                                                                                                                                   |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The receiving mail server (MTA) | Holds the channel secret. Its topmost `Authentication-Results` header is believed                                                                        |
+| The sender of an email          | Nothing. `From` is a name to answer: it never selects a user, matter, assignee, type or permission                                                       |
+| Message content                 | Nothing. It is stored as files; none of it is run, fetched or logged. The subject and body of the message are put into the classification prompt (below) |
 
 ## Controls
 
@@ -22,12 +22,26 @@ session. Code: `apps/api/src/inbound/`, `apps/api/src/intake/channels.ts`, migra
 | Flooding by a key holder                | 120 signed messages a minute per channel; at most 500 messages or 200 MB waiting, and 50 or 50 MB from one sender (then `429`, so the MTA retries); 600 accepted per workspace and 30 per sender in an hour, the rest stay queued; 600 refused per channel in an hour; workspaces are served in turn |
 | Parser abuse                            | Sender and DMARC are decided from the header block alone, before any body is parsed; limits on lines, parts, nesting, header bytes, attachments and body length; attached messages are not read into; text is never rendered as HTML; no expression that backtracks on message text                  |
 | Spoofed sender                          | `dmarc=pass` for the exact `From` domain, from the first `Authentication-Results` header only and only if it names the configured server; comments and quoted strings are ignored; exactly one plain `From` address; exact domain allow list                                                         |
-| Mail loops and backscatter              | Nothing is ever sent. Auto-submitted, bulk, list, bounce, report and own-address mail is dropped                                                                                                                                                                                                     |
+| Mail loops and backscatter              | The hook sends nothing (see below for what is sent later). Auto-submitted, bulk, list, bounce, report and own-address mail is dropped                                                                                                                                                                |
 | Malicious files                         | Each is scanned before it is stored and again by the ingest worker; type and size checks are those of any upload; names lose paths and hidden characters                                                                                                                                             |
 | Disclosure of what arrived              | Files go to the Inbox vault, with its walls, and cannot be material for threads, agents, tables or reviews (F-53 to F-55). A file is hidden from everyone until its request exists                                                                                                                   |
 | Secrets                                 | 256 bit, sealed with `LEGALLABS_SECRETS_KEY`, shown once, rotated with an overlap of up to 72 hours or none                                                                                                                                                                                          |
 | Content in logs and records             | Logs carry message ids and error codes. The audit log and the queue keep ids, counts, sizes, hashes and reason codes. The raw message is deleted when it is filed, refused or given up                                                                                                               |
 | Database reach                          | The app role has no access to the queue. The hook and worker use narrow `security definer` functions that only the worker role may call, and take the workspace from the row                                                                                                                         |
+
+## After filing: classification, mail and routing
+
+Code: `apps/api/src/intake/{classify,worker,mail}.ts`, migration 0234.
+
+| Threat                                        | Control                                                                                                                                                                                                                                                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Instructions planted in a message             | Subject and body only, capped, invisible characters removed, instruction-like lines marked, angle brackets replaced. The answer must match a strict schema; it can name one configured type and fill that type's text, select, date, money and yes/no fields, nothing else                            |
+| A requester choosing a matter, file or person | Matter fields are never filled; a file field takes only a file on the request; the apply function in the database refuses anything else and takes no matter or assignee. Assignment rules choose only among people the type's author named, though a field rule may read a value the requester stated |
+| A model or message causing mail               | Mail goes only to the authenticated address the request came from. Its words are fixed, apart from the type's question and a lawyer's reply. No requester or model text and no link is sent                                                                                                           |
+| Mail loops and cost                           | `Auto-Submitted` on system mail; each field asked at most three times; 20 mails an hour to one address; 10 model calls per request                                                                                                                                                                    |
+| Joining someone else's request                | An answer must quote a random token from our Message-ID and come, with DMARC, from the request's own address                                                                                                                                                                                          |
+| Routing widening access                       | Routes as set by a person who must still have the Space and an intake settings permission. The assignee must have triage, the request's matter and edit membership of the Space. The task carries the number and type name only                                                                       |
+| Intake files becoming material                | Unchanged (F-53 to F-55). A type routed to contract review or to an agent is left in the queue for a person; there is no step that files an intake attachment into a vault                                                                                                                            |
 
 ## What the deployer must do
 
@@ -56,3 +70,6 @@ session. Code: `apps/api/src/inbound/`, `apps/api/src/intake/channels.ts`, migra
   retention removes them.
 - A queued message is not covered by a legal hold until it is filed.
 - Live delivery from a real mail server has not been tested.
+- Classification accuracy has not been measured; tests use a fake model.
+- A lawyer's reply is held until it is sent and then dropped, so the timeline records that one
+  was sent, not what it said.

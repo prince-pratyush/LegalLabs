@@ -1,6 +1,7 @@
 import {
   IntakeAssign,
   IntakeChannel,
+  IntakeReply,
   IntakeRequestCreate,
   IntakeSetType,
   IntakeStatus,
@@ -200,6 +201,15 @@ export function intakeHttp(intake: Intake, clientOf: (c: Context) => Client) {
     if (!("data" in body)) return body.response;
     return reply(c, await intake.setStatus(me(c), id(c), body.data, clientOf(c)), one);
   });
+
+  app.post("/apps/intake/requests/:id/reply", limitBody, async (c) => {
+    const body = await parse(c, IntakeReply);
+    if (!("data" in body)) return body.response;
+    const result = await intake.reply(me(c), id(c), body.data.text, clientOf(c));
+    return reply(c, result, (v) => v);
+  });
+
+  app.get("/apps/intake/my-tasks", async (c) => reply(c, await intake.mine(me(c)), (v) => v));
 
   return app;
 }

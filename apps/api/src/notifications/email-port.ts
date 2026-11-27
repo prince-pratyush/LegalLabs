@@ -3,6 +3,11 @@ export interface EmailMessage {
   to: { email: string; name: string };
   subject: string;
   text: string;
+  /** Where an answer should go, when that isn't the sender. */
+  replyTo?: string;
+  messageId?: string;
+  /** Written by the system, so other systems don't answer it. */
+  auto?: boolean;
 }
 
 /** Where mail goes out; `mail/smtp.ts` is the one that really sends. */
