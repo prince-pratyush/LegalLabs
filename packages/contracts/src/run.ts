@@ -22,6 +22,7 @@ export const RunKind = z.enum([
   "agent",
   "workflow",
   "agent_builder",
+  "fact_extraction",
 ]);
 export type RunKind = z.infer<typeof RunKind>;
 
@@ -129,6 +130,13 @@ export const RunEvent = z.discriminatedUnion("type", [
     cost_usd: z.number().optional(),
   }),
   event("coverage", { coverage: Coverage }),
+  // Reading files into a fact table: counts only, never a file's name or words.
+  event("facts.extract_progress", {
+    documents_done: z.number().int(),
+    documents_total: z.number().int(),
+    facts_found: z.number().int(),
+    rejected_unverified: z.number().int(),
+  }),
   event("followups", { message_id: z.string(), items: z.array(z.string()).max(4) }),
   event("done", {
     message_id: z.string(),

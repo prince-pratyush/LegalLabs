@@ -223,6 +223,8 @@ export const auditActions: string[] = [
   ...family("email", ["inbound_rejected", "inbound_failed"]),
   ...family("facts", ["created_manual", "edited", "status_changed"]),
   ...family("facts", ["entity_created", "entity_updated", "issue_created", "issue_updated"]),
+  ...family("facts", ["extraction_started", "extracted", "extraction_failed"]),
+  "facts.extraction_cancelled",
 ];
 
 export const AuditAction = z.enum(auditActions);

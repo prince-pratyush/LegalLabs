@@ -3,6 +3,7 @@ import {
   EntityPatch,
   FactCreate,
   FactDate,
+  FactExtractRequest,
   FactPatch,
   FactStatus,
   FactStatusRequest,
@@ -13,13 +14,15 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
+import type { Limiter } from "../auth/limiter.js";
+import type { FactExtractions } from "./extraction.js";
 import type { FactFailure, FactResult, Facts } from "./facts.js";
 
 type Env = { Variables: { principal: Principal } };
 
 export const FACT_FAILURES: Record<
   FactFailure,
-  { status: 400 | 403 | 404 | 422; message: string }
+  { status: 400 | 403 | 404 | 409 | 422 | 429; message: string }
 > = {
   NOT_FOUND: { status: 404, message: "That Space or fact wasn't found." },
   FORBIDDEN: { status: 403, message: "You don't have access to do that." },
@@ -34,6 +37,15 @@ export const FACT_FAILURES: Record<
   },
   UNKNOWN_ENTITY: { status: 422, message: "That person or organisation wasn't found." },
   UNKNOWN_ISSUE: { status: 422, message: "That issue wasn't found." },
+  TOO_MANY_DOCUMENTS: {
+    status: 422,
+    message: "Choose 200 files or fewer for one extraction.",
+  },
+  TOO_MANY_RUNS: {
+    status: 409,
+    message: "Three extractions are already running. Wait for one to finish.",
+  },
+  TOO_MANY_REQUESTS: { status: 429, message: "You've asked a lot just now. Try again shortly." },
   BAD_CURSOR: { status: 400, message: "Check the request." },
 };
 
@@ -49,7 +61,12 @@ export const FactFilterQuery = z.object({
 
 const BASE = "/apps/chronology/spaces/:space";
 
-export function factHttp(facts: Facts, clientOf: (c: Context) => Client) {
+export function factHttp(
+  facts: Facts,
+  clientOf: (c: Context) => Client,
+  extraction?: FactExtractions,
+  asks?: Limiter,
+) {
   const app = new Hono<Env>();
   const limitBody = bodyLimit({
     maxSize: 128 * 1024,
@@ -117,6 +134,36 @@ export function factHttp(facts: Facts, clientOf: (c: Context) => Client) {
   app.get(`${BASE}/facts/audit`, async (c) =>
     answer(c, await facts.audit(me(c), param(c, "space"), c.req.query("cursor")), null),
   );
+
+  if (extraction) {
+    // Cancelled like any run, at POST /runs/:id/cancel.
+    app.post(`${BASE}/facts/extract`, limitBody, async (c) => {
+      const parsed = await body(c, FactExtractRequest);
+      if (!parsed.success) return invalid(c);
+      const charge = (n: number) => {
+        let wait = 0;
+        for (let i = 0; i < n && wait === 0; i++) wait = asks?.take(me(c).userId) ?? 0;
+        return wait;
+      };
+      const result = await extraction.extract(
+        me(c),
+        param(c, "space"),
+        parsed.data,
+        charge,
+        clientOf(c),
+      );
+      if (!result.ok) return answer(c, result, null);
+      return c.json(result.value, 202);
+    });
+
+    app.get(`${BASE}/facts/extractions`, async (c) =>
+      answer(c, await extraction.list(me(c), param(c, "space")), "extractions"),
+    );
+
+    app.get(`${BASE}/facts/extractions/:run`, async (c) =>
+      answer(c, await extraction.get(me(c), param(c, "space"), param(c, "run")), "extraction"),
+    );
+  }
 
   app.get(`${BASE}/facts/:id`, async (c) =>
     answer(c, await facts.get(me(c), param(c, "space"), param(c, "id")), "fact"),

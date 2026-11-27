@@ -36,6 +36,9 @@ export type FactFailure =
   | "QUOTE_NOT_FOUND"
   | "UNKNOWN_ENTITY"
   | "UNKNOWN_ISSUE"
+  | "TOO_MANY_DOCUMENTS"
+  | "TOO_MANY_RUNS"
+  | "TOO_MANY_REQUESTS"
   | "BAD_CURSOR";
 
 export type FactResult<T> = { ok: true; value: T } | { ok: false; reason: FactFailure };

@@ -764,6 +764,13 @@
       "when": 1794021500000,
       "tag": "0240_apps_facts",
       "breakpoints": false
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1794021600000,
+      "tag": "0241_apps_fact_extraction",
+      "breakpoints": false
     }
   ]
 }
