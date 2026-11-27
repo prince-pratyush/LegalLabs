@@ -16,6 +16,7 @@ import {
   ClipboardList,
   FileCheck,
   History,
+  Inbox,
   Library,
   Settings,
   SquarePen,
@@ -36,6 +37,8 @@ import { commandCenterHash, parseCommandCenterRoute } from "./command-center/rou
 import { GuestApp } from "./guest/GuestApp.js";
 import { GuestAccept, GuestSignIn, type Prefill } from "./guest/GuestEntry.js";
 import { HistoryPage } from "./history/HistoryPage.js";
+import { IntakeApp } from "./intake/IntakeApp.js";
+import { goIntake, parseIntakeRoute } from "./intake/route.js";
 import { LibraryApp } from "./library/LibraryApp.js";
 import { libraryHash, parseLibraryRoute } from "./library/route.js";
 import { MattersApp } from "./matters/MattersApp.js";
@@ -126,6 +129,8 @@ export function App() {
       <div className="contents" inert={viewing}>
         {parseCiRoute(hash) ? (
           <CiApp onLeave={() => navigate(paths.new)} />
+        ) : parseIntakeRoute(hash) ? (
+          <IntakeApp onLeave={() => navigate(paths.new)} />
         ) : parseAgentRoute(hash) ? (
           <AgentsApp onLeave={() => navigate(paths.new)} />
         ) : parseMattersRoute(hash) ? (
@@ -342,6 +347,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       run: () => goCi({ page: "queue" }),
     },
     {
+      id: "intake",
+      kind: "action",
+      group: "Go to",
+      label: "Intake queue",
+      run: () => goIntake({ page: "queue" }),
+    },
+    {
       id: "tables",
       kind: "action",
       group: "Go to",
@@ -488,6 +500,15 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
         >
           <FileCheck aria-hidden />
           Contracts
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="justify-start"
+          onClick={() => goIntake({ page: "queue" })}
+        >
+          <Inbox aria-hidden />
+          Intake
         </Button>
         <Button
           variant="quiet"
