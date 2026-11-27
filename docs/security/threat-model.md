@@ -122,6 +122,8 @@ A third review (F-39 to F-46) added the matter-wall check to direct agent shares
 
 Contract review queues run each playbook review as the agent's owner. A review is visible only while the reader can open its document, its summary only to someone who can also open the playbook, and an assignee can do no more than hand it on or mark it done, in the database as well as the API (F-48 to F-52).
 
+Intake requests come from people with no account. Their files belong to a per-workspace service account that cannot sign in, hold a token or be edited, in an Inbox vault that triage staff may only read, and that cannot be shared, transferred or deleted by hand. A request tied to a matter, its timeline and its files are hidden from anyone walled from it, in the database. Inbox files are shown to triage staff on the request and in the viewer and are no material for other work, and a matter's holds and retention reach them (F-53 to F-55). Only the service account records a file as sent in, so no existing document can be pulled into intake by naming it. Open: request text has no retention policy of its own; requester files are readable by every triage user who passes the matter's wall.
+
 ## 8. Cross-cutting
 
 **Tenant isolation.** RLS is enabled and forced on every table (checked by `rls.test.ts`, including a test that catches a table added without protection). The definer functions are the weak point of any RLS design, so P-01 calls every one the app role may execute, as four kinds of caller, with the ids of everything in another workspace: nothing changed, and only three yes or no oracles remain (accepted, F-09).

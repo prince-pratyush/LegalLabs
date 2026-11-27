@@ -5,7 +5,7 @@ import { type Block, detectType, type Failure } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
-import { asApp, RLS_REFUSED } from "../db.js";
+import { asApp, RLS_REFUSED, showIntakeFiles } from "../db.js";
 
 export type Status = "queued" | "parsing" | "indexed" | "failed";
 
@@ -33,6 +33,10 @@ export interface UploadInput {
   folderId?: string | null;
   /** An embedded file of this workflow; only its editors may add one. */
   workflowId?: string;
+  /** Keeps the name as given in a vault, where a number would show what else is there. */
+  keepName?: boolean;
+  /** Writes more in the same transaction, so the file never exists without it. */
+  within?: (db: pg.PoolClient, documentId: string) => Promise<unknown>;
 }
 
 export type ReplaceResult =
@@ -259,6 +263,8 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
         );
         const refused = room.rows[0]?.refused;
         if (refused) throw new NoRoom(refused);
+      }
+      if (vaultId && !input.keepName) {
         const taken = await db.query<{ name: string }>(
           `select name from content.document
             where vault_id = $1 and folder_id is not distinct from $2
@@ -296,6 +302,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
         workspaceId,
         versionId,
       ]);
+      await input.within?.(db, row.id);
       // Last in the transaction: an audit failure must undo the upload it describes.
       await db.query(
         "select admin.append_audit_event('document.uploaded', 'user', $1, 'document', $2, $3, $4, $5)",
@@ -452,6 +459,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
     async get(principal, documentId) {
       if (!UUID.test(documentId)) return null;
       return asApp(pool, principal, async (db) => {
+        await showIntakeFiles(db);
         const { rows } = await db.query<SummaryRow>(`${SUMMARY_SQL} and d.id = $1`, [documentId]);
         return rows[0] ? toSummary(rows[0]) : null;
       });

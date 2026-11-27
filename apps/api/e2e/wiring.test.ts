@@ -45,3 +45,16 @@ describe("Contract Intelligence in the running server", () => {
     expect(await json("/api/v1/apps/ci/reviews")).toEqual({ reviews: [], next_cursor: null });
   });
 });
+
+describe("Intake in the running server", () => {
+  it("is mounted", async () => {
+    expect(await json("/api/v1/apps/intake/request-types")).toEqual({
+      types: [],
+      can_manage: true,
+    });
+    expect(await json("/api/v1/apps/intake/requests")).toEqual({
+      requests: [],
+      next_cursor: null,
+    });
+  });
+});

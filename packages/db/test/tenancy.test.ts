@@ -18,6 +18,7 @@ describe("tenancy", () => {
         "cal@acme.test",
         "dee@acme.test",
         "gia@guest.test",
+        "intake@inbox.invalid",
         "sue@acme.test",
         "y@other.test",
       ]);

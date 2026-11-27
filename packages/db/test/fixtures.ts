@@ -421,6 +421,56 @@ export async function seed(tx: Tx) {
   await contractReview(acme, ana, playbooks.acme, documents.acme, reviews.acme);
   await contractReview(beta, bob, playbooks.beta, documents.beta, reviews.beta);
 
+  // Intake: the service user, its Inbox, and one request with a file and a timeline.
+  const intake = async (ws: string, owner: string) => {
+    const serviceId = await id(
+      `insert into core."user" (workspace_id, email, status, kind)
+       values ($1, 'intake@inbox.invalid', 'active', 'service') returning id`,
+      [ws],
+    );
+    const vaultId = await id(
+      "insert into content.vault (workspace_id, owner_id, name) values ($1, $2, 'Intake inbox') returning id",
+      [ws, serviceId],
+    );
+    await tx.rows(
+      "insert into apps.intake_inbox (workspace_id, service_user_id, vault_id) values ($1, $2, $3)",
+      [ws, serviceId, vaultId],
+    );
+    const typeId = await id(
+      `insert into apps.intake_request_type (workspace_id, name, fields, sla_hours, created_by)
+       values ($1, 'NDA', '[]', 8, $2) returning id`,
+      [ws, owner],
+    );
+    const requesterId = await id(
+      `insert into apps.intake_requester (workspace_id, channel, external_user_id, display_name)
+       values ($1, 'api', 'jo', 'Jo') returning id`,
+      [ws],
+    );
+    const requestId = await id(
+      `insert into apps.intake_request (workspace_id, channel, external_ref, requester_id,
+         requester_name, type_id, status, created_by)
+       values ($1, 'api', 'ref-1', $2, 'Jo', $3, 'new', $4) returning id`,
+      [ws, requesterId, typeId, owner],
+    );
+    const documentId = await id(
+      `insert into content.document (workspace_id, owner_id, name, mime, size, vault_id)
+       values ($1, $2, 'in.txt', 'text/plain', 10, $3) returning id`,
+      [ws, serviceId, vaultId],
+    );
+    await tx.rows(
+      `insert into apps.intake_attachment (workspace_id, document_id, request_id, added_by)
+       values ($1, $2, $3, $4)`,
+      [ws, documentId, requestId, owner],
+    );
+    await tx.rows(
+      `insert into apps.intake_event (workspace_id, request_id, kind, actor_type, actor_id)
+       values ($1, $2, 'inbound', 'user', $3)`,
+      [ws, requestId, owner],
+    );
+    return { serviceId, vaultId, typeId, requestId, documentId };
+  };
+  const intakes = { acme: await intake(acme, ana), beta: await intake(beta, bob) };
+
   // Seeded as the table owner, as the earlier objects are.
   const library = async (ws: string, owner: string) => {
     const promptId = await id(
@@ -837,6 +887,7 @@ export async function seed(tx: Tx) {
     workflows,
     agents,
     documents,
+    intakes,
     vaults,
     spaces,
     threads,

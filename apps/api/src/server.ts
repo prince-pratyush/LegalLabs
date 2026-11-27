@@ -35,6 +35,7 @@ import { createDocuments } from "./documents/documents.js";
 import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
+import { createIntake } from "./intake/intake.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
 import { createLibrary } from "./library/library.js";
@@ -302,6 +303,8 @@ const ci = createCi(pool, { reviews, notifier, log: (line) => console.log(line) 
 ci.start();
 process.once("SIGTERM", () => void ci.stop());
 process.once("SIGINT", () => void ci.stop());
+// Attachments sent in with requests queue for ingest like any other upload.
+const intake = createIntake(pool, { documents, notifier });
 
 const mfaOption = mfaFromEnv(process.env, pool);
 const mfaCheck = mfaStartupCheck(process.env, mfaOption.mfa !== undefined);
@@ -361,6 +364,7 @@ const app = createApp({
   adminModels,
   reviews,
   ci,
+  intake,
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),
