@@ -3,6 +3,7 @@ import { createCapLoader } from "./cap.js";
 import { createCourtListenerLoader } from "./courtlistener.js";
 import { createEdgarLoader } from "./edgar.js";
 import { createEurLexLoader } from "./eurlex.js";
+import { createFederalRegisterLoader, FR_DOCUMENT_NUMBER } from "./fr.js";
 import { createHttp } from "./http.js";
 import type { Loader, SourceId } from "./sources.js";
 
@@ -26,6 +27,9 @@ export const subsetSchema = z.strictObject({
         )
         .max(10_000),
     })
+    .optional(),
+  fr: z
+    .strictObject({ documents: z.array(z.string().regex(FR_DOCUMENT_NUMBER)).max(10_000) })
     .optional(),
 });
 export type Subset = z.infer<typeof subsetSchema>;
@@ -86,12 +90,13 @@ export const DEFAULT_SUBSET: Subset = {
       { cik: "1318605", forms: ["8-K"], limit: 2 },
     ],
   },
+  fr: { documents: ["2024-05137", "2024-09171"] },
 };
 
 export interface LoaderEnv {
   COURTLISTENER_TOKEN?: string | undefined;
   SEC_USER_AGENT?: string | undefined;
-  /** Replaces the generic User-Agent for CAP, CourtListener and EUR-Lex. */
+  /** Replaces the generic User-Agent for every source but EDGAR. */
   KNOWLEDGE_USER_AGENT?: string | undefined;
 }
 
@@ -115,6 +120,11 @@ export function loaderFor(source: SourceId, subset: Subset, env: LoaderEnv): Loa
       return createEdgarLoader({
         companies: subset.edgar?.companies ?? [],
         userAgent: env.SEC_USER_AGENT,
+      });
+    case "fr":
+      return createFederalRegisterLoader({
+        documents: subset.fr?.documents ?? [],
+        http: createHttp({ perSecond: 2, userAgent }),
       });
   }
 }

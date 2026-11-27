@@ -5,30 +5,8 @@ import { createEdgarLoader, pickFilings } from "./edgar.js";
 import { celexParts, createEurLexLoader, readMetadata } from "./eurlex.js";
 import { createHttp, type Http, NotFound, SourceUnavailable } from "./http.js";
 import type { AuthorityRecord } from "./record.js";
-import { isFailure, type Loader, type LoadFailure } from "./sources.js";
-
-/** Canned answers by URL prefix; anything else is a 404, as a missing file would be. */
-function fakeHttp(routes: Record<string, unknown>, seen: string[] = []): Http {
-  const find = (url: string) => {
-    seen.push(url);
-    const key = Object.keys(routes).find((prefix) => url.startsWith(prefix));
-    if (key === undefined) throw new NotFound(url);
-    return routes[key];
-  };
-  return {
-    text: async (url) => {
-      const body = find(url);
-      return typeof body === "string" ? body : JSON.stringify(body);
-    },
-    json: async (url) => find(url),
-  };
-}
-
-async function collect(loader: Loader) {
-  const items: (AuthorityRecord | LoadFailure)[] = [];
-  for await (const item of loader.records()) items.push(item);
-  return items;
-}
+import { isFailure } from "./sources.js";
+import { collect, fakeHttp } from "./testing.js";
 
 // Synthetic: a made-up case shaped like a Caselaw Access Project file.
 const capCase = (id: number, cite: string) => ({

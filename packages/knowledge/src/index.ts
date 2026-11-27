@@ -9,6 +9,8 @@ export {
   eurLexRecord,
   readMetadata,
 } from "./eurlex.js";
+export type { FederalRegisterDocument, FederalRegisterOptions } from "./fr.js";
+export { createFederalRegisterLoader, federalRegisterRecord } from "./fr.js";
 export type { Http, HttpOptions } from "./http.js";
 export { createHttp, DEFAULT_USER_AGENT, NotFound, SourceUnavailable } from "./http.js";
 export type { AuthorityRecord, CitationKind } from "./record.js";
