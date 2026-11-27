@@ -3,7 +3,7 @@ import { detectType, type Scanner, ScannerRefused, ScannerUnavailable } from "@l
 import type pg from "pg";
 import { asWorker } from "../db.js";
 import { type Documents, MAX_FILE_BYTES } from "../documents/documents.js";
-import { type InboundAttachment, type InboundMessage, readEmail } from "./email.js";
+import { type InboundAttachment, type InboundMessage, readEmail, senderHash } from "./email.js";
 
 // Reads the queue of received mail. Each message becomes one request, with the message itself
 // and its files filed in the Inbox by the intake service user, through the same upload,
@@ -13,7 +13,7 @@ export interface EmailProcessorOptions {
   documents: Pick<Documents, "upload">;
   /** Every file is scanned before it is stored; the ingest worker scans again. */
   scanner: Scanner;
-  /** Messages finished per workspace in any hour. The rest stay queued. */
+  /** Messages taken per workspace in any hour. The rest stay queued. */
   perHour?: number;
   /** Messages taken from one sender per channel in any hour. The rest stay queued. */
   senderPerHour?: number;
@@ -148,7 +148,7 @@ export function createEmailProcessor(pool: pg.Pool, options: EmailProcessorOptio
       [
         job.id,
         job.lease,
-        sha(job.workspace_id, message.from),
+        senderHash(job.workspace_id, message.from),
         sha(job.channel_id, message.from, message.messageId ?? sha(job.raw)),
         senderPerHour,
       ],
@@ -196,20 +196,23 @@ export function createEmailProcessor(pool: pg.Pool, options: EmailProcessorOptio
     ]);
   }
 
-  async function claim(workspaceId?: string): Promise<Claim | undefined> {
+  async function claim(only: string[]): Promise<Claim | undefined> {
     const [job] = await query<Claim>("select * from apps.claim_inbound_email($1, $2, $3, $4)", [
       LEASE_SECONDS,
       perHour,
       maxAttempts,
-      workspaceId ?? null,
+      only.length > 0 ? only : null,
     ]);
     return job;
   }
 
-  /** Reads what is due, oldest first. Tests name a workspace to keep to their own mail. */
-  async function tick(workspaceId?: string): Promise<void> {
+  /**
+   * Reads what is due, taking workspaces in turn. Tests name workspaces to keep to their own
+   * mail.
+   */
+  async function tick(...only: string[]): Promise<void> {
     for (let n = 0; n < BATCH; n++) {
-      const job = await claim(workspaceId);
+      const job = await claim(only);
       if (!job) return;
       try {
         await handle(job);

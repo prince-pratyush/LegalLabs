@@ -1,4 +1,5 @@
-import PostalMime, { type Email } from "postal-mime";
+import { createHash } from "node:crypto";
+import PostalMime, { type Email, type PostalMimeOptions } from "postal-mime";
 import { htmlToText } from "./html-text.js";
 
 // Reads a raw message from outside and decides whether to take it. Pure: nothing here stores,
@@ -178,13 +179,50 @@ function fileName(given: string | null, index: number): string {
   return chars.slice(0, EMAIL_LIMITS.name_chars - extension.length).join("") + extension;
 }
 
+const PARSE: PostalMimeOptions = {
+  maxNestingDepth: EMAIL_LIMITS.depth,
+  maxPartCount: EMAIL_LIMITS.parts,
+  maxHeadersSize: EMAIL_LIMITS.header_bytes,
+  // An attached message stays one file; the ingest worker opens it under its own limits.
+  maxRfc822NestingDepth: 0,
+  forceRfc822Attachments: true,
+};
+
+type TextParts = { value: string }[];
+interface Rendering {
+  textMap: Map<unknown, { plain?: TextParts; html?: TextParts }>;
+  textContent: Record<string, string>;
+  renderTextContent(): void;
+}
+
+/**
+ * A parser that gives the text of a message and nothing else. Its own rendering also writes
+ * each plain part out as HTML, which for a message of quote marks costs hundreds of megabytes.
+ * This reaches inside the pinned version; the tests fail if an upgrade stops calling it.
+ */
+function textParser(): PostalMime {
+  const parser = new PostalMime(PARSE);
+  const inside = parser as unknown as Rendering;
+  inside.renderTextContent = () => {
+    const joined = (parts: TextParts = []) => parts.map((part) => part.value).join("\n");
+    inside.textContent = {
+      plain: Array.from(inside.textMap.values(), ({ plain, html }) =>
+        plain ? joined(plain) : htmlToText(joined(html)),
+      ).join("\n"),
+    };
+  };
+  return parser;
+}
+
 function bodyText(email: Email): string {
-  const text = email.text?.trim() ? email.text : htmlToText(email.html ?? "");
-  const clean = text
+  const whole = (email.text ?? "").trim();
+  // Cut before it is cleaned, so the work is bounded by what is kept.
+  const start = whole.slice(0, EMAIL_LIMITS.body_chars + 1000);
+  const clean = start
     .replace(/\r\n?/g, "\n")
     .replace(/[^\P{Cc}\n\t]/gu, "")
     .trim();
-  return clean.length <= EMAIL_LIMITS.body_chars
+  return clean.length <= EMAIL_LIMITS.body_chars && start.length === whole.length
     ? clean
     : `${clean.slice(0, EMAIL_LIMITS.body_chars)}\n\n[cut short]`;
 }
@@ -197,28 +235,43 @@ function tooManyLines(raw: Uint8Array): boolean {
   return false;
 }
 
-const refused = (reason: Rejection): ReadEmail => ({ ok: false, reason });
+/** The header block, with the empty line that ends it. Past the cap the parser refuses it. */
+function headerBlock(raw: Uint8Array): Uint8Array {
+  const cap = Math.min(raw.length, 2 * EMAIL_LIMITS.header_bytes);
+  for (let at = raw.indexOf(0x0a); at >= 0 && at < cap; at = raw.indexOf(0x0a, at + 1)) {
+    const next = raw[at + 1] === 0x0d ? at + 2 : at + 1;
+    if (raw[next] === 0x0a) return raw.subarray(0, next + 1);
+  }
+  return raw.subarray(0, cap);
+}
 
-export async function readEmail(raw: Uint8Array, rules: EmailRules): Promise<ReadEmail> {
+/** How a sender is known where only a hash is kept. */
+export const senderHash = (workspaceId: string, address: string): Buffer =>
+  createHash("sha256").update(`${workspaceId}\n${address}\n`).digest();
+
+const refused = (reason: Rejection) => ({ ok: false, reason }) as const;
+const parseFailure = (err: unknown) => {
+  const code = (err as { code?: string }).code ?? "";
+  return refused(code.startsWith("EMAX") ? "too_complex" : "malformed");
+};
+
+/**
+ * Whether the message may be taken at all, from its headers alone: no body is parsed for a
+ * sender who would be turned away.
+ */
+export async function checkSender(
+  raw: Uint8Array,
+  rules: EmailRules,
+): Promise<{ ok: true; from: string } | { ok: false; reason: Rejection }> {
   if (raw.length > EMAIL_LIMITS.bytes) return refused("too_large");
   if (tooManyLines(raw)) return refused("too_complex");
   if (ambiguousHeaders(raw)) return refused("malformed");
   let email: Email;
   try {
-    email = await PostalMime.parse(raw, {
-      maxNestingDepth: EMAIL_LIMITS.depth,
-      maxPartCount: EMAIL_LIMITS.parts,
-      maxHeadersSize: EMAIL_LIMITS.header_bytes,
-      // An attached message stays one file; the ingest worker opens it under its own limits.
-      maxRfc822NestingDepth: 0,
-      forceRfc822Attachments: true,
-    });
+    email = await PostalMime.parse(headerBlock(raw), PARSE);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? "";
-    return refused(code.startsWith("EMAX") ? "too_complex" : "malformed");
+    return parseFailure(err);
   }
-  if (email.attachments.length > EMAIL_LIMITS.attachments) return refused("too_many_attachments");
-
   const froms = email.headers.filter((h) => h.key === "from");
   // "From :" is a different header to one reader and the sender to another.
   const spaced = email.headers.some((h) => /\s/.test(h.key));
@@ -229,13 +282,29 @@ export async function readEmail(raw: Uint8Array, rules: EmailRules): Promise<Rea
   const results = email.headers.find((h) => h.key === "authentication-results")?.value;
   if (!dmarcPassed(results, rules.authservId, from.domain)) return refused("dmarc");
   if (!rules.allowedDomains.includes(from.domain)) return refused("domain");
+  return { ok: true, from: from.address };
+}
+
+export async function readEmail(raw: Uint8Array, rules: EmailRules): Promise<ReadEmail> {
+  const sent = await checkSender(raw, rules);
+  if (!sent.ok) return sent;
+  let email: Email;
+  try {
+    email = await textParser().parse(raw);
+  } catch (err) {
+    return parseFailure(err);
+  }
+  if (email.attachments.length > EMAIL_LIMITS.attachments) return refused("too_many_attachments");
 
   const id = /<[^<>\s]{1,500}>/.exec(email.messageId ?? "")?.[0] ?? null;
   return {
     ok: true,
     message: {
-      from: from.address,
-      fromName: printable(email.from?.name || from.address, EMAIL_LIMITS.name_chars),
+      from: sent.from,
+      // After cleaning, so a name nobody can see counts as none.
+      fromName:
+        printable(email.from?.name ?? "", EMAIL_LIMITS.name_chars) ||
+        sent.from.slice(0, EMAIL_LIMITS.name_chars),
       messageId: id,
       subject: printable(email.subject ?? "", EMAIL_LIMITS.subject_chars),
       date: printable(email.headers.find((h) => h.key === "date")?.value ?? "", 100),

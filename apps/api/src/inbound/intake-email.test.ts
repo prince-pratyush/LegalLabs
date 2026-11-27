@@ -25,6 +25,7 @@ import { AUTHSERV, eml, type Mail } from "../test-email.js";
 import { noKnowledge, noVaults } from "../threads/ports.js";
 import { createThreads } from "../threads/threads.js";
 import { EMAIL_LIMITS } from "./email.js";
+import { emailHook } from "./hook.js";
 import { createEmailProcessor, type EmailProcessorOptions } from "./processor.js";
 
 const pool = testPool();
@@ -204,6 +205,7 @@ function harness(options: { secrets?: boolean } = {}) {
     channel,
     sign,
     post,
+    processor,
     drain,
     rows,
     requests,
@@ -733,5 +735,196 @@ describe("processing the queue", () => {
     const said = lines.join("\n");
     expect(said).not.toMatch(/acme\.example|evil\.example|NDA|Friday|Jo Smith/);
     expect(said).not.toContain(to.secret);
+  });
+});
+
+describe("one sender, one channel or one workspace cannot hold up the rest", () => {
+  it("refuses at the door what would never be taken, so it takes no place in the queue", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const to = await h.channel(admin);
+    const mail = eml({ auth: `${AUTHSERV}; dmarc=fail header.from=acme.example` });
+    expect((await h.post(to, mail)).status).toBe(202);
+    expect(await h.rows(admin)).toMatchObject([
+      { status: "rejected", reason: "dmarc", emptied: true },
+    ]);
+    expect((await h.post(to, mail)).status).toBe(202);
+    expect(await h.rows(admin)).toHaveLength(1);
+  });
+
+  it("limits what is refused apart from what is taken", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const to = await h.channel(admin);
+    await pool.query(
+      `insert into apps.inbound_email (workspace_id, channel_id, event_hash, size_bytes, status,
+         reason, processed_at)
+       select $1, $2, sha256(i::text::bytea), 1, 'rejected', 'dmarc', now()
+         from generate_series(1, 600) i`,
+      [admin.workspaceId, to.id],
+    );
+    expect((await h.post(to, eml({ auth: null }))).status).toBe(429);
+    expect((await h.post(to, eml())).status).toBe(202);
+    await h.drain(admin);
+    expect(await h.requests(admin)).toHaveLength(1);
+  });
+
+  it("does not count refused mail against the hourly budget", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const to = await h.channel(admin);
+    await h.post(to, eml({ messageId: "<a@acme.example>", body: "one" }));
+    await h.post(to, eml({ messageId: "<a@acme.example>", body: "two" }));
+    await h.post(to, eml());
+    await h.drain(admin, { perHour: 2 });
+    expect((await h.rows(admin)).map((r) => r.status)).toEqual([
+      "accepted",
+      "rejected",
+      "accepted",
+    ]);
+  });
+
+  it("caps what one sender can have waiting, by count and by size", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const to = await h.channel(admin);
+    for (let i = 0; i < 50; i++) expect((await h.post(to, eml())).status).toBe(202);
+    expect((await h.post(to, eml())).status).toBe(429);
+    expect((await h.post(to, eml({ from: "amy@acme.example" }))).status).toBe(202);
+
+    const big = await h.channel(admin);
+    expect((await h.post(big, eml())).status).toBe(202);
+    await pool.query("update apps.inbound_email set size_bytes = 52428800 where channel_id = $1", [
+      big.id,
+    ]);
+    expect((await h.post(big, eml())).status).toBe(429);
+  });
+
+  it("serves workspaces in turn, however much one has waiting", async () => {
+    const h = harness();
+    const busy = await h.workspace();
+    const first = await h.channel(busy);
+    const quiet = await h.workspace();
+    const second = await h.channel(quiet);
+    for (let i = 0; i < 4; i++) await h.post(first, eml());
+    for (let i = 0; i < 2; i++) await h.post(second, eml());
+    const served: string[] = [];
+    const real = createDocuments(pool, { store: h.documents.store });
+    await h
+      .processor({
+        documents: {
+          upload: (principal, ...rest) => {
+            served.push(principal.workspaceId === busy.workspaceId ? "busy" : "quiet");
+            return real.upload(principal, ...rest);
+          },
+        },
+      })
+      .tick(busy.workspaceId, quiet.workspaceId);
+    expect(served).toEqual(["busy", "quiet", "busy", "quiet", "busy", "busy"]);
+  });
+
+  /** A body that sends nothing until it is closed. */
+  const stalled = () => {
+    let close = () => {};
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        close = () => controller.close();
+      },
+    });
+    return { body, close: () => close() };
+  };
+
+  it("lets no one address or channel hold every place for reading", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const one = await h.channel(admin);
+    const two = await h.channel(admin);
+    const three = await h.channel(admin);
+    let address = "a";
+    const hook = emailHook(h.channels, { clientIp: () => address, now: () => h.clock.at });
+    const open: { close: () => void; answer: Response | Promise<Response> }[] = [];
+    const send = (to: Channel, from: string, body: string | ReadableStream<Uint8Array>) => {
+      address = from;
+      return hook.request(to.path.replace("/hooks", ""), {
+        method: "POST",
+        headers: h.sign(to.secret, Buffer.from("x")),
+        body,
+        duplex: "half",
+      } as RequestInit);
+    };
+    const hold = async (to: Channel, from: string) => {
+      const slow = stalled();
+      open.push({ close: slow.close, answer: send(to, from, slow.body) });
+      // Long enough for the channel to be looked up and the place taken.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    };
+    await hold(one, "a");
+    await hold(one, "b");
+    // The channel has its share, from wherever the next one comes.
+    expect((await send(one, "c", "x")).status).toBe(503);
+    await hold(two, "a");
+    // The address has its share, whichever channel it names next.
+    expect((await send(three, "a", "x")).status).toBe(503);
+    expect((await send(three, "d", "x")).status).toBe(202);
+    for (const held of open) held.close();
+    await Promise.all(open.map((held) => held.answer));
+    expect((await send(one, "a", "y")).status).not.toBe(503);
+  });
+
+  it("drops a body that goes quiet", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const to = await h.channel(admin);
+    const hook = emailHook(h.channels, {
+      clientIp: () => "a",
+      now: () => h.clock.at,
+      idleMs: 50,
+    });
+    const res = await hook.request(to.path.replace("/hooks", ""), {
+      method: "POST",
+      headers: h.sign(to.secret, Buffer.from("x")),
+      body: stalled().body,
+      duplex: "half",
+    } as RequestInit);
+    expect(res.status).toBe(408);
+  });
+
+  it("does not let anonymous junk shut out a channel that signs", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const to = await h.channel(admin);
+    expect((await h.post(to, eml())).status).toBe(202);
+    // Everything arrives from one address, as behind a proxy nobody listed.
+    for (let i = 0; i < 130; i++) await h.post(to, eml(), {});
+    for (let i = 0; i < 10; i++) {
+      const unknown = { ...to, path: `/hooks/email/${String(i).padStart(32, "k")}` };
+      expect((await h.post(unknown, eml())).status).toBe(429);
+    }
+    expect((await h.post(to, eml(), {})).status).toBe(429);
+    expect((await h.post(to, eml())).status).toBe(202);
+  });
+});
+
+describe("a change of who may send", () => {
+  it("is audited with what it was and what it became", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const to = await h.channel(admin);
+    await h.call(admin, "PATCH", `/apps/intake/channels/${to.id}`, {
+      allowed_domains: ["acme.example", "other.example"],
+      authserv_id: "mx2.firm.test",
+      status: "disabled",
+    });
+    const trail = await auditTrail(pool, admin.workspaceId);
+    const updated = trail.find((e) => e.action === "intake.channel.updated");
+    expect(updated?.details).toEqual({
+      changed: ["authserv_id", "allowed_domains", "status"],
+      before: { allowed_domains: ["acme.example"], authserv_id: AUTHSERV, status: "live" },
+      after: {
+        allowed_domains: ["acme.example", "other.example"],
+        authserv_id: "mx2.firm.test",
+        status: "disabled",
+      },
+    });
   });
 });

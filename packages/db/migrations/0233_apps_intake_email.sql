@@ -47,6 +47,7 @@ create table apps.inbound_email (
   attempts integer not null default 0,
   next_attempt_at timestamptz not null default now(),
   lease uuid,
+  claimed_at timestamptz,
   processed_at timestamptz,
   check ((status = 'queued') = (raw is not null)),
   unique (workspace_id, id),
@@ -61,6 +62,11 @@ create unique index inbound_email_message_idx on apps.inbound_email (channel_id,
 create index inbound_email_due_idx on apps.inbound_email (next_attempt_at)
   where status = 'queued';
 create index inbound_email_processed_idx on apps.inbound_email (workspace_id, processed_at);
+create index inbound_email_claimed_idx on apps.inbound_email (workspace_id, claimed_at);
+create index inbound_email_sender_idx on apps.inbound_email (channel_id, from_hash)
+  where status = 'queued';
+create index inbound_email_rejected_idx on apps.inbound_email (channel_id, processed_at)
+  where status = 'rejected';
 
 -- A file that came by email has no person who added it. Until its request exists it is hidden
 -- from everyone, as 0232 hides any file that is not the caller's own.
@@ -146,22 +152,31 @@ create trigger intake_channel_disabled after update of status on apps.intake_cha
 -- thing, and learns the workspace from the row rather than from anything a caller sends.
 
 create function apps.open_email_channel(p_key text)
-returns table (id uuid, secret_sealed bytea, previous_secret_sealed bytea,
+returns table (id uuid, workspace_id uuid, address text, authserv_id text,
+               allowed_domains text[], secret_sealed bytea, previous_secret_sealed bytea,
                previous_secret_until timestamptz)
 language sql stable security definer set search_path = '' as $$
-  select c.id, c.secret_sealed, c.previous_secret_sealed, c.previous_secret_until
+  select c.id, c.workspace_id, c.address, c.authserv_id, c.allowed_domains, c.secret_sealed,
+         c.previous_secret_sealed, c.previous_secret_until
     from apps.intake_channel c
    where c.key = p_key and c.status = 'live'
 $$;
 
--- The cap on what waits makes a full queue the mail server's to retry, so nothing is lost.
-create function apps.receive_inbound_email(p_channel uuid, p_raw bytea) returns text
+-- Takes a signed message. One the headers already rule out (`p_reason`) is only recorded, so
+-- it holds no place in the queue; what is refused is limited apart from what is taken. The caps
+-- on what waits, in all and from one sender, make the rest the mail server's to retry.
+create function apps.receive_inbound_email(p_channel uuid, p_raw bytea, p_from_hash bytea,
+                                           p_reason text) returns text
 language plpgsql volatile security definer set search_path = '' as $$
 declare
   ws uuid;
   hash bytea := pg_catalog.sha256(p_raw);
+  size integer := pg_catalog.octet_length(p_raw);
+  message uuid;
   waiting integer;
   bytes bigint;
+  theirs integer;
+  their_bytes bigint;
 begin
   select c.workspace_id into ws from apps.intake_channel c
    where c.id = p_channel and c.status = 'live';
@@ -174,13 +189,30 @@ begin
               where e.channel_id = p_channel and e.event_hash = hash) then
     return 'duplicate';
   end if;
-  select count(*), coalesce(sum(e.size_bytes), 0) into waiting, bytes
+  if p_reason is not null then
+    if (select count(*) from apps.inbound_email e
+         where e.channel_id = p_channel and e.status = 'rejected'
+           and e.processed_at > pg_catalog.now() - interval '1 hour') >= 600 then
+      return 'full';
+    end if;
+    insert into apps.inbound_email (workspace_id, channel_id, event_hash, size_bytes, raw)
+    values (ws, p_channel, hash, size, ''::bytea)
+    returning id into message;
+    perform apps.end_inbound_email(message, 'rejected', p_reason);
+    return 'rejected';
+  end if;
+  select count(*), coalesce(sum(e.size_bytes), 0),
+         count(*) filter (where e.from_hash = p_from_hash),
+         coalesce(sum(e.size_bytes) filter (where e.from_hash = p_from_hash), 0)
+    into waiting, bytes, theirs, their_bytes
     from apps.inbound_email e where e.channel_id = p_channel and e.status = 'queued';
-  if waiting >= 500 or bytes + pg_catalog.octet_length(p_raw) > 209715200 then
+  if waiting >= 500 or bytes + size > 209715200
+     or theirs >= 50 or their_bytes + size > 52428800 then
     return 'full';
   end if;
-  insert into apps.inbound_email (workspace_id, channel_id, event_hash, size_bytes, raw)
-  values (ws, p_channel, hash, pg_catalog.octet_length(p_raw), p_raw);
+  insert into apps.inbound_email
+    (workspace_id, channel_id, event_hash, size_bytes, raw, from_hash)
+  values (ws, p_channel, hash, size, p_raw, p_from_hash);
   return 'queued';
 end
 $$;
@@ -208,10 +240,12 @@ begin
 end
 $$;
 
--- One message at a time, oldest first, and no more than `p_per_hour` finished in a workspace
--- in any hour: the rest wait their turn.
+-- One message at a time: the workspace served longest ago first, its oldest message first, so
+-- one with much waiting does not delay another. No more than `p_per_hour` are taken from a
+-- workspace in any hour; what was refused does not count towards that.
 create function apps.claim_inbound_email(p_lease_seconds integer, p_per_hour integer,
-                                         p_max_attempts integer, p_workspace uuid default null)
+                                         p_max_attempts integer,
+                                         p_workspaces uuid[] default null)
 returns table (id uuid, workspace_id uuid, channel_id uuid, service_user_id uuid,
                vault_id uuid, raw bytea, address text, authserv_id text, allowed_domains text[], attempt integer,
                lease uuid)
@@ -226,24 +260,27 @@ begin
     select e.id from apps.inbound_email e
      where e.status = 'queued' and e.attempts >= p_max_attempts
        and e.next_attempt_at <= pg_catalog.now()
-       and (p_workspace is null or e.workspace_id = p_workspace)
+       and (p_workspaces is null or e.workspace_id = any (p_workspaces))
      for update skip locked
   loop
     perform apps.end_inbound_email(spent, 'failed', 'processing_failed');
   end loop;
   update apps.inbound_email e
      set attempts = e.attempts + 1, lease = pg_catalog.gen_random_uuid(),
+         claimed_at = pg_catalog.clock_timestamp(),
          next_attempt_at = pg_catalog.now()
                            + pg_catalog.make_interval(secs => p_lease_seconds)
    where e.id = (
      select x.id from apps.inbound_email x
        join apps.intake_channel c on c.id = x.channel_id and c.status = 'live'
       where x.status = 'queued' and x.next_attempt_at <= pg_catalog.now()
-        and (p_workspace is null or x.workspace_id = p_workspace)
+        and (p_workspaces is null or x.workspace_id = any (p_workspaces))
         and (select count(*) from apps.inbound_email d
-              where d.workspace_id = x.workspace_id
+              where d.workspace_id = x.workspace_id and d.status = 'accepted'
                 and d.processed_at > pg_catalog.now() - interval '1 hour') < p_per_hour
-      order by x.received_at, x.id
+      order by (select max(d.claimed_at) from apps.inbound_email d
+                 where d.workspace_id = x.workspace_id) nulls first,
+               x.received_at, x.id
       limit 1
       for update of x skip locked)
   returning e.id into claimed;
@@ -364,9 +401,9 @@ end
 $$;
 
 alter function apps.open_email_channel(text) owner to legallabs_definer;
-alter function apps.receive_inbound_email(uuid, bytea) owner to legallabs_definer;
+alter function apps.receive_inbound_email(uuid, bytea, bytea, text) owner to legallabs_definer;
 alter function apps.end_inbound_email(uuid, text, text) owner to legallabs_definer;
-alter function apps.claim_inbound_email(integer, integer, integer, uuid)
+alter function apps.claim_inbound_email(integer, integer, integer, uuid[])
   owner to legallabs_definer;
 alter function apps.begin_inbound_email(uuid, uuid, bytea, bytea, integer)
   owner to legallabs_definer;
@@ -377,15 +414,15 @@ alter function apps.refuse_inbound_email(uuid, uuid, text, text) owner to legall
 alter function apps.file_inbound_email(uuid, uuid, text, text, integer)
   owner to legallabs_definer;
 revoke execute on function apps.open_email_channel(text),
-  apps.receive_inbound_email(uuid, bytea), apps.end_inbound_email(uuid, text, text),
-  apps.claim_inbound_email(integer, integer, integer, uuid),
+  apps.receive_inbound_email(uuid, bytea, bytea, text), apps.end_inbound_email(uuid, text, text),
+  apps.claim_inbound_email(integer, integer, integer, uuid[]),
   apps.begin_inbound_email(uuid, uuid, bytea, bytea, integer), apps.inbound_email_parts(uuid),
   apps.postpone_inbound_email(uuid, uuid, integer, boolean),
   apps.refuse_inbound_email(uuid, uuid, text, text),
   apps.file_inbound_email(uuid, uuid, text, text, integer) from public;
 grant execute on function apps.open_email_channel(text),
-  apps.receive_inbound_email(uuid, bytea),
-  apps.claim_inbound_email(integer, integer, integer, uuid),
+  apps.receive_inbound_email(uuid, bytea, bytea, text),
+  apps.claim_inbound_email(integer, integer, integer, uuid[]),
   apps.begin_inbound_email(uuid, uuid, bytea, bytea, integer), apps.inbound_email_parts(uuid),
   apps.postpone_inbound_email(uuid, uuid, integer, boolean),
   apps.refuse_inbound_email(uuid, uuid, text, text),

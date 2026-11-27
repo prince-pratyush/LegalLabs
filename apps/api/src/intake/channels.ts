@@ -9,6 +9,7 @@ import type { z } from "zod";
 import type { SecretBox } from "../admin-models/secrets.js";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp, asWorker, RLS_REFUSED } from "../db.js";
+import type { EmailRules } from "../inbound/email.js";
 
 // The workspace's intake addresses. Each has a secret the receiving mail server signs with,
 // sealed like any other stored secret and shown only when it is made.
@@ -42,10 +43,26 @@ export interface EmailChannels {
     client: Client,
   ): Promise<ChannelResult<Made>>;
   /** For the hook: the live channel at this key and the secrets that sign for it now. */
-  open(key: string): Promise<{ id: string; secrets: string[] } | null>;
-  /** For the hook, after the signature: puts a message in the queue. */
-  receive(channelId: string, raw: Buffer): Promise<"queued" | "duplicate" | "full" | "unknown">;
+  open(key: string): Promise<OpenChannel | null>;
+  /** For the hook, after the signature: queues a message, or records that it was refused. */
+  receive(
+    channelId: string,
+    raw: Buffer,
+    verdict: { fromHash: Buffer } | { rejected: string },
+  ): Promise<Received>;
 }
+
+export interface OpenChannel {
+  id: string;
+  workspaceId: string;
+  secrets: string[];
+  rules: EmailRules;
+}
+
+type Received = "queued" | "rejected" | "duplicate" | "full" | "unknown";
+
+/** Settings that decide who may send, so a change to one is audited with both values. */
+const TRUST = ["allowed_domains", "authserv_id", "status"] as const;
 
 export interface EmailChannelsOptions {
   /** Without one no secret can be kept, so there are no channels to post to. */
@@ -181,6 +198,11 @@ export function createEmailChannels(
         if (!UUID.test(id)) refuse("NOT_FOUND");
         // The keys are the schema's own, so each is a column name.
         const changed = Object.entries(patch).filter(([, value]) => value !== undefined);
+        const before = await db.query<Row>(
+          `select ${COLUMNS} from apps.intake_channel where id = $1 for update`,
+          [id],
+        );
+        const was = before.rows[0] ?? refuse("NOT_FOUND");
         const { rows } = await db.query<Row>(
           `update apps.intake_channel
               set ${changed.map(([column], i) => `${column} = $${i + 2}`).join(", ")},
@@ -194,7 +216,11 @@ export function createEmailChannels(
           principal,
           "intake.channel.updated",
           id,
-          { changed: changed.map(([column]) => column) },
+          {
+            changed: changed.map(([column]) => column),
+            before: Object.fromEntries(TRUST.filter((k) => k in patch).map((k) => [k, was[k]])),
+            after: Object.fromEntries(TRUST.filter((k) => k in patch).map((k) => [k, row[k]])),
+          },
           client,
         );
         return toChannel(row);
@@ -232,6 +258,10 @@ export function createEmailChannels(
       const row = await asWorker(pool, async (db) => {
         const { rows } = await db.query<{
           id: string;
+          workspace_id: string;
+          address: string;
+          authserv_id: string;
+          allowed_domains: string[];
           secret_sealed: Buffer;
           previous_secret_sealed: Buffer | null;
           previous_secret_until: Date | null;
@@ -243,14 +273,29 @@ export function createEmailChannels(
       if (row.previous_secret_sealed && (row.previous_secret_until?.getTime() ?? 0) > now()) {
         sealed.push(row.previous_secret_sealed);
       }
-      return { id: row.id, secrets: sealed.map((s) => secrets.open(s)) };
+      return {
+        id: row.id,
+        workspaceId: row.workspace_id,
+        secrets: sealed.map((s) => secrets.open(s)),
+        rules: {
+          address: row.address,
+          authservId: row.authserv_id,
+          allowedDomains: row.allowed_domains,
+        },
+      };
     },
 
-    receive(channelId, raw) {
+    receive(channelId, raw, verdict) {
       return asWorker(pool, async (db) => {
-        const { rows } = await db.query<{
-          outcome: "queued" | "duplicate" | "full" | "unknown";
-        }>("select apps.receive_inbound_email($1, $2) outcome", [channelId, raw]);
+        const { rows } = await db.query<{ outcome: Received }>(
+          "select apps.receive_inbound_email($1, $2, $3, $4) outcome",
+          [
+            channelId,
+            raw,
+            "fromHash" in verdict ? verdict.fromHash : null,
+            "rejected" in verdict ? verdict.rejected : null,
+          ],
+        );
         return rows[0]?.outcome ?? "unknown";
       });
     },

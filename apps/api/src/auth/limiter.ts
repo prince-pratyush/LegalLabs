@@ -1,6 +1,8 @@
 export interface Limiter {
   /** Returns 0 if allowed, otherwise the seconds to wait. */
   take(key: string): number;
+  /** The seconds to wait if the key has none left, without using one up. */
+  waiting(key: string): number;
 }
 
 export function createLimiter(options: {
@@ -13,6 +15,12 @@ export function createLimiter(options: {
   const windows = new Map<string, { count: number; resetAt: number }>();
 
   return {
+    waiting(key) {
+      const at = now();
+      const current = windows.get(key);
+      if (!current || current.resetAt <= at || current.count < limit) return 0;
+      return Math.ceil((current.resetAt - at) / 1000);
+    },
     take(key) {
       const at = now();
       if (!windows.has(key) && windows.size >= maxKeys) {

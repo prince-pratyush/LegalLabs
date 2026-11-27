@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import PostalMime from "postal-mime";
+import { describe, expect, it, vi } from "vitest";
 import { AUTHSERV, eml, type Mail, passes } from "../test-email.js";
 import { EMAIL_LIMITS, type EmailRules, readEmail } from "./email.js";
 
@@ -257,5 +258,55 @@ describe("content", () => {
     const got = await message({ body: "word ".repeat(100_000) });
     expect(got.body.length).toBeLessThan(EMAIL_LIMITS.body_chars + 100);
     expect(got.body).toContain("[cut short]");
+  });
+});
+
+describe("cost of a message", () => {
+  const mixed = () =>
+    Buffer.from(
+      [
+        `Authentication-Results: ${passes("acme.example")}`,
+        "From: jo@acme.example",
+        "Content-Type: multipart/mixed; boundary=b",
+        "",
+        "--b",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        'He said "no" & left \u20ac',
+        "--b",
+        "Content-Type: text/html",
+        "",
+        "<p>and a footer</p>",
+        "--b--",
+        "",
+      ].join("\r\n"),
+    );
+
+  it("never renders one kind of text part as the other", async () => {
+    // The parser's own rendering escapes a whole text part into HTML: hundreds of megabytes
+    // for a message of quote marks.
+    const parse = vi.spyOn(PostalMime.prototype, "parse");
+    const got = await message(mixed());
+    const parsed = await parse.mock.results.at(-1)?.value;
+    parse.mockRestore();
+    expect(parsed.html).toBeUndefined();
+    expect(got.body).toBe('He said "no" & left \u20ac\nand a footer');
+  });
+
+  it("decides who sent it from the headers alone, before reading any further", async () => {
+    const parts = Array.from({ length: 500 }, () => ({ name: "a.txt", content: "a" }));
+    const parse = vi.spyOn(PostalMime.prototype, "parse");
+    expect(await reason({ parts, auth: "mx.evil.test; none" })).toBe("dmarc");
+    expect(parse).toHaveBeenCalledTimes(1);
+    const given = parse.mock.calls[0]?.[0] as Uint8Array;
+    expect(Buffer.from(given).toString()).not.toContain("--edge\r\n");
+    parse.mockRestore();
+  });
+
+  it("names a sender whose display name cannot be seen by the address", async () => {
+    for (const hidden of ["\u200b", "\u202e\u2066", "\u00a0 ", "=?utf-8?b?4oCL?="]) {
+      const got = await message({ from: `"${hidden}" <jo@acme.example>` });
+      expect(got.fromName).toBe("jo@acme.example");
+    }
   });
 });

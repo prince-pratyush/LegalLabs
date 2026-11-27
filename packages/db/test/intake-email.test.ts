@@ -9,7 +9,7 @@ import { seed } from "./fixtures.js";
 
 const FUNCTIONS = [
   "apps.open_email_channel('x')",
-  "apps.receive_inbound_email(gen_random_uuid(), 'x')",
+  "apps.receive_inbound_email(gen_random_uuid(), 'x', null, null)",
   "apps.claim_inbound_email(60, 600, 10)",
   "apps.begin_inbound_email(gen_random_uuid(), gen_random_uuid(), 'a', 'b', 1)",
   "apps.inbound_email_parts(gen_random_uuid())",
