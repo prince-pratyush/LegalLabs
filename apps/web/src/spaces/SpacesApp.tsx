@@ -13,6 +13,7 @@ import {
 } from "@legallabs/ui";
 import { Lock, Users } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { FactsTab } from "../facts/FactsTab.js";
 import { useHash } from "../vaults/route.js";
 import { formatDate, messageOf } from "../vaults/shared.js";
 import {
@@ -261,6 +262,7 @@ function SpacePage({ spaceId, tab }: { spaceId: string; tab: SpaceTab }) {
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="resources">Resources</TabsTrigger>
+          <TabsTrigger value="facts">Facts</TabsTrigger>
           {space.kind === "external" && <TabsTrigger value="guests">Guests</TabsTrigger>}
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="context">Context</TabsTrigger>
@@ -273,6 +275,9 @@ function SpacePage({ spaceId, tab }: { spaceId: string; tab: SpaceTab }) {
         </TabsContent>
         <TabsContent value="resources">
           <ResourcesTab space={space} />
+        </TabsContent>
+        <TabsContent value="facts">
+          <FactsTab spaceId={spaceId} />
         </TabsContent>
         {space.kind === "external" && (
           <TabsContent value="guests">

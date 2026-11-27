@@ -88,6 +88,7 @@ export {
   type FactExtraction,
   FactExtractionState,
   FactExtractRequest,
+  type FactFile,
   type FactIssue,
   FactPatch,
   FactSkipReason,

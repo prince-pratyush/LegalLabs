@@ -330,6 +330,7 @@ const EVENT_TYPES: readonly RunEvent["type"][] = [
   "question",
   "output",
   "draft_updated",
+  "facts.extract_progress",
 ];
 
 export interface StreamOptions {

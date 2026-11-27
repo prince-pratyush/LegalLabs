@@ -92,6 +92,10 @@ export function factHttp(
   const me = (c: Context<Env>) => c.get("principal");
   const param = (c: Context, name: string) => c.req.param(name) ?? "";
 
+  app.get(`${BASE}/files`, async (c) =>
+    answer(c, await facts.files(me(c), param(c, "space")), null),
+  );
+
   app.get(`${BASE}/facts`, async (c) => {
     const q = c.req.query();
     const parsed = FactFilterQuery.safeParse({

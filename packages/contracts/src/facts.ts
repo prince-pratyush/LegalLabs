@@ -16,6 +16,8 @@ export const FACT_LIMITS = {
   page_size: 100,
   /** Names or issues a Space lists at once. */
   list_size: 2000,
+  /** Files a Space lists for choosing and citing. */
+  files_listed: 500,
   /** Files one extraction reads. Choosing more is refused, never silently cut. */
   documents_per_run: 200,
   /** Extractions one person can have going at once. */
@@ -156,6 +158,18 @@ export const IssuePatch = z
   .strict()
   .refine((p) => Object.keys(p).length > 0, "Nothing to change");
 export type IssuePatch = z.infer<typeof IssuePatch>;
+
+/** A file facts can be taken from: in a vault shared with the Space, and open to the caller. */
+export interface FactFile {
+  document_id: string;
+  version_id: string;
+  name: string;
+  vault_id: string;
+  vault_name: string;
+  page_count: number;
+  /** False while the file is still being read in, or when it couldn't be. */
+  ready: boolean;
+}
 
 export interface FactEntity {
   id: string;
