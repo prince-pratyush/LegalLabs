@@ -260,7 +260,8 @@ describe("notification email", () => {
     await h.call(benCookie, "PATCH", "/notification-settings", {
       categories: [{ category: "tasks", value: true, mode: "all" }],
     });
-    const comment = `${"c".repeat(300)}TAIL-BEYOND-LIMIT`;
+    // Not a hex letter, so an id in a link can never look like the comment.
+    const comment = `${"z".repeat(300)}TAIL-BEYOND-LIMIT`;
     const comment1 = async () => {
       await h.notifications.notifier.notify(
         principal(ana),
@@ -275,13 +276,13 @@ describe("notification email", () => {
 
     await comment1();
     await h.run(16 * 60e3);
-    expect(h.provider.sent[0]?.text).not.toContain("ccc");
+    expect(h.provider.sent[0]?.text).not.toContain("zzz");
 
     await h.call(anaCookie, "PATCH", "/admin/notification-settings", { include_content: true });
     await comment1();
     await h.run(32 * 60e3);
     const text = h.provider.sent[1]?.text ?? "";
-    expect(text).toContain("c".repeat(300));
+    expect(text).toContain("z".repeat(300));
     expect(text).not.toContain("TAIL-BEYOND-LIMIT");
   });
 
