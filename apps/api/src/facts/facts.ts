@@ -437,6 +437,25 @@ const ISSUE_COLUMNS = "id, name, description";
 
 const words = (text: string) => storable(text);
 
+// A change of case, spacing or punctuation is still the name that was read from the file, so it
+// must not make that name the Space's.
+const nameKey = (name: string) =>
+  name
+    .normalize("NFKC")
+    .replace(/[\p{P}\p{S}\p{Z}\p{Cf}\s]/gu, "")
+    .toLowerCase();
+
+/** Whether a new name says something else than the one there now, which the caller can see. */
+async function renames(db: Db, kind: "entity" | "issue", id: string, next: string | undefined) {
+  if (next === undefined) return false;
+  const column = kind === "entity" ? "canonical_name" : "name";
+  const { rows } = await db.query<{ name: string }>(
+    `select ${column} name from apps.${kind} where id = $1 for update`,
+    [id],
+  );
+  return rows[0] !== undefined && nameKey(rows[0].name) !== nameKey(next);
+}
+
 export function createFacts(pool: pg.Pool): Facts {
   const within = <T>(p: Principal, spaceId: string, work: (db: Db) => Promise<T>) =>
     inFactSpace(pool, p, spaceId, work);
@@ -699,11 +718,11 @@ export function createFacts(pool: pg.Pool): Facts {
       return within(p, spaceId, async (db) => {
         if (!UUID.test(id)) refuse("NOT_FOUND");
         // A name someone types is theirs, and no longer tied to what was extracted.
+        const typed = await renames(db, "entity", id, patch.canonical_name);
         const { rows } = await db.query<FactEntity>(
           `update apps.entity
               set kind = coalesce($3, kind),
-                  origin = case when $4::text is distinct from null and $4 <> canonical_name
-                                then 'manual' else origin end,
+                  origin = case when $9 then 'manual' else origin end,
                   canonical_name = coalesce($4, canonical_name),
                   aliases = coalesce($5::text[], aliases),
                   role = case when $6 then $7 else role end,
@@ -719,6 +738,7 @@ export function createFacts(pool: pg.Pool): Facts {
             patch.role !== undefined,
             patch.role ? words(patch.role) : null,
             patch.provisional ?? null,
+            typed,
           ],
         );
         const entity = rows[0] ?? refuse("NOT_FOUND");
@@ -770,10 +790,10 @@ export function createFacts(pool: pg.Pool): Facts {
     async patchIssue(p, spaceId, id, patch, client) {
       return within(p, spaceId, async (db) => {
         if (!UUID.test(id)) refuse("NOT_FOUND");
+        const typed = await renames(db, "issue", id, patch.name);
         const { rows } = await db.query<FactIssue>(
           `update apps.issue
-              set origin = case when $3::text is distinct from null and $3 <> name
-                                then 'manual' else origin end,
+              set origin = case when $5 then 'manual' else origin end,
                   name = coalesce($3, name),
                   description = coalesce($4, description),
                   updated_at = now()
@@ -783,6 +803,7 @@ export function createFacts(pool: pg.Pool): Facts {
             spaceId,
             patch.name === undefined ? null : words(patch.name),
             patch.description === undefined ? null : words(patch.description),
+            typed,
           ],
         );
         const issue = rows[0] ?? refuse("NOT_FOUND");
