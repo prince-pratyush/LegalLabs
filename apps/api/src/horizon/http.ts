@@ -1,6 +1,15 @@
-import { HorizonScanCreate, HorizonScanPatch, HorizonSettings } from "@legallabs/contracts";
+import {
+  HorizonBulk,
+  HorizonRelevance,
+  HorizonScanCreate,
+  HorizonScanPatch,
+  HorizonSettings,
+  HorizonStatePatch,
+  HorizonTab,
+} from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import type { Horizon, HorizonFailure, HorizonResult } from "./horizon.js";
 
@@ -25,6 +34,31 @@ export const HORIZON_FAILURES: Record<
   TOO_MANY_SCANS: { status: 409, message: "This workspace already has 100 scans." },
   BAD_CURSOR: { status: 400, message: "Check the request." },
 };
+
+const values = z
+  .array(
+    z
+      .string()
+      .min(1)
+      .max(100)
+      .refine((v) => !v.includes("\0")),
+  )
+  .max(20);
+const itemQuery = z.object({
+  tab: HorizonTab.default("all"),
+  relevance: z.array(HorizonRelevance).max(3),
+  type: values,
+  source: values,
+  jurisdiction: values,
+  topic: values,
+  industry: values,
+  q: z
+    .string()
+    .max(200)
+    .refine((v) => !v.includes("\0"))
+    .optional(),
+  cursor: z.string().max(100).optional(),
+});
 
 export function horizonHttp(horizon: Horizon, clientOf: (c: Context) => Client) {
   const app = new Hono<Env>();
@@ -88,10 +122,35 @@ export function horizonHttp(horizon: Horizon, clientOf: (c: Context) => Client) 
   });
 
   app.get("/horizon/scans/:id/items", async (c) => {
-    const result = await horizon.items(c.get("principal"), c.req.param("id"), {
+    const many = (name: string) => c.req.queries(name) ?? [];
+    const query = itemQuery.safeParse({
+      tab: c.req.query("tab"),
+      relevance: many("relevance"),
+      type: many("type"),
+      source: many("source"),
+      jurisdiction: many("jurisdiction"),
+      topic: many("topic"),
+      industry: many("industry"),
+      q: c.req.query("q"),
       cursor: c.req.query("cursor"),
     });
+    if (!query.success) return invalid(c);
+    const result = await horizon.items(c.get("principal"), c.req.param("id"), query.data);
     return reply(c, result, (page) => c.json(page));
+  });
+
+  app.patch("/horizon/items/:id/state", json, async (c) => {
+    const parsed = HorizonStatePatch.safeParse(await body(c));
+    if (!parsed.success) return invalid(c);
+    const result = await horizon.setState(c.get("principal"), c.req.param("id"), parsed.data);
+    return reply(c, result, () => c.body(null, 204));
+  });
+
+  app.post("/horizon/items/bulk", json, async (c) => {
+    const parsed = HorizonBulk.safeParse(await body(c));
+    if (!parsed.success) return invalid(c);
+    const result = await horizon.bulk(c.get("principal"), parsed.data);
+    return reply(c, result, (changed) => c.json(changed));
   });
 
   return app;

@@ -61,6 +61,22 @@ export type HorizonScanPatch = z.infer<typeof HorizonScanPatch>;
 
 export const HorizonSettings = z.strictObject({ enabled: z.boolean() });
 
+export const HorizonTab = z.enum(["all", "unread", "starred", "archived"]);
+export type HorizonTab = z.infer<typeof HorizonTab>;
+
+export const HorizonStatePatch = z.strictObject({
+  read: z.boolean().optional(),
+  starred: z.boolean().optional(),
+  archived: z.boolean().optional(),
+});
+export type HorizonStatePatch = z.infer<typeof HorizonStatePatch>;
+
+export const HorizonBulk = z.strictObject({
+  ids: z.array(z.uuid()).min(1).max(200),
+  action: z.enum(["archive", "unarchive", "star", "read"]),
+});
+export type HorizonBulk = z.infer<typeof HorizonBulk>;
+
 export interface HorizonScan {
   id: string;
   name: string;

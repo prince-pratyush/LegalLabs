@@ -374,3 +374,103 @@ describe("horizon scans", () => {
     expect(w.s.asked).toEqual([]);
   });
 });
+
+describe("horizon item state", () => {
+  const ready = async () => {
+    const w = await world({
+      found: {
+        fr: () => [
+          candidate(1, { title: "Widget rule 100%_done" }),
+          candidate(2, { docType: "notice" }),
+          candidate(3),
+        ],
+      },
+    });
+    const id = await w.made();
+    await w.tick();
+    const list = async (query = "") =>
+      (await w.call(w.scanner, "GET", `/horizon/scans/${id}/items?${query}`)).body.items as {
+        id: string;
+        development: string;
+        state: { read: boolean; starred: boolean; archived: boolean };
+      }[];
+    const all = await list();
+    const one = (n: number) =>
+      all.find((i) => i.development.includes(n === 1 ? "100%" : `rule ${n}`))?.id as string;
+    return { ...w, id, list, one };
+  };
+
+  it("keeps read, starred and archived, and shows each tab", async () => {
+    const w = await ready();
+    const set = (item: string, body: object) =>
+      w.call(w.scanner, "PATCH", `/horizon/items/${item}/state`, body);
+    expect((await set(w.one(1), { read: true })).status).toBe(204);
+    expect((await set(w.one(2), { starred: true })).status).toBe(204);
+    expect((await set(w.one(3), { archived: true })).status).toBe(204);
+    expect((await w.list("tab=all")).map((i) => i.id).sort()).toEqual([w.one(1), w.one(2)].sort());
+    expect((await w.list("tab=unread")).map((i) => i.id)).toEqual([w.one(2)]);
+    expect((await w.list("tab=starred")).map((i) => i.id)).toEqual([w.one(2)]);
+    expect((await w.list("tab=archived")).map((i) => i.id)).toEqual([w.one(3)]);
+    // Changing one thing leaves the others.
+    await set(w.one(2), { read: true });
+    expect((await w.list("tab=starred"))[0]?.state).toEqual({
+      read: true,
+      starred: true,
+      archived: false,
+    });
+    expect(await w.scan(w.id)).toMatchObject({ unread: 0, high: 2 });
+  });
+
+  it("archives an item by its age until its reader says otherwise", async () => {
+    const w = await ready();
+    await pool.query(
+      "update apps.horizon_item set created_at = now() - interval '366 days' where id = $1",
+      [w.one(3)],
+    );
+    expect((await w.list("tab=archived")).map((i) => i.id)).toEqual([w.one(3)]);
+    await w.call(w.scanner, "PATCH", `/horizon/items/${w.one(3)}/state`, { starred: true });
+    expect((await w.list("tab=archived")).map((i) => i.id)).toEqual([w.one(3)]);
+    await w.call(w.scanner, "PATCH", `/horizon/items/${w.one(3)}/state`, { archived: false });
+    expect(await w.list("tab=archived")).toEqual([]);
+  });
+
+  it("filters by the columns and by words", async () => {
+    const w = await ready();
+    expect(await w.list("type=notice")).toHaveLength(1);
+    expect(await w.list("type=notice&type=rule")).toHaveLength(3);
+    expect(await w.list("relevance=low")).toEqual([]);
+    expect(await w.list("source=ecfr")).toEqual([]);
+    expect(await w.list("jurisdiction=US&topic=Labelling")).toHaveLength(3);
+    expect(await w.list("industry=Manufacturing")).toEqual([]);
+    // Taken as written, not as a pattern.
+    expect(await w.list(`q=${encodeURIComponent("100%_")}`)).toHaveLength(1);
+    expect(await w.list(`q=${encodeURIComponent("%")}`)).toHaveLength(1);
+    const bad = await w.call(w.scanner, "GET", `/horizon/scans/${w.id}/items?tab=nope`);
+    expect(bad.status).toBe(400);
+  });
+
+  it("acts on many at once, and only on the caller's own", async () => {
+    const w = await ready();
+    const bulk = (who: Person, action: string, ids: string[]) =>
+      w.call(who, "POST", "/horizon/items/bulk", { ids, action });
+    expect((await bulk(w.scanner, "star", [w.one(1), w.one(2)])).body).toEqual({ changed: 2 });
+    expect(await w.list("tab=starred")).toHaveLength(2);
+    expect((await bulk(w.scanner, "archive", [w.one(1)])).body).toEqual({ changed: 1 });
+    expect(await w.list("tab=archived")).toHaveLength(1);
+    expect((await bulk(w.scanner, "unarchive", [w.one(1)])).body).toEqual({ changed: 1 });
+    expect((await bulk(w.ana, "archive", [w.one(1), w.one(2)])).body).toEqual({ changed: 0 });
+    expect(
+      (await w.call(w.ana, "PATCH", `/horizon/items/${w.one(1)}/state`, { read: true })).status,
+    ).toBe(404);
+    expect(await w.list("tab=archived")).toEqual([]);
+    expect(
+      (
+        await bulk(
+          w.scanner,
+          "archive",
+          Array.from({ length: 201 }, () => w.one(1)),
+        )
+      ).status,
+    ).toBe(400);
+  });
+});
