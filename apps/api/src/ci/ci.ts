@@ -146,6 +146,8 @@ class Refused extends Error {
 const refuse = (reason: CiFailure): never => {
   throw new Refused(reason);
 };
+/** Another worker took the contract first. */
+class Taken extends Error {}
 
 interface AgentRow extends Omit<CiAgent, "created_at" | "updated_at"> {
   created_at: Date;
@@ -177,7 +179,11 @@ interface ReviewRow
 
 const REVIEW_COLUMNS = `r.id, r.ci_agent_id agent_id, r.agent_name, r.owner_id, r.playbook_id,
   r.document_id, r.document_version_id, d.name document_name, d.matter_id, r.playbook_review_id,
-  r.run_id, r.status, r.result, r.summary, r.failure, r.assignee_id,
+  r.run_id, r.status, r.result,
+  -- It names the playbook's rules, so it goes only to someone who can open the playbook.
+  case when r.owner_id = core.current_user_id() or work.playbook_level(r.playbook_id) is not null
+       then r.summary end summary,
+  r.failure, r.assignee_id,
   nullif(coalesce(nullif(u.name, ''), u.email), '') assignee_name, r.counterparty, r.fields,
   r.source, r.started_at, r.created_at, r.updated_at, r.done_at, r.updated_at::text sort_key`;
 const REVIEW_FROM = `apps.ci_contract_review r join content.document d on d.id = r.document_id
@@ -346,32 +352,43 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       (await canBuild(db)) ? loadAgent(db, row.agent_id) : null,
     );
     if (!found) return failReview(principal, row.id, "FORBIDDEN");
-    const started = await reviews.start(
-      principal,
-      found.playbook_id,
-      ReviewRequest.parse({
-        document_version_id: row.document_version_id,
-        party: found.party,
-        paper: found.paper,
-        surface: "web",
-      }) as z.output<typeof ReviewRequest>,
-      { draft: false },
-      NO_CLIENT,
-    );
+    let started: Awaited<ReturnType<Reviews["start"]>>;
+    try {
+      started = await reviews.start(
+        principal,
+        found.playbook_id,
+        ReviewRequest.parse({
+          document_version_id: row.document_version_id,
+          party: found.party,
+          paper: found.paper,
+          surface: "web",
+        }) as z.output<typeof ReviewRequest>,
+        {
+          draft: false,
+          // Marked running as the review is created: neither a crash nor a second worker can
+          // then pay for it twice.
+          within: async (db, ids) => {
+            const { rowCount } = await db.query(
+              `update apps.ci_contract_review
+                  set status = 'running', playbook_review_id = $2, run_id = $3,
+                      playbook_id = $4, started_at = now(), updated_at = now(),
+                      next_attempt_at = now() + make_interval(secs => $5)
+                where id = $1 and status = 'queued'`,
+              [row.id, ids.review_id, ids.run_id, found.playbook_id, pollSeconds],
+            );
+            if (!rowCount) throw new Taken();
+          },
+        },
+        NO_CLIENT,
+      );
+    } catch (err) {
+      if (err instanceof Taken) return;
+      throw err;
+    }
     if (!started.ok) {
       if (TRY_AGAIN.has(started.reason)) return later(principal, row.id, retrySeconds);
       return failReview(principal, row.id, started.reason);
     }
-    await asApp(pool, principal, (db) =>
-      db.query(
-        `update apps.ci_contract_review
-            set status = 'running', playbook_review_id = $2, run_id = $3, playbook_id = $4,
-                started_at = now(), updated_at = now(),
-                next_attempt_at = now() + make_interval(secs => $5)
-          where id = $1 and status = 'queued'`,
-        [row.id, started.value.review_id, started.value.run_id, found.playbook_id, pollSeconds],
-      ),
-    );
   }
 
   /** Who the finished review goes to: the one who has it, the rules in order, or the owner. */
@@ -414,16 +431,18 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       contract_type: agent.contract_type,
     });
     const assignee = await asApp(pool, principal, async (db) => {
-      // Winning this update is what makes one worker, and only one, finish the review.
-      const { rowCount } = await db.query(
-        `update apps.ci_contract_review
-            set status = $2, result = $2, summary = $3, reviewed_at = now(), updated_at = now()
-          where id = $1 and status = 'running' and playbook_review_id = $4`,
-        [row.id, result, summary, review.id],
+      // Holding the row is what makes one worker, and only one, finish the review.
+      const { rows: held } = await db.query<{ assignee_id: string | null }>(
+        `select assignee_id from apps.ci_contract_review
+          where id = $1 and status = 'running' and playbook_review_id = $2 for update`,
+        [row.id, review.id],
       );
-      if (!rowCount) return null;
+      if (!held[0]) return null;
       let user: string;
-      if ("user" in chosen) user = chosen.user;
+      // Someone given it by hand since the row was read keeps it.
+      if (held[0].assignee_id && held[0].assignee_id !== row.assignee_id) {
+        user = held[0].assignee_id;
+      } else if ("user" in chosen) user = chosen.user;
       else {
         // The row lock on the agent hands concurrent reviews different turns.
         const { rows } = await db.query<{ turn: number }>(
@@ -433,10 +452,13 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
         );
         user = chosen.among[(rows[0]?.turn ?? 0) % chosen.among.length] ?? row.owner_id;
       }
-      await db.query("update apps.ci_contract_review set assignee_id = $2 where id = $1", [
-        row.id,
-        user,
-      ]);
+      await db.query(
+        `update apps.ci_contract_review
+            set status = $2, result = $2, summary = $3, assignee_id = $4, reviewed_at = now(),
+                updated_at = now()
+          where id = $1`,
+        [row.id, result, summary, user],
+      );
       await audit(db, principal, "ci.review.finished", "ci_review", row.id, { result }, NO_CLIENT);
       await audit(
         db,
@@ -483,17 +505,21 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
   }
 
   async function tick(workspaceId?: string) {
-    const due = await asWorker(
-      pool,
-      async (w) =>
-        (
-          await w.query<{ id: string; workspace_id: string; owner_id: string }>(
-            "select id, workspace_id, owner_id from apps.claim_ci_reviews($1, $2, $3)",
-            [options.batch ?? 10, leaseSeconds, workspaceId ?? null],
-          )
-        ).rows,
-    );
-    for (const claim of due) {
+    const seen: string[] = [];
+    while (seen.length < (options.batch ?? 10)) {
+      // One at a time, so a lease never runs out while its row waits behind others.
+      const claim = await asWorker(
+        pool,
+        async (w) =>
+          (
+            await w.query<{ id: string; workspace_id: string; owner_id: string }>(
+              "select id, workspace_id, owner_id from apps.claim_ci_review($1, $2, $3)",
+              [leaseSeconds, workspaceId ?? null, seen],
+            )
+          ).rows[0],
+      );
+      if (!claim) return;
+      seen.push(claim.id);
       try {
         await step(claim);
       } catch (err) {
@@ -513,8 +539,14 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
       });
   };
 
-  /** The caller's own review, to act on: the agent's owner or whoever it is assigned to. */
+  /**
+   * The caller's own review, to act on: the agent's owner or whoever it is assigned to. The row
+   * is locked first, so the answer still holds when the same transaction writes.
+   */
   async function mine(db: Db, principal: Principal, id: string) {
+    if (UUID.test(id)) {
+      await db.query("select 1 from apps.ci_contract_review where id = $1 for update", [id]);
+    }
     const row = (await loadReview(db, id)) ?? refuse("NOT_FOUND");
     if (row.owner_id !== principal.userId && row.assignee_id !== principal.userId) {
       refuse("FORBIDDEN");
@@ -765,6 +797,9 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
         return { ok: false, reason: "ASSIGNEE_NOT_ALLOWED" };
       }
       const saved = await guarded(principal, async (db) => {
+        const now = await mine(db, principal, id);
+        // Eligibility was judged against this playbook.
+        if (now.playbook_id !== row.playbook_id) refuse("WRONG_STATE");
         const { rowCount } = await db.query(
           `update apps.ci_contract_review
               set assignee_id = $2, assigned_by = $3, updated_at = now()
@@ -832,7 +867,7 @@ export function createCi(pool: pg.Pool, options: CiOptions): Ci {
           `update apps.ci_contract_review
               set status = 'queued', result = null, summary = null, failure = null,
                   playbook_review_id = null, run_id = null, started_at = null, done_at = null,
-                  reviewed_at = null,
+                  reviewed_at = null, assigned_by = null,
                   next_attempt_at = now(), updated_at = now()
             where id = $1 and status not in ('queued', 'running')`,
           [id],

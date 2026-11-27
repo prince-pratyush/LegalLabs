@@ -78,6 +78,11 @@ export interface Reviews {
       draft: boolean;
       /** Takes asks from the caller's model budget; returns seconds to wait, or 0. */
       charge?: (asks: number) => number;
+      /**
+       * Runs in the transaction that creates the review, so a caller's record of it commits
+       * with it; throwing starts nothing.
+       */
+      within?: (db: Db, ids: { review_id: string; run_id: string }) => Promise<void>;
     },
     client: Client,
   ): Promise<Result<{ review_id: string; run_id: string }>>;
@@ -1210,6 +1215,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             sourceKinds: ["file"],
             documentCount: 1,
           });
+          await opts.within?.(db, { review_id: reviewId, run_id: runId });
           return ok({ reviewId, runId, version, src, warnings, customisation, extra });
         }),
       );

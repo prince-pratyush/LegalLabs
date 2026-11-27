@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
 import { hashPassword } from "../auth/password.js";
+import { asApp } from "../db.js";
 import { createDrafts } from "../drafts/drafts.js";
 import { createHub } from "../notifications/hub.js";
 import { createNotifier } from "../notifications/notify.js";
@@ -84,7 +85,14 @@ const engine =
   };
 
 function harness(options: { maxActive?: number; ci?: Partial<CiOptions> } = {}) {
-  const state: { verdicts: Verdicts; held: Promise<void> | null } = { verdicts: {}, held: null };
+  const state: {
+    verdicts: Verdicts;
+    held: Promise<void> | null;
+    /** Runs between the queue reading a contract and writing what became of it. */
+    onGet?: () => Promise<void>;
+    /** Runs once a playbook review has been started and committed. */
+    onStarted?: () => void;
+  } = { verdicts: {}, held: null };
   const documents = testDocuments(pool);
   const vaults = createVaults(pool, { documents, store: documents.store });
   const gateway = createGateway({ providers: {}, recordUsage: async () => {} });
@@ -102,7 +110,18 @@ function harness(options: { maxActive?: number; ci?: Partial<CiOptions> } = {}) 
     ...(options.maxActive ? { maxActive: options.maxActive } : {}),
   });
   const ci = createCi(pool, {
-    reviews,
+    reviews: {
+      async start(...args) {
+        const started = await reviews.start(...args);
+        state.onStarted?.();
+        return started;
+      },
+      async get(...args) {
+        const review = await reviews.get(...args);
+        await state.onGet?.();
+        return review;
+      },
+    },
     notifier: createNotifier(pool, createHub()),
     retrySeconds: 0,
     pollSeconds: 0,
@@ -868,5 +887,227 @@ describe("assignment", () => {
       (await h.call(owner, "POST", `/apps/ci/reviews/${id}/assign`, { assignee_id: ana.userId }))
         .body.code,
     ).toBe("ASSIGNEE_NOT_ALLOWED");
+  });
+});
+
+/** One finished review, owned by a workspace admin and assigned to `ana`. */
+async function assigned(h: ReturnType<typeof harness>) {
+  const owner = await h.workspace();
+  const [ana, ben] = [await h.member(owner), await h.member(owner)];
+  const playbookId = await h.playbook(owner, [ana, ben]);
+  const { versionId } = await h.contract(owner, [ana, ben]);
+  const agentId = await h.agent(owner, playbookId, {
+    assignment: [{ kind: "fixed", user_id: ana.userId }],
+  });
+  h.state.verdicts = { "Liability cap": "not_acceptable" };
+  const id = await h.submit(owner, agentId, versionId);
+  await h.settle(owner, id);
+  return { owner, ana, ben, playbookId, versionId, agentId, id };
+}
+
+const as = (who: Person, sql: string, params: unknown[]) =>
+  asApp(pool, { userId: who.userId, workspaceId: who.workspaceId }, (db) => db.query(sql, params));
+
+const reviewsOf = async (workspaceId: string) =>
+  (await pool.query("select 1 from work.playbook_review where workspace_id = $1", [workspaceId]))
+    .rowCount;
+
+describe("what a participant can see and change", () => {
+  it("hides the summary from someone who can't open the playbook", async () => {
+    const h = harness();
+    const { owner, ana, ben, playbookId, id } = await assigned(h);
+    expect((await h.get(ana, id)).summary).toContain("Liability cap");
+    const narrowed = await h.call(owner, "PUT", `/playbooks/${playbookId}/grants`, [
+      { principal_type: "user", principal_id: ben.userId, level: "view" },
+    ]);
+    expect(narrowed.status).toBe(200);
+    expect(await h.get(ana, id)).toMatchObject({ status: "deviates", summary: null });
+    const listed = await h.call(ana, "GET", "/apps/ci/reviews");
+    expect(listed.body.reviews[0].summary).toBeNull();
+    expect((await h.get(owner, id)).summary).toContain("Liability cap");
+  });
+
+  it("ends the previous holder's sight of a review when it is rerun", async () => {
+    const h = harness();
+    const { owner, ana, ben, id } = await assigned(h);
+    await h.call(ana, "POST", `/apps/ci/reviews/${id}/assign`, { assignee_id: ben.userId });
+    expect((await h.call(ana, "GET", `/apps/ci/reviews/${id}`)).status).toBe(200);
+    expect((await h.call(owner, "POST", `/apps/ci/reviews/${id}/rerun`)).status).toBe(202);
+    expect((await h.call(ana, "GET", `/apps/ci/reviews/${id}`)).status).toBe(404);
+  });
+
+  it("lets the database refuse anything but handing on and finishing", async () => {
+    const h = harness();
+    const { ana, ben, id } = await assigned(h);
+    for (const change of [
+      "status = 'aligned'",
+      "status = 'queued'",
+      "result = 'aligned'",
+      "summary = 'Fine.'",
+      "failure = 'X'",
+      "next_attempt_at = now()",
+      "playbook_review_id = null",
+      "playbook_id = core.uuid7()",
+      `assigned_by = '${ben.userId}'`,
+      `assignee_id = '${ben.userId}'`,
+      "done_at = now()",
+    ]) {
+      await expect(
+        as(ana, `update apps.ci_contract_review set ${change} where id = $1`, [id]),
+        change,
+      ).rejects.toMatchObject({ code: "42501" });
+    }
+    const handed = await as(
+      ana,
+      `update apps.ci_contract_review set assignee_id = $2, assigned_by = $3 where id = $1`,
+      [id, ben.userId, ana.userId],
+    );
+    expect(handed.rowCount).toBe(1);
+    // Having handed it on, Ana can read it and no more.
+    const late = await as(ana, "update apps.ci_contract_review set status = 'done' where id = $1", [
+      id,
+    ]);
+    expect(late.rowCount).toBe(0);
+    const done = await as(
+      ben,
+      "update apps.ci_contract_review set status = 'done', done_at = now() where id = $1",
+      [id],
+    );
+    expect(done.rowCount).toBe(1);
+  });
+
+  it("lets the database queue a review only in its starting state", async () => {
+    const h = harness();
+    const { owner, id } = await assigned(h);
+    for (const [column, value] of [
+      ["status", "'aligned'"],
+      ["result", "'aligned'"],
+      ["summary", "'Fine.'"],
+      ["assignee_id", "owner_id"],
+    ]) {
+      await expect(
+        as(
+          owner,
+          `insert into apps.ci_contract_review (workspace_id, ci_agent_id, agent_name, owner_id,
+             playbook_id, document_id, document_version_id, ${column})
+           select workspace_id, ci_agent_id, agent_name, owner_id, playbook_id, document_id,
+                  document_version_id, ${value}
+             from apps.ci_contract_review where id = $1`,
+          [id],
+        ),
+        column,
+      ).rejects.toMatchObject({ code: "42501" });
+    }
+  });
+});
+
+describe("races and records", () => {
+  it("keeps an assignee set by hand while the review was finishing", async () => {
+    const h = harness();
+    const owner = await h.workspace();
+    const [ana, ben] = [await h.member(owner), await h.member(owner)];
+    const playbookId = await h.playbook(owner, [ana, ben]);
+    const { versionId } = await h.contract(owner, [ana, ben]);
+    const agentId = await h.agent(owner, playbookId, {
+      assignment: [{ kind: "fixed", user_id: ana.userId }],
+    });
+    const id = await h.submit(owner, agentId, versionId);
+    let once = false;
+    h.state.onGet = async () => {
+      const { rows } = await pool.query(
+        `select 1 from apps.ci_contract_review r
+           join work.playbook_review p on p.id = r.playbook_review_id
+          where r.id = $1 and p.status = 'done'`,
+        [id],
+      );
+      if (once || rows.length === 0) return;
+      once = true;
+      const res = await h.call(owner, "POST", `/apps/ci/reviews/${id}/assign`, {
+        assignee_id: ben.userId,
+      });
+      expect(res.status).toBe(200);
+    };
+    // The first look may come before the engine is done; the hook waits for a finished one.
+    const [done] = await h.settle(owner, id);
+    expect(once).toBe(true);
+    expect(done).toMatchObject({ status: "aligned", assignee_id: ben.userId });
+  });
+
+  it("checks again who may act, in the transaction that writes", async () => {
+    const h = harness();
+    const { owner, ana, ben, id } = await assigned(h);
+    for (const [path, body] of [
+      ["assign", { assignee_id: owner.userId }],
+      ["status", { status: "done" }],
+    ] as const) {
+      await pool.query("update apps.ci_contract_review set assignee_id = $2 where id = $1", [
+        id,
+        ana.userId,
+      ]);
+      const taking = await pool.connect();
+      try {
+        await taking.query("begin");
+        await taking.query("update apps.ci_contract_review set assignee_id = $2 where id = $1", [
+          id,
+          ben.userId,
+        ]);
+        const acting = h.call(ana, "POST", `/apps/ci/reviews/${id}/${path}`, body);
+        await new Promise((r) => setTimeout(r, 300));
+        await taking.query("commit");
+        expect([403, 404], path).toContain((await acting).status);
+      } finally {
+        taking.release();
+      }
+    }
+  });
+
+  it("starts one paid review even if the queue dies right after starting it", async () => {
+    const h = harness();
+    const owner = await h.workspace();
+    const agentId = await h.agent(owner, await h.playbook(owner));
+    const id = await h.submit(owner, agentId, (await h.contract(owner)).versionId);
+    let crashed = false;
+    h.state.onStarted = () => {
+      if (crashed) return;
+      crashed = true;
+      throw new Error("the server stopped");
+    };
+    // The lease has run out by the next tick, as it would after a restart.
+    await h.ci.tick(owner.workspaceId);
+    await pool.query("update apps.ci_contract_review set next_attempt_at = now() where id = $1", [
+      id,
+    ]);
+    const [done] = await h.settle(owner, id);
+    expect(done.status).toBe("aligned");
+    expect(await reviewsOf(owner.workspaceId)).toBe(1);
+  });
+
+  it("starts one paid review when two queues take the same contract", async () => {
+    const h = harness({ ci: { leaseSeconds: 0 } });
+    const owner = await h.workspace();
+    const agentId = await h.agent(owner, await h.playbook(owner));
+    const { versionId } = await h.contract(owner);
+    const ids = [
+      await h.submit(owner, agentId, versionId),
+      await h.submit(owner, agentId, versionId),
+    ];
+    await Promise.all([1, 2, 3].map(() => h.ci.tick(owner.workspaceId)));
+    await h.settle(owner, ...ids);
+    expect(await reviewsOf(owner.workspaceId)).toBe(2);
+  });
+
+  it("audits a review failed because its owner can no longer see it", async () => {
+    const h = harness();
+    const owner = await h.workspace();
+    const agentId = await h.agent(owner, await h.playbook(owner));
+    const { versionId, documentId } = await h.contract(owner);
+    const id = await h.submit(owner, agentId, versionId);
+    await wallOff(owner, owner.userId, documentId);
+    await h.ci.tick(owner.workspaceId);
+    await h.ci.tick(owner.workspaceId);
+    const events = (await auditTrail(pool, owner.workspaceId)).filter(
+      (e) => e.action === "ci.review.finished" && e.object_id === id,
+    );
+    expect(events).toMatchObject([{ actor_type: "system", details: { failure: "ACCESS_LOST" } }]);
   });
 });
