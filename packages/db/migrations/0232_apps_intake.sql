@@ -481,7 +481,7 @@ $$;
 drop policy document_agent_upload_read on content.document;
 create policy document_agent_upload_read on content.document for select to legallabs_app
   using (core.in_tenant(workspace_id) and deleted_at is null and matter_id is null
-         and vault_id is distinct from (select apps.intake_vault_id())
+         and (vault_id is null or not apps.is_intake_vault(vault_id))
          and work.agent_upload_readable(id));
 
 alter function apps.intake_may(text) owner to legallabs_definer;
