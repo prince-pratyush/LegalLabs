@@ -8,6 +8,7 @@ import { createAuth } from "../auth/auth.js";
 import { hashPassword } from "../auth/password.js";
 import { asApp } from "../db.js";
 import { createDocuments } from "../documents/documents.js";
+import { createViewer } from "../documents/viewer.js";
 import { createDrafts } from "../drafts/drafts.js";
 import { createHub } from "../notifications/hub.js";
 import { createNotifications } from "../notifications/notifications.js";
@@ -77,6 +78,7 @@ function harness(options: Partial<IntakeOptions> = {}) {
   const app = createApp({
     auth: createAuth(pool),
     documents,
+    viewer: createViewer(pool, documents.store, documents),
     vaults,
     threads: { gateway, log, vaults: noVaults, knowledge: noKnowledge, threads },
     notifications: createNotifications(pool),
@@ -639,6 +641,26 @@ const inboxOf = async (ws: Person) =>
   ).rows[0] as { vault_id: string; service_user_id: string };
 
 describe("attachments and the Inbox", () => {
+  it("are shown to triage in the viewer but are no material for anything else", async () => {
+    const h = harness();
+    const admin = await h.workspace();
+    const file = (await h.upload(admin, "nda.txt")).body.attachment;
+    await h.made(admin, { attachments: [file.document_id] });
+    await h.documents.worker.drain(admin.workspaceId);
+    const { document } = (await h.call(admin, "GET", `/documents/${file.document_id}`)).body;
+    const view = `/documents/${file.document_id}/versions/${document.version_id}`;
+    expect((await h.call(admin, "GET", `${view}/manifest`)).status).toBe(200);
+    expect((await h.call(admin, "GET", `${view}/pages?from=1&to=1`)).status).toBe(200);
+
+    const found = await h.call(admin, "GET", "/documents/search?q=Mutual");
+    expect(found.body.passages).toEqual([]);
+    const asked = await h.call(admin, "POST", "/threads", {
+      content: [{ type: "text", text: "What is in it?" }],
+      scope: { document_ids: [file.document_id], vault_ids: [], sources: [] },
+    });
+    expect(asked.status).toBe(404);
+  });
+
   it("files them under the service user, scanned and read only by triage staff", async () => {
     const h = harness();
     const admin = await h.workspace();

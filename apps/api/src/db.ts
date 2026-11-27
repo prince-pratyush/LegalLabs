@@ -51,6 +51,14 @@ async function asRole<T>(
   }
 }
 
+/**
+ * Lets this transaction read Inbox files, for triage staff only. Call it where a file is shown
+ * to a person, never where its text goes into other work.
+ */
+export async function showIntakeFiles(client: pg.PoolClient): Promise<void> {
+  await client.query("select set_config('legallabs.intake_read', 'on', true)");
+}
+
 // For a message whose id is needed before its row: reads sort by id, so it must be time-ordered.
 export async function newMessageId(client: pg.PoolClient): Promise<string> {
   const { rows } = await client.query<{ id: string }>("select core.uuid7() id");
