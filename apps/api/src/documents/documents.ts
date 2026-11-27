@@ -5,7 +5,7 @@ import { type Block, detectType, type Failure } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
-import { asApp, RLS_REFUSED } from "../db.js";
+import { asApp, RLS_REFUSED, showIntakeFiles } from "../db.js";
 
 export type Status = "queued" | "parsing" | "indexed" | "failed";
 
@@ -459,6 +459,7 @@ export function createDocuments(pool: pg.Pool, options: DocumentsOptions): Docum
     async get(principal, documentId) {
       if (!UUID.test(documentId)) return null;
       return asApp(pool, principal, async (db) => {
+        await showIntakeFiles(db);
         const { rows } = await db.query<SummaryRow>(`${SUMMARY_SQL} and d.id = $1`, [documentId]);
         return rows[0] ? toSummary(rows[0]) : null;
       });

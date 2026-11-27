@@ -10,7 +10,7 @@ import { XLSX } from "@legallabs/ingest";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
-import { asApp } from "../db.js";
+import { asApp, showIntakeFiles } from "../db.js";
 import type { Documents } from "./documents.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -128,8 +128,12 @@ function snippet(text: string, from: number): string {
 }
 
 export function createViewer(pool: pg.Pool, store: ObjectStore, documents: Documents): Viewer {
-  const version = (db: pg.PoolClient, documentId: string, versionId: string) =>
-    db.query<VersionRow>(VERSION_SQL, ids(documentId, versionId)).then((r) => r.rows[0] ?? null);
+  // Every read here starts with this lookup, and all of them show the file to a person.
+  const version = async (db: pg.PoolClient, documentId: string, versionId: string) => {
+    await showIntakeFiles(db);
+    const { rows } = await db.query<VersionRow>(VERSION_SQL, ids(documentId, versionId));
+    return rows[0] ?? null;
+  };
 
   return {
     async manifest(principal, documentId, versionId, client) {
