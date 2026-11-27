@@ -35,6 +35,9 @@ import type { Viewer } from "./documents/viewer.js";
 import { viewerRoutes } from "./documents/viewer-routes.js";
 import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
+import { emailHook } from "./inbound/hook.js";
+import type { EmailChannels } from "./intake/channels.js";
+import { emailChannelHttp } from "./intake/channels-http.js";
 import { intakeHttp } from "./intake/http.js";
 import type { Intake } from "./intake/intake.js";
 import type { Knowledge } from "./knowledge/knowledge.js";
@@ -149,6 +152,8 @@ export interface AppOptions {
   ci?: Ci;
   /** Intake request types and the triage queue; left out, /apps/intake is not mounted. */
   intake?: Intake;
+  /** Intake by email: its settings and the hook the mail server posts to, under /hooks. */
+  emailChannels?: EmailChannels;
   /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
   agentRuns?: AgentRuns;
   /** The Workflow Builder; left out, its endpoints are not mounted. */
@@ -200,6 +205,7 @@ export function createApp({
   reviews,
   ci,
   intake,
+  emailChannels,
   agentRuns,
   workflows,
   agents,
@@ -254,6 +260,9 @@ export function createApp({
     }
     await next();
   });
+
+  // Signed by the sender rather than signed in, so it comes before every session check.
+  if (emailChannels) app.route("/hooks", emailHook(emailChannels, { clientIp, now }));
 
   app.use("/auth/*", async (c, next) => {
     await next();
@@ -426,6 +435,7 @@ export function createApp({
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (ci) app.route("/api/v1", ciHttp(ci, clientOf, asks));
   if (intake) app.route("/api/v1", intakeHttp(intake, clientOf));
+  if (emailChannels) app.route("/api/v1", emailChannelHttp(emailChannels, clientOf));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)
     app.route(

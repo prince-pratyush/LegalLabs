@@ -35,6 +35,8 @@ import { createDocuments } from "./documents/documents.js";
 import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
+import { createEmailProcessor } from "./inbound/processor.js";
+import { createEmailChannels } from "./intake/channels.js";
 import { createIntake } from "./intake/intake.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
@@ -305,6 +307,17 @@ process.once("SIGTERM", () => void ci.stop());
 process.once("SIGINT", () => void ci.stop());
 // Attachments sent in with requests queue for ingest like any other upload.
 const intake = createIntake(pool, { documents, notifier });
+// Intake by email: mail posted to /hooks waits in a queue that this reads. Channels need the
+// secrets key, so without it nothing can be posted.
+const emailChannels = createEmailChannels(pool, secrets ? { secrets } : {});
+const emailProcessor = createEmailProcessor(pool, {
+  documents,
+  scanner,
+  log: (line) => console.log(line),
+});
+emailProcessor.start();
+process.once("SIGTERM", () => void emailProcessor.stop());
+process.once("SIGINT", () => void emailProcessor.stop());
 
 const mfaOption = mfaFromEnv(process.env, pool);
 const mfaCheck = mfaStartupCheck(process.env, mfaOption.mfa !== undefined);
@@ -365,6 +378,7 @@ const app = createApp({
   reviews,
   ci,
   intake,
+  emailChannels,
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,
   library: createLibrary(pool),

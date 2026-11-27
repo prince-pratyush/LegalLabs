@@ -39,6 +39,7 @@
     "jose": "6.2.18",
     "nodemailer": "10.4.1",
     "pg": "8.23.1",
+    "postal-mime": "4.2.1",
     "zod": "4.6.7"
   },
   "devDependencies": {

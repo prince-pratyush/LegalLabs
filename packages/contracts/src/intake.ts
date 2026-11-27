@@ -173,6 +173,52 @@ export const IntakeChannel = z.enum([
 ]);
 export type IntakeChannel = z.infer<typeof IntakeChannel>;
 
+const Domain = z
+  .string()
+  .max(253)
+  .toLowerCase()
+  .regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/);
+
+const emailChannelShape = {
+  name: Name(100),
+  /** The intake address itself; mail from it is never taken. */
+  address: z.email().max(320),
+  /** The name the receiving server writes at the start of Authentication-Results. */
+  authserv_id: z
+    .string()
+    .max(255)
+    .regex(/^[A-Za-z0-9._-]+$/),
+  /** Exact domains: a subdomain is listed on its own. */
+  allowed_domains: z.array(Domain).min(1).max(50),
+};
+
+export const IntakeEmailChannelCreate = z.object(emailChannelShape).strict();
+export type IntakeEmailChannelCreate = z.input<typeof IntakeEmailChannelCreate>;
+
+export const IntakeEmailChannelPatch = z
+  .object({ ...emailChannelShape, status: z.enum(["live", "disabled"]) })
+  .partial()
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, { error: "EMPTY" });
+export type IntakeEmailChannelPatch = z.input<typeof IntakeEmailChannelPatch>;
+
+/** How long the old secret keeps working. Zero stops it at once, for one that leaked. */
+export const IntakeSecretRotate = z
+  .object({ grace_hours: z.number().int().min(0).max(72).default(24) })
+  .strict();
+
+export const IntakeEmailChannel = z.object({
+  id: Id,
+  ...emailChannelShape,
+  status: z.enum(["live", "disabled"]),
+  /** Where the mail server posts each message, on this server. */
+  hook_path: z.string(),
+  previous_secret_until: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type IntakeEmailChannel = z.infer<typeof IntakeEmailChannel>;
+
 export const IntakeStatus = z.enum([
   "new",
   "unclassified",

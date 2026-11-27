@@ -211,6 +211,8 @@ export const auditActions: string[] = [
   ...family("intake.type", ["created", "updated", "deleted"]),
   ...family("intake.request", ["created", "classified", "assigned", "status_changed", "refused"]),
   "intake.attachment_added",
+  ...family("intake.channel", ["created", "updated", "secret_rotated"]),
+  ...family("email", ["inbound_rejected", "inbound_failed"]),
 ];
 
 export const AuditAction = z.enum(auditActions);

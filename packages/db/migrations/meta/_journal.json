@@ -736,6 +736,13 @@
       "when": 1794021100000,
       "tag": "0232_apps_intake",
       "breakpoints": false
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1794021200000,
+      "tag": "0233_apps_intake_email",
+      "breakpoints": false
     }
   ]
 }

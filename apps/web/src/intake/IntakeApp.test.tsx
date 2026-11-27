@@ -267,6 +267,18 @@ describe("a request", () => {
     expect(within(timeline).getAllByText(/Me Myself/)).toHaveLength(2);
   });
 
+  it("names the requester, not the system, for what arrived from outside", async () => {
+    serve({
+      [`GET /api/v1/apps/intake/requests/${REQUEST}/audit`]: () => ({
+        events: [event({ actor_type: "requester", actor_id: null, actor_name: null })],
+      }),
+    });
+    openRequest();
+    const timeline = await screen.findByRole("list", { name: "Timeline" });
+    expect(await within(timeline).findByText(/^Requester ·/)).toBeTruthy();
+    expect(within(timeline).queryByText(/System/)).toBeNull();
+  });
+
   it("shows what a requester sent as text only: no markup and no links", async () => {
     const hostile = '<img src=x onerror="alert(1)">';
     serve({
