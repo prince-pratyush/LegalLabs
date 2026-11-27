@@ -242,10 +242,25 @@ describe("fact tables", () => {
 
   it("pages by date with a cursor", async () => {
     const r = await room();
-    // One past a page, written directly to keep the test quick.
-    for (let i = 0; i < 101; i++) {
-      await r.add({ text: `Event ${i}.`, event_date: null, date_precision: "unknown" });
-    }
+    const one = await r.add({ event_date: null, date_precision: "unknown" });
+    // A page's worth more, written straight to the tables to keep the test quick.
+    await pool.query(
+      `with made as (
+         insert into apps.fact (workspace_id, space_id, created_by, source, source_documents,
+           text, date_precision)
+         select workspace_id, space_id, created_by, source, source_documents, text, 'unknown'
+           from apps.fact, generate_series(1, 100) where id = $1
+         returning id, workspace_id, text, created_by),
+       versions as (
+         insert into apps.fact_version (workspace_id, fact_id, no, text, date_precision, edited_by)
+         select workspace_id, id, 1, text, 'unknown', created_by from made)
+       insert into apps.fact_citation (workspace_id, fact_id, document_id, document_version_id,
+         page_no, char_from, char_to, quote)
+       select c.workspace_id, made.id, c.document_id, c.document_version_id, c.page_no,
+              c.char_from, c.char_to, c.quote
+         from made, apps.fact_citation c where c.fact_id = $1`,
+      [one.id],
+    );
     const first = await r.call(r.ben, "GET", `${r.base}/facts`);
     expect(first.body.facts).toHaveLength(100);
     const rest = await r.call(
