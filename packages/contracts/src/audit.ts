@@ -207,6 +207,10 @@ export const auditActions: string[] = [
   "admin.memory_permission_changed",
   ...family("ci.agent", ["created", "updated", "activated", "deactivated"]),
   ...family("ci.review", ["queued", "assigned", "status_changed", "finished"]),
+  ...family("intake.inbox", ["created"]),
+  ...family("intake.type", ["created", "updated", "deleted"]),
+  ...family("intake.request", ["created", "classified", "assigned", "status_changed", "refused"]),
+  "intake.attachment_added",
 ];
 
 export const AuditAction = z.enum(auditActions);

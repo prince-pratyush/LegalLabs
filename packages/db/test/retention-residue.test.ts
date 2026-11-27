@@ -123,4 +123,20 @@ describe("P-03 retention leaves no residue", () => {
       expect(await residue(tx, [d.documentId])).toEqual([]);
     });
   });
+
+  it("purges an intake attachment with the row that named it", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const { documentId } = s.intakes.acme;
+      await tx.asOwner();
+      await tx.rows(
+        `update content.document set deleted_at = now() - interval '31 days', deleted_reason = 'retention'
+          where id = $1`,
+        [documentId],
+      );
+      await expire(tx, s.acme, "document", documentId, "in.txt");
+      await tx.rows("select retention.sweep_all()");
+      expect(await residue(tx, [documentId])).toEqual([]);
+    });
+  });
 });

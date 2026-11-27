@@ -16,8 +16,8 @@ import {
 } from "./notification.js";
 
 describe("notification kinds", () => {
-  it("name the 44 catalogue events, each in a known category", () => {
-    expect(notificationKinds).toHaveLength(44);
+  it("name the 45 catalogue events, each in a known category", () => {
+    expect(notificationKinds).toHaveLength(45);
     for (const kind of notificationKinds) {
       expect(NotificationCategory.safeParse(NOTIFICATION_KINDS[kind].category).success).toBe(true);
     }

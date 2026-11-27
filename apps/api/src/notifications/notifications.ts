@@ -164,6 +164,7 @@ const VISIBLE: Record<string, string> = {
   table: "select id from work.review_table where id = any($1::uuid[])",
   playbook: "select id from work.playbook where id = any($1::uuid[])",
   playbook_review: "select id from work.playbook_review where id = any($1::uuid[])",
+  intake_request: "select id from apps.intake_request where id = any($1::uuid[])",
 };
 
 /** Sets `available` from what the recipient can see now, and starts or clears the 7-day clock. */

@@ -35,6 +35,8 @@ import type { Viewer } from "./documents/viewer.js";
 import { viewerRoutes } from "./documents/viewer-routes.js";
 import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
+import { intakeHttp } from "./intake/http.js";
+import type { Intake } from "./intake/intake.js";
 import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
 import type { Library } from "./library/library.js";
@@ -145,6 +147,8 @@ export interface AppOptions {
   reviews?: Reviews;
   /** Contract review agents and their queue; left out, /apps/ci is not mounted. */
   ci?: Ci;
+  /** Intake request types and the triage queue; left out, /apps/intake is not mounted. */
+  intake?: Intake;
   /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
   agentRuns?: AgentRuns;
   /** The Workflow Builder; left out, its endpoints are not mounted. */
@@ -195,6 +199,7 @@ export function createApp({
   playbooks,
   reviews,
   ci,
+  intake,
   agentRuns,
   workflows,
   agents,
@@ -420,6 +425,7 @@ export function createApp({
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (ci) app.route("/api/v1", ciHttp(ci, clientOf, asks));
+  if (intake) app.route("/api/v1", intakeHttp(intake, clientOf));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)
     app.route(
