@@ -66,3 +66,11 @@ describe("Intake in the running server", () => {
     expect(await res.json()).toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
+
+describe("Fact tables in the running server", () => {
+  it("is mounted", async () => {
+    const res = await call(`/api/v1/apps/chronology/spaces/${crypto.randomUUID()}/facts`);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { code: string }).code).toBe("NOT_FOUND");
+  });
+});

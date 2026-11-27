@@ -73,6 +73,30 @@ export {
 export { type DiffOp, diffList, diffWords, type ListChange } from "./diff.js";
 export { ErrorBody } from "./error.js";
 export {
+  DatePrecision,
+  EntityCreate,
+  EntityKind,
+  EntityPatch,
+  FACT_LIMITS,
+  type Fact,
+  type FactAuditEntry,
+  type FactCitation,
+  FactCitationInput,
+  FactCreate,
+  FactDate,
+  type FactEntity,
+  type FactIssue,
+  FactPatch,
+  FactSource,
+  FactStatus,
+  FactStatusRequest,
+  type FactVersion,
+  type FactWhen,
+  factWhenProblem,
+  IssueCreate,
+  IssuePatch,
+} from "./facts.js";
+export {
   GuestAcceptInput,
   GuestInviteInput,
   GuestLoginCodeInput,

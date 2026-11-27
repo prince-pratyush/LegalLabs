@@ -35,6 +35,7 @@ import { createDocuments } from "./documents/documents.js";
 import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
 import { createDrafts } from "./drafts/drafts.js";
+import { createFacts } from "./facts/facts.js";
 import { createEmailProcessor } from "./inbound/processor.js";
 import { createEmailChannels } from "./intake/channels.js";
 import { createIntake } from "./intake/intake.js";
@@ -391,6 +392,7 @@ const app = createApp({
   reviews,
   ci,
   intake,
+  facts: createFacts(pool),
   emailChannels,
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,

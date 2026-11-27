@@ -124,6 +124,8 @@ Contract review queues run each playbook review as the agent's owner. A review i
 
 Intake requests come from people with no account. Their files belong to a per-workspace service account that cannot sign in, hold a token or be edited, in an Inbox vault that triage staff may only read, and that cannot be shared, transferred or deleted by hand. A request tied to a matter, its timeline and its files are hidden from anyone walled from it, in the database. Inbox files are shown to triage staff on the request and in the viewer and are no material for other work, and a matter's holds and retention reach them (F-53 to F-55). Only the service account records a file as sent in, so no existing document can be pulled into intake by naming it. Open: request text has no retention policy of its own; requester files are readable by every triage user who passes the matter's wall.
 
+A fact in a Space's fact table is text taken from documents. It, its quotes, versions and trail are seen only by Space members (never guests) who can open every document it cites now, decided by row-level security, so losing a share or meeting a matter wall takes the fact away. A name or issue that extraction read out of a document is seen only through such a fact; one a person typed is the Space's. Facts cite only files in vaults shared with the Space, never intake files, and a purged document takes its facts with it. Open: a fact a person edits holds whatever they typed, under the citations it was made with.
+
 Intake by email takes signed posts from the mail server on an unauthenticated route; its threats and controls are in [intake-email.md](intake-email.md).
 
 ## 8. Cross-cutting

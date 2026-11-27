@@ -35,6 +35,8 @@ import type { Viewer } from "./documents/viewer.js";
 import { viewerRoutes } from "./documents/viewer-routes.js";
 import type { Drafts } from "./drafts/drafts.js";
 import { draftHttp } from "./drafts/http.js";
+import type { Facts } from "./facts/facts.js";
+import { factHttp } from "./facts/http.js";
 import { emailHook } from "./inbound/hook.js";
 import type { EmailChannels } from "./intake/channels.js";
 import { emailChannelHttp } from "./intake/channels-http.js";
@@ -152,6 +154,8 @@ export interface AppOptions {
   ci?: Ci;
   /** Intake request types and the triage queue; left out, /apps/intake is not mounted. */
   intake?: Intake;
+  /** Fact tables for Spaces; left out, /apps/chronology is not mounted. */
+  facts?: Facts;
   /** Intake by email: its settings and the hook the mail server posts to, under /hooks. */
   emailChannels?: EmailChannels;
   /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
@@ -205,6 +209,7 @@ export function createApp({
   reviews,
   ci,
   intake,
+  facts,
   emailChannels,
   agentRuns,
   workflows,
@@ -435,6 +440,7 @@ export function createApp({
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
   if (ci) app.route("/api/v1", ciHttp(ci, clientOf, asks));
   if (intake) app.route("/api/v1", intakeHttp(intake, clientOf));
+  if (facts) app.route("/api/v1", factHttp(facts, clientOf));
   if (emailChannels) app.route("/api/v1", emailChannelHttp(emailChannels, clientOf));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)
