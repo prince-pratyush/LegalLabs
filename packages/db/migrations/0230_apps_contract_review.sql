@@ -119,15 +119,49 @@ create policy ci_contract_review_insert on apps.ci_contract_review for insert to
   with check (core.in_tenant(workspace_id) and owner_id = core.current_user_id()
               and core.has_permission('agents.build')
               and core.has_permission('playbooks.create')
+              -- Queued and nothing else: only the queue says what became of it.
+              and status = 'queued'
+              and num_nonnulls(result, summary, failure, assignee_id, assigned_by,
+                               playbook_review_id, run_id, started_at, done_at) = 0
               and exists (select 1 from apps.ci_review_agent a where a.id = ci_agent_id)
               and exists (select 1 from content.document_version v
                            where v.id = ci_contract_review.document_version_id
                              and v.document_id = ci_contract_review.document_id));
+-- Whoever handed it on may still read it, but not change it.
 create policy ci_contract_review_update on apps.ci_contract_review for update to legallabs_app
   using (core.in_tenant(workspace_id)
-         and core.current_user_id() in (owner_id, assignee_id, assigned_by)
+         and core.current_user_id() in (owner_id, assignee_id)
          and exists (select 1 from content.document_version v where v.id = document_version_id))
   with check (core.in_tenant(workspace_id));
+
+-- An assignee who isn't the owner may only hand it on or mark it done; RLS can't see the old
+-- row. Compared as a whole, so a column added later is closed to them too.
+create function apps.ci_review_guard() returns trigger
+language plpgsql set search_path = '' as $$
+declare
+  open_to_assignee constant text[] := array['assignee_id', 'assigned_by', 'status', 'done_at',
+                                            'updated_at'];
+begin
+  if current_user <> 'legallabs_app' or old.owner_id = core.current_user_id() then
+    return new;
+  end if;
+  if (to_jsonb(new) - open_to_assignee) is distinct from (to_jsonb(old) - open_to_assignee)
+     or (new.assigned_by is distinct from old.assigned_by
+         and new.assigned_by is distinct from core.current_user_id())
+     or (new.assignee_id is distinct from old.assignee_id
+         and new.assigned_by is distinct from core.current_user_id())
+     or (new.status <> old.status
+         and not (new.status = 'done'
+                  and old.status in ('aligned', 'needs_review', 'deviates')))
+     or (new.done_at is distinct from old.done_at and new.status = old.status) then
+    raise exception 'only the owner can change that' using errcode = '42501';
+  end if;
+  return new;
+end
+$$;
+grant execute on function apps.ci_review_guard() to legallabs_app;
+create trigger ci_review_guard before update on apps.ci_contract_review
+  for each row execute function apps.ci_review_guard();
 
 -- The queue's worker only learns which rows are due and whose they are; the work itself is
 -- done as that person.
@@ -139,14 +173,16 @@ create policy definer_read on apps.ci_contract_review for select to legallabs_de
 create policy definer_update on apps.ci_contract_review for update to legallabs_definer
   using (true) with check (true);
 
-create function apps.claim_ci_reviews(p_batch integer, p_lease_seconds integer,
-                                      p_workspace uuid default null)
+-- One row at a time, so its lease starts when work on it does; `p_skip` holds the rows this
+-- pass has already looked at.
+create function apps.claim_ci_review(p_lease_seconds integer, p_workspace uuid default null,
+                                     p_skip uuid[] default '{}')
 returns table (id uuid, workspace_id uuid, owner_id uuid)
 language sql volatile security definer set search_path = '' as $$
   update apps.ci_contract_review r
      set next_attempt_at = pg_catalog.now()
                            + pg_catalog.make_interval(secs => p_lease_seconds)
-   where r.id in (
+   where r.id = (
      select x.id from apps.ci_contract_review x
        join apps.ci_review_agent a on a.id = x.ci_agent_id
       where x.status in ('queued', 'running')
@@ -154,21 +190,36 @@ language sql volatile security definer set search_path = '' as $$
         -- A paused agent starts nothing; what it already started is still finished.
         and (x.status = 'running' or a.status = 'live')
         and (p_workspace is null or x.workspace_id = p_workspace)
+        and x.id <> all (p_skip)
       order by x.next_attempt_at, x.id
-      limit p_batch
+      limit 1
       for update of x skip locked)
   returning r.id, r.workspace_id, r.owner_id
 $$;
-alter function apps.claim_ci_reviews(integer, integer, uuid) owner to legallabs_definer;
-revoke execute on function apps.claim_ci_reviews(integer, integer, uuid) from public;
-grant execute on function apps.claim_ci_reviews(integer, integer, uuid) to legallabs_worker;
+alter function apps.claim_ci_review(integer, uuid, uuid[]) owner to legallabs_definer;
+revoke execute on function apps.claim_ci_review(integer, uuid, uuid[]) from public;
+grant execute on function apps.claim_ci_review(integer, uuid, uuid[]) to legallabs_worker;
 
--- For a row its owner can no longer see (walled, removed or disabled): it can only fail.
+-- For a row its owner can no longer see (walled, removed or disabled): it can only fail. The
+-- audit event is the system's, since there is nobody to act as.
 create function apps.fail_ci_review(p_id uuid) returns void
-language sql volatile security definer set search_path = '' as $$
+language plpgsql volatile security definer set search_path = '' as $$
+declare
+  was text := coalesce(pg_catalog.current_setting('app.workspace_id', true), '');
+  ws uuid;
+begin
   update apps.ci_contract_review
      set status = 'failed', failure = 'ACCESS_LOST', updated_at = pg_catalog.now()
    where id = p_id and status in ('queued', 'running')
+  returning workspace_id into ws;
+  if ws is null then
+    return;
+  end if;
+  perform pg_catalog.set_config('app.workspace_id', ws::text, true);
+  perform admin.append_audit_event('ci.review.finished', 'system', null, 'ci_review', p_id::text,
+                                   '{"failure": "ACCESS_LOST"}'::jsonb);
+  perform pg_catalog.set_config('app.workspace_id', was, true);
+end
 $$;
 alter function apps.fail_ci_review(uuid) owner to legallabs_definer;
 revoke execute on function apps.fail_ci_review(uuid) from public;

@@ -120,6 +120,8 @@ Agents can be shared into Spaces, external ones included (0200). A Space grant n
 
 A third review (F-39 to F-46) added the matter-wall check to direct agent shares and stopped a Run holder linking an agent's upload into their own agent (0226). Open: F-42, F-46.
 
+Contract review queues run each playbook review as the agent's owner. A review is visible only while the reader can open its document, its summary only to someone who can also open the playbook, and an assignee can do no more than hand it on or mark it done, in the database as well as the API (F-48 to F-52).
+
 ## 8. Cross-cutting
 
 **Tenant isolation.** RLS is enabled and forced on every table (checked by `rls.test.ts`, including a test that catches a table added without protection). The definer functions are the weak point of any RLS design, so P-01 calls every one the app role may execute, as four kinds of caller, with the ids of everything in another workspace: nothing changed, and only three yes or no oracles remain (accepted, F-09).
