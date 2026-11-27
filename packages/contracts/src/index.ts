@@ -47,6 +47,28 @@ export {
   StepStatus,
 } from "./agent-run.js";
 export { AuditAction, AuditActorType, auditActions } from "./audit.js";
+export {
+  AssignmentRule,
+  CI_LIMITS,
+  CiAgent,
+  CiAgentCreate,
+  CiAgentPatch,
+  CiAgentStatus,
+  type CiAssignee,
+  CiAssignRequest,
+  CiField,
+  CiFields,
+  type CiOutcome,
+  CiResult,
+  CiReview,
+  CiReviewCreate,
+  CiReviewStatus,
+  CiStatusRequest,
+  CiThresholds,
+  ciAssignmentOrder,
+  ciStatus,
+  ciSummary,
+} from "./ci.js";
 export { type DiffOp, diffList, diffWords, type ListChange } from "./diff.js";
 export { ErrorBody } from "./error.js";
 export {

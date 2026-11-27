@@ -25,6 +25,8 @@ import type { Mfa } from "./auth/mfa/service.js";
 import { oidcRoutes } from "./auth/oidc/routes.js";
 import type { Oidc } from "./auth/oidc/service.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
+import type { Ci } from "./ci/ci.js";
+import { ciHttp } from "./ci/http.js";
 import { commandCenterRoutes } from "./command-center/routes.js";
 import type { CommandCenter } from "./command-center/service.js";
 import type { Documents } from "./documents/documents.js";
@@ -141,6 +143,8 @@ export interface AppOptions {
   playbooks?: Playbooks;
   /** Playbook reviews; mounted only with playbooks. */
   reviews?: Reviews;
+  /** Contract review agents and their queue; left out, /apps/ci is not mounted. */
+  ci?: Ci;
   /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
   agentRuns?: AgentRuns;
   /** The Workflow Builder; left out, its endpoints are not mounted. */
@@ -190,6 +194,7 @@ export function createApp({
   knowledge,
   playbooks,
   reviews,
+  ci,
   agentRuns,
   workflows,
   agents,
@@ -414,6 +419,7 @@ export function createApp({
   }
   if (playbooks) app.route("/api/v1", playbookHttp(playbooks, clientOf, asks));
   if (reviews) app.route("/api/v1", reviewHttp(reviews, clientOf, asks));
+  if (ci) app.route("/api/v1", ciHttp(ci, clientOf, asks));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)
     app.route(

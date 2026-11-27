@@ -216,6 +216,11 @@ export const CATALOGUE: Record<NotificationKind, CatalogueEntry> = {
     recipients: to.runner,
     title: (e) => `Playbook review finished: ${name(e)}`,
   }),
+  "ci.review_assigned": entry("ci.review_assigned", {
+    recipients: to.assignee,
+    title: (e) => `A contract is waiting for your review: ${name(e)}`,
+    actions: [secondary("open", "Open review")],
+  }),
   "playbook.assigned": entry("playbook.assigned", {
     recipients: to.assignee,
     title: (e) => `A playbook was assigned to you: ${name(e)}`,

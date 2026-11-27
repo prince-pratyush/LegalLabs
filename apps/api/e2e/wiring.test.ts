@@ -38,3 +38,10 @@ describe("Command Center in the running server", () => {
     }
   });
 });
+
+describe("Contract Intelligence in the running server", () => {
+  it("is mounted", async () => {
+    expect(await json("/api/v1/apps/ci/agents")).toEqual({ agents: [] });
+    expect(await json("/api/v1/apps/ci/reviews")).toEqual({ reviews: [], next_cursor: null });
+  });
+});

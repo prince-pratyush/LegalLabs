@@ -12,6 +12,7 @@ const SCHEMAS = ["core", "work", "content", "admin", "knowledge", "notify", "ana
   "memory",
   "library",
   "scim",
+  "apps",
 ]);
 
 // Meant to outlive the object: the audit trail, and retention's own record of what it did.
