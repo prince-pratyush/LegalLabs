@@ -22,13 +22,22 @@ const isElement = (node: Node): node is Element => node.nodeType === 1;
 export const childElements = (element: Element): Element[] =>
   Array.from(element.childNodes).filter(isElement);
 
-/** An element's text as lines: inline elements join their neighbours, others break the line. */
-export function readableText(element: Element, inline: ReadonlySet<string>): string {
+/**
+ * An element's text as lines: inline elements join their neighbours, others break the line.
+ * `override` writes an element itself, for the ones a source needs set out differently.
+ */
+export function readableText(
+  element: Element,
+  inline: ReadonlySet<string>,
+  override: (element: Element) => string | null = () => null,
+): string {
   const walk = (node: Node): string => {
     // Line breaks in the source are only layout; text and CDATA are the other node kinds kept.
     if (node.nodeType === 3 || node.nodeType === 4)
       return (node.nodeValue ?? "").replace(/\s+/g, " ");
     if (!isElement(node)) return "";
+    const own = override(node);
+    if (own !== null) return own;
     const body = Array.from(node.childNodes).map(walk).join("");
     return inline.has(node.localName ?? "") ? body : `\n${body}\n`;
   };

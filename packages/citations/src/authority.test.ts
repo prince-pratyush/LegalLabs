@@ -78,3 +78,56 @@ describe("Code of Federal Regulations citations", () => {
     });
   });
 });
+
+describe("UK legislation citations", () => {
+  it("reads an Act's chapter number and an instrument's number however written", () => {
+    expect(
+      same([
+        "Data Protection Act 2018 c. 12",
+        "Data Protection Act 2018 (c. 12)",
+        "Data Protection Act 2018, c. 12",
+        "Data Protection Act 2018, chapter 12",
+      ]),
+    ).toEqual(["data protection act 2018 c 12"]);
+    expect(same(["SI 2019/419", "S.I. 2019/419", "SI 2019 No. 419"])).toEqual(["si 2019/419"]);
+  });
+
+  const act = { id: "uk:item:1", sections: ["s 3", "s 3(2)", "Sch 1"] };
+  const si = { id: "uk:item:2", sections: ["reg 5", "reg 5(1)"] };
+  const sources = {
+    authorityById: async () => null,
+    authoritiesByCitation: async (key: string) => {
+      if (key === "data protection act 2018") return [act];
+      if (key === "data protection act 2018 c 12") return [act];
+      return key === "si 2019/419" ? [si] : [];
+    },
+    authorityPassages: async () => [],
+  };
+  const check = (reference: string, pin?: string) =>
+    verifyAuthority({ kind: "authority", reference, ...(pin ? { pin } : {}) }, sources);
+
+  it.each([
+    "Data Protection Act 2018, s. 3(2)",
+    "Data Protection Act 2018, s.3(2)",
+    "Data Protection Act 2018 section 3(2)",
+    "Data Protection Act 2018 (c. 12), s 3",
+    "SI 2019/419, reg. 5(1)",
+    "S.I. 2019/419 regulation 5",
+  ])("finds the provision named in %s", async (reference) => {
+    expect(await check(reference)).toMatchObject({ status: "ok" });
+  });
+
+  it("flags a provision the item does not have", async () => {
+    expect(await check("Data Protection Act 2018, s. 3(99)")).toMatchObject({
+      status: "mismatch",
+      reason: "pin_not_found",
+    });
+    expect(await check("Data Protection Act 2018", "section 3(2)")).toMatchObject({
+      status: "ok",
+    });
+    expect(await check("Data Protection Act 2018", "s 9")).toMatchObject({
+      reason: "pin_not_found",
+    });
+    expect(await check("Widget Act 1999, s. 3")).toMatchObject({ status: "unresolved" });
+  });
+});

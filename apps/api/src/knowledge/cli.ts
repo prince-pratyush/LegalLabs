@@ -17,8 +17,8 @@ import pg from "pg";
 import { createKnowledge } from "./knowledge.js";
 
 const USAGE = `usage:
-  legallabs-knowledge sync <us_caselaw|eurlex|edgar|fr|ecfr> [subset.json]
-  legallabs-knowledge load <us_caselaw|eurlex|edgar|fr|ecfr> <folder of record .json files>
+  legallabs-knowledge sync <us_caselaw|eurlex|edgar|fr|ecfr|uk_legislation> [subset.json]
+  legallabs-knowledge load <us_caselaw|eurlex|edgar|fr|ecfr|uk_legislation> <folder of record .json files>
 
 env: DATABASE_URL (required); TEI_URL or OLLAMA_EMBED_URL (optional, adds embeddings);
      COURTLISTENER_TOKEN (optional); SEC_USER_AGENT (required for an edgar sync);

@@ -94,6 +94,12 @@ export function normalizeCitation(reference: string): string {
     /^(\d+) (?:fed ?reg|fr) (\d{1,3}(?:,\d{3})+|\d+)(?: \([^)]*\))?$/,
     (_, volume: string, page: string) => `${volume} fr ${page.replaceAll(",", "")}`,
   );
+  // Data Protection Act 2018 (c. 12), or ", chapter 12", is "… 2018 c 12".
+  text = text.replace(
+    /\b((?:act|measure) (?:18|19|20)\d{2}),? (?:\((?:c|chapter) (\d+)\)|(?:c|chapter) (\d+))$/,
+    (_, name: string, bracketed?: string, bare?: string) => `${name} c ${bracketed ?? bare}`,
+  );
+  text = text.replace(/^(s?si|wsi|sr) (\d{4}) no (\d+)$/, "$1 $2/$3");
   // 17 CFR 240.10b-5 and 17 C.F.R. § 240.10b-5 (2024) are one section.
   text = text.replace(
     /^(\d+) (?:cfr|code of federal regulations),? (?:§ )*(\d+[a-z]?\.\d\S*)(?: \((?:19|20)\d{2}\))?$/,
@@ -111,7 +117,18 @@ const PART_OF: readonly RegExp[] = [
   /^\d+ cfr (§ [^\s(]+(?:\([^)]*\)-[^\s(]+)?)((?:\([0-9a-z]+\))+)$/,
 ];
 
+// "data protection act 2018, s 3(2)" names a provision of an Act or instrument held whole.
+const UK_PIN = /^(.+?),? (s|§|reg|regulation|art|article|rule) ?(\d+[a-z]*(?:\([0-9a-z]+\))*)$/;
+const UK_WHOLE =
+  /\b(?:act|measure|regulations|order|rules) (?:18|19|20)\d{2}\b|^(?:s?si|wsi|sr) \d{4}\/\d+$|^(?:18|19|20)\d{2} (?:c|asp) \d+$/;
+const UK_WORDS: Record<string, string> = { "§": "s", regulation: "reg", art: "article" };
+
 function splitPin(normalized: string): { whole: string; pin: string } | null {
+  const [, whole = "", word = "", number = ""] = UK_PIN.exec(normalized) ?? [];
+  if (UK_WHOLE.test(whole)) {
+    // Normalised again: a chapter number is only recognised at the end.
+    return { whole: normalizeCitation(whole), pin: `${UK_WORDS[word] ?? word} ${number}` };
+  }
   for (const form of PART_OF) {
     const match = form.exec(normalized);
     if (!match) continue;
@@ -196,10 +213,12 @@ export function authorityHref(result: AuthorityVerification): string | null {
 function pinExists(pin: string, authority: Authority): boolean {
   const normalized = normalizeCitation(pin).replace(/^art /, "article ");
   // Named parts such as "Article 6" or "Item 1A" match the authority's own section names.
-  if (authority.sections?.some((s) => normalizeCitation(s) === normalized)) return true;
-  if (normalized.startsWith("§")) {
-    return authority.sections?.some((s) => normalizeCitation(s) === normalized) ?? false;
-  }
+  // UK provisions are stored as "s 3(2)" and "reg 5", however the pin spells the word.
+  const uk = normalized
+    .replace(/^(?:§|s) ?(?=\d+[a-z]*(?:\(|$))/, "s ")
+    .replace(/^(?:regulation|reg) ?(?=\d)/, "reg ");
+  if (authority.sections?.some((s) => [normalized, uk].includes(normalizeCitation(s)))) return true;
+  if (normalized.startsWith("§")) return false;
   const page = /^(?:at |pp? ?)?(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(normalized);
   if (page === null || authority.pages === undefined) return false;
   const start = page[1] as string;
