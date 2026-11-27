@@ -393,7 +393,9 @@ begin
            when request.status = 'unclassified' then 'new'
            else request.status end
     else request.status end;
-  if next_status = 'awaiting_requester' and ask is null then
+  -- A wait the worker began ends once it has no more to ask; one set by hand stays.
+  if next_status = 'awaiting_requester' and ask is null and request.channel = 'email'
+     and request.asked_field is not null then
     next_status := 'new';
   end if;
 
