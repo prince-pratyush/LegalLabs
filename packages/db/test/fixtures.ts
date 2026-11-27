@@ -769,6 +769,63 @@ export async function seed(tx: Tx) {
     return { spaceId, phaseId, taskId };
   };
   const spaces = { acme: await space(acme, ana, ben), beta: await space(beta, bob, bob) };
+
+  // A fact table in each Space: one fact with its quote, version, names and trail.
+  const facts = async (
+    ws: string,
+    owner: string,
+    spaceId: string,
+    doc: { documentId: string; versionId: string },
+  ) => {
+    const factId = await id(
+      `insert into apps.fact (workspace_id, space_id, created_by, source, source_documents, text,
+         date_precision)
+       values ($1, $2, $3, 'manual', array[$4::uuid], 'The notice was sent.', 'unknown')
+       returning id`,
+      [ws, spaceId, owner, doc.documentId],
+    );
+    await tx.rows(
+      `insert into apps.fact_version (workspace_id, fact_id, no, text, date_precision, edited_by)
+       values ($1, $2, 1, 'The notice was sent.', 'unknown', $3)`,
+      [ws, factId, owner],
+    );
+    await tx.rows(
+      `insert into apps.fact_citation (workspace_id, fact_id, document_id, document_version_id,
+         page_no, char_from, char_to, quote)
+       values ($1, $2, $3, $4, 1, 0, 4, 'Term')`,
+      [ws, factId, doc.documentId, doc.versionId],
+    );
+    const entityId = await id(
+      `insert into apps.entity (workspace_id, space_id, kind, canonical_name, origin, created_by)
+       values ($1, $2, 'org', 'Acme', 'manual', $3) returning id`,
+      [ws, spaceId, owner],
+    );
+    const issueId = await id(
+      `insert into apps.issue (workspace_id, space_id, name, origin, created_by)
+       values ($1, $2, 'Delay', 'manual', $3) returning id`,
+      [ws, spaceId, owner],
+    );
+    await tx.rows(
+      `insert into apps.fact_entity (workspace_id, space_id, fact_id, entity_id, via)
+       values ($1, $2, $3, $4, 'manual')`,
+      [ws, spaceId, factId, entityId],
+    );
+    await tx.rows(
+      `insert into apps.fact_issue (workspace_id, space_id, fact_id, issue_id, via)
+       values ($1, $2, $3, $4, 'manual')`,
+      [ws, spaceId, factId, issueId],
+    );
+    await tx.rows(
+      `insert into apps.fact_audit (workspace_id, space_id, fact_id, actor_id, action)
+       values ($1, $2, $3, $4, 'created')`,
+      [ws, spaceId, factId, owner],
+    );
+    return { factId, entityId, issueId };
+  };
+  const factTables = {
+    acme: await facts(acme, ana, spaces.acme.spaceId, documents.acme),
+    beta: await facts(beta, bob, spaces.beta.spaceId, documents.beta),
+  };
   // An external Space with a party, its connection, an invite, a guest and a login code, per workspace.
   const guestRoom = async (ws: string, owner: string, domain: string) => {
     const spaceId = await id(
@@ -921,6 +978,7 @@ export async function seed(tx: Tx) {
     agents,
     documents,
     intakes,
+    factTables,
     vaults,
     spaces,
     threads,
