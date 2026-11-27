@@ -232,7 +232,8 @@ async function checkRouting(db: Db, routing: IntakeRouting) {
         ? ["select 1 from apps.ci_review_agent where id = $1", routing.ci_agent_id]
         : [
             `select 1 from work.space
-              where id = $1 and deleted_at is null and work.space_role(id) is not null`,
+              where id = $1 and deleted_at is null
+                and work.space_role(id) in ('admin', 'collaborator')`,
             routing.space_id,
           ];
   const { rowCount } = await db.query(sql as string, [id]);

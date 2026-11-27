@@ -55,6 +55,7 @@ create table apps.intake_outbound (
     unique,
   status text not null default 'queued' check (status in ('queued', 'sent', 'failed')),
   attempts integer not null default 0,
+  claimed_at timestamptz,
   next_attempt_at timestamptz not null default now(),
   lease uuid,
   created_by uuid,
@@ -67,7 +68,7 @@ create table apps.intake_outbound (
 );
 create index intake_outbound_due_idx on apps.intake_outbound (next_attempt_at)
   where status = 'queued';
-create index intake_outbound_sent_idx on apps.intake_outbound (workspace_id, sent_at);
+create index intake_outbound_claimed_idx on apps.intake_outbound (workspace_id, claimed_at);
 
 alter table apps.intake_work enable row level security;
 alter table apps.intake_work force row level security;
@@ -266,7 +267,7 @@ begin
   perform pg_catalog.set_config('app.workspace_id', request.workspace_id::text, true);
   perform pg_catalog.set_config('app.user_id', kind.routing_by::text, true);
   allowed := (apps.intake_may('intake.manage') or apps.intake_may('admin.config'))
-             and work.space_role(space) is not null
+             and coalesce(work.space_role(space) in ('admin', 'collaborator'), false)
              and exists (select 1 from work.space s
                           where s.id = space and s.deleted_at is null
                             and s.workspace_id = request.workspace_id);
@@ -496,9 +497,13 @@ begin
 end
 $$;
 
--- The next mail to send. It goes from a live channel the request came through, and no address
--- is sent more than `p_per_hour` in an hour, so two machines cannot answer each other for long.
-create function apps.claim_intake_mail(p_lease_seconds integer, p_per_hour integer,
+-- The next mail to send, from a live channel the request came through. The system's own mail to
+-- one address is limited over a day, in all and by how many requests it answers, and what is
+-- over is dropped for good: that is what ends two machines answering each other. Every claim
+-- counts, sent or not. A lawyer's reply is outside these limits. Nothing is claimed more than
+-- five times.
+create function apps.claim_intake_mail(p_lease_seconds integer, p_per_day integer,
+                                       p_requests_per_day integer,
                                        p_workspaces uuid[] default null)
 returns table (id uuid, lease uuid, attempt integer, kind text, body text, token text,
                request_id uuid, number integer, email text, address text, author_name text,
@@ -506,29 +511,57 @@ returns table (id uuid, lease uuid, attempt integer, kind text, body text, token
 language plpgsql volatile security definer set search_path = '' as $$
 #variable_conflict use_column
 declare
+  next apps.intake_outbound;
+  recipient text;
+  spent integer;
+  answered integer;
+  known boolean;
   claimed uuid;
 begin
-  update apps.intake_outbound o
-     set attempts = o.attempts + 1, lease = pg_catalog.gen_random_uuid(),
-         next_attempt_at = pg_catalog.now()
-                           + pg_catalog.make_interval(secs => p_lease_seconds)
-   where o.id = (
-     select x.id from apps.intake_outbound x
-       join apps.intake_request r on r.id = x.request_id
-      where x.status = 'queued' and x.next_attempt_at <= pg_catalog.now()
-        and (p_workspaces is null or x.workspace_id = any (p_workspaces))
-        and exists (select 1 from apps.inbound_email e
-                     join apps.intake_channel c on c.id = e.channel_id and c.status = 'live'
-                    where e.request_id = r.id)
-        and (select count(*) from apps.intake_outbound s
-              join apps.intake_request q on q.id = s.request_id
-             where s.workspace_id = x.workspace_id and s.status = 'sent'
-               and s.sent_at > pg_catalog.now() - interval '1 hour'
-               and q.requester_email = r.requester_email) < p_per_hour
-      order by x.next_attempt_at, x.id
-      limit 1
-      for update of x skip locked)
-  returning o.id into claimed;
+  loop
+    select x.* into next from apps.intake_outbound x
+     where x.status = 'queued' and x.next_attempt_at <= pg_catalog.now()
+       and (p_workspaces is null or x.workspace_id = any (p_workspaces))
+       and exists (select 1 from apps.inbound_email e
+                    join apps.intake_channel c on c.id = e.channel_id and c.status = 'live'
+                   where e.request_id = x.request_id)
+     order by x.next_attempt_at, x.id
+     limit 1
+     for update of x skip locked;
+    exit when next.id is null;
+    if next.attempts >= 5 then
+      perform apps.drop_intake_mail(next.id, 'attempts');
+      continue;
+    end if;
+    if next.kind <> 'reply' then
+      select r.requester_email into recipient from apps.intake_request r
+       where r.id = next.request_id;
+      -- So two servers cannot each count before the other's claim is seen.
+      perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+        'apps.intake_mail ' || next.workspace_id::text || ' ' || recipient, 0));
+      select coalesce(sum(s.attempts), 0),
+             count(distinct s.request_id) filter (where s.request_id <> next.request_id),
+             coalesce(bool_or(s.request_id = next.request_id), false)
+        into spent, answered, known
+        from apps.intake_outbound s
+        join apps.intake_request q on q.id = s.request_id
+       where s.workspace_id = next.workspace_id and s.kind <> 'reply'
+         and s.claimed_at > pg_catalog.now() - interval '24 hours'
+         and q.requester_email = recipient;
+      if spent >= p_per_day or (not known and answered >= p_requests_per_day) then
+        perform apps.drop_intake_mail(next.id, 'limit');
+        continue;
+      end if;
+    end if;
+    update apps.intake_outbound o
+       set attempts = o.attempts + 1, lease = pg_catalog.gen_random_uuid(),
+           claimed_at = pg_catalog.now(),
+           next_attempt_at = pg_catalog.now()
+                             + pg_catalog.make_interval(secs => p_lease_seconds)
+     where o.id = next.id;
+    claimed := next.id;
+    exit;
+  end loop;
   return query
     select o.id, o.lease, o.attempts, o.kind, o.body, o.token, r.id, r.number,
            r.requester_email,
@@ -544,6 +577,26 @@ begin
       left join lateral (select d from pg_catalog.jsonb_array_elements(t.fields) d
                           where d ->> 'key' = o.field limit 1) f on true
      where o.id = claimed;
+end
+$$;
+
+-- Gives up on mail without sending it, and says so on the request.
+create function apps.drop_intake_mail(p_id uuid, p_reason text) returns void
+language plpgsql volatile security definer set search_path = '' as $$
+declare
+  mail apps.intake_outbound;
+  request apps.intake_request;
+begin
+  update apps.intake_outbound set status = 'failed', lease = null, body = null
+   where id = p_id and status = 'queued'
+  returning * into mail;
+  if mail.id is null then
+    return;
+  end if;
+  select * into request from apps.intake_request r where r.id = mail.request_id;
+  perform apps.intake_note(request, 'outbound', 'intake.request.delivery_failed',
+    pg_catalog.jsonb_build_object('mail', mail.kind, 'outcome', 'failed',
+      'outbound_id', mail.id, 'reason', p_reason));
 end
 $$;
 
@@ -595,7 +648,8 @@ begin
     'apps.apply_intake_work(uuid, uuid, uuid, real, jsonb, jsonb)',
     'apps.close_intake_for_task()',
     'apps.append_inbound_reply(uuid, uuid, text, text[], integer)',
-    'apps.claim_intake_mail(integer, integer, uuid[])',
+    'apps.claim_intake_mail(integer, integer, integer, uuid[])',
+    'apps.drop_intake_mail(uuid, text)',
     'apps.end_intake_mail(uuid, uuid, text, integer)']
   loop
     execute pg_catalog.format('alter function %s owner to legallabs_definer', fn);
@@ -607,5 +661,5 @@ grant execute on function apps.claim_intake_work(integer, uuid[]),
   apps.spend_intake_call(uuid, uuid), apps.postpone_intake_work(uuid, uuid, integer),
   apps.apply_intake_work(uuid, uuid, uuid, real, jsonb, jsonb),
   apps.append_inbound_reply(uuid, uuid, text, text[], integer),
-  apps.claim_intake_mail(integer, integer, uuid[]),
+  apps.claim_intake_mail(integer, integer, integer, uuid[]),
   apps.end_intake_mail(uuid, uuid, text, integer) to legallabs_worker;

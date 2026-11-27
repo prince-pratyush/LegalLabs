@@ -96,7 +96,15 @@ export function createSmtpEmailProvider(config: SmtpConfig): SmtpProvider {
           text: message.text,
           ...(message.replyTo ? { replyTo: { name: "", address: message.replyTo } } : {}),
           ...(message.messageId ? { messageId: message.messageId } : {}),
-          ...(message.auto ? { headers: { "Auto-Submitted": "auto-replied" } } : {}),
+          ...(message.auto
+            ? {
+                headers: {
+                  "Auto-Submitted": "auto-replied",
+                  // Exchange's own request for no automatic answers.
+                  "X-Auto-Response-Suppress": "All",
+                },
+              }
+            : {}),
         });
       } catch (err) {
         throw plainError(err);

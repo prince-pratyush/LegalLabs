@@ -8,8 +8,10 @@ import type { EmailMessage, EmailProvider } from "../notifications/email-port.js
 
 export interface IntakeMail {
   provider: EmailProvider;
-  /** Mails to one address in any hour. */
-  perHour?: number;
+  /** The system's own mails to one address in a day; replies from lawyers aren't counted. */
+  perDay?: number;
+  /** New requests from one address that the system answers in a day. */
+  requestsPerDay?: number;
 }
 
 export interface MailRow {
@@ -92,9 +94,10 @@ export async function sendIntakeMail(
   const query = <T extends pg.QueryResultRow>(sql: string, params: unknown[]) =>
     asWorker(pool, async (db) => (await db.query<T>(sql, params)).rows);
   for (let n = 0; n < BATCH; n++) {
-    const [row] = await query<MailRow>("select * from apps.claim_intake_mail($1, $2, $3)", [
+    const [row] = await query<MailRow>("select * from apps.claim_intake_mail($1, $2, $3, $4)", [
       300,
-      mail.perHour ?? 20,
+      mail.perDay ?? 20,
+      mail.requestsPerDay ?? 5,
       only.length > 0 ? only : null,
     ]);
     if (!row) return;
