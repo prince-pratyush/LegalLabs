@@ -114,6 +114,19 @@ export {
   PartyInput,
   PartyRejectInput,
 } from "./guest.js";
+export {
+  HORIZON_LIMITS,
+  HORIZON_SOURCES,
+  type HorizonItem,
+  type HorizonItemState,
+  HorizonJurisdiction,
+  HorizonRelevance,
+  type HorizonScan,
+  HorizonScanCreate,
+  HorizonScanPatch,
+  HorizonSettings,
+  HorizonSource,
+} from "./horizon.js";
 export { Id } from "./id.js";
 export {
   INTAKE_LIMITS,

@@ -4,6 +4,7 @@ import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { embedderFromEnv, rerankerFromEnv } from "@legallabs/embed";
 import { createIngest, type Scanner, scannerFromEnv } from "@legallabs/ingest";
+import { createScanners } from "@legallabs/knowledge";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
@@ -38,6 +39,8 @@ import { createDrafts } from "./drafts/drafts.js";
 import { createChronologies } from "./facts/chronology.js";
 import { createFactExtractions } from "./facts/extraction.js";
 import { createFacts } from "./facts/facts.js";
+import { createHorizon } from "./horizon/horizon.js";
+import { createHorizonRefresh } from "./horizon/refresh.js";
 import { createEmailProcessor } from "./inbound/processor.js";
 import { createEmailChannels } from "./intake/channels.js";
 import { createIntake } from "./intake/intake.js";
@@ -318,6 +321,16 @@ const factExtraction = createFactExtractions(pool, {
 factExtraction.start();
 process.once("SIGTERM", () => void factExtraction.stop());
 process.once("SIGINT", () => void factExtraction.stop());
+// Hourly horizon scans, each as its owner. A source is only asked once a workspace has turned
+// scanning on and someone has made a scan.
+const horizonRefresh = createHorizonRefresh(pool, {
+  gateway,
+  scanners: createScanners({ userAgent: process.env.KNOWLEDGE_USER_AGENT }),
+  print: (line) => console.log(line),
+});
+horizonRefresh.start();
+process.once("SIGTERM", () => void horizonRefresh.stop());
+process.once("SIGINT", () => void horizonRefresh.stop());
 // Attachments sent in with requests queue for ingest like any other upload.
 const intake = createIntake(pool, { documents, notifier });
 // Intake by email: mail posted to /hooks waits in a queue that this reads. Channels need the
@@ -406,6 +419,7 @@ const app = createApp({
   facts: createFacts(pool),
   chronologies: createChronologies(pool),
   factExtraction,
+  horizon: createHorizon(pool),
   emailChannels,
   drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
   knowledge: knowledgeStore,

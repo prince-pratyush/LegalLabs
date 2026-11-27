@@ -128,6 +128,8 @@ A fact in a Space's fact table is text taken from documents. It, its quotes, ver
 
 Intake by email takes signed posts from the mail server on an unauthenticated route; its threats and controls are in [intake-email.md](intake-email.md).
 
+A horizon scan, what it was told to look for and what it found are its owner's alone, administrators included, decided by row-level security; found items cannot be edited, and what a refresh cost cannot be undone. The hourly refresh is handed only the scan's id and owner, works as that owner, and asks again what they may do before every model call and before keeping an answer; otherwise the scan stops and is audited. Sources are the Federal Register, eCFR and legislation.gov.uk on fixed https hosts, asked only for what is new since a date, so nothing a person typed leaves for them; no address in an answer is followed. What they publish is untrusted: it is data in the prompt, and the answer is held to a schema in which the model can only grade, explain and pick from the scan's own topics and industries. Spend is capped per refresh and per workspace per day. Open: nothing limits one person's share of the workspace's 100 scans or daily spend.
+
 ## 8. Cross-cutting
 
 **Tenant isolation.** RLS is enabled and forced on every table (checked by `rls.test.ts`, including a test that catches a table added without protection). The definer functions are the weak point of any RLS design, so P-01 calls every one the app role may execute, as four kinds of caller, with the ids of everything in another workspace: nothing changed, and only three yes or no oracles remain (accepted, F-09).

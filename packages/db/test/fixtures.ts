@@ -843,6 +843,40 @@ export async function seed(tx: Tx) {
     acme: await facts(acme, ana, spaces.acme.spaceId, documents.acme),
     beta: await facts(beta, bob, spaces.beta.spaceId, documents.beta),
   };
+  // A horizon scan with something found, per workspace.
+  const horizon = async (ws: string, owner: string) => {
+    await tx.rows("insert into apps.horizon_settings (workspace_id, enabled) values ($1, true)", [
+      ws,
+    ]);
+    const scanId = await id(
+      `insert into apps.horizon_scan (workspace_id, owner_id, name, purpose, sources, from_date)
+       values ($1, $2, 'Widgets', 'Rules about widgets', array['fr'], current_date) returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into apps.horizon_cursor (workspace_id, scan_id, source_id, cursor)
+       values ($1, $2, 'fr', '{"since": "2026-01-01"}')`,
+      [ws, scanId],
+    );
+    const itemId = await id(
+      `insert into apps.horizon_item (workspace_id, scan_id, source_id, external_id, url, title,
+         summary, doc_type, jurisdiction, published_on, relevance, explanation)
+       values ($1, $2, 'fr', '2026-00001', 'https://www.federalregister.gov/d/2026-00001',
+         'Widget rule', '', 'rule', 'US', current_date, 'high', 'About widgets.') returning id`,
+      [ws, scanId],
+    );
+    await tx.rows(
+      "insert into apps.horizon_item_state (workspace_id, user_id, item_id) values ($1, $2, $3)",
+      [ws, owner, itemId],
+    );
+    await tx.rows(
+      "insert into apps.horizon_spend (workspace_id, owner_id, usd) values ($1, $2, 0)",
+      [ws, owner],
+    );
+    return { scanId, itemId };
+  };
+  const horizons = { acme: await horizon(acme, ana), beta: await horizon(beta, bob) };
+
   // An external Space with a party, its connection, an invite, a guest and a login code, per workspace.
   const guestRoom = async (ws: string, owner: string, domain: string) => {
     const spaceId = await id(
@@ -995,6 +1029,7 @@ export async function seed(tx: Tx) {
     agents,
     documents,
     intakes,
+    horizons,
     factTables,
     vaults,
     spaces,
