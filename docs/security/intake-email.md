@@ -50,8 +50,9 @@ Code: `apps/api/src/intake/sweep.ts`, migration 0235.
 - Escalation conditions are structured data that is compared, never evaluated.
 - Escalation reaches only people who can open the request (triage permission and its matter);
   taking over a lawyer's task also needs edit membership of the Space.
-- A silent requester gets at most three reminders, then one closing message. Nothing closes
-  while the latest question has not been sent.
+- Only an email request whose question, or a lawyer's reply, has gone out in the current wait
+  is reminded or closed: at most three reminders, then one closing message. A request set
+  waiting by hand with nothing sent, or one that came another way, waits for a person.
 - Merging never crosses matters and keeps the oldest. A merged thread's answers follow only when
   both requests came from the same address.
 - A merged request's task and files stay on it.

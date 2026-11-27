@@ -23,9 +23,9 @@ interface Row {
   created_at: Date;
   sla_due_at: Date | null;
   sla_state: "ok" | "at_risk" | "breached";
-  awaiting_since: Date | null;
+  /** Set only while a question that was sent is unanswered. */
+  waiting_since: Date | null;
   asked_field: string | null;
-  unsent: boolean;
   timeout_hours: number;
   escalations: IntakeEscalation[];
 }
@@ -104,8 +104,8 @@ export async function sweepIntake(
     }
 
     // A requester is never closed out over a question that has not reached them.
-    if (!row.awaiting_since || row.unsent) return;
-    const waited = (now.getTime() - row.awaiting_since.getTime()) / 3_600_000;
+    if (!row.waiting_since) return;
+    const waited = (now.getTime() - row.waiting_since.getTime()) / 3_600_000;
     if (waited >= row.timeout_hours) {
       await query("select apps.expire_intake_request($1)", [id]);
       return;
@@ -114,7 +114,7 @@ export async function sweepIntake(
     if (due >= 1 && row.asked_field) {
       await query("select apps.remind_intake_requester($1, $2)", [
         id,
-        `reminder:${row.awaiting_since.getTime()}:${due}`,
+        `reminder:${row.waiting_since.getTime()}:${due}`,
       ]);
     }
   }

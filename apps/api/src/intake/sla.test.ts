@@ -116,7 +116,7 @@ describe("a silent requester", () => {
       "We are still waiting for a detail",
       "We are still waiting for a detail",
     ]);
-    later(request, 72);
+    later(request, 73);
     await d.tick();
     await d.tick();
     expect(await d.request()).toMatchObject({ status: "closed", closed_reason: "no_response" });
@@ -133,6 +133,52 @@ describe("a silent requester", () => {
     await d.tick();
     expect((await d.request()).status).toBe("awaiting_requester");
     desk.provider.failNext(0);
+  });
+});
+
+describe("a wait with no question behind it", () => {
+  const wait = (d: { lawyer: Person }, id: string, status = "awaiting_requester") =>
+    desk.call(d.lawyer, "POST", `/apps/intake/requests/${id}/status`, { status });
+  const longAfter = async (d: { tick: () => Promise<void> }, request: { created_at: string }) => {
+    desk.provider.clear();
+    later(request, 500);
+    await d.tick();
+  };
+
+  it("never closes a request staff set waiting without a mail", async () => {
+    const d = await desk.open();
+    await d.type({ fields: [], routing: null });
+    await d.deliver(NDA);
+    const request = await d.request();
+    expect((await wait(d, request.id)).status).toBe(200);
+    await longAfter(d, request);
+    expect((await d.request()).status).toBe("awaiting_requester");
+    expect(desk.provider.sent).toEqual([]);
+  });
+
+  it("does not count a question asked in an earlier wait", async () => {
+    const d = await desk.open();
+    await d.type();
+    await d.deliver(NDA);
+    const request = await d.request();
+    await wait(d, request.id, "triaged");
+    await wait(d, request.id);
+    await longAfter(d, request);
+    expect((await d.request()).status).toBe("awaiting_requester");
+    expect(desk.provider.sent).toEqual([]);
+  });
+
+  it("never closes a request that did not come by email", async () => {
+    const d = await desk.open();
+    const typeId = await d.type({ routing: null });
+    const made = await desk.call(d.admin, "POST", "/apps/intake/requests", {
+      type_id: typeId,
+      requester: { display_name: "Phone call", email: "jo@acme.example" },
+    });
+    const request = made.body.request;
+    await wait(d, request.id);
+    await longAfter(d, request);
+    expect((await d.request()).status).toBe("awaiting_requester");
   });
 });
 

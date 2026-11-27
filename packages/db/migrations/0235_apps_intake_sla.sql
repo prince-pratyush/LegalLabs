@@ -129,13 +129,28 @@ $$;
 create trigger intake_request_merged after update of merged_into on apps.intake_request
   for each row when (new.merged_into is not null) execute function apps.intake_merged();
 
+-- Since when an email requester has had an unanswered question: when the latest question or
+-- reply of the current wait went out. Null when none has, however the request came to be
+-- waiting, and then nothing reminds or closes it.
+create function apps.intake_wait_start(p_request apps.intake_request) returns timestamptz
+language sql stable security definer set search_path = '' as $$
+  select max(o.sent_at) from apps.intake_outbound o
+   where p_request.status = 'awaiting_requester' and p_request.channel = 'email'
+     and p_request.asked_field is not null
+     and o.request_id = p_request.id and o.kind in ('ask', 'reply') and o.status = 'sent'
+     -- An answer, even one that did not help, starts the wait again.
+     and o.created_at >= greatest(p_request.awaiting_since,
+           (select max(e.processed_at) from apps.inbound_email e
+             where e.request_id = p_request.id))
+$$;
+
 -- Takes the next request to judge at `p_now`, and puts it off for a quarter of an hour. One
 -- that has finished comes out of the queue instead, and is skipped.
 create function apps.claim_intake_sweep(p_now timestamptz, p_workspaces uuid[] default null)
 returns table (request_id uuid, workspace_id uuid, number integer, matter_id uuid,
                status text, fields jsonb, assignee_id uuid, created_at timestamptz,
-               sla_due_at timestamptz, sla_state text, awaiting_since timestamptz,
-               asked_field text, unsent boolean, timeout_hours integer, escalations jsonb)
+               sla_due_at timestamptz, sla_state text, waiting_since timestamptz,
+               asked_field text, timeout_hours integer, escalations jsonb)
 language plpgsql volatile security definer set search_path = '' as $$
 #variable_conflict use_column
 declare
@@ -154,16 +169,7 @@ begin
   returning s.request_id into claimed;
   return query
     select r.id, r.workspace_id, r.number, r.matter_id, r.status, r.fields, r.assignee_id,
-           r.created_at, r.sla_due_at, r.sla_state,
-           -- An answer, even one that did not help, starts the wait again.
-           case when r.awaiting_since is not null then greatest(r.awaiting_since,
-             (select max(e.processed_at) from apps.inbound_email e where e.request_id = r.id))
-           end,
-           r.asked_field,
-           -- Whether the latest question has yet to go out.
-           coalesce((select o.status <> 'sent' from apps.intake_outbound o
-                      where o.request_id = r.id and o.kind = 'ask'
-                      order by o.created_at desc, o.id desc limit 1), false),
+           r.created_at, r.sla_due_at, r.sla_state, apps.intake_wait_start(r), r.asked_field,
            coalesce(t.timeout_hours, 72), coalesce(t.escalations, '[]')
       from apps.intake_request r
       left join apps.intake_request_type t on t.id = r.type_id
@@ -308,8 +314,8 @@ declare
   request apps.intake_request;
 begin
   select * into request from apps.intake_request r
-   where r.id = p_request and r.status = 'awaiting_requester';
-  if request.id is not null then
+   where r.id = p_request;
+  if apps.intake_wait_start(request) is not null then
     perform apps.intake_mail(request, 'reminder', p_ref, request.asked_field);
   end if;
 end
@@ -321,8 +327,8 @@ declare
   request apps.intake_request;
 begin
   select * into request from apps.intake_request r
-   where r.id = p_request and r.status = 'awaiting_requester' for update;
-  if request.id is null then
+   where r.id = p_request for update;
+  if apps.intake_wait_start(request) is null then
     return;
   end if;
   update apps.intake_request
@@ -383,6 +389,7 @@ declare
 begin
   foreach fn in array array[
     'apps.queue_intake_sweep()', 'apps.intake_merged()',
+    'apps.intake_wait_start(apps.intake_request)',
     'apps.claim_intake_sweep(timestamptz, uuid[])', 'apps.set_intake_sla(uuid, text)',
     'apps.intake_recipients(apps.intake_request, uuid, uuid, boolean)',
     'apps.fire_intake_escalation(uuid, text, text, uuid, uuid)',
