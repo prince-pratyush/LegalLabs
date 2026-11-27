@@ -188,6 +188,46 @@ describe("chronologies", () => {
     expect((await r.generate({}, r.ana)).status).toBe(201);
   });
 
+  it("applies the vault's controls to whoever downloads the draft, as they stand then", async () => {
+    const r = await room();
+    const control = (value: boolean, key: "allow_download" | "allow_duplicate") =>
+      pool.query(
+        `update content.vault
+            set content_controls = content_controls || jsonb_build_object($2::text, $3::boolean)
+          where id = $1`,
+        [r.vaultId, key, value],
+      );
+    const exports = ["", "?format=pdf", "?tracked_from=1"];
+    const download = async (who: typeof r.ben, draftId: string) => {
+      const out: number[] = [];
+      for (const query of exports) {
+        out.push((await r.call(who, "GET", `/drafts/${draftId}/export${query}`)).status);
+      }
+      return out;
+    };
+
+    // Made by the vault's owner and shared view-only.
+    await control(false, "allow_download");
+    const owners = (await r.generate({}, r.ana)).body;
+    await r.call(r.ana, "POST", `/threads/${owners.thread_id}/shares`, {
+      user_ids: [r.ben.userId],
+    });
+    expect((await r.draftOf(owners.thread_id)).status).toBe(200);
+    expect(await download(r.ben, owners.draft_id)).toEqual([403, 403, 403]);
+    expect(await download(r.ana, owners.draft_id)).toEqual([200, 200, 200]);
+
+    // Made while copies were allowed, then tightened.
+    await control(true, "allow_download");
+    const mine = (await r.generate()).body;
+    expect(await download(r.ben, mine.draft_id)).toEqual([200, 200, 200]);
+    await control(false, "allow_duplicate");
+    const refused = await r.call(r.ben, "GET", `/drafts/${mine.draft_id}/export`);
+    expect([refused.status, refused.body.code]).toEqual([403, "EXPORT_DISABLED"]);
+    expect(await download(r.ben, mine.draft_id)).toEqual([403, 403, 403]);
+    const events = await auditTrail(pool, r.ana.workspaceId);
+    expect(events.filter((e) => e.action === "draft.exported")).toHaveLength(6);
+  });
+
   it("builds nothing for someone outside the Space", async () => {
     const r = await room();
     const cal = await r.person("cal");

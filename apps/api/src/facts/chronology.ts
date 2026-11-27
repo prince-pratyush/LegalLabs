@@ -11,6 +11,7 @@ import type pg from "pg";
 import type { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import { trackOutcome, trackUsage } from "../command-center/record.js";
+import { mayCopy } from "../documents/copy.js";
 import { csvSafe } from "../tables/export.js";
 import { buildXlsx } from "../tables/xlsx.js";
 import {
@@ -101,22 +102,6 @@ async function verified(db: Db, facts: Fact[]) {
   return kept;
 }
 
-/** A vault that forbids copies or downloads forbids this too, to all but its owner. */
-async function mayCopy(db: Db, documents: string[]) {
-  const { rows } = await db.query<{ n: number }>(
-    `select count(*)::int n
-       from content.document d
-       left join content.vault v on v.id = d.vault_id
-      where d.id = any ($1::uuid[])
-        and (v.id is null
-             or (content.vault_level(v.id) is distinct from 'owner'
-                 and (v.content_controls ->> 'allow_download' = 'false'
-                      or v.content_controls ->> 'allow_duplicate' = 'false')))`,
-    [documents],
-  );
-  if (rows[0]?.n !== 0) throw new FactRefused("EXPORT_DISABLED");
-}
-
 async function build(db: Db, spaceId: string, filter: ChronologyFilter): Promise<Chronology> {
   const { where, params } = factWhere(spaceId, { from: filter.from, to: filter.to });
   const clauses = [where];
@@ -152,7 +137,7 @@ async function build(db: Db, spaceId: string, filter: ChronologyFilter): Promise
   const facts = await verified(db, found);
   if (facts.length === 0) throw new FactRefused("NOTHING_TO_INCLUDE");
   const documents = [...new Set(facts.flatMap((f) => f.citations.map((c) => c.document_id)))];
-  await mayCopy(db, documents);
+  if (!(await mayCopy(db, documents))) throw new FactRefused("EXPORT_DISABLED");
   const { rows: spaces } = await db.query<{ name: string; matter_id: string | null }>(
     "select name, matter_id from work.space where id = $1",
     [spaceId],
