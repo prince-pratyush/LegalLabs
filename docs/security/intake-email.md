@@ -43,6 +43,19 @@ Code: `apps/api/src/intake/{classify,worker,mail}.ts`, migration 0234.
 | Routing widening access                       | Routes as set by a person who must still have the Space and an intake settings permission. The assignee must have triage, the request's matter and edit membership of the Space. The task carries the number and type name only                                                                       |
 | Intake files becoming material                | Unchanged (F-53 to F-55). A type routed to contract review or to an agent is left in the queue for a person; there is no step that files an intake attachment into a vault                                                                                                                            |
 
+## Over time
+
+Code: `apps/api/src/intake/sweep.ts`, migration 0235.
+
+- Escalation conditions are structured data that is compared, never evaluated.
+- Escalation reaches only people who can open the request (triage permission and its matter);
+  taking over a lawyer's task also needs edit membership of the Space.
+- A silent requester gets at most three reminders, then one closing message. Nothing closes
+  while the latest question has not been sent.
+- Merging never crosses matters and keeps the oldest. A merged thread's answers follow only when
+  both requests came from the same address.
+- A merged request's task and files stay on it.
+
 ## What the deployer must do
 
 - The MTA must remove incoming `Authentication-Results` headers that name its own server id and

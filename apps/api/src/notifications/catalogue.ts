@@ -221,6 +221,11 @@ export const CATALOGUE: Record<NotificationKind, CatalogueEntry> = {
     title: (e) => `A contract is waiting for your review: ${name(e)}`,
     actions: [secondary("open", "Open review")],
   }),
+  "intake.request_escalated": entry("intake.request_escalated", {
+    recipients: to.recipients,
+    title: (e) => `An intake request was escalated to you: ${name(e)}`,
+    actions: [secondary("open", "Open request")],
+  }),
   "intake.request_assigned": entry("intake.request_assigned", {
     recipients: to.assignee,
     title: (e) => `An intake request was assigned to you: ${name(e)}`,

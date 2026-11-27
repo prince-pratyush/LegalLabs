@@ -488,6 +488,18 @@ export async function seed(tx: Tx) {
        values ($1, $2, 'done', 'done')`,
       [ws, requestId],
     );
+    await tx.rows(
+      "insert into apps.intake_sweep (request_id, workspace_id) values ($1, $2) on conflict do nothing",
+      [requestId, ws],
+    );
+    await tx.rows(
+      "insert into apps.intake_escalation (request_id, workspace_id, key) values ($1, $2, 'k')",
+      [requestId, ws],
+    );
+    await tx.rows(
+      "insert into apps.intake_watcher (request_id, workspace_id, user_id) values ($1, $2, $3)",
+      [requestId, ws, owner],
+    );
     return { serviceId, vaultId, typeId, requestId, documentId, channelId };
   };
   const intakes = { acme: await intake(acme, ana), beta: await intake(beta, bob) };

@@ -2,6 +2,7 @@ import {
   INTAKE_LIMITS,
   type IntakeAttachment,
   type IntakeChannel,
+  type IntakeEscalate,
   type IntakeEvent,
   type IntakeFieldDef,
   type IntakeFieldValues,
@@ -28,6 +29,7 @@ import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp, RLS_REFUSED, showIntakeFiles } from "../db.js";
 import type { Documents, UploadResult } from "../documents/documents.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
+import { tellEscalated } from "./sweep.js";
 
 type Db = pg.PoolClient;
 type TypeIn = z.output<typeof IntakeTypeCreate>;
@@ -48,6 +50,7 @@ export type IntakeFailure =
   | "DUPLICATE"
   | "TYPE_REQUIRED"
   | "WRONG_STATE"
+  | "CANNOT_MERGE"
   | "BAD_CURSOR"
   | Extract<UploadResult, { ok: false }>["reason"];
 
@@ -119,6 +122,19 @@ export interface Intake {
     text: string,
     client: Client,
   ): Promise<Result<{ delivery: "queued" }>>;
+  /** Combines two open requests of one matter; the older is kept and returned. */
+  merge(
+    principal: Principal,
+    id: string,
+    otherId: string,
+    client: Client,
+  ): Promise<Result<IntakeRequestDetail>>;
+  escalate(
+    principal: Principal,
+    id: string,
+    input: IntakeEscalate,
+    client: Client,
+  ): Promise<Result<IntakeRequestDetail>>;
   /** The caller's own open requests and Space tasks. Needs no intake permission. */
   mine(principal: Principal): Promise<Result<IntakeMine>>;
 }
@@ -289,6 +305,7 @@ interface RequestRow {
   sla_due_at: Date | null;
   classification_confidence: number | null;
   task_id: string | null;
+  merged_into: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -297,7 +314,8 @@ const REQUEST_COLUMNS = `r.id, r.number, r.channel, r.external_ref, r.requester_
   r.requester_email, q.external_user_id, r.type_id, t.name type_name, r.fields, r.missing_fields,
   r.status, r.closed_reason, r.assignee_id,
   nullif(coalesce(nullif(u.name, ''), u.email), '') assignee_name, r.matter_id, r.sla_due_at,
-  r.classification_confidence, r.task_id, r.created_at, r.updated_at`;
+  r.classification_confidence, r.task_id,
+  r.merged_into, r.created_at, r.updated_at`;
 const REQUEST_FROM = `apps.intake_request r
   join apps.intake_requester q on q.id = r.requester_id
   left join apps.intake_request_type t on t.id = r.type_id
@@ -325,6 +343,7 @@ function toRequest(row: RequestRow): IntakeRequest {
     matter_id: row.matter_id,
     classification_confidence: row.classification_confidence,
     task_id: row.task_id,
+    merged_into: row.merged_into,
     // A finished request's clock has stopped where it was.
     sla: row.sla_due_at
       ? {
@@ -912,6 +931,74 @@ export function createIntake(pool: pg.Pool, options: IntakeOptions): Intake {
         await audit(db, principal, "intake.request.replied", ["intake_request", id], {}, client);
         return { delivery: "queued" as const };
       });
+    },
+
+    merge(principal, id, otherId, client) {
+      return audited(principal, id, client, async (db) => {
+        if (id === otherId) refuse("CANNOT_MERGE");
+        // Locked in id order, so two merges the other way round can't hold each other up.
+        const rows = new Map<string, Awaited<ReturnType<typeof openRequest>>>();
+        for (const one of [id, otherId].sort()) rows.set(one, await openRequest(db, one));
+        const [kept, gone] = [id, otherId].sort(
+          (a, b) => (rows.get(a)?.number ?? 0) - (rows.get(b)?.number ?? 0),
+        ) as [string, string];
+        if (rows.get(kept)?.matter_id !== rows.get(gone)?.matter_id) refuse("CANNOT_MERGE");
+        await db.query(
+          `update apps.intake_request
+              set status = 'closed', closed_reason = 'merged', merged_into = $2, updated_at = now()
+            where id = $1`,
+          [gone, kept],
+        );
+        await event(db, principal, gone, "merged", { into: kept });
+        await audit(
+          db,
+          principal,
+          "intake.request.merged",
+          ["intake_request", gone],
+          { into: kept },
+          client,
+        );
+        return loadDetail(db, kept);
+      });
+    },
+
+    async escalate(principal, id, input, client) {
+      let people: string[] = [];
+      const result = await audited(principal, id, client, async (db) => {
+        await openRequest(db, id);
+        const { to } = input;
+        const { rows } = await db.query<{ people: string[] }>(
+          "select apps.escalate_intake_request($1, $2, $3, $4) people",
+          [
+            id,
+            "user_id" in to ? to.user_id : null,
+            "group_id" in to ? to.group_id : null,
+            input.note,
+          ],
+        );
+        people = rows[0]?.people ?? [];
+        if (people.length === 0) refuse("ASSIGNEE_NOT_ALLOWED");
+        // The note stays on the request: the audit log holds no words.
+        await audit(
+          db,
+          principal,
+          "intake.request.escalated",
+          ["intake_request", id],
+          { recipients: people.length },
+          client,
+        );
+        return loadDetail(db, id);
+      });
+      if (result.ok) {
+        await tellEscalated(
+          notifier,
+          principal.workspaceId,
+          { id, number: result.value.number, matterId: result.value.matter_id },
+          people,
+          principal.userId,
+        );
+      }
+      return result;
     },
 
     mine(principal) {

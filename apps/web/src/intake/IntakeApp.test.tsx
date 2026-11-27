@@ -81,6 +81,7 @@ const request = (over: Partial<IntakeRequest> = {}): IntakeRequest => ({
   sla: { due_at: "2026-11-10T08:00:00.000Z", state: "breached" },
   classification_confidence: null,
   task_id: null,
+  merged_into: null,
   created_at: "2026-11-10T00:00:00.000Z",
   updated_at: "2026-11-10T00:00:00.000Z",
   ...over,
