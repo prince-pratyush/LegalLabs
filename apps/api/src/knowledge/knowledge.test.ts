@@ -113,6 +113,23 @@ const filing: AuthorityRecord = {
   chunks: [{ sectionPath: "Item 1A", text: `Risk factors ${tag}: supply chain disruption.` }],
 };
 
+const rule: AuthorityRecord = {
+  ref: `fr:doc:${VOL}-00001`,
+  title: `Widget Labelling ${tag}`,
+  jurisdiction: "US",
+  docType: "proposed_rule",
+  decidedOn: "2001-02-03",
+  citations: [
+    { text: `66 FR ${VOL}00`, kind: "reporter" },
+    { text: `FR Doc. ${VOL}-00001`, kind: "docket" },
+  ],
+  firstPage: VOL * 100,
+  lastPage: VOL * 100 + 4,
+  sections: [],
+  meta: { agencies: [`widgets-${tag}`], rins: [`${VOL}-AB56`], docket_ids: [`WC-${tag}`] },
+  chunks: [{ sectionPath: null, text: `Every gizmo ${tag} must carry a durable label.` }],
+};
+
 const knowledge = createKnowledge(pool);
 let member: Seeded;
 
@@ -377,12 +394,45 @@ describe("search", () => {
   });
 });
 
+describe("Federal Register", () => {
+  const caller = () => asPrincipal(member);
+  beforeAll(() => knowledge.writer().upsert(rule));
+
+  it("resolves a page citation and a pinpoint page", async () => {
+    const found = await knowledge.resolve(caller(), {
+      citation: `66 Fed. Reg. ${VOL}00`,
+      pin: `${VOL}02`,
+      quote: "must carry a durable label",
+    });
+    expect(found).toMatchObject({ status: "ok", authorityRef: rule.ref });
+  });
+
+  it("filters by agency, RIN and docket", async () => {
+    const search = (filter: unknown) =>
+      knowledge.search(caller(), `gizmo ${tag}`, [{ sourceId: "fr", filter }]);
+    for (const filter of [
+      { agencies: [`widgets-${tag}`] },
+      { rin: [`${VOL}-AB56`] },
+      { docket_ids: [`WC-${tag}`] },
+    ]) {
+      expect((await search(filter))?.map((p) => p.authorityRef)).toEqual([rule.ref]);
+    }
+    expect(await search({ agencies: ["someone-else"] })).toEqual([]);
+    expect(await search({ rin: ["0000-XX00"] })).toEqual([]);
+  });
+});
+
 describe("knowledge port for threads", () => {
   const caller = () => ({ userId: member.userId, workspaceId: member.workspaceId });
 
   it("lists the sources and returns passages with the string to cite", async () => {
     const port = knowledgePort(knowledge);
-    expect((await port.list(caller())).map((s) => s.id)).toEqual(["us_caselaw", "edgar", "eurlex"]);
+    expect((await port.list(caller())).map((s) => s.id)).toEqual([
+      "us_caselaw",
+      "edgar",
+      "eurlex",
+      "fr",
+    ]);
     const found = await port.search(
       caller(),
       [{ source_id: "eurlex", filter: { doc_types: ["regulation"] } }, { source_id: "kb:x" }],
@@ -447,7 +497,7 @@ describe("knowledge API", () => {
   it("lists the sources with their filter schemas and facets", async () => {
     const cookie = await signIn(member);
     const list = await json<Items<{ id: string }>>(get(cookie, "/sources"));
-    expect(list.items.map((s) => s.id)).toEqual(["us_caselaw", "edgar", "eurlex"]);
+    expect(list.items.map((s) => s.id)).toEqual(["us_caselaw", "edgar", "eurlex", "fr"]);
     const detail = await json<{
       filter_schema: unknown;
       facets: { courts: { value: string }[] };

@@ -182,6 +182,9 @@ function predicate(sourceId: SourceId, filter: Record<string, unknown>) {
     doc_types: (edgar ? f.forms : f.doc_types) ?? null,
     jurisdictions: f.jurisdictions ?? null,
     ciks: f.ciks ?? null,
+    agencies: f.agencies ?? null,
+    rins: f.rin ?? null,
+    dockets: f.docket_ids ?? null,
     date_from: (edgar ? f.filed_from : f.date_from) ?? null,
     date_to: (edgar ? f.filed_to : f.date_to) ?? null,
   };
@@ -395,7 +398,8 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
            ), wanted as (
              select * from jsonb_to_recordset($2::jsonb) as f(
                source text, courts text[], doc_types text[], jurisdictions text[],
-               ciks text[], date_from date, date_to date)
+               ciks text[], agencies text[], rins text[], dockets text[],
+               date_from date, date_to date)
            ), scope as not materialized (
              select c.id, c.authority_id, c.ordinal, c.section_path, c.text, c.tsv,
                     c.embedding, c.embedding_model,
@@ -408,6 +412,9 @@ export function createKnowledge(pool: pg.Pool, options: KnowledgeOptions = {}): 
                 and (f.doc_types is null or a.doc_type = any(f.doc_types))
                 and (f.jurisdictions is null or a.jurisdiction = any(f.jurisdictions))
                 and (f.ciks is null or a.meta->>'cik' = any(f.ciks))
+                and (f.agencies is null or a.meta->'agencies' ?| f.agencies)
+                and (f.rins is null or a.meta->'rins' ?| f.rins)
+                and (f.dockets is null or a.meta->'docket_ids' ?| f.dockets)
                 and (f.date_from is null or a.decided_on >= f.date_from)
                 and (f.date_to is null or a.decided_on <= f.date_to)
            ), cited as (

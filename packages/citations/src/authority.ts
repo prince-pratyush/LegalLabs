@@ -57,6 +57,11 @@ const IDENTIFIERS: readonly [RegExp, (m: RegExpExecArray) => string][] = [
     /^(?:accession(?: no\.?| number)?:?\s*)?([0-9]{10})-?([0-9]{2})-?([0-9]{6})$/i,
     (m) => `accession ${m[1]}-${m[2]}-${m[3]}`,
   ],
+  // Federal Register document numbers, as "FR Doc. 2020-17747" or "FR Doc. No. 2020-17747".
+  [
+    /^fr doc(?:ument)?\.?(?:\s*(?:no|number)\.?)?:?\s*([a-z0-9]{1,4}(?:-\d{1,6}){1,2})$/i,
+    (m) => `fr doc ${m[1]}`,
+  ],
   // Regulation (EU) 2016/679, Regulation (EU) No 2016/679, Directive 95/46/EC.
   [
     /^(regulation|directive|decision)\s*\((eu|ec|eec|euratom)\)\s*(?:no\.?\s*)?([0-9]{2,4}\/[0-9]{1,4})$/i,
@@ -84,6 +89,11 @@ export function normalizeCitation(reference: string): string {
     .replace(/\s+/g, " ")
     .trim();
   for (const [form, canonical] of REPORTERS) text = text.replace(form, canonical);
+  // 85 Fed. Reg. 58,029 (Sept. 17, 2020) is 85 FR 58029.
+  text = text.replace(
+    /^(\d+) (?:fed ?reg|fr) (\d{1,3}(?:,\d{3})+|\d+)(?: \([^)]*\))?$/,
+    (_, volume: string, page: string) => `${volume} fr ${page.replaceAll(",", "")}`,
+  );
   // Parentheticals carry court and year only on reporter cites; on statutes the year matters.
   if (REPORTER_CITE.test(text)) {
     text = text.replace(/\s*\([^)]*\)/g, "").replace(/^(\d+ \w+ \d+),? (?:19|20)\d{2}$/, "$1");

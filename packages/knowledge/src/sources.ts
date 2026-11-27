@@ -27,6 +27,16 @@ export const filterSchemas = {
       .optional(),
     ...dates,
   }),
+  fr: z.strictObject({
+    agencies: list(label).optional(),
+    doc_types: z
+      .array(z.enum(["rule", "proposed_rule", "notice", "presidential_document"]))
+      .min(1)
+      .optional(),
+    rin: list(label).optional(),
+    docket_ids: list(label).optional(),
+    ...dates,
+  }),
 } as const;
 
 export type SourceId = keyof typeof filterSchemas;
@@ -69,6 +79,15 @@ export const SOURCES: readonly SourceInfo[] = [
     jurisdiction: "EU",
     termsUrl: "https://eur-lex.europa.eu/content/legal-notice/legal-notice.html",
     attribution: "© European Union, https://eur-lex.europa.eu",
+  },
+  {
+    id: "fr",
+    name: "Federal Register",
+    group: "public_law",
+    mode: "indexed",
+    jurisdiction: "US",
+    termsUrl: "https://www.federalregister.gov/reader-aids/developer-resources/rest-api",
+    attribution: "FederalRegister.gov, not the official legal edition",
   },
 ];
 
