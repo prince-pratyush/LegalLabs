@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createCapLoader } from "./cap.js";
 import { createCourtListenerLoader } from "./courtlistener.js";
+import { CFR_SECTION, CFR_TITLE, createEcfrLoader } from "./ecfr.js";
 import { createEdgarLoader } from "./edgar.js";
 import { createEurLexLoader } from "./eurlex.js";
 import { createFederalRegisterLoader, FR_DOCUMENT_NUMBER } from "./fr.js";
@@ -30,6 +31,19 @@ export const subsetSchema = z.strictObject({
     .optional(),
   fr: z
     .strictObject({ documents: z.array(z.string().regex(FR_DOCUMENT_NUMBER)).max(10_000) })
+    .optional(),
+  ecfr: z
+    .strictObject({
+      sections: z
+        .array(
+          z.strictObject({
+            title: z.string().regex(CFR_TITLE),
+            section: z.string().regex(CFR_SECTION),
+          }),
+        )
+        .max(10_000),
+      as_of: z.iso.date().optional(),
+    })
     .optional(),
 });
 export type Subset = z.infer<typeof subsetSchema>;
@@ -91,6 +105,13 @@ export const DEFAULT_SUBSET: Subset = {
     ],
   },
   fr: { documents: ["2024-05137", "2024-09171"] },
+  ecfr: {
+    sections: [
+      { title: "17", section: "240.10b-5" },
+      { title: "29", section: "1604.11" },
+      { title: "45", section: "164.502" },
+    ],
+  },
 };
 
 export interface LoaderEnv {
@@ -125,6 +146,12 @@ export function loaderFor(source: SourceId, subset: Subset, env: LoaderEnv): Loa
       return createFederalRegisterLoader({
         documents: subset.fr?.documents ?? [],
         http: createHttp({ perSecond: 2, userAgent }),
+      });
+    case "ecfr":
+      return createEcfrLoader({
+        sections: subset.ecfr?.sections ?? [],
+        ...(subset.ecfr?.as_of ? { asOf: subset.ecfr.as_of } : {}),
+        http: createHttp({ perSecond: 1, userAgent }),
       });
   }
 }

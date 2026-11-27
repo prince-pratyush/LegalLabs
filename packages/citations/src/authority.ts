@@ -94,6 +94,11 @@ export function normalizeCitation(reference: string): string {
     /^(\d+) (?:fed ?reg|fr) (\d{1,3}(?:,\d{3})+|\d+)(?: \([^)]*\))?$/,
     (_, volume: string, page: string) => `${volume} fr ${page.replaceAll(",", "")}`,
   );
+  // 17 CFR 240.10b-5 and 17 C.F.R. § 240.10b-5 (2024) are one section.
+  text = text.replace(
+    /^(\d+) (?:cfr|code of federal regulations),? (?:§ )*(\d+[a-z]?\.\d\S*)(?: \((?:19|20)\d{2}\))?$/,
+    "$1 cfr § $2",
+  );
   // Parentheticals carry court and year only on reporter cites; on statutes the year matters.
   if (REPORTER_CITE.test(text)) {
     text = text.replace(/\s*\([^)]*\)/g, "").replace(/^(\d+ \w+ \d+),? (?:19|20)\d{2}$/, "$1");
@@ -101,20 +106,42 @@ export function normalizeCitation(reference: string): string {
   return text;
 }
 
+// "17 cfr § 240.10b-5(b)" names paragraph (b) of a section the index holds whole.
+const PART_OF: readonly RegExp[] = [
+  /^\d+ cfr (§ [^\s(]+(?:\([^)]*\)-[^\s(]+)?)((?:\([0-9a-z]+\))+)$/,
+];
+
+function splitPin(normalized: string): { whole: string; pin: string } | null {
+  for (const form of PART_OF) {
+    const match = form.exec(normalized);
+    if (!match) continue;
+    const [, section = "", part = ""] = match;
+    return { whole: normalized.slice(0, -part.length), pin: `${section}${part}` };
+  }
+  return null;
+}
+
+/** The authorities a reference names, and the pin written inside it, if it had to be set aside. */
 async function findAuthorities(
   reference: string,
   sources: AuthoritySources,
-): Promise<readonly Authority[]> {
-  if (!INDEX_ID.test(reference)) return sources.authoritiesByCitation(normalizeCitation(reference));
-  const authority = await sources.authorityById(reference);
-  return authority === null ? [] : [authority];
+): Promise<{ found: readonly Authority[]; pin?: string }> {
+  if (INDEX_ID.test(reference)) {
+    const authority = await sources.authorityById(reference);
+    return { found: authority === null ? [] : [authority] };
+  }
+  const normalized = normalizeCitation(reference);
+  const found = await sources.authoritiesByCitation(normalized);
+  const split = found.length === 0 ? splitPin(normalized) : null;
+  if (!split) return { found };
+  return { found: await sources.authoritiesByCitation(split.whole), pin: split.pin };
 }
 
 export async function verifyAuthority(
   citation: AuthorityCitation,
   sources: AuthoritySources,
 ): Promise<AuthorityVerification> {
-  const found = await findAuthorities(citation.reference, sources);
+  const { found, pin } = await findAuthorities(citation.reference, sources);
   const candidates = [...new Map(found.map((entry) => [entry.id, entry])).values()];
   const [authority, ...others] = candidates;
   if (authority === undefined) return { status: "unresolved", reason: "authority_not_found" };
@@ -125,7 +152,8 @@ export async function verifyAuthority(
       candidates: candidates.map((candidate) => candidate.id),
     };
   }
-  if (citation.pin !== undefined && !pinExists(citation.pin, authority)) {
+  const pins = [pin, citation.pin].filter((p) => p !== undefined);
+  if (!pins.every((p) => pinExists(p, authority))) {
     return { status: "mismatch", reason: "pin_not_found", authorityId: authority.id };
   }
   if (citation.quote === undefined) return { status: "ok", authorityId: authority.id };

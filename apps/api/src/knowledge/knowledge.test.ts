@@ -130,6 +130,23 @@ const rule: AuthorityRecord = {
   chunks: [{ sectionPath: null, text: `Every gizmo ${tag} must carry a durable label.` }],
 };
 
+const cfr: AuthorityRecord = {
+  ref: `ecfr:section:${VOL}-240.10b-5`,
+  title: `${VOL} CFR § 240.10b-5 Deceptive devices ${tag} (as of 2001-02-03)`,
+  jurisdiction: "US",
+  docType: "regulation",
+  decidedOn: "2001-02-03",
+  citations: [{ text: `${VOL} C.F.R. § 240.10b-5`, kind: "act" }],
+  sections: ["§ 240.10b-5", "(b)", "§ 240.10b-5(b)"],
+  meta: { cfr_title: "99", as_of: "2001-02-03" },
+  chunks: [
+    {
+      sectionPath: "§ 240.10b-5",
+      text: `(b) To make any untrue statement of a material fact ${tag},`,
+    },
+  ],
+};
+
 const knowledge = createKnowledge(pool);
 let member: Seeded;
 
@@ -422,6 +439,44 @@ describe("Federal Register", () => {
   });
 });
 
+describe("eCFR", () => {
+  const caller = () => asPrincipal(member);
+  const citation = `${VOL} C.F.R. § 240.10b-5`;
+  beforeAll(() => knowledge.writer().upsert(cfr));
+
+  it("is ok with a quote in the text, linking to the section and its as-of date", async () => {
+    const found = await knowledge.resolve(caller(), {
+      citation,
+      quote: "untrue statement of a material fact",
+    });
+    expect(found).toMatchObject({ status: "ok", authorityRef: cfr.ref });
+    expect(found?.href).toBe(`/knowledge/authorities/${encodeURIComponent(cfr.ref)}`);
+    expect(found?.located).toBeDefined();
+    const detail = await knowledge.authority(caller(), cfr.ref);
+    expect(detail).toMatchObject({ date: "2001-02-03", meta: { as_of: "2001-02-03" } });
+    expect(detail?.title).toContain("as of 2001-02-03");
+  });
+
+  it("is a mismatch with a quote the text does not have", async () => {
+    const found = await knowledge.resolve(caller(), {
+      citation,
+      quote: "no such words appear anywhere here",
+    });
+    expect(found).toMatchObject({ status: "mismatch", authorityRef: cfr.ref });
+  });
+
+  it("filters by CFR title", async () => {
+    const refs = async (titles: string[]) =>
+      (
+        await knowledge.search(caller(), `untrue ${tag}`, [
+          { sourceId: "ecfr", filter: { titles } },
+        ])
+      )?.map((p) => p.authorityRef);
+    expect(await refs(["99"])).toContain(cfr.ref);
+    expect(await refs(["1"])).not.toContain(cfr.ref);
+  });
+});
+
 describe("knowledge port for threads", () => {
   const caller = () => ({ userId: member.userId, workspaceId: member.workspaceId });
 
@@ -432,6 +487,7 @@ describe("knowledge port for threads", () => {
       "edgar",
       "eurlex",
       "fr",
+      "ecfr",
     ]);
     const found = await port.search(
       caller(),
@@ -497,7 +553,7 @@ describe("knowledge API", () => {
   it("lists the sources with their filter schemas and facets", async () => {
     const cookie = await signIn(member);
     const list = await json<Items<{ id: string }>>(get(cookie, "/sources"));
-    expect(list.items.map((s) => s.id)).toEqual(["us_caselaw", "edgar", "eurlex", "fr"]);
+    expect(list.items.map((s) => s.id)).toEqual(["us_caselaw", "edgar", "eurlex", "fr", "ecfr"]);
     const detail = await json<{
       filter_schema: unknown;
       facets: { courts: { value: string }[] };

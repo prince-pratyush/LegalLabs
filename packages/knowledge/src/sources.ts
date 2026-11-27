@@ -37,6 +37,10 @@ export const filterSchemas = {
     docket_ids: list(label).optional(),
     ...dates,
   }),
+  // One version of each section is held, as of the date it was loaded for, so no date filter.
+  ecfr: z.strictObject({
+    titles: list(z.string().regex(/^\d{1,2}$/)).optional(),
+  }),
 } as const;
 
 export type SourceId = keyof typeof filterSchemas;
@@ -88,6 +92,15 @@ export const SOURCES: readonly SourceInfo[] = [
     jurisdiction: "US",
     termsUrl: "https://www.federalregister.gov/reader-aids/developer-resources/rest-api",
     attribution: "FederalRegister.gov, not the official legal edition",
+  },
+  {
+    id: "ecfr",
+    name: "Code of Federal Regulations (eCFR)",
+    group: "public_law",
+    mode: "indexed",
+    jurisdiction: "US",
+    termsUrl: "https://www.ecfr.gov/reader-aids/understanding-the-ecfr/ecfr-developer-resources",
+    attribution: "eCFR, not the official legal edition",
   },
 ];
 

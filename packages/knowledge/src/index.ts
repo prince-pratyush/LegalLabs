@@ -1,5 +1,7 @@
 export { capLocation, capRecord, createCapLoader } from "./cap.js";
 export { clusterRecord, createCourtListenerLoader } from "./courtlistener.js";
+export type { CfrSection, EcfrOptions } from "./ecfr.js";
+export { createEcfrLoader, ecfrRecord } from "./ecfr.js";
 export type { EdgarCompany, Filing } from "./edgar.js";
 export { createEdgarLoader, edgarRecord, filingUrl, pickFilings } from "./edgar.js";
 export {
