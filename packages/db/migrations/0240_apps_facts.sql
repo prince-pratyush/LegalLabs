@@ -322,9 +322,12 @@ create policy fact_audit_insert on apps.fact_audit for insert to legallabs_app
                                where f.id = fact_id and f.space_id = fact_audit.space_id)));
 
 -- An edit moves the version on by one, and a change of words or date can't be made without it.
--- A name a person typed stays theirs.
+-- A name a person typed stays theirs, and a name read from a file only becomes a typed one when
+-- it is changed in more than case, spacing or punctuation.
 create function apps.fact_guard() returns trigger
 language plpgsql set search_path = '' as $$
+declare
+  named text := case tg_table_name when 'entity' then 'canonical_name' else 'name' end;
 begin
   if tg_table_name = 'fact' then
     if new.version_no not in (old.version_no, old.version_no + 1)
@@ -334,8 +337,16 @@ begin
            and new.version_no = old.version_no) then
       raise exception 'an edit makes a new version' using errcode = '42501';
     end if;
-  elsif new.origin <> old.origin and new.origin <> 'manual' then
-    raise exception 'a typed name stays typed' using errcode = '42501';
+  elsif new.origin <> old.origin then
+    if new.origin <> 'manual' then
+      raise exception 'a typed name stays typed' using errcode = '42501';
+    end if;
+    if lower(regexp_replace(normalize(to_jsonb(new) ->> named, NFKC),
+                            '[[:space:][:punct:]]+', '', 'g'))
+       = lower(regexp_replace(normalize(to_jsonb(old) ->> named, NFKC),
+                              '[[:space:][:punct:]]+', '', 'g')) then
+      raise exception 'the same name stays as it was read' using errcode = '42501';
+    end if;
   end if;
   return new;
 end
@@ -373,7 +384,8 @@ create constraint trigger fact_versioned after update of version_no on apps.fact
   deferrable initially deferred for each row execute function apps.fact_complete();
 
 -- Retention: a purged document's quotes cascade away, and its facts, with their versions and
--- trail, go with them. Names left with nothing extracted to show them go too.
+-- trail, go with them. A read name goes when no fact links it at all: while one linked by hand
+-- remains it is kept, unseen, since removing it would change facts the editor may not see.
 grant select, delete on apps.fact, apps.entity, apps.issue to legallabs_definer;
 grant select on apps.fact_entity, apps.fact_issue to legallabs_definer;
 create policy definer_all on apps.fact for all to legallabs_definer using (true) with check (true);
@@ -391,13 +403,11 @@ begin
   elsif tg_table_name = 'fact_entity' then
     delete from apps.entity e
      where e.id = old.entity_id and e.origin = 'extracted'
-       and not exists (select 1 from apps.fact_entity l
-                        where l.entity_id = e.id and l.via = 'extracted');
+       and not exists (select 1 from apps.fact_entity l where l.entity_id = e.id);
   else
     delete from apps.issue i
      where i.id = old.issue_id and i.origin = 'extracted'
-       and not exists (select 1 from apps.fact_issue l
-                        where l.issue_id = i.id and l.via = 'extracted');
+       and not exists (select 1 from apps.fact_issue l where l.issue_id = i.id);
   end if;
   return null;
 end

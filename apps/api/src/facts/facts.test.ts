@@ -240,6 +240,44 @@ describe("fact tables", () => {
     expect(unlinked.body.fact).toMatchObject({ entity_ids: [], version_no: 2 });
   });
 
+  it("keeps a name read from a file tied to it through a rename that changes nothing", async () => {
+    const r = await room();
+    const fact = await r.add();
+    // As extraction leaves them: an entry and an issue seen only through the fact.
+    const seed = async (table: "entity" | "issue", columns: string, values: string) => {
+      const { rows } = await pool.query<{ id: string }>(
+        `insert into apps.${table} (workspace_id, space_id, origin, created_by, ${columns})
+         values ($1, $2, 'extracted', $3, ${values}) returning id`,
+        [r.ana.workspaceId, r.spaceId, r.ben.userId],
+      );
+      const id = rows[0]?.id as string;
+      await pool.query(
+        `insert into apps.fact_${table} (workspace_id, space_id, fact_id, ${table}_id, via)
+         values ($1, $2, $3, $4, 'extracted')`,
+        [r.ana.workspaceId, r.spaceId, fact.id, id],
+      );
+      return id;
+    };
+    const entity = await seed("entity", "kind, canonical_name", "'person', 'Zed Brown'");
+    const issue = await seed("issue", "name", "'Late delivery'");
+    const origin = async (table: "entity" | "issue", id: string) =>
+      (await pool.query(`select origin from apps.${table} where id = $1`, [id])).rows[0]?.origin;
+    const patch = (path: string, body: object) => r.call(r.ben, "PATCH", `${r.base}/${path}`, body);
+
+    for (const name of ["ZED BROWN", "zed   brown", "Zed\u00a0Brown", "Zed Brown."]) {
+      const res = await patch(`entities/${entity}`, { canonical_name: name });
+      expect([name, res.status]).toEqual([name, 200]);
+      expect([name, await origin("entity", entity)]).toEqual([name, "extracted"]);
+    }
+    expect((await patch(`issues/${issue}`, { name: "late  Delivery" })).status).toBe(200);
+    expect(await origin("issue", issue)).toBe("extracted");
+
+    await patch(`entities/${entity}`, { canonical_name: "Zedekiah Brown" });
+    await patch(`issues/${issue}`, { name: "Delay in delivery" });
+    expect(await origin("entity", entity)).toBe("manual");
+    expect(await origin("issue", issue)).toBe("manual");
+  });
+
   it("pages by date with a cursor", async () => {
     const r = await room();
     const one = await r.add({ event_date: null, date_precision: "unknown" });
