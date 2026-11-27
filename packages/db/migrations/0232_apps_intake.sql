@@ -412,8 +412,77 @@ language sql stable security definer set search_path = '' as $$
   )
   select coalesce(array_agg(id), '{}') from hidden
 $$;
+
+create function apps.intake_vault_id() returns uuid
+language sql stable security definer set search_path = '' as $$
+  select i.vault_id from apps.intake_inbox i where i.workspace_id = core.current_workspace_id()
+$$;
+
+-- Whether this request may read Inbox files at all: ingest, as the service user, or a screen
+-- made to show them, for triage staff. The setting is the API's, never a caller's.
+create function apps.intake_reading() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select apps.is_intake_principal(core.current_user_id())
+      or (pg_catalog.current_setting('legallabs.intake_read', true) = 'on'
+          and apps.intake_may('intake.triage'))
+$$;
+
+-- An Inbox file is never material for other work: no thread, table, agent, search or review can
+-- see one, so nothing made from it can reach someone a matter's wall keeps out. This is the one
+-- rule on who reads them, and no share or other policy can widen it.
 create policy document_intake_wall on content.document as restrictive for select to legallabs_app
-  using (id <> all ((select apps.intake_hidden_documents())::uuid[]));
+  using (case when vault_id = (select apps.intake_vault_id())
+              then (select apps.intake_reading())
+                   and id <> all ((select apps.intake_hidden_documents())::uuid[])
+              else true end);
+
+-- The matter an Inbox file belongs to, through the request it (or what it came out of) is on.
+create function apps.intake_matter(p_document uuid) returns uuid
+language sql stable security definer set search_path = '' as $$
+  with recursive up(id, parent_id) as (
+    select d.id, d.parent_id from content.document d where d.id = p_document
+    union
+    select d.id, d.parent_id from content.document d join up on d.id = up.parent_id
+  )
+  select r.matter_id
+    from up
+    join apps.intake_attachment a on a.document_id = up.id
+    join apps.intake_request r on r.id = a.request_id
+   where r.matter_id is not null
+   limit 1
+$$;
+alter function apps.intake_vault_id() owner to legallabs_definer;
+alter function apps.intake_reading() owner to legallabs_definer;
+alter function apps.intake_matter(uuid) owner to legallabs_definer;
+revoke execute on function apps.intake_vault_id(), apps.intake_reading(),
+  apps.intake_matter(uuid) from public;
+grant execute on function apps.intake_vault_id(), apps.intake_reading() to legallabs_app;
+grant execute on function apps.intake_matter(uuid) to legallabs_definer;
+
+-- An agent's upload is read by everyone who may run it (0065), and linking one is a definer
+-- function's say (0226), so both name the Inbox themselves.
+create or replace function work.agent_upload_linkable(p_document uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select not exists (select 1 from content.document d
+                      join apps.intake_inbox i on i.vault_id = d.vault_id
+                      where d.id = p_document)
+     and (exists (select 1 from content.document d
+                   where d.id = p_document and d.workspace_id = core.current_workspace_id()
+                     and d.owner_id = core.current_user_id())
+       or not exists (select 1 from work.agent_document x
+                       where x.document_id = p_document
+                         and x.workspace_id = core.current_workspace_id()
+                         and work.agent_level(x.agent_id) = 'run')
+       or exists (select 1 from work.agent_document x
+                   where x.document_id = p_document
+                     and x.workspace_id = core.current_workspace_id()
+                     and work.agent_level(x.agent_id) in ('view', 'edit', 'full')))
+$$;
+drop policy document_agent_upload_read on content.document;
+create policy document_agent_upload_read on content.document for select to legallabs_app
+  using (core.in_tenant(workspace_id) and deleted_at is null and matter_id is null
+         and vault_id is distinct from (select apps.intake_vault_id())
+         and work.agent_upload_readable(id));
 
 alter function apps.intake_may(text) owner to legallabs_definer;
 alter function apps.is_intake_vault(uuid) owner to legallabs_definer;
@@ -584,5 +653,106 @@ begin
   end;
   perform pg_catalog.set_config('app.user_id', was, true);
   return coalesce(ok, false);
+end
+$$;
+
+-- Intake files carry no matter of their own, so holds and matter retention find it through the
+-- request. As 0225 and 0205 otherwise.
+create or replace function retention._is_held(p_ws uuid, p_type text, p_id uuid) returns boolean
+language sql stable set search_path = '' as $$
+  with recursive subject(id) as (
+    select p_id
+    union
+    select d.id from content.document d join subject s on d.parent_id = s.id
+     where p_type = 'document' and d.workspace_id = p_ws
+  )
+  select exists (
+    select 1 from retention.hold h cross join subject s
+     where h.workspace_id = p_ws
+       and ((h.object_type = p_type and h.object_id = s.id)
+            or (h.object_type = 'vault' and p_type = 'document'
+                and h.object_id = (select d.vault_id from content.document d where d.id = s.id))
+            or (h.object_type = 'matter' and h.object_id = case p_type
+                  when 'thread' then (select t.matter_id from work.thread t where t.id = s.id)
+                  when 'review_table' then (select r.matter_id from work.review_table r
+                                             where r.id = s.id)
+                  when 'document' then (select coalesce(d.matter_id, v.matter_id,
+                                                        apps.intake_matter(d.id))
+                                          from content.document d
+                                          left join content.vault v on v.id = d.vault_id
+                                         where d.id = s.id) end)))
+$$;
+
+create or replace function retention.expired_objects(
+  p_workspace uuid,
+  p_scope text default null,
+  p_scope_id uuid default null,
+  p_hours integer default null,
+  p_horizon interval default interval '0'
+) returns table (
+  object_type text, object_id uuid, vault_id uuid, matter_id uuid, label text,
+  basis_at timestamptz, hours integer, expires_at timestamptz,
+  policy_id uuid, policy_scope text, held boolean)
+language plpgsql stable set search_path = '' as $$
+#variable_conflict use_column
+begin
+  return query
+  with pol0 as (
+    select p.scope, p.scope_id, p.hours, p.id from retention.policy p
+     where p.workspace_id = p_workspace
+       and (p_scope is null or not (p.scope = p_scope and p.scope_id = p_scope_id))
+    union all
+    select p_scope, p_scope_id, p_hours, null::uuid where p_scope is not null
+  ), pol as (
+    select * from pol0
+    union all
+    select 'vault', v.id, v.retention_hours, null::uuid from content.vault v
+     where v.workspace_id = p_workspace and v.retention_hours is not null
+       and not exists (select 1 from pol0 x where x.scope = 'vault' and x.scope_id = v.id)
+  ), cand as (
+    select 'thread'::text ot, t.id oid, null::uuid vid, t.matter_id mid, t.title lbl,
+           t.last_activity_at b
+      from work.thread t where t.workspace_id = p_workspace and t.deleted_at is null
+    union all
+    select 'document', d.id, d.vault_id,
+           coalesce(d.matter_id, v.matter_id,
+                    case when exists (select 1 from apps.intake_inbox i where i.vault_id = v.id)
+                         then apps.intake_matter(d.id) end),
+           d.name,
+           greatest(d.created_at, d.restored_at,
+                    (select max(dv.created_at) from content.document_version dv
+                      where dv.document_id = d.id))
+      from content.document d join content.vault v on v.id = d.vault_id
+     where d.workspace_id = p_workspace and d.deleted_at is null and v.deleted_at is null
+    union all
+    select 'review_table', r.id, null::uuid, r.matter_id, r.name, r.updated_at
+      from work.review_table r where r.workspace_id = p_workspace and r.deleted_at is null
+  ), scoped as (
+    select c.*,
+           case when mp.scope_id is not null then mp.hours else vp.hours end nhrs,
+           case when mp.scope_id is not null then mp.id else vp.id end nid,
+           case when mp.scope_id is not null then 'matter' else 'vault' end nscope,
+           wp.hours whrs, wp.id wid
+      from cand c
+      left join pol mp on mp.scope = 'matter' and mp.scope_id = c.mid
+      left join pol vp on vp.scope = 'vault' and vp.scope_id = c.vid
+      left join pol wp on wp.scope = 'workspace' and wp.scope_id = p_workspace
+  ), eff as (
+    -- least() skips nulls, so an unlimited scope never lengthens the other.
+    select s.*, least(s.nhrs, s.whrs) hrs,
+           coalesce(s.nhrs <= s.whrs, s.nhrs is not null) narrow
+      from scoped s
+  )
+  select e.ot, e.oid, e.vid, e.mid, e.lbl, e.b, e.hrs,
+         e.b + make_interval(hours => e.hrs),
+         case when e.narrow then e.nid else e.wid end,
+         case when e.narrow then e.nscope else 'workspace' end,
+         exists (select 1 from retention.hold h
+                  where h.workspace_id = p_workspace
+                    and ((h.object_type = e.ot and h.object_id = e.oid)
+                         or (h.object_type = 'vault' and h.object_id = e.vid)
+                         or (h.object_type = 'matter' and h.object_id = e.mid)))
+    from eff e
+   where e.hrs is not null and e.b + make_interval(hours => e.hrs) <= now() + p_horizon;
 end
 $$;

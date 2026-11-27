@@ -23,7 +23,7 @@ import type pg from "pg";
 import type { z } from "zod";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackOutcome, trackUsage } from "../command-center/record.js";
-import { asApp, RLS_REFUSED } from "../db.js";
+import { asApp, RLS_REFUSED, showIntakeFiles } from "../db.js";
 import type { Documents, UploadResult } from "../documents/documents.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 
@@ -337,6 +337,7 @@ async function loadRequest(db: Db, id: string): Promise<RequestRow> {
 
 async function loadDetail(db: Db, id: string): Promise<IntakeRequestDetail> {
   const row = await loadRequest(db, id);
+  await showIntakeFiles(db);
   const { rows } = await db.query<IntakeAttachment & { size: string }>(
     `select d.id document_id, d.name, d.size, coalesce(j.status, 'indexed') state
        from apps.intake_attachment a
