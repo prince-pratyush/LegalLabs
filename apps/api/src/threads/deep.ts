@@ -161,6 +161,8 @@ export async function readDeep(
     signal: AbortSignal;
     /** The plan's high estimate in US dollars; 0 means free models, so no cap. */
     budgetUsd: number;
+    /** Models the thread's matter keeps this material from. */
+    exclude: readonly string[];
   },
 ): Promise<DeepResult> {
   const { principal, scope, emit } = input;
@@ -218,6 +220,7 @@ export async function readDeep(
           budget: { max_output: READ_OUTPUT, max_cost_usd: 0.05 },
           routing: { workspace: principal.workspaceId },
           trace: randomUUID(),
+          ...(input.exclude.length ? { exclude: input.exclude } : {}),
         },
         input.signal,
       );

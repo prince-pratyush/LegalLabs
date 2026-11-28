@@ -147,23 +147,3 @@ export async function loadTranslatable(
 
 export const translatedName = (name: string, language: TranslationLanguage) =>
   `${[...name.replace(/\.[A-Za-z0-9]{1,5}$/, "").replace(/[\p{Cc}\p{Cf}<>:"/\\|?*]+/gu, " ")].slice(0, 150).join("").trim() || "File"} (${language}).docx`;
-
-/** Models the matter leaves usable; `none` when it leaves nothing. */
-export async function modelsFor(db: pg.PoolClient, gateway: Gateway, matterId: string | null) {
-  const all = gateway.models("draft_edit").map((m) => m.id);
-  const { rows } = matterId
-    ? await db.query<{
-        model_policy: { deny_providers?: string[]; deny_models?: string[] } | null;
-      }>("select model_policy from core.matter where id = $1", [matterId])
-    : { rows: [] };
-  const policy = rows[0]?.model_policy;
-  const exclude = all.filter((id) => {
-    const [provider = "", ...name] = id.split("/");
-    return (
-      policy?.deny_providers?.includes(provider) ||
-      policy?.deny_models?.includes(id) ||
-      policy?.deny_models?.includes(name.join("/"))
-    );
-  });
-  return { exclude, none: all.length > 0 && exclude.length === all.length };
-}

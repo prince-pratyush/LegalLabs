@@ -18,7 +18,7 @@ import {
   type TranslationLanguage,
   WEB_SOURCE_ID,
 } from "@legallabs/contracts";
-import type { Gateway } from "@legallabs/model-gateway";
+import type { Gateway, TaskClass } from "@legallabs/model-gateway";
 import type { ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
@@ -41,10 +41,10 @@ import {
 } from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
 import { createFileMaker, FILE_LIMITS, type FileAnswer } from "./files.js";
+import { modelsFor, threadModels } from "./matter-models.js";
 import { surfaceOf } from "./surface.js";
 import {
   loadTranslatable,
-  modelsFor,
   modelTranslator,
   type Translatable,
   type Translator,
@@ -979,6 +979,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     active.set(run.id, controller);
     try {
       await emit({ type: "status", status: "running" });
+      const models = await allowed(principal, run, ["read_extract", "synthesize"]);
+      if (!models) return;
       const read = await readDeep(
         { pool, ...options },
         {
@@ -989,6 +991,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           // Cancel or the deadline stops a model call mid-flight, not only between files.
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(DEEP_DEADLINE_MS)]),
           budgetUsd: stored.estimated_cost_usd.high,
+          exclude: models.exclude,
         },
       );
       if (cancelled(run.id)) {
@@ -1013,6 +1016,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             documents,
             sources: [],
             history: [],
+            exclude: models.exclude,
             question: stored.scope.focus
               ? `${stored.scope.question}\nFocus: ${stored.scope.focus}`
               : stored.scope.question,
@@ -1101,6 +1105,23 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   }
 
   /**
+   * What the thread's matter allows now, which may differ from when the question was asked; null
+   * after failing the run because nothing is left to do the work.
+   */
+  async function allowed(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    tasks: readonly TaskClass[],
+  ) {
+    const models = await asApp(pool, principal, (db) =>
+      threadModels(db, options.gateway, run.threadId),
+    );
+    if (tasks.every(models.allows)) return models;
+    await fail(principal, run.id, "MODEL_NOT_ALLOWED", RUN_MESSAGES.MODEL_NOT_ALLOWED, false);
+    return null;
+  }
+
+  /**
    * Everything a file made in this thread could repeat: what any answer was given to read, what
    * the thread holds, and what it was made from. Refused when a held file can't be seen now.
    */
@@ -1179,6 +1200,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     active.set(run.id, controller);
     try {
       await emit({ type: "status", status: "running" });
+      const models = await allowed(principal, run, ["synthesize"]);
+      if (!models) return;
       const made = await makeFile(
         {
           principal,
@@ -1186,6 +1209,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           sources: input.scope.sources,
           history: context.history,
           question: context.question,
+          exclude: models.exclude,
           ...(input.model ? { model: input.model } : {}),
           ...(planned ? { shape: planned.shape } : {}),
           emit,
@@ -1196,7 +1220,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         run.id,
       );
       // What the model cost is kept even when no file came of it.
-      if ("failed" in made && made.model) {
+      if (made.model && ("failed" in made || cancelled(run.id))) {
         const cost = made.model.cost_usd + (planned?.spentUsd ?? 0);
         await asApp(pool, principal, (db) =>
           db.query("update work.run set cost_usd = $2 where id = $1", [run.id, cost]),
@@ -1311,6 +1335,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     active.set(run.id, controller);
     try {
       await emit({ type: "status", status: "running" });
+      const models = await allowed(principal, run, ["synthesize"]);
+      if (!models) return;
       // The question as typed, not the history: memories follow this request, not old ones.
       const plan = await personalisation.prepare(
         principal,
@@ -1330,6 +1356,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           sources: input.scope.sources,
           history: context.history,
           question: context.question,
+          exclude: models.exclude,
           ...(input.model ? { model: input.model } : {}),
           ...(plan?.guidance ? { guidance: plan.guidance } : {}),
           ...(planned ? { shape: planned.shape } : {}),
@@ -1370,6 +1397,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           sources: input.scope.sources,
           history: [],
           question: context.question,
+          exclude: models.exclude,
           emit,
           cancelled: () => cancelled(run.id),
         },
@@ -1633,13 +1661,22 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     const replanning = change !== undefined;
     try {
       if (!replanning) await emit({ type: "status", status: "planned" });
-      const outcome = await proposePlan(options.gateway, {
+      // Read again each time: the matter's policy may have changed since the question.
+      const models = await asApp(pool, principal, (db) =>
+        threadModels(db, options.gateway, run.threadId),
+      );
+      const refused = !models.allows("plan");
+      const request = {
         workspaceId: principal.workspaceId,
         question: scope.question,
         history,
         files: scope.documents.map((d) => d.name),
         ...(change ? { change } : {}),
-      });
+        exclude: models.exclude,
+      };
+      const outcome = refused
+        ? ({ ok: false, costUsd: 0 } as const)
+        : await proposePlan(options.gateway, request);
       const spentUsd = scope.spentUsd + outcome.costUsd;
       if (!outcome.ok) {
         await asApp(pool, principal, (db) =>
@@ -1815,7 +1852,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           return "MIXED_MATTERS" as const;
         }
         const models = await modelsFor(db, options.gateway, thread.matterId);
-        if (models.none) return "MODEL_NOT_ALLOWED" as const;
+        if (!models.allows("draft_edit")) return "MODEL_NOT_ALLOWED" as const;
         const files: Translatable[] = [];
         let chars = text?.length ?? 0;
         for (const row of chosen) {
@@ -1953,6 +1990,19 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         }
         if (!existing && matterId === null && (await matterRequired(db))) {
           return "MATTER_REQUIRED" as const;
+        }
+        // Refused before anything is stored when the matter leaves no model for the work.
+        const models = await modelsFor(db, options.gateway, matterId);
+        const needed: TaskClass[] = input.deepAnalysis
+          ? ["read_extract", "synthesize"]
+          : planMode
+            ? ["plan", "synthesize"]
+            : ["synthesize"];
+        if (
+          !needed.every(models.allows) ||
+          (input.model !== undefined && models.exclude.includes(input.model))
+        ) {
+          return "MODEL_NOT_ALLOWED" as const;
         }
         // Vault files outside the thread's matter stay out, so one wall covers the thread.
         const vaultDocs = (await latestVersions(db, fromVaults)).filter(

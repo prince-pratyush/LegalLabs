@@ -221,6 +221,8 @@ export async function workOut(
     question: string;
     emit: (event: NewEvent) => Promise<unknown>;
     signal?: AbortSignal;
+    /** Models the thread's matter keeps this material from. */
+    exclude: readonly string[];
   },
 ): Promise<Figures | null> {
   const pages = await spreadsheetPages(deps.pool, input.principal, input.documents, input.passages);
@@ -243,6 +245,7 @@ export async function workOut(
         budget: { max_output: 600, max_cost_usd: 0.1 },
         routing: { workspace: input.principal.workspaceId },
         trace: randomUUID(),
+        ...(input.exclude.length ? { exclude: input.exclude } : {}),
       },
       input.signal,
     );
