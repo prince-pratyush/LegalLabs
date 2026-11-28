@@ -5,6 +5,7 @@ import {
   CircleAlert,
   FileText,
   Library,
+  ListChecks,
   LoaderCircle,
   Paperclip,
   Radar,
@@ -67,6 +68,9 @@ export type ComposerProps = {
   onModel: (id: string) => void;
   deepAnalysis: boolean;
   onDeepAnalysis: (on: boolean) => void;
+  planMode?: boolean;
+  /** Left out, no plan toggle is offered. */
+  onPlanMode?: (on: boolean) => void;
   /** The kind of file to make instead of an answer; "" for none. */
   fileFormat?: string;
   /** Left out, no file choice is offered. */
@@ -416,6 +420,17 @@ export function Composer(props: ComposerProps) {
                 <SelectItem value="xlsx">Spreadsheet</SelectItem>
               </SelectContent>
             </Select>
+          )}
+          {props.onPlanMode && (
+            <Button
+              variant={props.planMode ? "secondary" : "quiet"}
+              size="sm"
+              aria-pressed={props.planMode === true}
+              onClick={() => props.onPlanMode?.(!props.planMode)}
+            >
+              <ListChecks aria-hidden />
+              Plan
+            </Button>
           )}
           <Button
             variant={props.deepAnalysis ? "secondary" : "quiet"}

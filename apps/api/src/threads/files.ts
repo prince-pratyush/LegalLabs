@@ -261,7 +261,11 @@ export function createFileMaker(deps: AnswerDeps) {
             ...input.history,
             {
               role: "user",
-              content: `Passages (code ${code}):\n${fenced.join("\n\n")}\n\nRequest: ${input.question}`,
+              content: [
+                `Passages (code ${code}):\n${fenced.join("\n\n")}`,
+                `Request: ${input.question}`,
+                ...(input.shape ? [input.shape] : []),
+              ].join("\n\n"),
             },
           ],
           budget: { max_output: MAX_OUTPUT, max_cost_usd: MAX_COST_USD },

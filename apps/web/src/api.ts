@@ -12,7 +12,7 @@ import {
   type ThreadScope,
   type VaultSummary,
 } from "@legallabs/contracts";
-import { ApiError, FALLBACK } from "@legallabs/ui";
+import { ApiError, FALLBACK, type QuestionAnswer } from "@legallabs/ui";
 
 export type CitationStatus = "ok" | "mismatch" | "unresolved";
 
@@ -185,6 +185,8 @@ export interface AskInput {
   deep_analysis?: boolean;
   /** Makes a file of this kind instead of answering in prose. */
   output_format?: FileFormat;
+  /** Shows a plan and waits for approval before answering. */
+  plan_mode?: boolean;
 }
 
 export interface DraftVersionInfo {
@@ -277,6 +279,8 @@ export const api = {
   run: async (id: string) => (await call<{ run: Run }>(runPath(id))).run,
   cancel: (runId: string) => send<void>("POST", `${runPath(runId)}/cancel`),
   approve: (runId: string) => send<void>("POST", `${runPath(runId)}/approve`),
+  answerRun: (runId: string, answer: { question_id: string } & QuestionAnswer) =>
+    send<void>("POST", `${runPath(runId)}/answer`, answer),
   editPlan: (runId: string, instruction: string) =>
     send<void>("POST", `${runPath(runId)}/plan/edit`, { instruction }),
 

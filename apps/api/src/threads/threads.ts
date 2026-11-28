@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { CitationStatus, Range } from "@legallabs/citations";
 import type {
   ContentBlock,
   Coverage,
   FileFormat,
   KnowledgePort,
+  Plan,
   ResponseMode,
   RunStatus,
   SourceSelection,
@@ -23,10 +25,25 @@ import { noPersonalisation, type Personalisation } from "../memory/port.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
 import { type WebSources, webQuery } from "../web/sources.js";
-import { type Answer, type Checked, createAnswerer, type ScopeDocument } from "./answer.js";
+import {
+  type Answer,
+  type Checked,
+  createAnswerer,
+  MAX_OUTPUT,
+  type ScopeDocument,
+} from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
 import { createFileMaker, type FileAnswer } from "./files.js";
 import { surfaceOf } from "./surface.js";
+import {
+  type PlanQuestion,
+  planCommand,
+  planShape,
+  proposePlan,
+  shownTurnPlan,
+  wantsPlan,
+  withoutPlanCommand,
+} from "./turn-plan.js";
 
 export { NOT_FOUND_ANSWER } from "./answer.js";
 
@@ -153,6 +170,11 @@ export interface AskInput {
   outputFormat?: FileFormat;
   /** Plans a read of the whole scope and waits for approval before spending. */
   deepAnalysis?: boolean;
+  /**
+   * Shows a plan and waits for approval before answering. Left out, a request that starts with
+   * /plan or lists several tasks is planned; false only for the latter.
+   */
+  planMode?: boolean;
   /** Overrides the person's memory setting for this thread; left out, their setting decides. */
   useMemory?: boolean;
   /** A writing style of theirs, or one shared with the workspace, for this answer. */
@@ -216,7 +238,14 @@ export interface Threads {
   ): Promise<{ rows: HistoryRow[]; nextCursor: string | null }>;
   run(principal: Principal, runId: string): Promise<RunView | null>;
   cancel(principal: Principal, runId: string, client: Client): Promise<boolean>;
-  /** Starts a planned deep analysis. False unless it is the caller's and awaiting approval. */
+  /** Answers, or skips, the question a planned run is waiting on. */
+  answerQuestion(
+    principal: Principal,
+    runId: string,
+    reply: { questionId: string; optionId?: string; text?: string; skip?: boolean },
+    client: Client,
+  ): Promise<"ok" | "NOT_WAITING" | "INVALID_ANSWER">;
+  /** Starts a planned run. False unless it is the caller's and awaiting approval. */
   approve(principal: Principal, runId: string, client: Client): Promise<boolean>;
   /** Re-plans with a plain-language change; the run stays awaiting approval. */
   editPlan(
@@ -276,6 +305,28 @@ export interface ThreadsOptions {
   personalisation?: Personalisation;
 }
 
+/** What a planned turn needs to run after approval, kept with the plan. */
+interface TurnScope {
+  question: string;
+  documents: ThreadDocument[];
+  input: AskInput;
+  questionId: string;
+  ask: PlanQuestion | null;
+  reply: { question: string; answer: string | null } | null;
+  /** What planning has cost so far; added to the run's total. */
+  spentUsd: number;
+}
+
+type StoredTurnPlan = Plan & { scope: TurnScope };
+
+/** What an approved plan adds to the answer it runs. */
+interface Planned {
+  shape: string;
+  spentUsd: number;
+}
+
+// A plan asks at most one question, so it needs no other name.
+const QUESTION_ID = "q1";
 const HISTORY_MESSAGES = 6;
 const HISTORY_CHARS = 4000;
 const MAX_TITLE = 200;
@@ -591,6 +642,12 @@ const RUN_MESSAGES = {
   NOTHING_TO_READ: "Nothing in the selected sources matched, so no file was made.",
 };
 
+const historyOf = (messages: readonly MessageView[]) =>
+  messages.slice(-HISTORY_MESSAGES).map((message) => ({
+    role: message.role,
+    content: message.content.slice(0, HISTORY_CHARS),
+  }));
+
 export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   const { log, vaults } = options;
   const notifier = options.notifier ?? noNotifier;
@@ -604,7 +661,11 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   /** Tells the person running (and owning) a thread how a run went; never throws. */
   async function tell(
     principal: Principal,
-    kind: "thread.run.awaiting_approval" | "thread.run.failed" | "thread.run.completed",
+    kind:
+      | "thread.run.awaiting_approval"
+      | "thread.run.needs_input"
+      | "thread.run.failed"
+      | "thread.run.completed",
     run: { id: string; threadId: string },
     longRunning = false,
   ) {
@@ -1056,6 +1117,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     context: { question: string; history: { role: "user" | "assistant"; content: string }[] },
     input: AskInput & { outputFormat: FileFormat },
     client: Client,
+    planned?: Planned,
   ) {
     const started = Date.now();
     const emit = (event: NewEvent) => log.append(principal, run.id, event);
@@ -1071,6 +1133,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           history: context.history,
           question: context.question,
           ...(input.model ? { model: input.model } : {}),
+          ...(planned ? { shape: planned.shape } : {}),
           emit,
           cancelled: () => cancelled(run.id),
           signal: controller.signal,
@@ -1080,7 +1143,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       );
       // What the model cost is kept even when no file came of it.
       if ("failed" in made && made.model) {
-        const cost = made.model.cost_usd;
+        const cost = made.model.cost_usd + (planned?.spentUsd ?? 0);
         await asApp(pool, principal, (db) =>
           db.query("update work.run set cost_usd = $2 where id = $1", [run.id, cost]),
         );
@@ -1100,7 +1163,15 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       let saved: { messageId: string; outputId: string };
       try {
         saved = await asApp(pool, principal, async (db) => {
-          const messageId = await save(db, principal, run, made, documents, client);
+          const messageId = await save(
+            db,
+            principal,
+            run,
+            made,
+            documents,
+            client,
+            planned?.spentUsd,
+          );
           const outputId = await keepFile(
             db,
             principal,
@@ -1125,6 +1196,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         }
         throw err;
       }
+      if (planned) await tell(principal, "thread.run.completed", run, true);
       await emit({
         type: "output",
         kind: "file",
@@ -1175,6 +1247,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     },
     input: AskInput,
     client: Client,
+    planned?: Planned,
   ) {
     const started = Date.now();
     const emit = (event: NewEvent) => log.append(principal, run.id, event);
@@ -1204,6 +1277,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           question: context.question,
           ...(input.model ? { model: input.model } : {}),
           ...(plan?.guidance ? { guidance: plan.guidance } : {}),
+          ...(planned ? { shape: planned.shape } : {}),
           ...(web
             ? {
                 web: {
@@ -1238,7 +1312,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       let messageId: string;
       try {
         messageId = await asApp(pool, principal, (db) =>
-          save(db, principal, run, reply, documents, client),
+          save(db, principal, run, reply, documents, client, planned?.spentUsd),
         );
         // Words a web page or an email put in a reply must not become a standing memory.
         const candidates =
@@ -1261,6 +1335,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       }
       const count = (status: CitationStatus) =>
         reply.citations.filter((citation) => citation.status === status).length;
+      if (planned) await tell(principal, "thread.run.completed", run, true);
       await emit({
         type: "done",
         message_id: messageId,
@@ -1294,9 +1369,196 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     }
   }
 
+  /** Proposes a plan for one turn and stops at awaiting_approval. */
+  async function planTurn(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    scope: TurnScope,
+    history: { role: "user" | "assistant"; content: string }[],
+    change?: { steps: string[]; instruction: string },
+  ) {
+    const emit = (event: NewEvent) => log.append(principal, run.id, event);
+    // A re-plan that fails keeps the old plan, so it never reports the run as failed.
+    const replanning = change !== undefined;
+    try {
+      if (!replanning) await emit({ type: "status", status: "planned" });
+      const outcome = await proposePlan(options.gateway, {
+        workspaceId: principal.workspaceId,
+        question: scope.question,
+        history,
+        files: scope.documents.map((d) => d.name),
+        ...(change ? { change } : {}),
+      });
+      const spentUsd = scope.spentUsd + outcome.costUsd;
+      if (!outcome.ok) {
+        await asApp(pool, principal, (db) =>
+          db.query(
+            `update work.run set cost_usd = $2, updated_at = now(),
+                    status = case when status = 'planned' then 'failed' else status end
+              where id = $1 and status in ('planned', 'awaiting_approval')`,
+            [run.id, spentUsd],
+          ),
+        );
+        if (replanning) return;
+        await tell(principal, "thread.run.failed", run);
+        await emit({
+          type: "error",
+          code: "PLAN_FAILED",
+          message: "No plan could be made for this. Ask again, or ask without a plan.",
+          retryable: false,
+        });
+        await emit({ type: "status", status: "failed" });
+        return;
+      }
+      const shown = shownTurnPlan(options.gateway, outcome.proposed, {
+        files: scope.documents.length,
+        pages: scope.documents.reduce((total, d) => total + d.pageCount, 0),
+        outputTokens: scope.input.outputFormat ? 8_000 : MAX_OUTPUT,
+      });
+      const stored: StoredTurnPlan = {
+        ...shown,
+        scope: { ...scope, ask: outcome.proposed.question, spentUsd },
+      };
+      const saved = await asApp(pool, principal, (db) =>
+        db.query(
+          `update work.run set plan = $2, cost_usd = $3, status = 'awaiting_approval',
+                  updated_at = now()
+            where id = $1 and status in ('planned', 'awaiting_approval')`,
+          [run.id, JSON.stringify(stored), spentUsd],
+        ),
+      );
+      if (saved.rowCount === 0) return;
+      if (!replanning) await tell(principal, "thread.run.awaiting_approval", run);
+      await emit({ type: "plan", plan: shown });
+      if (!replanning) await emit({ type: "status", status: "awaiting_approval" });
+    } catch (err) {
+      console.error(`plan ${run.id} failed: ${err instanceof Error ? err.name : "unknown"}`);
+      if (replanning) return;
+      await asApp(pool, principal, (db) =>
+        db.query("update work.run set status = 'failed' where id = $1 and status = 'planned'", [
+          run.id,
+        ]),
+      ).catch(() => {});
+      await log.append(principal, run.id, { type: "status", status: "failed" }).catch(() => {});
+    } finally {
+      if (!active.has(run.id)) log.release(run.id);
+    }
+  }
+
+  /** Answers an approved plan. The run is already marked running. */
+  async function runPlanned(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    stored: StoredTurnPlan,
+    client: Client,
+  ) {
+    const { scope } = stored;
+    const thread = await asApp(pool, principal, (db) => load(db, principal, run.threadId));
+    if (!thread) {
+      await fail(
+        principal,
+        run.id,
+        "WALL_DENIED",
+        "You no longer have access to this thread.",
+        false,
+      );
+      return;
+    }
+    // The conversation as it stood when the question was asked.
+    const asked = thread.messages.findIndex((m) => m.id === scope.questionId);
+    const history = historyOf(thread.messages.slice(0, Math.max(0, asked)));
+    const planned = {
+      shape: planShape(stored.steps, scope.reply),
+      spentUsd: scope.spentUsd,
+    };
+    const input = scope.input;
+    if (input.outputFormat) {
+      await executeFile(
+        principal,
+        run,
+        scope.documents,
+        { question: scope.question, history },
+        { ...input, outputFormat: input.outputFormat },
+        client,
+        planned,
+      );
+      return;
+    }
+    await execute(
+      principal,
+      run,
+      scope.documents,
+      {
+        question: scope.question,
+        history,
+        webBefore: thread.usedWeb,
+        fromMail: thread.surface === "outlook",
+      },
+      input,
+      client,
+      planned,
+    );
+  }
+
+  /** Starts an approved turn, stopping first at the plan's question if it has one. */
+  async function startPlanned(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    stored: StoredTurnPlan,
+    client: Client,
+  ) {
+    const asking = stored.scope.ask;
+    try {
+      if (asking && stored.scope.reply === null) {
+        const waiting = await asApp(pool, principal, (db) =>
+          db.query(
+            `update work.run set status = 'awaiting_input', updated_at = now()
+              where id = $1 and status = 'running'`,
+            [run.id],
+          ),
+        );
+        if (waiting.rowCount === 0) return;
+        await log.append(principal, run.id, {
+          type: "question",
+          step_id: QUESTION_ID,
+          question: {
+            text: asking.text,
+            options: asking.options,
+            allow_text: asking.allow_text,
+            allow_skip: true,
+          },
+        });
+        await log.append(principal, run.id, { type: "status", status: "awaiting_input" });
+        await tell(principal, "thread.run.needs_input", run);
+        log.release(run.id);
+        return;
+      }
+      await runPlanned(principal, run, stored, client);
+    } catch (err) {
+      console.error(`run ${run.id} failed: ${err instanceof Error ? err.name : "unknown"}`);
+      await fail(principal, run.id, "INTERNAL", "Something went wrong answering this.", true).catch(
+        () => {},
+      );
+      log.release(run.id);
+    }
+  }
+
   return {
     async ask(principal, input, client) {
-      const question = questionText(input.blocks);
+      const typed = questionText(input.blocks);
+      const commanded = planCommand(typed) && !input.deepAnalysis;
+      // The command is for the app, so the model and the web search never see it.
+      const blocks = commanded ? withoutPlanCommand(input.blocks) : input.blocks;
+      const question = questionText(blocks) || typed;
+      // A pane has no plan card, so it is only planned when it asks to be.
+      const planMode =
+        !input.deepAnalysis &&
+        (input.planMode === true ||
+          commanded ||
+          (input.planMode !== false &&
+            principal.via !== "word" &&
+            principal.via !== "outlook" &&
+            wantsPlan(typed)));
       if (input.threadId !== undefined && !UUID.test(input.threadId)) {
         return { ok: false, reason: "NOT_FOUND" };
       }
@@ -1433,7 +1695,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             [
               principal.workspaceId,
               threadId,
-              question,
+              typed,
               JSON.stringify(input.blocks),
               input.responseMode ?? "auto",
               input.model ?? null,
@@ -1449,7 +1711,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
               threadId,
               principal.userId,
               input.deepAnalysis ? "deep_analysis" : "thread",
-              input.deepAnalysis ? "planned" : "running",
+              input.deepAnalysis || planMode ? "planned" : "running",
               questionId,
             ],
           );
@@ -1486,37 +1748,50 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         throw err;
       }
 
-      const history = (existing?.messages ?? []).slice(-HISTORY_MESSAGES).map((message) => ({
-        role: message.role,
-        content: message.content.slice(0, HISTORY_CHARS),
-      }));
+      const history = historyOf(existing?.messages ?? []);
       const run = { id: created.runId, threadId: created.threadId };
+      const asked = { ...input, blocks, scope: { ...input.scope, sources } };
       const finished = track(
         input.deepAnalysis
           ? plan(principal, run, inScope, question, null)
-          : input.outputFormat
-            ? executeFile(
+          : planMode
+            ? planTurn(
                 principal,
                 run,
-                inScope,
-                { question, history },
-                { ...input, outputFormat: input.outputFormat, scope: { ...input.scope, sources } },
-                client,
-              )
-            : execute(
-                principal,
-                run,
-                inScope,
                 {
                   question,
-                  history,
-                  // This turn counts too, even if no page could be read.
-                  webBefore: existing?.usedWeb === true || webOf(sources) !== undefined,
-                  fromMail: existing?.surface === "outlook",
+                  documents: inScope,
+                  input: asked,
+                  questionId: created.questionId,
+                  ask: null,
+                  reply: null,
+                  spentUsd: 0,
                 },
-                { ...input, scope: { ...input.scope, sources } },
-                client,
-              ),
+                history,
+              )
+            : input.outputFormat
+              ? executeFile(
+                  principal,
+                  run,
+                  inScope,
+                  { question, history },
+                  { ...asked, outputFormat: input.outputFormat },
+                  client,
+                )
+              : execute(
+                  principal,
+                  run,
+                  inScope,
+                  {
+                    question,
+                    history,
+                    // This turn counts too, even if no page could be read.
+                    webBefore: existing?.usedWeb === true || webOf(sources) !== undefined,
+                    fromMail: existing?.surface === "outlook",
+                  },
+                  asked,
+                  client,
+                ),
       );
       return { ok: true, ...created, finished };
     },
@@ -1660,11 +1935,15 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     async approve(principal, runId, client) {
       if (!UUID.test(runId)) return false;
       const approved = await asApp(pool, principal, async (db) => {
-        const { rows } = await db.query<{ thread_id: string; plan: StoredPlan }>(
+        const { rows } = await db.query<{
+          thread_id: string;
+          kind: RunView["kind"];
+          plan: StoredPlan | StoredTurnPlan;
+        }>(
           `update work.run set status = 'running', updated_at = now()
-            where id = $1 and kind = 'deep_analysis' and status = 'awaiting_approval'
-              and owner_id = $2
-            returning thread_id, plan`,
+            where id = $1 and kind in ('thread', 'deep_analysis') and plan is not null
+              and status = 'awaiting_approval' and owner_id = $2
+            returning thread_id, kind, plan`,
           [runId, principal.userId],
         );
         const row = rows[0];
@@ -1676,8 +1955,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             row.thread_id,
             {
               run_id: runId,
-              files_to_read: row.plan.scope.read.length,
-              files_not_read: row.plan.scope.skipped.length,
+              ...(row.kind === "deep_analysis"
+                ? {
+                    files_to_read: (row.plan as StoredPlan).scope.read.length,
+                    files_not_read: (row.plan as StoredPlan).scope.skipped.length,
+                  }
+                : { steps: row.plan.steps.length }),
               estimated_cost_usd: row.plan.estimated_cost_usd,
             },
             client,
@@ -1686,18 +1969,73 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         return row ?? null;
       });
       if (!approved) return false;
+      const run = { id: runId, threadId: approved.thread_id };
       track(
-        executeDeep(principal, { id: runId, threadId: approved.thread_id }, approved.plan, client),
+        approved.kind === "deep_analysis"
+          ? executeDeep(principal, run, approved.plan as StoredPlan, client)
+          : startPlanned(principal, run, approved.plan as StoredTurnPlan, client),
       );
       return true;
+    },
+
+    async answerQuestion(principal, runId, reply, client) {
+      if (!UUID.test(runId)) return "NOT_WAITING";
+      const taken = await asApp(pool, principal, async (db) => {
+        const { rows } = await db.query<{ thread_id: string; plan: StoredTurnPlan }>(
+          `select thread_id, plan from work.run
+            where id = $1 and kind = 'thread' and status = 'awaiting_input' and owner_id = $2
+              for update`,
+          [runId, principal.userId],
+        );
+        const row = rows[0];
+        const asking = row?.plan.scope.ask;
+        if (!row || !asking || reply.questionId !== QUESTION_ID) return "NOT_WAITING" as const;
+        const option = asking.options.find((o) => o.id === reply.optionId);
+        const words = asking.allow_text ? reply.text?.trim() : undefined;
+        const answer = reply.skip ? null : (option?.label ?? words);
+        if (answer === undefined || answer === "") return "INVALID_ANSWER" as const;
+        const stored: StoredTurnPlan = {
+          ...row.plan,
+          scope: { ...row.plan.scope, reply: { question: asking.text, answer } },
+        };
+        await db.query(
+          "update work.run set plan = $2, status = 'running', updated_at = now() where id = $1",
+          [runId, JSON.stringify(stored)],
+        );
+        // Whether it was skipped, never what was said.
+        await audit(
+          db,
+          principal,
+          "run.signal",
+          row.thread_id,
+          { run_id: runId, skipped: answer === null },
+          client,
+        );
+        return { threadId: row.thread_id, stored };
+      });
+      if (typeof taken === "string") return taken;
+      const skipped = taken.stored.scope.reply?.answer === null;
+      await log.append(principal, runId, {
+        type: "step",
+        step_id: randomUUID(),
+        kind: "ask_user",
+        status: skipped ? "skipped" : "finished",
+        title: skipped ? "You skipped the question" : "You answered the question",
+      });
+      track(startPlanned(principal, { id: runId, threadId: taken.threadId }, taken.stored, client));
+      return "ok";
     },
 
     async editPlan(principal, runId, instruction, client) {
       if (!UUID.test(runId)) return false;
       const current = await asApp(pool, principal, async (db) => {
-        const { rows } = await db.query<{ thread_id: string; plan: StoredPlan | null }>(
-          `select thread_id, plan from work.run
-            where id = $1 and kind = 'deep_analysis' and status = 'awaiting_approval'
+        const { rows } = await db.query<{
+          thread_id: string;
+          kind: RunView["kind"];
+          plan: StoredPlan | StoredTurnPlan | null;
+        }>(
+          `select thread_id, kind, plan from work.run
+            where id = $1 and kind in ('thread', 'deep_analysis') and status = 'awaiting_approval'
               and owner_id = $2`,
           [runId, principal.userId],
         );
@@ -1715,20 +2053,29 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           client,
         ),
       );
-      const { scope } = current.plan;
+      const run = { id: runId, threadId: current.thread_id };
+      if (current.kind === "thread") {
+        const stored = current.plan as StoredTurnPlan;
+        const thread = await asApp(pool, principal, (db) => load(db, principal, run.threadId));
+        if (!thread) return false;
+        const asked = thread.messages.findIndex((m) => m.id === stored.scope.questionId);
+        await track(
+          planTurn(
+            principal,
+            run,
+            stored.scope,
+            historyOf(thread.messages.slice(0, Math.max(0, asked))),
+            { steps: stored.steps.map((s) => s.title), instruction },
+          ),
+        );
+        return true;
+      }
+      const { scope } = current.plan as StoredPlan;
       const documents = [...scope.read, ...scope.skipped.map((s) => s.document)].map((d) => ({
         ...d,
         emptyPageCount: 0,
       }));
-      await track(
-        plan(
-          principal,
-          { id: runId, threadId: current.thread_id },
-          documents,
-          scope.question,
-          instruction,
-        ),
-      );
+      await track(plan(principal, run, documents, scope.question, instruction));
       return true;
     },
 
