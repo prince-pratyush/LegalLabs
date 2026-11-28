@@ -47,6 +47,17 @@ export const auditActions: string[] = [
   ]),
 
   ...family("role", ["created", "updated", "deleted"]),
+  ...family("user", [
+    "invited",
+    "invite_batch",
+    "invite_accepted",
+    "created",
+    "updated",
+    "suspended",
+    "reactivated",
+    "password_set",
+  ]),
+  ...family("group", ["created", "members_changed"]),
   ...family("permission", ["granted", "revoked"]),
   "settings.changed",
   ...family("model", ["enabled", "disabled", "zdr_exception"]),

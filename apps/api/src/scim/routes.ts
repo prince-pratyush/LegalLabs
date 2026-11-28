@@ -82,6 +82,16 @@ export function scimRoutes(
         "content-type": TYPE,
       });
     }
+    // The database keeps one active administrator, whatever the provider asks.
+    if ((err as { message?: string }).message === "LAST_ADMIN") {
+      return c.body(
+        JSON.stringify(
+          new ScimError(409, "mutability", "The last administrator cannot be removed.").body(),
+        ),
+        409,
+        { "content-type": TYPE },
+      );
+    }
     console.error(`scim: ${err instanceof Error ? err.message : String(err)}`);
     return c.body(JSON.stringify(new ScimError(500, undefined, "Internal error.").body()), 500, {
       "content-type": TYPE,

@@ -365,6 +365,27 @@ export {
   type TranslationLanguage,
 } from "./translate.js";
 export {
+  AcceptInvite,
+  DEFAULT_USER_PERMISSIONS,
+  type Group,
+  GroupInput,
+  INVITE_HOURS,
+  type Invitation,
+  type InviteResult,
+  InviteUsers,
+  isAdminPermission,
+  MAX_CUSTOM_ROLES,
+  MAX_INVITES,
+  type ManagedUser,
+  MIN_PASSWORD_LENGTH,
+  PERMISSIONS,
+  type Role,
+  RoleInput,
+  type UserDirectory,
+  UserPatch,
+  type UserStatus,
+} from "./users.js";
+export {
   ContentControls,
   FILE_TYPE_LIMITS,
   FileState,

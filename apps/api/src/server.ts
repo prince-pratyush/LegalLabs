@@ -79,6 +79,7 @@ import { spaceNotifier } from "./spaces/notify.js";
 import { createSyncModule } from "./sync/module.js";
 import { createReviewTables } from "./tables/module.js";
 import { createThreads } from "./threads/threads.js";
+import { createUsers } from "./users/users.js";
 import { createVaultPort } from "./vaults/port.js";
 import { createRetentionJob } from "./vaults/retention.js";
 import { createVaults } from "./vaults/vaults.js";
@@ -418,6 +419,11 @@ if (mfaCheck.action === "warn") console.warn(mfaCheck.message);
 const app = createApp({
   agentRuns,
   scim: { service: createScim(pool), admin: createScimAdmin(pool) },
+  // Without a mail server an invitation link is shown once to the administrator.
+  users: createUsers(pool, {
+    baseUrl: process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173",
+    ...(smtp ? { mail: smtp } : {}),
+  }),
   publicApi: createPublicApi(pool),
   // Retention policies, legal holds and the recycle bin (ADM-004).
   retention: createRetention(pool, { store, notifications: notifier }),

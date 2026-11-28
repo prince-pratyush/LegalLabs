@@ -30,6 +30,7 @@ import { adminModelsHash, parseAdminModelsRoute } from "./admin-models/route.js"
 import { AgentsApp } from "./agents/AgentsApp.js";
 import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
+import { AcceptInvite, inviteTokenFrom, type Joined } from "./auth/AcceptInvite.js";
 import { handoffFrom } from "./auth/handoff.js";
 import { CiApp } from "./ci/CiApp.js";
 import { goCi, parseCiRoute } from "./ci/route.js";
@@ -63,6 +64,8 @@ import { SpacesApp } from "./spaces/SpacesApp.js";
 import { goTables, parseTableRoute } from "./tables/route.js";
 import { TablesApp } from "./tables/TablesApp.js";
 import { ThreadScreen } from "./thread/ThreadScreen.js";
+import { parseUsersRoute, usersHash } from "./users/route.js";
+import { UsersApp } from "./users/UsersApp.js";
 import { go, parseRoute as parseVaultRoute } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
 import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
@@ -80,6 +83,8 @@ export function App() {
   // An invitation link is the one screen on a real path: it works with or without a session.
   const [inviting, setInviting] = useState(() => window.location.pathname === "/guest/accept");
   const [prefill, setPrefill] = useState<Prefill | null>(null);
+  const [invite, setInvite] = useState(() => inviteTokenFrom(window.location.hash));
+  const [joined, setJoined] = useState<Joined | null>(null);
   const check = useCallback(() => {
     api.session().then(
       (s) => setSession(s.guest ? "guest" : "member"),
@@ -87,6 +92,20 @@ export function App() {
     );
   }, []);
   useEffect(check, [check]);
+  // An invitation's token comes off the address bar and the history as soon as it is read,
+  // including when the link is opened in a tab that already has the app.
+  useEffect(() => {
+    const take = () => {
+      const token = inviteTokenFrom(window.location.hash);
+      if (!token) return;
+      setInvite(token);
+      window.history.replaceState(null, "", "/");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    };
+    take();
+    window.addEventListener("hashchange", take);
+    return () => window.removeEventListener("hashchange", take);
+  }, []);
   const location = useLocation();
   const viewing = isDocumentHref(location.href);
   useReturnFocus(viewing);
@@ -112,12 +131,27 @@ export function App() {
       />
     );
   }
+  if (invite) {
+    return (
+      <AcceptInvite
+        token={invite}
+        onJoined={(who) => {
+          // Whoever was signed in here is signed out, so the new person signs in as themselves.
+          void api.logout().catch(() => undefined);
+          void clearShellCache();
+          setJoined(who);
+          setInvite(null);
+          setSession("none");
+        }}
+      />
+    );
+  }
   if (session === null) return <p className="p-6 text-fg-muted">Loading…</p>;
   if (session === "none") {
     return current.startsWith("#/guest") ? (
       <GuestSignIn prefill={prefill} onSignedIn={check} />
     ) : (
-      <SignIn onSignedIn={check} />
+      <SignIn joined={joined} onSignedIn={check} />
     );
   }
   if (session === "guest") {
@@ -158,6 +192,8 @@ export function App() {
           <RetentionApp onLeave={() => navigate(paths.new)} />
         ) : parseAdminModelsRoute(hash) ? (
           <AdminModelsApp onLeave={() => navigate(paths.new)} />
+        ) : parseUsersRoute(hash) ? (
+          <UsersApp onLeave={() => navigate(paths.new)} />
         ) : parseWebSearchRoute(hash) ? (
           <WebSearchApp onLeave={() => navigate(paths.new)} />
         ) : parseSettingsRoute(hash) ? (
@@ -182,9 +218,9 @@ export function App() {
   );
 }
 
-function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
-  const [workspace, setWorkspace] = useState("");
-  const [email, setEmail] = useState("");
+function SignIn({ joined, onSignedIn }: { joined: Joined | null; onSignedIn: () => void }) {
+  const [workspace, setWorkspace] = useState(joined?.workspace ?? "");
+  const [email, setEmail] = useState(joined?.email ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -242,6 +278,7 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <main className="mx-auto grid max-w-sm gap-6 px-4 py-12">
       <h1 className="text-title font-semibold">LegalLabs</h1>
+      {joined && <p role="status">Your password is set. Sign in with it.</p>}
       <form onSubmit={submit} className="grid gap-4">
         <h2 className="text-section font-semibold">Sign in</h2>
         <Field label="Workspace">
@@ -435,6 +472,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       group: "Go to",
       label: "Admin: Web search",
       run: () => navigate(webSearchRouteHash().slice(1)),
+    },
+    {
+      id: "admin-users",
+      kind: "action",
+      group: "Go to",
+      label: "Admin: Users and groups",
+      run: () => navigate(usersHash().slice(1)),
     },
     {
       id: "history",
