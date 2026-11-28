@@ -1348,6 +1348,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           sources: input.scope.sources,
           history: [],
           question: context.question,
+          exclude: models.exclude,
           emit,
           cancelled: () => cancelled(run.id),
         },

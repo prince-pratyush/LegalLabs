@@ -602,6 +602,7 @@ export function createAnswerer(deps: AnswerDeps) {
             passages,
             question: input.question,
             emit,
+            exclude: input.exclude,
             ...(input.signal ? { signal: input.signal } : {}),
           })
         : null;
