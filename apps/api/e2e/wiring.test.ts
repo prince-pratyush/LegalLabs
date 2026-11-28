@@ -46,6 +46,13 @@ describe("Contract Intelligence in the running server", () => {
   });
 });
 
+describe("Horizon scanning in the running server", () => {
+  it("is mounted, and off until someone turns it on", async () => {
+    expect(await json("/api/v1/horizon/settings")).toMatchObject({ enabled: false });
+    expect((await call("/api/v1/horizon/scans")).status).toBe(403);
+  });
+});
+
 describe("Intake in the running server", () => {
   it("is mounted", async () => {
     expect(await json("/api/v1/apps/intake/request-types")).toEqual({

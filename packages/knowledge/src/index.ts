@@ -24,6 +24,15 @@ export {
   SOURCE_ID,
   sourceOf,
 } from "./record.js";
+export type {
+  ScanCandidate,
+  ScanCursor,
+  ScannerOptions,
+  Scanners,
+  ScanResult,
+  ScanSourceId,
+} from "./scan.js";
+export { createScanners, SCAN_SOURCE_IDS, scanCursor } from "./scan.js";
 export type { Loader, LoadFailure, SourceId, SourceInfo } from "./sources.js";
 export { filterSchemas, isFailure, isSourceId, SOURCES } from "./sources.js";
 export type { LoaderEnv, Subset } from "./subset.js";

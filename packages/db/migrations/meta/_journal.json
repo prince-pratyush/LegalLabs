@@ -778,6 +778,13 @@
       "when": 1794021700000,
       "tag": "0242_work_thread_sources",
       "breakpoints": false
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1794021800000,
+      "tag": "0243_apps_horizon",
+      "breakpoints": false
     }
   ]
 }
