@@ -13,7 +13,7 @@ import { mayCopy } from "../documents/copy.js";
 import type { Documents, Summary } from "../documents/documents.js";
 import type { Threads } from "../threads/threads.js";
 import type { Vaults } from "../vaults/vaults.js";
-import { emailEml, emailText, fileName, oneLine, replyHtml } from "./message.js";
+import { emailEml, emailText, fileName, neutralName, oneLine, replyHtml } from "./message.js";
 
 export type OutlookFailure =
   | "FORBIDDEN"
@@ -148,19 +148,21 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
 
       const skipped: OutlookIngest["skipped"] = [];
       const stored: OutlookIngest["documents"] = [];
-      const files = input.attachments
-        .slice(0, OUTLOOK_LIMITS.attachments)
-        .map((a) => ({ name: fileName(a.name), bytes: a.bytes }));
+      const files = input.attachments.slice(0, OUTLOOK_LIMITS.attachments).map((a, i) => {
+        const sent = fileName(a.name);
+        return { sent, name: neutralName(sent, i), bytes: a.bytes };
+      });
       const upload = (name: string, bytes: Uint8Array) =>
         documents.upload(p, { name, bytes, matterId }, client);
 
-      // The subject stays inside the document: a name is listed outside the prompt's fence.
+      // The sender's words, subject and file names included, stay inside the document's text:
+      // names are listed outside the prompt's fence.
       const email = await upload(
         `Email ${item.date.slice(0, 10)}.txt`,
         encode(
           emailText(
             item,
-            files.map((f) => f.name),
+            files.map((f) => `${f.name} (sent as ${JSON.stringify(f.sent)})`),
           ),
         ),
       );
@@ -169,11 +171,12 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
 
       for (const file of files) {
         const result = await upload(file.name, file.bytes);
-        if (result.ok) stored.push(documentOf(result.document, "attachment"));
-        else if (result.reason === "FORBIDDEN") return refused("FORBIDDEN");
+        if (result.ok) {
+          stored.push({ ...documentOf(result.document, "attachment"), sent_name: file.sent });
+        } else if (result.reason === "FORBIDDEN") return refused("FORBIDDEN");
         else {
           skipped.push({
-            name: file.name,
+            name: file.sent,
             reason: result.reason === "FILE_TOO_LARGE" ? "FILE_TOO_LARGE" : "UNSUPPORTED_TYPE",
           });
         }

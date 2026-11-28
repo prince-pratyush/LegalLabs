@@ -91,6 +91,32 @@ describe("asking about the open email", () => {
     }
   });
 
+  it("names an unreadable attachment as the sender did", async () => {
+    serve({
+      "/api/v1/addins/outlook/items": () =>
+        reply(
+          {
+            thread_id: "t1",
+            documents: [
+              {
+                document_id: "d1",
+                name: "Attachment 1.docx",
+                sent_name: "Terms.docx",
+                kind: "attachment",
+                status: "queued",
+              },
+            ],
+            skipped: [],
+          },
+          201,
+        ),
+      "/api/v1/documents/d1": () => reply({ document: { status: "failed" } }),
+    });
+    pane();
+    await askIt("When?");
+    expect(await screen.findByText("Not read: Terms.docx (can't be read)")).toBeTruthy();
+  });
+
   it("never turns the sender's words into markup", async () => {
     serve({
       "/api/v1/threads/t1": () =>

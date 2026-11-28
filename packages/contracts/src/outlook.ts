@@ -45,7 +45,10 @@ export type OutlookIngest = {
   thread_id: string;
   documents: {
     document_id: string;
+    /** Neutral: a document's name is shown to the model outside the fence its text sits in. */
     name: string;
+    /** What the sender called an attachment, for the person only. */
+    sent_name?: string;
     kind: "email" | "attachment";
     status: "queued" | "parsing" | "indexed" | "failed";
   }[];
