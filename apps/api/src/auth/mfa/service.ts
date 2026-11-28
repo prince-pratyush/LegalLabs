@@ -496,6 +496,17 @@ export function createMfa(pool: pg.Pool, config: MfaConfig) {
       await auditFailure(subject.workspaceId, subject.userId, client, { reason: "not_active" });
       return null;
     }
+    // With single sign-on on, a member's own passkey is the same side door as their password.
+    const closed = await as(subject, async (db) => {
+      const { rows } = await db.query<{ closed: boolean }>(
+        "select core.own_sign_in_closed() as closed",
+      );
+      return rows[0]?.closed === true;
+    });
+    if (closed) {
+      await auditFailure(subject.workspaceId, subject.userId, client, { reason: "sso_required" });
+      return null;
+    }
     const touched = await as(subject, async (db) => {
       const { rows } = await db.query<{ ok: boolean }>(
         "select core.mfa_passkey_touch($1, $2) as ok",

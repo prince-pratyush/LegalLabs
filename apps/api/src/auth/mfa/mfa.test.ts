@@ -804,6 +804,22 @@ describe("passkeys", () => {
     });
   });
 
+  it("leave only administrators their passkey once single sign-on is on", async () => {
+    const signIn = async (permissions: string[]) => {
+      const m = await seedMember(pool, { permissions });
+      const { device } = await enrolPasskey(m);
+      await pool.query(
+        `insert into core.oidc_provider (workspace_id, issuer, client_id, enabled)
+         values ($1, 'https://idp.test', 'x', true)`,
+        [m.workspaceId],
+      );
+      const options = await mfa.passkeyLoginOptions(m.slug);
+      return mfa.passkeyLogin(m.slug, options.challengeId, device.assert(options.options), client);
+    };
+    expect(await signIn(["threads.use"])).toBeNull();
+    expect(await signIn(["*"])).not.toBeNull();
+  });
+
   it("refuse a passkey-first assertion when the device skipped user verification", async () => {
     const m = await seedMember(pool);
     const { device } = await enrolPasskey(m);
