@@ -62,7 +62,7 @@ export type Plan = z.infer<typeof Plan>;
 export const CitationEvent = z.object({
   message_id: z.string(),
   ordinal: z.number().int().min(1),
-  kind: z.enum(["document", "authority"]),
+  kind: z.enum(["document", "authority", "web"]),
   verified: CitationVerdict,
   document: z
     .object({
@@ -83,6 +83,8 @@ export const CitationEvent = z.object({
       pin: z.string().optional(),
     })
     .optional(),
+  // A page as it was read: the time is part of the citation.
+  web: z.object({ url: z.string(), title: z.string(), fetched_at: z.string() }).optional(),
   quote: z.string(),
   // Only set when verified ok: a flagged citation is never a link.
   open_url: z.string().optional(),

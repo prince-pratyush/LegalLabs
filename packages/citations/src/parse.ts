@@ -4,6 +4,8 @@ export interface ParsedCitation {
   doc: string | null;
   /** A public-law authority's id, for `<c auth="..."/>`. */
   auth: string | null;
+  /** A web page's label, for `<c web="..."/>`; set only when the tag has one. */
+  web?: string;
   page: number | null;
   quote: string | null;
   /** A public-law citation string, such as "556 U.S. 662"; set only when the tag has one. */
@@ -103,6 +105,7 @@ export function parseCitedAnswer(raw: string): CitedAnswer {
       seen.add(name);
       if (name === "doc") fields.doc = value;
       else if (name === "auth") fields.auth = value;
+      else if (name === "web") fields.web = value;
       else if (name === "page") fields.page = toPage(value);
       else if (name === "quote") fields.quote = value;
       else if (name === "authority") fields.authority = value;

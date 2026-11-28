@@ -8,6 +8,7 @@ import {
 } from "@legallabs/contracts";
 import type { AnswerCitation, Range, RunCoverage, RunStep } from "@legallabs/ui";
 import { anchorOf } from "../viewer/open-citation.js";
+import { webLabels } from "./web-source.js";
 
 export interface LiveCitation extends AnswerCitation {
   /** Where the viewer opens a verified document citation; null for anything else. */
@@ -87,6 +88,7 @@ function citationOf(event: CitationEvent, at: number): LiveCitation {
     at,
     status: event.verified,
     documentName: event.document?.name ?? event.authority?.title ?? null,
+    ...(event.web ? webLabels(event.web) : {}),
     page: event.document?.page_no ?? null,
     quote: event.quote,
     anchor:
@@ -101,7 +103,7 @@ function citationOf(event: CitationEvent, at: number): LiveCitation {
             status: event.verified,
           })
         : null,
-    openUrl: event.verified === "ok" && event.authority ? event.authority.url : null,
+    openUrl: event.verified === "ok" ? (event.web?.url ?? event.authority?.url ?? null) : null,
   };
 }
 

@@ -66,6 +66,8 @@ import { go, parseRoute as parseVaultRoute } from "./vaults/route.js";
 import { VaultsApp } from "./vaults/VaultsApp.js";
 import { DocumentPage, isDocumentHref } from "./viewer/document-page.js";
 import { useLocation, useReturnFocus } from "./viewer/open-citation.js";
+import { parseWebSearchRoute, webSearchRouteHash } from "./web-search/route.js";
+import { WebSearchApp } from "./web-search/WebSearchApp.js";
 
 const FALLBACK = "Something went wrong. Try again.";
 const RECENTS = 5;
@@ -152,6 +154,8 @@ export function App() {
           <RetentionApp onLeave={() => navigate(paths.new)} />
         ) : parseAdminModelsRoute(hash) ? (
           <AdminModelsApp onLeave={() => navigate(paths.new)} />
+        ) : parseWebSearchRoute(hash) ? (
+          <WebSearchApp onLeave={() => navigate(paths.new)} />
         ) : parseSettingsRoute(hash) ? (
           <SettingsApp onLeave={() => navigate(paths.new)} />
         ) : parseSpaceRoute(hash) ? (
@@ -420,6 +424,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       group: "Go to",
       label: "Admin: Models and connectors",
       run: () => navigate(adminModelsHash().slice(1)),
+    },
+    {
+      id: "admin-web-search",
+      kind: "action",
+      group: "Go to",
+      label: "Admin: Web search",
+      run: () => navigate(webSearchRouteHash().slice(1)),
     },
     {
       id: "history",

@@ -18,7 +18,7 @@ export type CitationStatus = "ok" | "mismatch" | "unresolved";
 export interface Citation {
   n: number;
   at: number;
-  kind: "document" | "authority";
+  kind: "document" | "authority" | "web";
   document_id: string | null;
   version_id: string | null;
   version_no: number | null;
@@ -29,7 +29,9 @@ export interface Citation {
   char_to: number | null;
   status: CitationStatus;
   authority: { id: string; citation: string; title: string; url: string } | null;
-  /** Set only for a verified citation: a viewer deep link, or the authority's URL. */
+  /** A web page and when it was read; older servers send none. */
+  web?: { url: string; title: string; fetched_at: string } | null;
+  /** Set only for a verified citation: a viewer deep link, or the source's URL. */
   open_url: string | null;
 }
 
@@ -281,7 +283,8 @@ export const api = {
 
   members: async (q = "") =>
     (await call<{ items: Member[] }>(`${V1}/members${q ? `?q=${enc(q)}` : ""}`)).items,
-  scopeOptions: () => call<ScopeOptions>(`${V1}/scope-options`),
+  scopeOptions: (matterId?: string | null) =>
+    call<ScopeOptions>(`${V1}/scope-options${matterId ? `?matter_id=${enc(matterId)}` : ""}`),
 
   drafts: async (threadId: string) =>
     (await call<{ items: Draft[] }>(`${threadPath(threadId)}/drafts`)).items,

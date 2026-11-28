@@ -174,6 +174,69 @@ describe("knowledge sources", () => {
   });
 });
 
+describe("web search as a source", () => {
+  const notice = "Web search sends the text of your question to search.example.";
+  const options = {
+    ...SCOPE,
+    sources: [{ id: "web", name: "Web search", kind: "web", notice }],
+  };
+
+  it("says what is sent as soon as it is picked", async () => {
+    serve({ ...signedIn, "GET /api/v1/scope-options": () => [200, options] });
+    render(<App />);
+    await screen.findByRole("textbox", { name: "Ask a question" });
+    expect(screen.queryByText(notice)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sources" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Web search/ }));
+    expect((await screen.findByRole("note")).textContent).toBe(notice);
+  });
+
+  it("can't be slipped in as an @mention, which would skip the note", async () => {
+    serve({ ...signedIn, "GET /api/v1/scope-options": () => [200, options] });
+    render(<App />);
+    const box = await screen.findByRole("textbox", { name: "Ask a question" });
+    fireEvent.change(box, { target: { value: "@Web", selectionStart: 4 } });
+    expect(screen.queryByRole("option", { name: /Web search/ })).toBeNull();
+  });
+
+  it("names a cited page by site and day, and opens only a verified one", async () => {
+    const page = {
+      url: "https://law.example.org/rent",
+      title: "Rent rules",
+      fetched_at: "2026-11-28T01:02:03.000Z",
+    };
+    const cited = {
+      ...source(1, 4, "ok"),
+      kind: "web" as const,
+      document_id: null,
+      version_id: null,
+      version_no: null,
+      document_name: null,
+      page: null,
+      char_from: null,
+      char_to: null,
+      web: page,
+      open_url: page.url,
+    };
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    serve({
+      ...signedIn,
+      [`GET /api/v1/threads/${THREAD_ID}`]: () => [
+        200,
+        { thread: thread({ messages: [QUESTION, { ...ANSWER, citations: [cited] }] }) },
+      ],
+    });
+    at(`#/t/${THREAD_ID}`);
+    render(<App />);
+    const answer = await screen.findByTestId("answer-m2");
+    fireEvent.click(within(answer).getByRole("button", { name: "Source 1, verified" }));
+    expect(open).toHaveBeenCalledWith(page.url, "_blank", "noopener,noreferrer");
+    fireEvent.click(within(answer).getByRole("button", { name: /^Sources/ }));
+    expect(await screen.findByText("law.example.org, read 2026-11-28")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Rent rules" })).toBeTruthy();
+  });
+});
+
 describe("a thread", () => {
   it("shows answers as text with each source's check, and model and cost", async () => {
     serve({ ...signedIn, [`GET /api/v1/threads/${THREAD_ID}`]: () => [200, { thread: thread() }] });

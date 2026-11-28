@@ -103,6 +103,8 @@ export interface SourceSummary {
   name: string;
   kind: string;
   jurisdiction?: string;
+  /** Shown while the source is picked, such as what it sends elsewhere. */
+  notice?: string;
 }
 
 export interface AuthorityPassage {

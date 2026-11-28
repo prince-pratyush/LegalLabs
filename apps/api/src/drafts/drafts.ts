@@ -213,10 +213,13 @@ async function fromMessage(db: Db, messageId: string, threadId: string): Promise
     status: string;
     name: string | null;
     authority_citation: string | null;
+    web_url: string | null;
+    web_fetched_at: Date | null;
     page_no: number | null;
     quote: string | null;
   }>(
-    `select c.ordinal, c.anchor, c.status, d.name, c.authority_citation, c.page_no, c.quote
+    `select c.ordinal, c.anchor, c.status, d.name, c.authority_citation, c.web_url,
+            c.web_fetched_at, c.page_no, c.quote
        from work.citation c
        left join content.document_version v on v.id = c.version_id
        left join content.document d on d.id = v.document_id
@@ -230,9 +233,10 @@ async function fromMessage(db: Db, messageId: string, threadId: string): Promise
   if (citations.length === 0) return text;
   // Flagged sources stay visibly flagged in the draft, never passed off as checked.
   const sources = citations.map((c) => {
-    const where =
-      c.authority_citation ??
-      `${c.name ?? "Unknown document"}${c.page_no ? `, p. ${c.page_no}` : ""}`;
+    const where = c.web_url
+      ? `${c.web_url} (read ${c.web_fetched_at?.toISOString().slice(0, 10)})`
+      : (c.authority_citation ??
+        `${c.name ?? "Unknown document"}${c.page_no ? `, p. ${c.page_no}` : ""}`);
     const flag = c.status === "ok" ? "" : " (not verified)";
     return `${c.ordinal + 1}. ${where}: "${c.quote ?? ""}"${flag}`;
   });

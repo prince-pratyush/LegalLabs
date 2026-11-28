@@ -17,6 +17,7 @@ import type { Client, Principal } from "../auth/auth.js";
 import { createLimiter, type Limiter } from "../auth/limiter.js";
 import { wallShareBlocked } from "../matters/blocked.js";
 import type { RunLog } from "../runs/log.js";
+import type { WebSources } from "../web/sources.js";
 import type {
   AskFailure,
   CitationView,
@@ -35,6 +36,8 @@ export interface ThreadHttpOptions {
   gateway: Gateway;
   vaults: VaultPort;
   knowledge: KnowledgePort;
+  /** Offered in the picker when it may be used; the threads service enforces it. */
+  web?: WebSources;
   clientOf: (c: Context) => Client;
   now?: () => number;
   /** Each ask can spend money on a model, so one person can't run up a bill. */
@@ -60,6 +63,10 @@ const FAILURES: Record<AskFailure, { status: 400 | 403 | 404 | 409; message: str
   MODEL_NOT_ALLOWED: { status: 403, message: "That model isn't available to you." },
   READ_ONLY: { status: 409, message: "This thread was shared with you, so it's read-only." },
   MATTER_REQUIRED: { status: 400, message: "Choose the matter you're working on first." },
+  SOURCE_NOT_ALLOWED: {
+    status: 403,
+    message: "Web search isn't available here. Remove it from the sources and ask again.",
+  },
 };
 
 const noNul = (text: string) => !text.includes("\0");
@@ -127,24 +134,31 @@ const citationJson = (citation: CitationView) => ({
   char_to: citation.to,
   status: citation.status,
   authority: citation.authority,
+  web: citation.web
+    ? { url: citation.web.url, title: citation.web.title, fetched_at: citation.web.fetchedAt }
+    : null,
   // Only a verified citation links anywhere.
   open_url:
     citation.status !== "ok"
       ? null
-      : citation.authority
-        ? /^https:\/\//i.test(citation.authority.url)
-          ? citation.authority.url
+      : citation.web
+        ? /^https:\/\//i.test(citation.web.url)
+          ? citation.web.url
           : null
-        : citation.documentId && citation.versionNo && citation.page
-          ? citationPath({
-              document_id: citation.documentId,
-              version_no: citation.versionNo,
-              page: citation.page,
-              ...(citation.from !== null && citation.to !== null
-                ? { char_from: citation.from, char_to: citation.to }
-                : {}),
-            })
-          : null,
+        : citation.authority
+          ? /^https:\/\//i.test(citation.authority.url)
+            ? citation.authority.url
+            : null
+          : citation.documentId && citation.versionNo && citation.page
+            ? citationPath({
+                document_id: citation.documentId,
+                version_no: citation.versionNo,
+                page: citation.page,
+                ...(citation.from !== null && citation.to !== null
+                  ? { char_from: citation.from, char_to: citation.to }
+                  : {}),
+              })
+            : null,
 });
 
 const messageJson = (message: MessageView) => ({
@@ -360,12 +374,14 @@ export function threadHttp(options: ThreadHttpOptions) {
   // Everything the composer offers, in one round trip.
   app.get("/scope-options", async (c) => {
     const principal = c.get("principal");
-    const [vaults, sources] = await Promise.all([
+    const matterId = z.uuid().safeParse(c.req.query("matter_id"));
+    const [vaults, sources, web] = await Promise.all([
       options.vaults.list(principal),
       options.knowledge.list(principal),
+      options.web?.offer(principal, matterId.success ? matterId.data : null),
     ]);
     const models = options.gateway.models("synthesize");
-    return c.json({ vaults, sources, models });
+    return c.json({ vaults, sources: web ? [...sources, web] : sources, models });
   });
 
   app.get("/runs/:id", async (c) => {

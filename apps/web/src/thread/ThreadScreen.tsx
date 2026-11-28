@@ -95,9 +95,13 @@ export function ThreadScreen({
     load().catch((err) => setLoadError(err instanceof Error ? err : new Error(String(err))));
   }, [load, attempt]);
 
+  // Asked again for the thread's matter, which may be kept from some sources.
+  const matterId = thread?.matter_id ?? null;
   useEffect(() => {
-    api.scopeOptions().then(setOptions, () => setOptions({ vaults: [], sources: [], models: [] }));
-  }, []);
+    api
+      .scopeOptions(matterId)
+      .then(setOptions, () => setOptions({ vaults: [], sources: [], models: [] }));
+  }, [matterId]);
 
   // Follow whichever run is still going; a reload picks it up again from the start.
   const active = thread?.runs.find((run) => !FINISHED.includes(run.status)) ?? null;

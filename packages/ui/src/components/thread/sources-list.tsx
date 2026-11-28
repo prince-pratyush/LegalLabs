@@ -59,7 +59,9 @@ export function SourcesList({
                   <span className="flex items-baseline justify-between gap-2 text-caption">
                     <span className="font-semibold tabular-nums">[{citation.n}]</span>
                     <span className="text-fg-muted tabular-nums">
-                      {citation.page === null ? "No page" : `Page ${citation.page}`}
+                      {citation.page === null
+                        ? (citation.place ?? "No page")
+                        : `Page ${citation.page}`}
                     </span>
                     <StatusText tone={ok ? "verified" : "flagged"} className="ml-auto">
                       {ok ? "Verified" : "Not verified"}

@@ -78,6 +78,9 @@ import { createThreads } from "./threads/threads.js";
 import { createVaultPort } from "./vaults/port.js";
 import { createRetentionJob } from "./vaults/retention.js";
 import { createVaults } from "./vaults/vaults.js";
+import { createPageFetcher } from "./web/fetcher.js";
+import { webSearchFromEnv } from "./web/searxng.js";
+import { createWebSources } from "./web/sources.js";
 import { createWorkflows } from "./workflows/workflows.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -257,12 +260,28 @@ const adminModels = {
 };
 const memoryPurge = createMemoryPurgeJob(memory.memories, { log: (line) => console.log(line) });
 memoryPurge.start();
+// Off unless LEGALLABS_SEARXNG_URL is set, and then per workspace until an administrator turns it
+// on. A half-set configuration throws here.
+const webSearch = createWebSources(pool, {
+  provider: webSearchFromEnv(process.env),
+  fetcher: createPageFetcher(),
+});
+// Fetched pages are kept a day.
+const purgeWebPages = () =>
+  void webSearch
+    .purge()
+    .catch((err: unknown) =>
+      console.error(`web page purge failed: ${err instanceof Error ? err.name : "unknown"}`),
+    );
+purgeWebPages();
+setInterval(purgeWebPages, 60 * 60_000).unref();
 const threadService = createThreads(pool, {
   gateway,
   documents,
   log,
   vaults,
   knowledge,
+  web: webSearch,
   notifier,
   personalisation: memory.personalisation,
 });
@@ -416,6 +435,7 @@ const app = createApp({
     gateway,
     vaults,
     knowledge,
+    web: webSearch,
     ...(Number.isInteger(asks) && asks > 0 ? { asksPerWindow: asks } : {}),
   },
   viewer: createViewer(pool, store, documents),
@@ -434,6 +454,7 @@ const app = createApp({
   emailChannels,
   drafts,
   knowledge: knowledgeStore,
+  webSearch,
   library: createLibrary(pool),
   matters: createMatters(pool),
   spaces: runStack.attach(

@@ -229,6 +229,9 @@ export const auditActions: string[] = [
   "horizon.settings.updated",
   ...family("horizon.scan", ["created", "updated", "deleted", "stopped", "degraded"]),
   "horizon.item.saved_to_vault",
+  // Ids, counts and domains only: never what was searched for.
+  ...family("web.search", ["settings_updated", "matter_updated", "sent"]),
+  "web.pages.fetched",
 ];
 
 export const AuditAction = z.enum(auditActions);
