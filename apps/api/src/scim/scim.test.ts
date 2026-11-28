@@ -215,6 +215,18 @@ describe("deprovisioning", () => {
     expect(row.rows[0].status).toBe("deprovisioned");
   });
 
+  it("never removes the last administrator", async () => {
+    const w = await seedScim(pool);
+    const h = scimHarness(pool);
+    const off = await h.call(w.token, "PATCH", `/Users/${w.adminId}`, {
+      schemas: [PATCH_URN],
+      Operations: [{ op: "replace", path: "active", value: false }],
+    });
+    expect(off.status).toBe(409);
+    const row = await pool.query(`select status from core."user" where id = $1`, [w.adminId]);
+    expect(row.rows[0].status).toBe("active");
+  });
+
   it("does the same on DELETE, and drops the person from groups", async () => {
     const w = await seedScim(pool);
     const h = scimHarness(pool);
