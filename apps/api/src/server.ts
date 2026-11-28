@@ -35,6 +35,8 @@ import { createAnalyticsJob } from "./command-center/job.js";
 import { createCommandCenter } from "./command-center/service.js";
 import { assertRestrictedRole } from "./database-role.js";
 import { asWorker } from "./db.js";
+import { publicBuckets } from "./deploy/buckets.js";
+import { assertSafeDeployment } from "./deploy/posture.js";
 import { createDocuments } from "./documents/documents.js";
 import { createViewer } from "./documents/viewer.js";
 import { createIngestWorker } from "./documents/worker.js";
@@ -133,6 +135,13 @@ if (mailCheck.action === "refuse") {
   process.exit(1);
 }
 if (mailCheck.action === "warn") console.warn(mailCheck.message);
+// SEC-002: in production, unchanged defaults, an unprotected table or an open bucket stop here.
+try {
+  await assertSafeDeployment(process.env, pool, () => publicBuckets(process.env));
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
 const smtp = smtpConfig ? createSmtpEmailProvider(smtpConfig) : null;
 // A mail server that is down now may be back later, so this reports and carries on.
 smtp?.verify().catch((err: Error) => console.error(`mail server check failed: ${err.name}`));
@@ -426,6 +435,7 @@ const oidcPolicy = {
 };
 const oidcSecrets = secrets ? { secrets } : {};
 const app = createApp({
+  ready: () => pool.query("select 1"),
   agentRuns,
   scim: { service: createScim(pool), admin: createScimAdmin(pool) },
   // Without a mail server an invitation link is shown once to the administrator.

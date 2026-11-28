@@ -1,0 +1,17 @@
+# TLS in front of the API. LEGALLABS_TLS is an email address (a certificate from a public
+# authority) or "internal" (Caddy's own, for a test server).
+{
+	admin off
+}
+
+{$LEGALLABS_DOMAIN} {
+	tls {$LEGALLABS_TLS}
+	header Strict-Transport-Security "max-age=31536000"
+	request_body {
+		max_size 100MB
+	}
+	# Event streams are passed through as they arrive.
+	reverse_proxy api:8787 {
+		flush_interval -1
+	}
+}
