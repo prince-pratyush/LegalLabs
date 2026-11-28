@@ -27,6 +27,28 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+/*
+ * Several tests queue more than they read. In CI the end-to-end servers share this database
+ * afterwards, and their workers would take what is left, so nothing is left due.
+ */
+const workspaces: string[] = [];
+afterEach(async () => {
+  const mine = [workspaces.splice(0)];
+  await pool.query(
+    `update apps.inbound_email
+        set status = 'rejected', reason = 'test_over', raw = null, processed_at = now()
+      where workspace_id = any($1) and status = 'queued'`,
+    mine,
+  );
+  await pool.query("update apps.intake_work set due_at = null where workspace_id = any($1)", mine);
+  await pool.query(
+    `update apps.intake_outbound set status = 'failed', lease = null, body = null
+      where workspace_id = any($1) and status = 'queued'`,
+    mine,
+  );
+  await pool.query("delete from apps.intake_sweep where workspace_id = any($1)", mine);
+});
+
 const says = (fields: Record<string, unknown>) => {
   desk.model.answer = { type_id: null, confidence: 1, fields };
 };
@@ -34,6 +56,7 @@ const says = (fields: Record<string, unknown>) => {
 /** A workspace with the NDA type and a Slack channel. */
 async function set(over: Record<string, unknown> = {}) {
   const d = await desk.open();
+  workspaces.push(d.admin.workspaceId);
   const typeId = await d.type();
   return { d, typeId, slack: await d.slackChannel(over) };
 }
