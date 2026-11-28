@@ -1,5 +1,5 @@
+import { type Api, ApiError } from "@legallabs/addin";
 import type { AnswerCitation, Range } from "@legallabs/ui";
-import { type Api, ApiError } from "../api.js";
 import type { Scope } from "../office/host.js";
 
 export type AskCitation = AnswerCitation & {

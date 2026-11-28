@@ -217,6 +217,8 @@ const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
 // The Word add-in's pane, served under /addin/ when built.
 const addinRoot = fileURLToPath(new URL("../../word-addin/dist", import.meta.url));
+// The Outlook add-in's pane, served under /outlook/ when built.
+const outlookRoot = fileURLToPath(new URL("../../outlook-addin/dist", import.meta.url));
 const log = createRunLog(pool);
 // Runs live in this process, so any left unfinished by the last one can never finish.
 // One API process per database for now; several would need a lease per run.
@@ -484,6 +486,7 @@ const app = createApp({
     recordSignIn: createSignInAudit(pool),
     countUse: createAddinUsage(pool),
     ...(existsSync(addinRoot) ? { root: addinRoot } : {}),
+    ...(existsSync(outlookRoot) ? { outlookRoot } : {}),
   },
 });
 

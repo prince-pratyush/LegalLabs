@@ -1,5 +1,5 @@
+import type { Api } from "@legallabs/addin";
 import { describe, expect, it } from "vitest";
-import type { Api } from "../api.js";
 import { fakeHost } from "../test/fake-host.js";
 import { batches, MAX_BATCH_CHARS, offsetOf, proofread, translate } from "./tools.js";
 

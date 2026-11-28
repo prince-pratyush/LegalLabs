@@ -26,7 +26,7 @@ export interface Principal {
   /** A guest of an external Space: let in to /api/v1/guest only, whatever else they ask for. */
   guest?: boolean;
   /** Set for the Word pane or a phone, so its work is counted there. */
-  via?: "word" | "mobile";
+  via?: "word" | "outlook" | "mobile";
 }
 
 export interface Auth {

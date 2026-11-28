@@ -34,7 +34,7 @@ const language: Language = {
   }),
 };
 
-function harness(root?: string) {
+function harness(root?: string, outlookRoot?: string) {
   const app = createApp({
     auth: createAuth(pool),
     documents: testDocuments(pool),
@@ -48,6 +48,7 @@ function harness(root?: string) {
       recordSignIn: createSignInAudit(pool),
       countUse: createAddinUsage(pool),
       ...(root ? { root } : {}),
+      ...(outlookRoot ? { outlookRoot } : {}),
     },
   });
   const json = (path: string, body: unknown, headers: Record<string, string> = {}) =>
@@ -178,10 +179,51 @@ describe("serving the pane", () => {
     expect(other.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
   });
 
-  it("never lets anyone frame the sign-in dialog", async () => {
+  it("never lets anyone frame the sign-in dialog, which still needs Office's script", async () => {
     const root = mkdtempSync(join(tmpdir(), "addin-"));
     writeFileSync(join(root, "auth.html"), "<p>sign in</p>");
-    const res = await harness(root).app.request("/addin/auth.html");
-    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    for (const path of ["/addin/auth.html", "/outlook/auth.html"]) {
+      const res = await harness(root, root).app.request(path);
+      expect(res.status).toBe(200);
+      const policy = res.headers.get("content-security-policy") ?? "";
+      expect(policy).toContain("frame-ancestors 'none'");
+      expect(policy).toContain("script-src 'self' https://appsforoffice.microsoft.com;");
+    }
+  });
+
+  it("lets only Outlook's own sites frame the Outlook pane", async () => {
+    const root = mkdtempSync(join(tmpdir(), "outlook-"));
+    writeFileSync(join(root, "taskpane.html"), "<p>outlook</p>");
+    const res = await harness(undefined, root).app.request("/outlook/taskpane.html");
+    expect(await res.text()).toBe("<p>outlook</p>");
+    const policy = res.headers.get("content-security-policy") ?? "";
+    expect(policy).toContain("script-src 'self' https://appsforoffice.microsoft.com;");
+    expect(policy.split("frame-ancestors ")[1]).toBe(
+      "'self' https://outlook.office.com https://outlook.office365.com https://outlook.live.com https://outlook.cloud.microsoft",
+    );
+  });
+
+  it("keeps Word's frame list and the Outlook one apart", async () => {
+    const h = harness();
+    const word = await h.app.request("/addin/taskpane.html");
+    expect(word.headers.get("content-security-policy")).not.toContain("outlook.live.com");
+    const near = await h.app.request("/outlookish");
+    expect(near.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+  });
+});
+
+describe("the Outlook pane's sign-in", () => {
+  it("is audited as Outlook's", async () => {
+    const { m, h, cookie } = await signedIn();
+    const { code } = (await (await h.json("/auth/addin/code", {}, { cookie })).json()) as {
+      code: string;
+    };
+    const res = await h.json("/auth/addin/exchange", { code }, { "x-legallabs-client": "outlook" });
+    expect(res.status).toBe(200);
+    const trail = await auditTrail(pool, m.workspaceId);
+    expect(trail.at(-1)).toMatchObject({
+      action: "addin.signed_in",
+      details: { surface: "outlook" },
+    });
   });
 });

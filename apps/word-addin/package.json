@@ -12,6 +12,7 @@
     "sideload:mac": "node scripts/sideload-mac.mjs"
   },
   "dependencies": {
+    "@legallabs/addin": "workspace:*",
     "@legallabs/contracts": "workspace:*",
     "@legallabs/docx": "workspace:*",
     "@legallabs/ui": "workspace:*",

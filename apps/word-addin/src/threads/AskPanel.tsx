@@ -1,6 +1,6 @@
+import { type Api, messageOf } from "@legallabs/addin";
 import { AnswerText, Button, SourcesList, StatusText, Textarea } from "@legallabs/ui";
 import { type FormEvent, useState } from "react";
-import { type Api, messageOf } from "../api.js";
 import type { Scope, WordHost } from "../office/host.js";
 import { type Answer, type AskContext, type AskStep, ask, safeUrl } from "./ask.js";
 

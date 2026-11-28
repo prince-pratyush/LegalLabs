@@ -1,8 +1,7 @@
+import { followOfficeTheme, officeDialog } from "@legallabs/addin";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
-import { officeDialog } from "./auth/session.js";
-import { followOfficeTheme } from "./office/theme.js";
 import { createWordHost } from "./office/word.js";
 import "./styles.css";
 

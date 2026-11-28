@@ -1,3 +1,4 @@
+import { type Api, ApiError } from "@legallabs/addin";
 import {
   estimatePages,
   PLAYBOOK_LIMITS,
@@ -5,7 +6,6 @@ import {
   type Review,
   type ReviewRequest,
 } from "@legallabs/contracts";
-import { type Api, ApiError } from "../api.js";
 import type { Decision } from "../cards/CardList.js";
 import type { WordHost } from "../office/host.js";
 
