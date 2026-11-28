@@ -421,7 +421,7 @@ export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {
             { role: "user", content: `Answers:\n${answers.join("\n")}` },
           ],
           budget: { max_output: 600, max_cost_usd: 0.05 },
-          routing: { workspace: p.workspaceId },
+          routing: { workspace: p.workspaceId, user: p.userId },
           trace: createHash("sha256")
             .update(`${p.userId}:${Date.now()}`)
             .digest("hex")
@@ -433,7 +433,9 @@ export function createMemories(pool: pg.Pool, options: { gateway?: Gateway } = {
           .filter((line) => line !== "" && !tooLong(line) && !line.includes("\0"));
         return { ok: true, value: [...new Set(lines)].slice(0, 12) };
       } catch (err) {
-        if (err instanceof GatewayError) return { ok: false, reason: "MODEL_UNAVAILABLE" };
+        if (err instanceof GatewayError && !err.refused) {
+          return { ok: false, reason: "MODEL_UNAVAILABLE" };
+        }
         throw err;
       }
     },

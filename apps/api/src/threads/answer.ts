@@ -682,7 +682,7 @@ export function createAnswerer(deps: AnswerDeps) {
             web,
           ),
           budget: { max_output: MAX_OUTPUT, max_cost_usd: 0.1 },
-          routing: { workspace: principal.workspaceId },
+          routing: { workspace: principal.workspaceId, user: principal.userId },
           trace: randomUUID(),
           ...(input.model ? { model: input.model } : {}),
           ...(input.exclude.length ? { exclude: input.exclude } : {}),
@@ -699,7 +699,7 @@ export function createAnswerer(deps: AnswerDeps) {
       if (input.cancelled()) return "CANCELLED";
       if (failure !== null) throw failure;
       if (err instanceof GatewayError) {
-        if (err.code === "MODEL_NOT_ALLOWED") return "MODEL_NOT_ALLOWED";
+        if (err.refused) return "MODEL_NOT_ALLOWED";
         if (err.code === "STREAM_INTERRUPTED") return "STREAM_INTERRUPTED";
         return "MODEL_UNAVAILABLE";
       }

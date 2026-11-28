@@ -90,13 +90,20 @@ const TASK: Record<RoutingClass, TaskClass> = {
 };
 
 /** The usable models per class, less what the run's matter denies. */
+const routingOf = (run: RunRow) => ({ workspace: run.workspace_id, user: run.owner_id });
+
 export function gatewayPolicy(pool: pg.Pool, gateway: Gateway): ModelPolicy {
   const models = (run: RunRow) =>
     asApp(pool, as(run), (db) =>
       modelsFor(db, gateway, { matters: [run.matter_id], threads: [run.thread_id] }),
     );
   return {
-    eligible: async (run, cls) => (await models(run)).left(TASK[cls]),
+    // Both policies, so a run that neither leaves a model for fails as it is planned.
+    eligible: async (run, cls) => {
+      const left = (await models(run)).left(TASK[cls]);
+      const allowed = await gateway.allowedModels(TASK[cls], routingOf(run));
+      return left.filter((id) => allowed.some((m) => m.id === id));
+    },
     permits: async (run, model) => {
       const allowed = await models(run);
       return (["extract", "draft", "summarise", "reason"] as const).some((c) =>
@@ -175,7 +182,7 @@ export function gatewayModel(pool: pg.Pool, gateway: Gateway, documents: Documen
             },
           ],
           budget: { max_output: 4000, max_cost_usd: 2 },
-          routing: { workspace: run.workspace_id },
+          routing: routingOf(run),
           trace: req.idempotency_key,
           ...(req.model ? { model: req.model } : {}),
           ...(models.exclude.length ? { exclude: models.exclude } : {}),
@@ -188,6 +195,9 @@ export function gatewayModel(pool: pg.Pool, gateway: Gateway, documents: Documen
         };
       } catch (err) {
         if (err instanceof GatewayError) {
+          if (err.refused) {
+            throw new WorkflowStepError("MODEL_POLICY_NO_ELIGIBLE_MODEL", err.message);
+          }
           throw new WorkflowStepError("MODEL_UNAVAILABLE", "No model could answer this step.");
         }
         throw err;

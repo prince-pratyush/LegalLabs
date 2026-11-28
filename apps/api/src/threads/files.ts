@@ -269,7 +269,7 @@ export function createFileMaker(deps: AnswerDeps) {
             },
           ],
           budget: { max_output: MAX_OUTPUT, max_cost_usd: MAX_COST_USD },
-          routing: { workspace: principal.workspaceId },
+          routing: { workspace: principal.workspaceId, user: principal.userId },
           trace: randomUUID(),
           ...(input.model ? { model: input.model } : {}),
           ...(input.exclude.length ? { exclude: input.exclude } : {}),
@@ -280,7 +280,7 @@ export function createFileMaker(deps: AnswerDeps) {
       if (input.cancelled()) return { failed: "CANCELLED" };
       if (!(err instanceof GatewayError)) throw err;
       return {
-        failed: err.code === "MODEL_NOT_ALLOWED" ? "MODEL_NOT_ALLOWED" : "MODEL_UNAVAILABLE",
+        failed: err.refused ? "MODEL_NOT_ALLOWED" : "MODEL_UNAVAILABLE",
       };
     }
     if (input.cancelled()) return { failed: "CANCELLED" };

@@ -95,6 +95,7 @@ const LISTED = 100;
 
 export interface PlanRequest {
   workspaceId: string;
+  userId: string;
   question: string;
   history: readonly Message[];
   files: readonly string[];
@@ -131,7 +132,7 @@ export async function proposePlan(gateway: Gateway, request: PlanRequest): Promi
           { role: "user", content },
         ],
         budget: { max_output: MAX_OUTPUT, max_cost_usd: MAX_COST_USD },
-        routing: { workspace: request.workspaceId },
+        routing: { workspace: request.workspaceId, user: request.userId },
         trace: randomUUID(),
         ...(request.exclude.length ? { exclude: request.exclude } : {}),
       },

@@ -79,7 +79,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
         { role: "user", content: user },
       ],
       budget: { max_output: 4000, max_cost_usd: Math.max(2 - used.cost_usd, 0.01) },
-      routing: { workspace: ctx.run.workspace_id },
+      routing: { workspace: ctx.run.workspace_id, user: ctx.run.owner_id },
       trace: `${ctx.run.id}:${ordinal}`,
       ...(exclude.length ? { exclude } : {}),
     });

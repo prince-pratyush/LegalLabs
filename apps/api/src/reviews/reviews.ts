@@ -18,7 +18,7 @@ import {
   type Suggestion,
 } from "@legallabs/contracts";
 import { type PatchEdit, PatchError, paragraphFragment, patchDocx } from "@legallabs/docx";
-import { type Gateway, GatewayError, type TaskClass } from "@legallabs/model-gateway";
+import { type Gateway, GatewayError, type Routing, type TaskClass } from "@legallabs/model-gateway";
 import {
   type CompleteCall,
   type ReviewDeps,
@@ -494,6 +494,11 @@ const stem = (name: string) => {
   return dot > 0 ? name.slice(0, dot) : name;
 };
 
+const routingOf = (p: Principal): Routing => ({
+  workspace: p.workspaceId ?? "",
+  user: p.userId,
+});
+
 export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
   const { gateway, store, log } = options;
   const engine = options.run ?? runReview;
@@ -505,7 +510,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
   const active = new Map<string, Map<string, AbortController>>();
 
   const complete =
-    (workspace: string, trace: string, exclude: readonly string[]): ReviewDeps["complete"] =>
+    (routing: Routing, trace: string, exclude: readonly string[]): ReviewDeps["complete"] =>
     async (call) => {
       const result = await gateway.call(
         {
@@ -515,7 +520,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             { role: "user", content: call.prompt },
           ],
           budget: { max_output: call.maxTokens, max_cost_usd: 0.5 },
-          routing: { workspace },
+          routing,
           trace,
           ...(exclude.length ? { exclude } : {}),
         },
@@ -684,7 +689,13 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
       });
       // Read again as the run starts: the policy may have been set since it was asked for.
       const { exclude } = await asApp(pool, principal, (db) => reviewModels(db, material));
-      const call = complete(principal.workspaceId ?? "", runId, exclude);
+      for (const task of Object.values(TASKS)) {
+        const allowed = await gateway.allowedModels(task, routingOf(principal));
+        if (gateway.models(task).length > 0 && allowed.every((m) => exclude.includes(m.id))) {
+          throw new Refused("MODEL_NOT_ALLOWED");
+        }
+      }
+      const call = complete(routingOf(principal), runId, exclude);
       // Cancelled before it began.
       if (!started) controller.abort();
       else await emit({ type: "status", status: "running" });
@@ -1077,7 +1088,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             { role: "user", content: lines.filter(Boolean).join("\n\n") },
           ],
           budget: { max_output: maxOutput, max_cost_usd: 0.2 },
-          routing: { workspace: principal.workspaceId ?? "" },
+          routing: routingOf(principal),
           trace: row.run_id,
           ...(models.exclude.length ? { exclude: models.exclude } : {}),
         },

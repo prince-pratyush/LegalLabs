@@ -88,6 +88,7 @@ describe("generateRules", () => {
     }));
     const result = await generateRules(gateway, {
       workspaceId: DOC,
+      userId: "u",
       documentId: DOC,
       contractType: "MSA",
       pages,
@@ -110,6 +111,7 @@ describe("generateRules", () => {
     await expect(
       generateRules(gateway, {
         workspaceId: DOC,
+        userId: "u",
         documentId: DOC,
         contractType: "MSA",
         pages: [{ page_no: 1, text: "Text" }],

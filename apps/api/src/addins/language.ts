@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { type Gateway, GatewayError } from "@legallabs/model-gateway";
+import { type Gateway, GatewayError, type Routing } from "@legallabs/model-gateway";
 import { z } from "zod";
 
 /** One request's worth: the pane sends a long document as several of these. */
@@ -16,16 +16,13 @@ export type ProofreadSuggestion = {
 
 export type LanguageResult<T> =
   | { ok: true; value: T; model: string }
-  | { ok: false; reason: "MODEL_UNAVAILABLE" };
+  | { ok: false; reason: "MODEL_UNAVAILABLE" | "MODEL_NOT_ALLOWED" };
 
 export interface Language {
-  proofread(
-    workspaceId: string,
-    paragraphs: string[],
-  ): Promise<LanguageResult<ProofreadSuggestion[]>>;
+  proofread(routing: Routing, paragraphs: string[]): Promise<LanguageResult<ProofreadSuggestion[]>>;
   /** One entry per paragraph; null where the model gave nothing usable. */
   translate(
-    workspaceId: string,
+    routing: Routing,
     paragraphs: string[],
     language: (typeof LANGUAGES)[number],
     options?: { exclude?: readonly string[]; signal?: AbortSignal; maxCostUsd?: number },
@@ -126,7 +123,7 @@ export function parseTranslation(output: string, count: number): (string | null)
 
 export function createLanguage(gateway: Gateway): Language {
   const run = (
-    workspaceId: string,
+    routing: Routing,
     system: string,
     body: string,
     maxOutput: number,
@@ -140,7 +137,7 @@ export function createLanguage(gateway: Gateway): Language {
           { role: "user", content: body },
         ],
         budget: { max_output: maxOutput, max_cost_usd: Math.min(0.2, options.maxCostUsd ?? 0.2) },
-        routing: { workspace: workspaceId },
+        routing,
         trace: randomUUID(),
         ...(options.exclude?.length ? { exclude: options.exclude } : {}),
       },
@@ -153,7 +150,9 @@ export function createLanguage(gateway: Gateway): Language {
     try {
       return { ok: true, ...(await work()) };
     } catch (err) {
-      if (err instanceof GatewayError) return { ok: false, reason: "MODEL_UNAVAILABLE" };
+      if (err instanceof GatewayError) {
+        return { ok: false, reason: err.refused ? "MODEL_NOT_ALLOWED" : "MODEL_UNAVAILABLE" };
+      }
       throw err;
     }
   };
@@ -165,20 +164,20 @@ export function createLanguage(gateway: Gateway): Language {
   };
 
   return {
-    proofread: (workspaceId, paragraphs) =>
+    proofread: (routing, paragraphs) =>
       guarded(async () => {
         const { code, body } = fence(paragraphs);
-        const result = await run(workspaceId, proofreadPrompt(code), body, 2_000);
+        const result = await run(routing, proofreadPrompt(code), body, 2_000);
         return { value: parseProofread(result.output, paragraphs), model: result.model };
       }),
 
-    translate: (workspaceId, paragraphs, language, options) =>
+    translate: (routing, paragraphs, language, options) =>
       guarded(async () => {
         const { code, body } = fence(paragraphs);
         const chars = paragraphs.reduce((n, p) => n + p.length, 0);
         // Translations run longer than the source in many languages.
         const result = await run(
-          workspaceId,
+          routing,
           translatePrompt(code, language),
           body,
           Math.max(500, Math.ceil(chars * 0.75)),

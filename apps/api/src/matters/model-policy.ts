@@ -8,7 +8,7 @@ const TASKS: readonly TaskClass[] = ["synthesize", "plan", "read_extract", "draf
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const NO_MODEL_MESSAGE =
-  "No model is allowed for this: a matter's model policy, or material you can no longer open, rules them all out.";
+  "No model is allowed for this: the workspace's model settings, a matter's model policy, or material you can no longer open, rule them all out.";
 
 type Ids = readonly (string | null | undefined)[];
 

@@ -695,7 +695,8 @@ class RunStopped extends Error {}
 const DEEP_DEADLINE_MS = 50 * 60_000;
 
 const RUN_MESSAGES = {
-  MODEL_NOT_ALLOWED: "That model isn't available to you.",
+  MODEL_NOT_ALLOWED:
+    "The workspace's model settings or the matter's policy don't allow a model for this.",
   MODEL_UNAVAILABLE: "No model could answer just now. Try again shortly.",
   STREAM_INTERRUPTED: "The model stopped part way through. Try again.",
   INVALID_FILE: "The model didn't describe a file that could be made. Try asking again.",
@@ -1499,6 +1500,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           translator,
           {
             workspaceId: principal.workspaceId,
+            userId: principal.userId,
             texts,
             language: work.language,
             exclude: work.exclude,
@@ -1683,6 +1685,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       const refused = !models.allows("plan");
       const request = {
         workspaceId: principal.workspaceId,
+        userId: principal.userId,
         question: scope.question,
         history,
         files: scope.documents.map((d) => d.name),
@@ -1855,6 +1858,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       }
       if (!ids.every((id) => UUID.test(id))) return { ok: false, reason: "NOT_FOUND" };
       const text = ids.length === 0 ? (input.text ?? "") : null;
+      const allowed = (
+        await options.gateway.allowedModels("draft_edit", {
+          workspace: principal.workspaceId,
+          user: principal.userId,
+        })
+      ).map((m) => m.id);
       const prepared = await asApp(pool, principal, async (db) => {
         if (!(await permitted(db))) return "FORBIDDEN" as const;
         const thread = await load(db, principal, threadId);
@@ -1867,7 +1876,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           return "MIXED_MATTERS" as const;
         }
         const models = await modelsFor(db, options.gateway, { matters: [thread.matterId] });
-        if (!models.allows("draft_edit")) return "MODEL_NOT_ALLOWED" as const;
+        if (
+          options.gateway.models("draft_edit").length > 0 &&
+          !models.left("draft_edit").some((id) => allowed.includes(id))
+        ) {
+          return "MODEL_NOT_ALLOWED" as const;
+        }
         const wanted: { meta: VersionMeta; pages: string[] }[] = [];
         for (const row of chosen) {
           const meta = await versionMeta(db, row.version_id);
@@ -2008,10 +2022,17 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       if (![...documentIds, ...vaultIds].every((id) => UUID.test(id))) {
         return { ok: false, reason: "NOT_FOUND" };
       }
-      if (
-        input.model !== undefined &&
-        !options.gateway.models("synthesize").some((m) => m.id === input.model)
-      ) {
+      // What the workspace's settings leave this person, asked before anything is stored.
+      const routing = { workspace: principal.workspaceId, user: principal.userId };
+      const allowed = new Map<TaskClass, string[]>();
+      for (const task of ["plan", "read_extract", "synthesize"] as const) {
+        const models = await options.gateway.allowedModels(task, routing);
+        allowed.set(
+          task,
+          models.map((m) => m.id),
+        );
+      }
+      if (input.model !== undefined && !allowed.get("synthesize")?.includes(input.model)) {
         return { ok: false, reason: "MODEL_NOT_ALLOWED" };
       }
       const fromVaults = vaultIds.length
@@ -2043,7 +2064,11 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             ? ["plan", "synthesize"]
             : ["synthesize"];
         if (
-          !needed.every(models.allows) ||
+          !needed.every(
+            (task) =>
+              options.gateway.models(task).length === 0 ||
+              models.left(task).some((id) => allowed.get(task)?.includes(id)),
+          ) ||
           (input.model !== undefined && models.exclude.includes(input.model))
         ) {
           return "MODEL_NOT_ALLOWED" as const;

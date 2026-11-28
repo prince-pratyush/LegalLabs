@@ -67,7 +67,10 @@ const FAILURES: Record<AskFailure, { status: 400 | 403 | 404 | 409; message: str
   NOT_FOUND: { status: 404, message: "That thread or document wasn't found." },
   MIXED_MATTERS: { status: 400, message: "Choose documents from a single matter." },
   EMPTY_SCOPE: { status: 400, message: "Attach a file, a vault or a source to ask about." },
-  MODEL_NOT_ALLOWED: { status: 403, message: "That model isn't available to you." },
+  MODEL_NOT_ALLOWED: {
+    status: 403,
+    message: "The workspace's model settings or the matter's policy don't allow a model for this.",
+  },
   READ_ONLY: { status: 409, message: "This thread was shared with you, so it's read-only." },
   MATTER_REQUIRED: { status: 400, message: "Choose the matter you're working on first." },
   SOURCE_NOT_ALLOWED: {
@@ -143,7 +146,7 @@ const TRANSLATE_FAILURES: Record<
   NOT_FOUND: FAILURES.NOT_FOUND,
   READ_ONLY: FAILURES.READ_ONLY,
   MIXED_MATTERS: FAILURES.MIXED_MATTERS,
-  MODEL_NOT_ALLOWED: { status: 403, message: "This matter allows no model that can translate." },
+  MODEL_NOT_ALLOWED: { status: 403, message: "No model that can translate is allowed here." },
   LIMIT_TRANSLATE_DOCS: { status: 400, message: "Translate up to 10 files at a time." },
   LIMIT_TRANSLATE_CHARS: {
     status: 400,
@@ -509,7 +512,11 @@ export function threadHttp(options: ThreadHttpOptions) {
       options.knowledge.list(principal),
       options.web?.offer(principal, matterId.success ? matterId.data : null),
     ]);
-    const models = options.gateway.models("synthesize");
+    // Only what the workspace's settings let this person use.
+    const models = await options.gateway.allowedModels("synthesize", {
+      workspace: principal.workspaceId,
+      user: principal.userId,
+    });
     return c.json({ vaults, sources: web ? [...sources, web] : sources, models });
   });
 

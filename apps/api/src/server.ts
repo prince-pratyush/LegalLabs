@@ -5,7 +5,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { embedderFromEnv, rerankerFromEnv } from "@legallabs/embed";
 import { createIngest, type Scanner, scannerFromEnv } from "@legallabs/ingest";
 import { createItemText, createScanners } from "@legallabs/knowledge";
-import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
+import { gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createSignInAudit } from "./addins/audit.js";
@@ -13,6 +13,7 @@ import { createLanguage } from "./addins/language.js";
 import { createAddinUsage } from "./addins/usage.js";
 import { createAdminConnectors } from "./admin-models/connectors.js";
 import { httpDiscovery } from "./admin-models/discovery.js";
+import { createWorkspaceGateway } from "./admin-models/gateway.js";
 import { createAdminModels } from "./admin-models/models.js";
 import { createSecretBox } from "./admin-models/secrets.js";
 import { schedulerFromEnv } from "./agent-runs/engine.js";
@@ -213,7 +214,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
       ]).finally(() => process.exit(0)),
   );
 }
-const gateway = createGateway({
+const gateway = createWorkspaceGateway(pool, {
   ...gatewayOptionsFromEnv(process.env),
   // A no-op: usage goes on the answer's message row, so it is saved or rolled back with it.
   recordUsage: async () => {},

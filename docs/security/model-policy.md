@@ -33,6 +33,9 @@ Tests: `api/reviews/reviews.test.ts`, `api/playbooks/playbooks.test.ts`,
 
 ## Not covered
 
+These are about a matter's policy. The workspace's own settings, below, apply to all of the
+calls here.
+
 - Intake classification (`api/intake/classify.ts`): a request that has a message to read arrives by
   mail and has no matter. One typed in by staff may name a matter, but has no message, so no model
   reads it. A change that lets a request with a message hold a matter must apply the policy.
@@ -47,6 +50,38 @@ Tests: `api/reviews/reviews.test.ts`, `api/playbooks/playbooks.test.ts`,
 
 ## Workspace model settings
 
-The workspace's model allow-list, zero data retention and region settings are not enforced by the
-model gateway. They are stored, and filter the list `GET /models/allowed` returns; no model call
-consults them.
+The model gateway reads them on every call and applies them before any provider is reached, with
+the matter policy on top, so the strictest wins. The app builds its gateway in one place
+(`api/admin-models/gateway.ts`; a test fails if anything else builds one), and every call must say
+which workspace and which person it is for.
+
+| ID    | Severity | Area         | Finding                                                                                                                          | Status                                                                                              |
+| ----- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| F-105 | High     | Model policy | The model allow-list, "zero data retention only" and region settings were saved and filtered a list, but no model call used them | Fixed: applied by the gateway to every call and stream (`api/admin-models/gateway.test.ts`)         |
+| F-106 | Medium   | Model policy | Models from a hosted provider were listed as zero data retention before anyone had said so                                       | Fixed: only local models are until an admin declares it. Rows saved earlier keep what they recorded |
+
+### Decisions
+
+- **Allow-list.** In force once an admin has configured any model (any stored row, including one
+  made by setting a key or a flag). From then a model must be enabled and listed for the person's
+  role or for them. Before that, the install's models are usable, so a new deployment still works.
+- **No person.** Work nobody is behind (intake classification) may use a model that is enabled and
+  listed for at least one role or user.
+- **Zero data retention and region** apply whether or not any model is configured. A model's region
+  is `local` for Ollama and `unspecified` otherwise until an admin sets it, so a region setting
+  leaves out every model not labelled with that region.
+- **Fail closed.** If the settings can't be read, or the workspace can't be found, no model is
+  called. If none qualifies the work is refused with a message naming the settings.
+- **When.** Read on each call, so a change also stops work already running. This is stricter than
+  ADM-005's "running runs continue with the model they started with".
+
+### Not covered
+
+- Search embedding and reranking do not go through the gateway and are not checked. The only
+  adapters are for a TEI or Ollama server the deployer runs and names in the environment
+  (`packages/embed`); the deployer must keep it inside the zero retention and region rules.
+- Bring-your-own keys and local OpenAI-compatible endpoints are stored but not yet used for calls.
+- "Disable the model selector" hides the list; the per-task default model is not used for routing.
+- The workspace's own region is not matched against model regions (06 §6.3), and there are no
+  expiring zero retention exceptions (SEC-033) or refusal audit events.
+- The eval harness has no workspace and applies no settings.

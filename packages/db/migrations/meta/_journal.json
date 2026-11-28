@@ -841,6 +841,13 @@
       "when": 1794022600000,
       "tag": "0295_core_sso_admin",
       "breakpoints": false
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1794022700000,
+      "tag": "0296_admin_model_settings_read",
+      "breakpoints": false
     }
   ]
 }

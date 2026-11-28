@@ -4,13 +4,13 @@ import type {
   ModelConfigPatch,
   ModelPolicy,
 } from "@legallabs/contracts";
-import { ROUTES } from "@legallabs/model-gateway";
 import type pg from "pg";
 import { audit } from "../auth/audit.js";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp, asWorker } from "../db.js";
-import { type Caller, checkChoice, type MatterLimits } from "./allowlist.js";
+import type { Caller } from "./allowlist.js";
 import { type SecretBox, scrub } from "./secrets.js";
+import { DEFAULT_POLICY, registryDefaults, usableModels, withDefaults } from "./settings.js";
 
 export type ModelFailure = "FORBIDDEN" | "NOT_FOUND" | "KEY_STORAGE_UNAVAILABLE" | "INVALID_REGION";
 export type Result<T> = { ok: true; value: T } | { ok: false; reason: ModelFailure };
@@ -75,12 +75,6 @@ export interface AdminModels {
   roles(p: Principal): Promise<Result<{ id: string; name: string }[]>>;
   /** What the caller may select. Empty selector list for roles without the selector. */
   allowedFor(p: Principal): Promise<{ items: ModelConfig[]; selector: boolean }>;
-  /** Run start: refuses a chosen model the caller may not use (MODEL_NOT_ALLOWED). */
-  checkChoice(
-    p: Principal,
-    choice: { provider: string; model: string },
-    matter?: MatterLimits,
-  ): Promise<{ ok: true } | { ok: false; reason: "MODEL_NOT_ALLOWED" }>;
   /** The key for a configured model, opened at call time for the gateway. Null if none. */
   keyFor(workspaceId: string, ref: string): Promise<string | null>;
 }
@@ -104,45 +98,6 @@ const COLUMNS = `provider, model, enabled, enabled_for_roles, enabled_for_users,
   endpoint_url, region, zdr, capabilities, context_window, task_class_default`;
 
 const toConfig = (r: Row): ModelConfig => ({ ...r });
-
-const DEFAULT_POLICY: ModelPolicy = {
-  zdr_only: false,
-  region_only: null,
-  selector_disabled_roles: [],
-};
-
-/** Models the gateway knows, shown as switched off until an admin turns them on. */
-function registryDefaults(): ModelConfig[] {
-  const seen = new Map<string, ModelConfig>();
-  for (const [taskClass, routes] of Object.entries(ROUTES)) {
-    for (const r of routes) {
-      const key = `${r.provider}/${r.model}`;
-      const existing = seen.get(key);
-      if (existing) {
-        existing.task_class_default = [
-          ...existing.task_class_default,
-          taskClass as ModelConfig["task_class_default"][number],
-        ];
-        continue;
-      }
-      seen.set(key, {
-        provider: r.provider,
-        model: r.model,
-        enabled: false,
-        enabled_for_roles: [],
-        enabled_for_users: [],
-        byok_secret_ref: null,
-        endpoint_url: null,
-        region: r.provider === "ollama" ? "local" : "unspecified",
-        zdr: r.client_data_safe,
-        capabilities: ["chat"],
-        context_window: r.context_window,
-        task_class_default: [],
-      });
-    }
-  }
-  return [...seen.values()];
-}
 
 export function createAdminModels(
   pool: pg.Pool,
@@ -168,9 +123,7 @@ export function createAdminModels(
       `select ${COLUMNS} from admin.model_config where workspace_id = $1 order by provider, model`,
       [p.workspaceId],
     );
-    const stored = rows.map(toConfig);
-    const have = new Set(stored.map((m) => `${m.provider}/${m.model}`));
-    return [...stored, ...registryDefaults().filter((m) => !have.has(`${m.provider}/${m.model}`))];
+    return withDefaults(rows.map(toConfig));
   };
 
   /** Ensures a row exists (from the registry defaults) so an edit can apply to it. */
@@ -362,11 +315,6 @@ export function createAdminModels(
       }),
 
     allowedFor: (p) => allowed(p),
-    checkChoice: async (p, choice, matter) => {
-      const { caller, configs, policy } = await load(p);
-      const result = checkChoice(configs, caller, policy, choice, matter);
-      return result.ok ? { ok: true } : { ok: false, reason: "MODEL_NOT_ALLOWED" };
-    },
     keyFor: (workspaceId, ref) => keyFor(ref, workspaceId),
   };
 
@@ -376,20 +324,26 @@ export function createAdminModels(
         'select role_id from core."user" where id = $1 and workspace_id = $2',
         [p.userId, p.workspaceId],
       );
+      const stored = await db.query<Row>(
+        `select ${COLUMNS} from admin.model_config where workspace_id = $1 order by provider, model`,
+        [p.workspaceId],
+      );
       return {
         caller: { userId: p.userId, roleId: rows[0]?.role_id ?? null } satisfies Caller,
         configs: await readAll(db, p),
         policy: await readPolicy(db, p),
+        stored: stored.rows.map(toConfig),
       };
     });
   }
 
+  // The same rule the gateway applies, so what is listed is what can be used.
   async function allowed(p: Principal) {
-    const { allowedModels } = await import("./allowlist.js");
-    const { caller, configs, policy } = await load(p);
+    const { caller, policy, stored } = await load(p);
     const selector =
       caller.roleId === null || !policy.selector_disabled_roles.includes(caller.roleId);
-    return { items: selector ? allowedModels(configs, caller, policy) : [], selector };
+    const usable = usableModels({ policy, models: stored, role_id: caller.roleId }, p.userId);
+    return { items: selector ? usable : [], selector };
   }
 
   async function keyFor(ref: string, workspaceId: string): Promise<string | null> {

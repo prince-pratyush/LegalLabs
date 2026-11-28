@@ -408,7 +408,7 @@ export function createDrafts(
             },
           ],
           budget: { max_output: MAX_EDIT_OUTPUT, max_cost_usd: 0.2 },
-          routing: { workspace: principal.workspaceId },
+          routing: { workspace: principal.workspaceId, user: principal.userId },
           trace: randomUUID(),
           ...(models.exclude.length ? { exclude: models.exclude } : {}),
         });
@@ -419,7 +419,9 @@ export function createDrafts(
           return { ok: false, reason: "MODEL_UNAVAILABLE" };
         }
       } catch (err) {
-        if (err instanceof GatewayError) return { ok: false, reason: "MODEL_UNAVAILABLE" };
+        if (err instanceof GatewayError) {
+          return { ok: false, reason: err.refused ? "MODEL_NOT_ALLOWED" : "MODEL_UNAVAILABLE" };
+        }
         throw err;
       }
       return change(principal, draftId, async (db, draft) => {

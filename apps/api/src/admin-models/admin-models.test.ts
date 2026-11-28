@@ -236,12 +236,6 @@ describe("models admin (ADM-005)", () => {
     expect(
       (await h.call(a, "GET", "/models/allowed")).body.items.map((m: ModelConfig) => m.model),
     ).toEqual(["claude-haiku-5-5"]);
-    expect(
-      await h.models.checkChoice(lee as never, {
-        provider: "anthropic",
-        model: "claude-haiku-5-5",
-      }),
-    ).toEqual({ ok: false, reason: "MODEL_NOT_ALLOWED" });
     // Giving the Lawyer role access makes it appear.
     await h.call(a, "PATCH", "/admin/models/anthropic/claude-haiku-5-5", {
       enabled_for_roles: [adminRole, roleId],

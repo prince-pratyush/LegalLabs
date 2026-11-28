@@ -159,6 +159,7 @@ export async function generateRules(
   gateway: Gateway,
   input: {
     workspaceId: string;
+    userId: string;
     documentId: string;
     contractType: string;
     pages: readonly Page[];
@@ -196,7 +197,7 @@ export async function generateRules(
             },
           ],
           budget: { max_output: maxOutput, max_cost_usd: 0.5 },
-          routing: { workspace: input.workspaceId },
+          routing: { workspace: input.workspaceId, user: input.userId },
           trace: randomUUID(),
           ...(input.exclude?.length ? { exclude: input.exclude } : {}),
         },
@@ -206,6 +207,8 @@ export async function generateRules(
       answered += 1;
     } catch (err) {
       if (!(err instanceof GatewayError) && !signal.aborted) throw err;
+      // Nothing was read because it isn't allowed, which is what the person needs to hear.
+      if (err instanceof GatewayError && err.refused && answered === 0) throw err;
       break;
     }
     for (const { draft, quote } of parseRules(output)) {

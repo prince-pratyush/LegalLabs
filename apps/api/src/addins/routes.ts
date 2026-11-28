@@ -122,16 +122,25 @@ export function addinRoutes(language: Language, now: () => number, count?: Count
       429,
     );
   };
-  const unavailable = (c: Context) =>
-    c.json({ code: "MODEL_UNAVAILABLE", message: "No model is available right now." }, 503);
+  const unavailable = (c: Context, reason: "MODEL_UNAVAILABLE" | "MODEL_NOT_ALLOWED") =>
+    reason === "MODEL_NOT_ALLOWED"
+      ? c.json(
+          { code: reason, message: "The workspace's model settings don't allow a model for this." },
+          403,
+        )
+      : c.json({ code: reason, message: "No model is available right now." }, 503);
+  const routingOf = ({ workspaceId, userId }: Principal) => ({
+    workspace: workspaceId,
+    user: userId,
+  });
 
   app.post("/proofread", limitBody, async (c) => {
     const parsed = proofreadBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return invalid(c);
     const stop = limited(c);
     if (stop) return stop;
-    const result = await language.proofread(c.get("principal").workspaceId, parsed.data.paragraphs);
-    if (!result.ok) return unavailable(c);
+    const result = await language.proofread(routingOf(c.get("principal")), parsed.data.paragraphs);
+    if (!result.ok) return unavailable(c, result.reason);
     await count?.(c.get("principal"), {
       tool: "proofread",
       batchId: parsed.data.batch_id,
@@ -146,8 +155,8 @@ export function addinRoutes(language: Language, now: () => number, count?: Count
     const stop = limited(c);
     if (stop) return stop;
     const { paragraphs: list, language: target } = parsed.data;
-    const result = await language.translate(c.get("principal").workspaceId, list, target);
-    if (!result.ok) return unavailable(c);
+    const result = await language.translate(routingOf(c.get("principal")), list, target);
+    if (!result.ok) return unavailable(c, result.reason);
     await count?.(c.get("principal"), {
       tool: "translate",
       batchId: parsed.data.batch_id,
