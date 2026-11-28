@@ -26,7 +26,13 @@ create table apps.horizon_scan (
   relevance_floor text not null default 'low' check (relevance_floor in ('high', 'medium', 'low')),
   -- Its owner could no longer run it; saving the scan again starts it.
   stopped boolean not null default false,
+  -- When it is next due. Who is working it now is the lease's business, so an edit can move
+  -- one without breaking the other.
   next_refresh_at timestamptz not null default now(),
+  lease_until timestamptz,
+  lease_token uuid,
+  -- Counts edits: a worker writes its place and the schedule only over what it read.
+  revision integer not null default 1,
   last_refresh_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -92,13 +98,15 @@ create table apps.horizon_item_state (
 );
 create index horizon_item_state_item_idx on apps.horizon_item_state (item_id);
 
--- What refreshing has cost. Only ever added to, and not tied to a scan, so deleting a scan
--- does not hand its allowance back.
+-- What refreshing has cost. A row is reserved before a model call and settled once after it.
+-- Not tied to a scan, so deleting a scan does not hand its allowance back.
 create table apps.horizon_spend (
   id uuid primary key default core.uuid7(),
   workspace_id uuid not null references core.workspace (id) on delete cascade,
   owner_id uuid not null,
   usd numeric(12, 6) not null check (usd >= 0),
+  -- False while the call is in flight, when usd is the most it could cost.
+  settled boolean not null default true,
   at timestamptz not null default now(),
   foreign key (workspace_id, owner_id) references core."user" (workspace_id, id) on delete cascade
 );
@@ -121,7 +129,8 @@ grant select, insert on apps.horizon_settings to legallabs_app;
 grant update (enabled, updated_at) on apps.horizon_settings to legallabs_app;
 grant select, insert, delete on apps.horizon_scan to legallabs_app;
 grant update (name, purpose, jurisdictions, industries, topics, sources, from_date,
-              relevance_floor, stopped, next_refresh_at, last_refresh_at, updated_at)
+              relevance_floor, stopped, next_refresh_at, lease_until, lease_token, revision,
+              last_refresh_at, updated_at)
   on apps.horizon_scan to legallabs_app;
 grant select, insert, delete on apps.horizon_cursor to legallabs_app;
 grant update (cursor, failures, last_ok_at, last_error) on apps.horizon_cursor to legallabs_app;
@@ -224,22 +233,38 @@ alter function apps.horizon_spent(timestamptz) owner to legallabs_definer;
 revoke execute on function apps.horizon_spent(timestamptz) from public;
 grant execute on function apps.horizon_spent(timestamptz) to legallabs_app;
 
--- The worker learns only which scan is due and whose it is.
+-- Replaces a reservation with what the call did cost, once, for the caller's own.
+create function apps.settle_horizon_spend(p_id uuid, p_usd numeric) returns void
+language sql volatile security definer set search_path = '' as $$
+  update apps.horizon_spend set usd = p_usd, settled = true
+   where id = p_id and not settled
+     and owner_id = core.current_user_id() and workspace_id = core.current_workspace_id()
+$$;
+grant update on apps.horizon_spend to legallabs_definer;
+create policy definer_update on apps.horizon_spend for update to legallabs_definer
+  using (true) with check (true);
+alter function apps.settle_horizon_spend(uuid, numeric) owner to legallabs_definer;
+revoke execute on function apps.settle_horizon_spend(uuid, numeric) from public;
+grant execute on function apps.settle_horizon_spend(uuid, numeric) to legallabs_app;
+
+-- The worker learns only which scan is due, whose it is and the lease it now holds.
 create function apps.claim_horizon_scan(p_now timestamptz, p_lease_seconds integer,
                                         p_workspace uuid default null)
-returns table (id uuid, workspace_id uuid, owner_id uuid)
+returns table (id uuid, workspace_id uuid, owner_id uuid, lease uuid, revision integer)
 language sql volatile security definer set search_path = '' as $$
   update apps.horizon_scan s
-     set next_refresh_at = p_now + pg_catalog.make_interval(secs => p_lease_seconds)
+     set lease_until = p_now + pg_catalog.make_interval(secs => p_lease_seconds),
+         lease_token = pg_catalog.gen_random_uuid()
    where s.id = (
      select x.id from apps.horizon_scan x
        join apps.horizon_settings g on g.workspace_id = x.workspace_id and g.enabled
       where not x.stopped and x.next_refresh_at <= p_now
+        and (x.lease_until is null or x.lease_until <= p_now)
         and (p_workspace is null or x.workspace_id = p_workspace)
       order by x.next_refresh_at, x.id
       limit 1
       for update of x skip locked)
-  returning s.id, s.workspace_id, s.owner_id
+  returning s.id, s.workspace_id, s.owner_id, s.lease_token, s.revision
 $$;
 alter function apps.claim_horizon_scan(timestamptz, integer, uuid) owner to legallabs_definer;
 revoke execute on function apps.claim_horizon_scan(timestamptz, integer, uuid) from public;
@@ -252,7 +277,8 @@ declare
   was text := coalesce(pg_catalog.current_setting('app.workspace_id', true), '');
   ws uuid;
 begin
-  update apps.horizon_scan set stopped = true where id = p_id and not stopped
+  update apps.horizon_scan set stopped = true, lease_until = null, lease_token = null
+   where id = p_id and not stopped
   returning workspace_id into ws;
   if ws is null then
     return;
