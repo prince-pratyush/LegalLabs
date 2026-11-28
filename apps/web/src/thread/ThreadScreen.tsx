@@ -29,6 +29,7 @@ import { Shell } from "../shell.js";
 import { goTables } from "../tables/route.js";
 import { openCitation } from "../viewer/open-citation.js";
 import { toAnswerCitation } from "./compose.js";
+import { FileCard } from "./FileCard.js";
 import type { LiveCitation, LiveRun } from "./run-state.js";
 import { SourcesPanel } from "./SourcesPanel.js";
 import { ThreadComposer } from "./ThreadComposer.js";
@@ -338,6 +339,11 @@ export function ThreadScreen({
                     {...(thread.read_only ? {} : { onDraft: () => void draftFrom(message.id) })}
                   />
                 )}
+                {(thread.outputs ?? [])
+                  .filter((output) => output.message_id === message.id)
+                  .map((output) => (
+                    <FileCard key={output.id} output={output} />
+                  ))}
                 {live && message.id === liveQuestion && (
                   <LiveAnswer
                     run={live}

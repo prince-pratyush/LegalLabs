@@ -1,6 +1,7 @@
 import {
   type ContentBlock,
   type Coverage,
+  type FileFormat,
   isTerminal,
   type ResponseMode,
   RunEvent,
@@ -72,7 +73,18 @@ export interface ThreadDocument {
   empty_page_count: number;
 }
 
+export interface ThreadOutput {
+  id: string;
+  message_id: string;
+  name: string;
+  format: FileFormat;
+  size: number;
+  created_at: string;
+}
+
 export interface Thread {
+  /** Files the thread made; none for a reader it was shared with. */
+  outputs?: ThreadOutput[];
   id: string;
   title: string;
   matter_id: string | null;
@@ -171,6 +183,8 @@ export interface AskInput {
   response_mode?: ResponseMode;
   /** Plans first and waits for approval before reading anything. */
   deep_analysis?: boolean;
+  /** Makes a file of this kind instead of answering in prose. */
+  output_format?: FileFormat;
 }
 
 export interface DraftVersionInfo {
@@ -306,20 +320,25 @@ export const api = {
     (await send<{ draft: Draft }>("POST", `${draftPath(draftId)}/versions/${no}/restore`)).draft,
   editDraft: async (draftId: string, instruction: string) =>
     (await send<{ draft: Draft }>("POST", `${draftPath(draftId)}/edit`, { instruction })).draft,
+  outputFile: (outputId: string) =>
+    blobAt(`/api/v1/thread-outputs/${encodeURIComponent(outputId)}/download`),
   /** The .docx; with a version, edits since it come out as Word tracked changes. */
-  exportDraft: async (draftId: string, trackedFrom?: number) => {
+  exportDraft: (draftId: string, trackedFrom?: number) => {
     const query = trackedFrom ? `?tracked_from=${trackedFrom}` : "";
-    const res = await fetch(`${draftPath(draftId)}/export${query}`, {
-      credentials: "same-origin",
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-      const message = typeof body?.message === "string" ? body.message : FALLBACK;
-      throw new ApiError(res.status, String(body?.code ?? "UNKNOWN"), message);
-    }
-    return res.blob();
+    return blobAt(`${draftPath(draftId)}/export${query}`);
   },
 };
+
+/** A file's bytes, or the server's reason it can't be had. */
+async function blobAt(url: string): Promise<Blob> {
+  const res = await fetch(url, { credentials: "same-origin" });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    const message = typeof body?.message === "string" ? body.message : FALLBACK;
+    throw new ApiError(res.status, String(body?.code ?? "UNKNOWN"), message);
+  }
+  return res.blob();
+}
 
 const EVENT_TYPES: readonly RunEvent["type"][] = [
   "status",

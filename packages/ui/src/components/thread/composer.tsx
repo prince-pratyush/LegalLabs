@@ -67,6 +67,10 @@ export type ComposerProps = {
   onModel: (id: string) => void;
   deepAnalysis: boolean;
   onDeepAnalysis: (on: boolean) => void;
+  /** The kind of file to make instead of an answer; "" for none. */
+  fileFormat?: string;
+  /** Left out, no file choice is offered. */
+  onFileFormat?: (format: string) => void;
   mentionables: readonly Mentionable[];
   onMention: (item: Mentionable) => void;
   className?: string;
@@ -398,6 +402,21 @@ export function Composer(props: ComposerProps) {
               ))}
             </SelectContent>
           </Select>
+          {props.onFileFormat && (
+            <Select
+              value={props.fileFormat || "answer"}
+              onValueChange={(v) => props.onFileFormat?.(v === "answer" ? "" : v)}
+            >
+              <SelectTrigger aria-label="Reply with" className="h-7 w-36 text-dense">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="answer">Answer</SelectItem>
+                <SelectItem value="docx">Word file</SelectItem>
+                <SelectItem value="xlsx">Spreadsheet</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant={props.deepAnalysis ? "secondary" : "quiet"}
             size="sm"

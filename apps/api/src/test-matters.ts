@@ -9,6 +9,7 @@ import { createDrafts } from "./drafts/drafts.js";
 import { createMatters } from "./matters/matters.js";
 import { createOutlook } from "./outlook/outlook.js";
 import { PASSWORD, type Seeded, seedMember, testDocuments, testThreads } from "./test-db.js";
+import { createVaultPort } from "./vaults/port.js";
 import { createVaults } from "./vaults/vaults.js";
 
 export interface Person {
@@ -20,11 +21,21 @@ export interface Person {
 }
 
 /** The whole API over HTTP, with matters, vaults, documents and threads mounted. */
-export function matterHarness(pool: pg.Pool) {
+export function matterHarness(
+  pool: pg.Pool,
+  providers: Parameters<typeof testThreads>[2] = {},
+  /** Vaults in a question's scope are read only with the port, as the server wires it. */
+  readsVaults = false,
+) {
   const store = createMemoryStore();
   const documents = testDocuments(pool, { store });
   const vaults = createVaults(pool, { documents, store });
-  const threads = testThreads(pool, documents);
+  const threads = testThreads(
+    pool,
+    documents,
+    providers,
+    readsVaults ? createVaultPort(pool) : undefined,
+  );
   const app = createApp({
     auth: createAuth(pool),
     documents,
@@ -133,5 +144,5 @@ export function matterHarness(pool: pg.Pool) {
 
   const drain = (ws: Person) => documents.worker.drain(ws.workspaceId);
 
-  return { app, call, postFile, workspace, member, group, drain, documents };
+  return { app, call, postFile, workspace, member, group, drain, documents, threads };
 }

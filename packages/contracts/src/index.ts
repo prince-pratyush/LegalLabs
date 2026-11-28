@@ -355,6 +355,7 @@ export {
   type VaultPort,
   type VaultSummary,
 } from "./thread.js";
+export { FileFormat } from "./thread-file.js";
 export {
   ContentControls,
   FILE_TYPE_LIMITS,

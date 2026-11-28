@@ -2,6 +2,7 @@ import type { CitationStatus, Range } from "@legallabs/citations";
 import type {
   ContentBlock,
   Coverage,
+  FileFormat,
   KnowledgePort,
   ResponseMode,
   RunStatus,
@@ -15,13 +16,16 @@ import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
+import { mayTake } from "../documents/copy.js";
 import type { Documents } from "../documents/documents.js";
+import { CopyRefused } from "../drafts/drafts.js";
 import { noPersonalisation, type Personalisation } from "../memory/port.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
 import { type WebSources, webQuery } from "../web/sources.js";
 import { type Answer, type Checked, createAnswerer, type ScopeDocument } from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
+import { createFileMaker, type FileAnswer } from "./files.js";
 import { surfaceOf } from "./surface.js";
 
 export { NOT_FOUND_ANSWER } from "./answer.js";
@@ -88,7 +92,18 @@ export interface ThreadSummary {
 /** Where a thread was started. */
 export type ThreadSurface = "web" | "word" | "outlook";
 
+export interface OutputView {
+  id: string;
+  messageId: string;
+  name: string;
+  format: FileFormat;
+  size: number;
+  createdAt: string;
+}
+
 export interface ThreadView extends ThreadSummary {
+  /** Files the thread made; empty for anyone but its owner. */
+  outputs: OutputView[];
   surface: ThreadSurface;
   /** False for a thread shared with the caller, which they can read but not add to. */
   mine: boolean;
@@ -134,6 +149,8 @@ export interface AskInput {
   matterId?: string | null;
   model?: string;
   responseMode?: ResponseMode;
+  /** Makes a file of this kind from the scope instead of answering in prose. */
+  outputFormat?: FileFormat;
   /** Plans a read of the whole scope and waits for approval before spending. */
   deepAnalysis?: boolean;
   /** Overrides the person's memory setting for this thread; left out, their setting decides. */
@@ -184,6 +201,12 @@ export interface Member {
 }
 
 export interface Threads {
+  /** A file the thread made, for its owner; throws CopyRefused when a source forbids it. */
+  download(
+    principal: Principal,
+    outputId: string,
+    client: Client,
+  ): Promise<{ bytes: Buffer; name: string; format: FileFormat } | null>;
   ask(principal: Principal, input: AskInput, client: Client): Promise<AskResult>;
   /** Null for anything the caller can't read. */
   get(principal: Principal, threadId: string): Promise<ThreadView | null>;
@@ -454,7 +477,28 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     [threadId],
   );
 
+  const { rows: outputs } = await db.query<{
+    id: string;
+    message_id: string;
+    name: string;
+    format: FileFormat;
+    size: number;
+    created_at: Date;
+  }>(
+    `select id, message_id, name, format, size, created_at
+       from work.thread_output where thread_id = $1 order by id`,
+    [threadId],
+  );
+
   return {
+    outputs: outputs.map((o) => ({
+      id: o.id,
+      messageId: o.message_id,
+      name: o.name,
+      format: o.format,
+      size: o.size,
+      createdAt: o.created_at.toISOString(),
+    })),
     id: thread.id,
     title: thread.title,
     matterId: thread.matter_id,
@@ -543,6 +587,8 @@ const RUN_MESSAGES = {
   MODEL_NOT_ALLOWED: "That model isn't available to you.",
   MODEL_UNAVAILABLE: "No model could answer just now. Try again shortly.",
   STREAM_INTERRUPTED: "The model stopped part way through. Try again.",
+  INVALID_FILE: "The model didn't describe a file that could be made. Try asking again.",
+  NOTHING_TO_READ: "Nothing in the selected sources matched, so no file was made.",
 };
 
 export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
@@ -551,6 +597,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   const personalisation: Personalisation = options.personalisation ?? noPersonalisation;
   const longRunMs = options.longRunMs ?? 60_000;
   const answer = createAnswerer({ pool, ...options });
+  const makeFile = createFileMaker({ pool, ...options });
   const webOf = (sources: readonly SourceSelection[]) =>
     sources.find((source) => source.source_id === WEB_SOURCE_ID);
 
@@ -616,8 +663,10 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     const { rows } = await db.query<{ id: string }>(
       `insert into work.message
          (workspace_id, thread_id, role, content, model, input_tokens, output_tokens,
-          tokens_estimated, cost_usd, response_mode, requested_model, fallback, ungrounded)
-       values ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, 'answer', $9, $10, $11) returning id`,
+          tokens_estimated, cost_usd, response_mode, requested_model, fallback, ungrounded,
+          read_documents)
+       values ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, 'answer', $9, $10, $11, $12)
+       returning id`,
       [
         workspaceId,
         run.threadId,
@@ -630,6 +679,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         model?.requested_model ?? null,
         model?.fallback ?? false,
         JSON.stringify(reply.ungrounded),
+        reply.read ?? [],
       ],
     );
     const messageId = rows[0]?.id;
@@ -927,6 +977,182 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         run.id,
         "INTERNAL",
         "Something went wrong in this analysis.",
+        true,
+      ).catch(() => {});
+    } finally {
+      active.delete(run.id);
+      log.release(run.id);
+    }
+  }
+
+  /**
+   * Everything a file made in this thread could repeat: what any answer was given to read, what
+   * the thread holds, and what it was made from. Refused when a held file can't be seen now.
+   */
+  async function sourcesOf(db: Db, threadId: string): Promise<string[]> {
+    const { rows: hidden } = await db.query<{ n: number }>(
+      `select count(*)::int n from work.thread_document td
+         left join content.document_version v on v.id = td.version_id
+        where td.thread_id = $1 and v.id is null`,
+      [threadId],
+    );
+    if (hidden[0]?.n !== 0) throw Object.assign(new Error("source hidden"), { code: RLS_REFUSED });
+    const { rows } = await db.query<{ id: string }>(
+      `select unnest(read_documents) id from work.message where thread_id = $1
+       union
+       select v.document_id from work.thread_document td
+         join content.document_version v on v.id = td.version_id where td.thread_id = $1
+       union
+       select unnest(source_documents) from work.thread where id = $1`,
+      [threadId],
+    );
+    return rows.map((row) => row.id);
+  }
+
+  async function keepFile(
+    db: Db,
+    principal: Principal,
+    threadId: string,
+    messageId: string,
+    file: FileAnswer["file"],
+    client: Client,
+  ): Promise<string> {
+    const sources = await sourcesOf(db, threadId);
+    // Returning the row applies the reading policy, so a source this person lost refuses it.
+    const { rows } = await db.query<{ id: string }>(
+      `insert into work.thread_output
+         (workspace_id, thread_id, message_id, owner_id, name, format, size, source_documents, bytes)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+      [
+        principal.workspaceId,
+        threadId,
+        messageId,
+        principal.userId,
+        file.name,
+        file.format,
+        file.bytes.length,
+        sources,
+        Buffer.from(file.bytes),
+      ],
+    );
+    const id = rows[0]?.id;
+    if (!id) throw new Error("insert returned no output");
+    await audit(
+      db,
+      principal,
+      "thread.file_created",
+      threadId,
+      { output_id: id, format: file.format, size: file.bytes.length, sources: sources.length },
+      client,
+    );
+    return id;
+  }
+
+  /** Answers a turn with a file built from the model's description of it. */
+  async function executeFile(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    documents: ThreadDocument[],
+    context: { question: string; history: { role: "user" | "assistant"; content: string }[] },
+    input: AskInput & { outputFormat: FileFormat },
+    client: Client,
+  ) {
+    const started = Date.now();
+    const emit = (event: NewEvent) => log.append(principal, run.id, event);
+    const controller = new AbortController();
+    active.set(run.id, controller);
+    try {
+      await emit({ type: "status", status: "running" });
+      const made = await makeFile(
+        {
+          principal,
+          documents,
+          sources: input.scope.sources,
+          history: context.history,
+          question: context.question,
+          ...(input.model ? { model: input.model } : {}),
+          emit,
+          cancelled: () => cancelled(run.id),
+          signal: controller.signal,
+        },
+        input.outputFormat,
+        run.id,
+      );
+      // What the model cost is kept even when no file came of it.
+      if ("failed" in made && made.model) {
+        const cost = made.model.cost_usd;
+        await asApp(pool, principal, (db) =>
+          db.query("update work.run set cost_usd = $2 where id = $1", [run.id, cost]),
+        );
+      }
+      if (cancelled(run.id)) return;
+      if ("failed" in made) {
+        if (made.failed === "CANCELLED") return;
+        await fail(
+          principal,
+          run.id,
+          made.failed,
+          RUN_MESSAGES[made.failed],
+          made.failed !== "MODEL_NOT_ALLOWED",
+        );
+        return;
+      }
+      let saved: { messageId: string; outputId: string };
+      try {
+        saved = await asApp(pool, principal, async (db) => {
+          const messageId = await save(db, principal, run, made, documents, client);
+          const outputId = await keepFile(
+            db,
+            principal,
+            run.threadId,
+            messageId,
+            made.file,
+            client,
+          );
+          return { messageId, outputId };
+        });
+      } catch (err) {
+        if (err instanceof RunStopped) return;
+        if (isRefusal(err)) {
+          await fail(
+            principal,
+            run.id,
+            "WALL_DENIED",
+            "You no longer have access to everything this file would be made from.",
+            false,
+          );
+          return;
+        }
+        throw err;
+      }
+      await emit({
+        type: "output",
+        kind: "file",
+        message_id: saved.messageId,
+        artifact_id: saved.outputId,
+        title: made.file.name,
+      });
+      await emit({
+        type: "done",
+        message_id: saved.messageId,
+        model: made.model?.model ?? null,
+        response_mode: "answer",
+        usage: {
+          input_tokens: made.model?.usage.input_tokens ?? 0,
+          output_tokens: made.model?.usage.output_tokens ?? 0,
+        },
+        cost_usd: made.model?.cost_usd ?? 0,
+        citations: { total: 0, ok: 0, mismatch: 0, unresolved: 0, ungrounded_sentences: 0 },
+        coverage: made.coverage,
+        duration_ms: Date.now() - started,
+      });
+    } catch (err) {
+      console.error(`run ${run.id} failed: ${err instanceof Error ? err.name : "unknown"}`);
+      await fail(
+        principal,
+        run.id,
+        "INTERNAL",
+        "Something went wrong making the file.",
         true,
       ).catch(() => {});
     } finally {
@@ -1268,22 +1494,62 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       const finished = track(
         input.deepAnalysis
           ? plan(principal, run, inScope, question, null)
-          : execute(
-              principal,
-              run,
-              inScope,
-              {
-                question,
-                history,
-                // This turn counts too, even if no page could be read.
-                webBefore: existing?.usedWeb === true || webOf(sources) !== undefined,
-                fromMail: existing?.surface === "outlook",
-              },
-              { ...input, scope: { ...input.scope, sources } },
-              client,
-            ),
+          : input.outputFormat
+            ? executeFile(
+                principal,
+                run,
+                inScope,
+                { question, history },
+                { ...input, outputFormat: input.outputFormat, scope: { ...input.scope, sources } },
+                client,
+              )
+            : execute(
+                principal,
+                run,
+                inScope,
+                {
+                  question,
+                  history,
+                  // This turn counts too, even if no page could be read.
+                  webBefore: existing?.usedWeb === true || webOf(sources) !== undefined,
+                  fromMail: existing?.surface === "outlook",
+                },
+                { ...input, scope: { ...input.scope, sources } },
+                client,
+              ),
       );
       return { ok: true, ...created, finished };
+    },
+
+    async download(principal, outputId, client) {
+      if (!UUID.test(outputId)) return null;
+      return asApp(pool, principal, async (db) => {
+        if (!(await permitted(db))) return null;
+        const { rows } = await db.query<{
+          thread_id: string;
+          name: string;
+          format: FileFormat;
+          bytes: Buffer;
+          source_documents: string[];
+        }>(
+          `select thread_id, name, format, bytes, source_documents
+             from work.thread_output where id = $1`,
+          [outputId],
+        );
+        const found = rows[0];
+        if (!found) return null;
+        // Asked now, of the person downloading: a vault's controls may have tightened since.
+        if (!(await mayTake(db, found.source_documents))) throw new CopyRefused();
+        await audit(
+          db,
+          principal,
+          "thread.file_downloaded",
+          found.thread_id,
+          { output_id: outputId },
+          client,
+        );
+        return { bytes: found.bytes, name: found.name, format: found.format };
+      });
     },
 
     async get(principal, threadId) {

@@ -18,3 +18,18 @@ export async function mayCopy(db: pg.PoolClient, documents: readonly string[]): 
   );
   return rows[0]?.n === 0;
 }
+
+/**
+ * Whether the caller may take a file made from these documents: each must still be readable to
+ * them, and no vault holding one may forbid it. An unreadable one can't be asked, so it refuses.
+ */
+export async function mayTake(db: pg.PoolClient, documents: readonly string[]): Promise<boolean> {
+  const { rows } = await db.query<{ id: string; vault_id: string | null }>(
+    "select id, vault_id from content.document where id = any($1::uuid[])",
+    [documents],
+  );
+  if (rows.length !== new Set(documents).size) return false;
+  // Only vaults carry copy controls.
+  const filed = rows.flatMap((row) => (row.vault_id ? [row.id] : []));
+  return filed.length === 0 || mayCopy(db, filed);
+}

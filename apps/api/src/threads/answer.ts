@@ -62,6 +62,8 @@ export interface Answer {
   coverage: Coverage;
   /** Whether web pages were in the prompt, so the reply may repeat what a stranger wrote. */
   usedWeb?: boolean;
+  /** The documents whose text was given to the model, cited or not. */
+  read?: string[];
 }
 
 export type AnswerFailure =
@@ -171,7 +173,7 @@ function fitWindow(passages: readonly Passage[], budgetChars: number): Passage[]
 }
 
 /** Fills the window with whole documents when they fit, else with the best passages. */
-async function gather(deps: AnswerDeps, input: AnswerInput, budgetChars: number) {
+export async function gather(deps: AnswerDeps, input: AnswerInput, budgetChars: number) {
   const { principal, documents, question } = input;
   const lawSources = input.sources.filter((source) => source.source_id !== WEB_SOURCE_ID);
   const authorities =
@@ -666,6 +668,7 @@ export function createAnswerer(deps: AnswerDeps) {
       ungrounded: ungroundedSentences(text, checked),
       coverage,
       usedWeb: web.length > 0,
+      read: [...new Set(passages.map((p) => p.documentId).filter(Boolean))],
     };
   };
 }

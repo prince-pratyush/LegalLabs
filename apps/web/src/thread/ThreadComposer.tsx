@@ -1,4 +1,4 @@
-import type { SourceSelection } from "@legallabs/contracts";
+import type { FileFormat, SourceSelection } from "@legallabs/contracts";
 import { type Attachment, Composer, type Mentionable, type ModelOption } from "@legallabs/ui";
 import { useEffect, useMemo, useState } from "react";
 import { AgentNudge } from "../agents/nudge.js";
@@ -52,6 +52,7 @@ export function ThreadComposer({
   const [sources, setSources] = useState<SourceSelection[]>(thread?.sources ?? []);
   const [model, setModel] = useState(AUTO);
   const [deep, setDeep] = useState(false);
+  const [format, setFormat] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
   // Files are read in the background, so their chips are refreshed until each settles.
@@ -161,7 +162,8 @@ export function ThreadComposer({
       content,
       scope: { document_ids: ready, vault_ids: vaultIds, sources },
       ...(model !== AUTO ? { model } : {}),
-      ...(deep ? { deep_analysis: true } : {}),
+      // A file is made in one pass, so it never goes with a deep analysis.
+      ...(format ? { output_format: format as FileFormat } : deep ? { deep_analysis: true } : {}),
     };
     if (await onSend(input)) {
       setDraft("");
@@ -211,6 +213,8 @@ export function ThreadComposer({
         onModel={setModel}
         deepAnalysis={deep}
         onDeepAnalysis={setDeep}
+        fileFormat={format}
+        onFileFormat={setFormat}
         mentionables={mentionables}
         onMention={(item) =>
           setMentions((list) => [...list.filter((m) => m.label !== item.label), item])

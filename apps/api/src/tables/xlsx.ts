@@ -2,8 +2,17 @@ import { strToU8, zipSync } from "fflate";
 
 // The smallest workbook Excel, Numbers and LibreOffice open: inline strings, one fill per style.
 
+/** Built from these parts only, never from a formula written as text. */
+export interface XlsxFormula {
+  fn: "SUM" | "AVERAGE" | "MIN" | "MAX" | "COUNT" | "PRODUCT";
+  /** A cell or range of the same sheet, such as "B2:B9"; the caller checks it. */
+  range: string;
+}
+
 export interface XlsxCell {
   text: string;
+  number?: number;
+  formula?: XlsxFormula;
   /** RGB like "C6EFCE"; header cells are bold instead. */
   fill?: string | undefined;
   bold?: boolean;
@@ -60,6 +69,13 @@ export function buildXlsx(sheets: readonly XlsxSheet[]): Uint8Array {
         const body = cells
           .map((cell, c) => {
             const ref = `${columnName(c)}${r + 1}`;
+            if (cell.formula) {
+              const { fn, range } = cell.formula;
+              return `<c r="${ref}" s="${styleOf(cell)}"><f>${fn}(${xml(range)})</f></c>`;
+            }
+            if (cell.number !== undefined && Number.isFinite(cell.number)) {
+              return `<c r="${ref}" s="${styleOf(cell)}"><v>${cell.number}</v></c>`;
+            }
             const text = xml(cell.text.slice(0, MAX_CELL_CHARS));
             return `<c r="${ref}" s="${styleOf(cell)}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
           })
@@ -108,7 +124,12 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
       .map(
         (s, i) => `<sheet name="${xml(sheetName(s.name))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`,
       )
-      .join("")}</sheets></workbook>`),
+      .join("")}</sheets>${
+      // No values are stored beside formulas, so the spreadsheet works them out when opened.
+      sheets.some((s) => s.rows.some((row) => row.some((cell) => cell.formula)))
+        ? '<calcPr fullCalcOnLoad="1"/>'
+        : ""
+    }</workbook>`),
     "xl/_rels/workbook.xml.rels": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets
       .map(
