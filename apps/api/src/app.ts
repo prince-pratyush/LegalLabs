@@ -83,6 +83,8 @@ import type { SyncService } from "./sync/service.js";
 import { tableHttp } from "./tables/http.js";
 import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
+import { inviteRoutes, userAdminRoutes } from "./users/routes.js";
+import type { Users } from "./users/users.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
 import { webSearchHttp } from "./web/http.js";
@@ -212,6 +214,8 @@ export interface AppOptions {
   agentSharing?: AgentSharing;
   /** Suggests a shared agent for what someone is typing. */
   agentNudges?: Nudges;
+  /** Inviting and managing people; left out, those endpoints are not mounted. */
+  users?: Users;
   /** SCIM 2.0 under /scim/v2 and its admin API; left out, neither is mounted. */
   scim?: { service: Scim; admin: ScimAdmin };
   /** The socket address only: forwarded headers can be forged by the caller. */
@@ -276,6 +280,7 @@ export function createApp({
   agentSharing,
   agentNudges,
   scim,
+  users,
   publicApi,
   clientIp,
   now = Date.now,
@@ -393,6 +398,9 @@ export function createApp({
       ...(principal.guest ? { guest: true } : {}),
     });
   });
+
+  // An invited person has no session yet: the link is what vouches for them.
+  if (users) app.route("/auth/invite", inviteRoutes(users, clientOf, clientIp, now));
 
   if (oidc) {
     app.route(
@@ -517,6 +525,8 @@ export function createApp({
     app.route("/api/v1", scimAdminRoutes(scim.admin, clientOf));
     app.route("/scim/v2", scimRoutes(scim.service, clientOf));
   }
+  // Before the models admin, which also lists roles but for fewer people.
+  if (users) app.route("/api/v1", userAdminRoutes(users, clientOf, now));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) {
