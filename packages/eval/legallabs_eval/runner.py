@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .config import make_manifest, run_dir_for, slug
+from .config import make_manifest, run_dir_for, sha256, slug
 from .costs import ledger, record_cost
 from .harnesses.base import Harness
 from .io import read_json, write_json
@@ -223,6 +223,10 @@ class Runner:
             "system": self.manifest["system"],
             "suite": self.suite.name,
             "config_hash": self.manifest["config_hash"],
+            # What was asked of the system, so two runs can be shown to be comparable.
+            "dataset_fingerprint": self.manifest["dataset_fingerprint"],
+            "suite_instructions_sha256": self.manifest["suite_instructions_sha256"],
+            "task_set": sha256("\n".join(sorted(task.id for task in tasks))),
             "run_dir": str(self.run_dir),
             "primary_metric": self.suite.primary_metric,
             "selected_tasks": selected,

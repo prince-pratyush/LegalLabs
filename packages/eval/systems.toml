@@ -83,6 +83,21 @@ params = { model = "qwen3:4b-instruct", max_tokens = 512, context_tokens = 4096 
 harness = "review-cell"
 vendor = "anthropic"
 params = { model = "claude-sonnet-5-5", max_tokens = 1024, context_tokens = 100000 }
+# A local extractor on trial (MDL-006), run like a review-table cell so the same system takes
+# extract-cuad, extract-maud and review-table-e2e. No trained model exists yet: this is only the
+# way in for one. Any server that speaks the OpenAI chat API will do, set in the environment:
+#   LEGALLABS_EVAL_EXTRACTOR_URL    base URL, e.g. http://localhost:8000/v1
+#   LEGALLABS_EVAL_EXTRACTOR_MODEL  the model name the server expects
+#   LEGALLABS_EVAL_EXTRACTOR_KEY    only if the server wants one
+#   LEGALLABS_EVAL_EXTRACTOR_INPUT_USD_PER_MTOK and ..._OUTPUT_USD_PER_MTOK
+#                                   what it costs you to run; without both, cost is unknown
+# See docs/local-extractor.md.
+[systems.ros-ai]
+harness = "review-cell"
+vendor = "openai-compatible"
+vendors = ["openai-compatible"]
+params = { model_env = "LEGALLABS_EVAL_EXTRACTOR_MODEL", max_tokens = 512, context_tokens = 4096 }
+
 # Playbook review (playbook-review suite): node/run.ts per contract, needing Node 22.18+
 # and the workspace packages built (pnpm --filter '@legallabs/eval^...' build).
 # Offline and free: replies are canned, so its scores only prove the pipeline runs. CI runs it.
