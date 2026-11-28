@@ -29,8 +29,13 @@ jobs:
       TEST_S3_ENDPOINT: http://127.0.0.1:8333
       TEST_CLAMD_HOST: 127.0.0.1
       TEMPORAL_ADDRESS: 127.0.0.1:7233
+      # The backup tests dump the Postgres 17 service, which needs its own pg_dump.
+      PG_BIN: /usr/lib/postgresql/17/bin
     steps:
       - uses: actions/checkout@v7
+      - run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
       # A service container can't take arguments, and SeaweedFS needs `server -s3`.
       - run: docker run -d -p 8333:8333 chrislusf/seaweedfs:4.53 server -s3 -dir=/data
       # Started early: ClamAV loads its signatures while dependencies install.

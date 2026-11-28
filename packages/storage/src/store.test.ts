@@ -1,7 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { AwsClient } from "aws4fetch";
 import { beforeAll, describe, expect, it } from "vitest";
-import { contentKey, createMemoryStore, createS3Store, type ObjectStore } from "./index.js";
+import {
+  contentKey,
+  createMemoryStore,
+  createS3Store,
+  listKeys,
+  type ObjectStore,
+} from "./index.js";
+
+// Array.fromAsync is newer than the language level the packages compile to.
+const all = async <T>(items: AsyncIterable<T>) => {
+  const found: T[] = [];
+  for await (const item of items) found.push(item);
+  return found;
+};
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 const SHA = "a".repeat(64);
@@ -67,6 +80,11 @@ if (endpoint) {
     await res.body?.cancel();
   });
   contract("s3 store", () => createS3Store({ ...s3, ...keys }));
+  it("lists what a real server holds", async () => {
+    const key = contentKey(randomUUID(), SHA);
+    await createS3Store({ ...s3, ...keys }).putIfAbsent(key, bytes("listed"));
+    expect(await all(listKeys({ ...s3, ...keys }))).toContain(key);
+  });
 }
 
 describe("contentKey", () => {

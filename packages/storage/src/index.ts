@@ -181,3 +181,31 @@ export async function isPublicBucket(config: S3Config): Promise<boolean> {
   }
   return false;
 }
+
+const XML: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const decodeXml = (text: string) =>
+  text.replace(/&(#x?[0-9a-fA-F]+|[a-z]+);/g, (all, name: string) =>
+    name.startsWith("#")
+      ? String.fromCodePoint(Number(`0${name.slice(1)}`.replace(/^0(?!x)/, "")))
+      : (XML[name] ?? all),
+  );
+
+/** Every key in the bucket, a page at a time. Used by backup. */
+export async function* listKeys(config: S3Config): AsyncGenerator<string> {
+  let token: string | undefined;
+  do {
+    const url = new URL(bucketUrl(config));
+    url.searchParams.set("list-type", "2");
+    if (token) url.searchParams.set("continuation-token", token);
+    const response = await signedSend(config, url.toString(), { method: "GET" });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`listing bucket ${config.bucket} failed with ${response.status}`);
+    }
+    const body = await response.text();
+    for (const match of body.matchAll(/<Key>([^<]*)<\/Key>/g)) yield decodeXml(match[1] ?? "");
+    token = /<IsTruncated>true<\/IsTruncated>/.test(body)
+      ? decodeXml(/<NextContinuationToken>([^<]*)</.exec(body)?.[1] ?? "")
+      : undefined;
+  } while (token);
+}

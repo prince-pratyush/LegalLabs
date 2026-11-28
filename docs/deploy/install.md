@@ -45,8 +45,9 @@ cd infra/compose
 ```
 
 **Copy `.env` somewhere safe now**, apart from the server and its backups. Without
-`LEGALLABS_SECRETS_KEY` and `LEGALLABS_MFA_KEY`, stored provider keys, connector tokens and
-second factors cannot be read again, even from a good backup.
+`LEGALLABS_BACKUP_PASSPHRASE` no backup can be opened, and without `LEGALLABS_SECRETS_KEY` and
+`LEGALLABS_MFA_KEY`, stored provider keys, connector tokens and second factors cannot be read
+again.
 
 Then add your own settings in `infra/compose/app.env`, one `NAME=value` a line, and
 `chmod 600 app.env`. For example:
@@ -66,7 +67,7 @@ ClamAV then downloads its signatures before it reports healthy.
 
 <!-- ci:start -->
 ```bash
-docker compose build
+docker compose --profile tools build
 docker compose up -d --wait --wait-timeout 900
 ```
 
@@ -94,6 +95,11 @@ admin screens.
 
 With `internal` TLS your browser will warn you. Caddy's root certificate is copied out with
 `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt`.
+
+## Back up and upgrade
+
+Set up [backups](backup.md) before anyone puts real work in, and follow the
+[upgrade guide](upgrade.md) for new versions.
 
 ## What refuses to start
 
@@ -134,12 +140,14 @@ Read the reason with `docker compose logs api`.
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Object store credentials.                                                                |
 | `LEGALLABS_SECRETS_KEY`                    | 32 bytes, base64. Seals provider keys and connector tokens.                              |
 | `LEGALLABS_MFA_KEY`                        | 32 bytes, base64. Seals second-factor secrets.                                           |
+| `LEGALLABS_BACKUP_PASSPHRASE`              | Encrypts backups.                                                                        |
 
 ### Optional, in `.env`
 
 | Name                                          | Default          | What it is                                                                                                                                    |
 | --------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `S3_BUCKET`                                   | `legallabs`      | Content bucket.                                                                                                                               |
+| `LEGALLABS_BACKUP_KEEP_DAYS`                  | 35               | How long [backups](backup.md) are kept; 7 at least.                                                                                           |
 | `S3_ANCHOR_BUCKET`                            | content bucket   | Bucket for daily audit anchors. They only prove something in a bucket with Object Lock in compliance mode, which this bundle does not set up. |
 | `LEGALLABS_VERSION`                           | `local`          | Tag put on the images you build.                                                                                                              |
 | `LEGALLABS_HTTP_PORT`, `LEGALLABS_HTTPS_PORT` | 80, 443          | Published ports. A public certificate needs 80 and 443.                                                                                       |
@@ -206,6 +214,8 @@ Change these only to use a service of your own, by editing the compose file.
 | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`                                | Temporal, namespace `default`.                                              |
 | `DOCPROC_URL`                                                           | Document parser.                                                            |
 | `DOCPROC_MODELS_DIR`                                                    | Set inside the parser image.                                                |
+| `BACKUP_DIR`, `CONFIG_DIR`                                              | Where the backup tool writes and finds `.env`: `/backups`, `/config`.       |
+| `PG_BIN`                                                                | Folder holding `pg_dump`, if it is not on the path.                         |
 | `CLAMAV_HOST`, `CLAMAV_PORT`                                            | Malware scanner, port 3310.                                                 |
 | `LEGALLABS_PUBLIC_URL`                                                  | `https://` followed by the domain.                                          |
 | `LEGALLABS_MFA_RP_ID`, `LEGALLABS_MFA_ORIGINS`, `LEGALLABS_MFA_RP_NAME` | Second factors, from the domain.                                            |

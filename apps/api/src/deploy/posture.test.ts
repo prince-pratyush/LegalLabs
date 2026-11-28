@@ -1,4 +1,4 @@
-import pg from "pg";
+import type pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { testPool } from "../test-db.js";
 import { assertSafeDeployment, tablesWithoutRls, unsafeSettings } from "./posture.js";

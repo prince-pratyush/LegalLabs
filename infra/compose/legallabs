@@ -1,0 +1,76 @@
+#!/bin/sh
+# Backup and restore of a Compose install. Backups are written to ./backups, encrypted with
+# LEGALLABS_BACKUP_PASSPHRASE from .env. See docs/deploy/backup.md.
+set -eu
+cd "$(dirname "$0")"
+
+usage() {
+  cat >&2 <<'USAGE'
+usage:
+  ./legallabs backup create
+  ./legallabs backup verify backups/<backup>
+  ./legallabs backup ledger
+  ./legallabs backup restore backups/<backup> [--ledger backups/<record>] [--accept-unreplayed-deletions]
+  ./legallabs backup keys backups/<backup>
+USAGE
+  exit 2
+}
+
+[ "${1:-}" = backup ] && [ $# -ge 2 ] || usage
+shift
+action=$1
+shift
+
+mkdir -p backups
+chmod 700 backups
+
+# As you, so the files written are yours and .env (mode 0600) can be read.
+ops() { docker compose run --rm -T --user "$(id -u):$(id -g)" ops "$@"; }
+
+# The container sees ./backups as /backups.
+inside() {
+  case "$1" in
+    backups/* | ./backups/*) [ -f "$1" ] || { echo "no such file: $1" >&2; exit 1; } ;;
+    *) echo "put the file in $(pwd)/backups and name it backups/<file>: $1" >&2; exit 1 ;;
+  esac
+  printf '/%s' "${1#./}"
+}
+
+case "$action" in
+  create | ledger) ops "$action" ;;
+  verify | keys)
+    [ $# -eq 1 ] || usage
+    file=$(inside "$1")
+    ops "$action" "$file"
+    ;;
+  restore)
+    [ $# -ge 1 ] || usage
+    file=$(inside "$1")
+    shift
+    flags=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --ledger)
+          [ $# -ge 2 ] || usage
+          record=$(inside "$2")
+          flags="$flags --ledger $record"
+          shift 2
+          ;;
+        --accept-unreplayed-deletions)
+          flags="$flags $1"
+          shift
+          ;;
+        *) usage ;;
+      esac
+    done
+    # Nothing serves while the data is replaced.
+    docker compose stop proxy api worker temporal
+    # On a clean server this makes the database roles and the bucket the restore needs.
+    docker compose run --rm -T bootstrap
+    # shellcheck disable=SC2086
+    ops restore "$file" $flags
+    # Only reached when the restore, deletions included, succeeded.
+    docker compose up -d --wait --wait-timeout 900
+    ;;
+  *) usage ;;
+esac

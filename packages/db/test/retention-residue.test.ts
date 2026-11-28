@@ -22,6 +22,8 @@ const KEPT = new Set([
   "retention.recycle_bin",
   "retention.deletion_job",
   "retention.hold",
+  // Ids only, so a restored backup can delete the object again (SEC-030).
+  "retention.deletion_ledger",
 ]);
 
 async function residue(tx: Tx, ids: string[]): Promise<string[]> {

@@ -34,3 +34,12 @@ CMD ["node", "apps/api/dist/runs-worker.js"]
 
 FROM caddy:2.11.9-alpine AS proxy
 COPY infra/compose/Caddyfile /etc/caddy/Caddyfile
+
+# Backup and restore: the server's own Postgres tools, plus the app's code.
+FROM pgvector/pgvector:0.8.7-pg17-bookworm AS ops
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gnupg
+COPY --from=base /usr/local/bin/node /usr/local/bin/node
+COPY --from=build /app /app
+WORKDIR /app
+ENV NODE_ENV=production
+ENTRYPOINT ["node", "apps/api/dist/deploy/backup-cli.js"]

@@ -68,19 +68,10 @@ export async function signIn() {
   } else if (login.mfa_required) {
     if (!TOTP_FILE || !existsSync(TOTP_FILE)) throw new Error("no second factor to hand");
     const secret = readFileSync(TOTP_FILE, "utf8");
-    // A code is refused twice, so a sign-in just after enrolment waits for the next one.
-    await until(
-      async () =>
-        (
-          await call("/auth/mfa/totp", {
-            method: "POST",
-            body: JSON.stringify({ code: totp(secret) }),
-          })
-        ).status,
-      (status) => status === 200,
-      "the next one-time code",
-      90_000,
-    );
+    // A code is refused the second time, and wrong ones are counted against the sign-in, so
+    // wait for a fresh one and send it once.
+    await new Promise((resolve) => setTimeout(resolve, 31_000 - (Date.now() % 30_000)));
+    await post("/auth/mfa/totp", { code: totp(secret) });
   } else {
     throw new Error("an administrator signed in with a password alone");
   }

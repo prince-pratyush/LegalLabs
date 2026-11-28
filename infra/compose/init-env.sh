@@ -39,6 +39,7 @@ s3_id=ll$(hex 8)
 s3_secret=$(hex 32)
 secrets_key=$(key)
 mfa_key=$(key)
+backup_passphrase=$(hex 32)
 cat >"$target" <<ENV
 LEGALLABS_DOMAIN=$1
 LEGALLABS_TLS=$2
@@ -49,5 +50,6 @@ S3_ACCESS_KEY_ID=$s3_id
 S3_SECRET_ACCESS_KEY=$s3_secret
 LEGALLABS_SECRETS_KEY=$secrets_key
 LEGALLABS_MFA_KEY=$mfa_key
+LEGALLABS_BACKUP_PASSPHRASE=$backup_passphrase
 ENV
 echo "wrote $target (mode 0600). Keep a copy somewhere safe, apart from your backups."

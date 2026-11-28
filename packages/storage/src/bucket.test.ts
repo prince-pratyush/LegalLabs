@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ensureBucket, isPublicBucket, type S3Config } from "./index.js";
+import { ensureBucket, isPublicBucket, listKeys, type S3Config } from "./index.js";
+
+// Array.fromAsync is newer than the language level the packages compile to.
+const all = async <T>(items: AsyncIterable<T>) => {
+  const found: T[] = [];
+  for await (const item of items) found.push(item);
+  return found;
+};
 
 const config = (answer: (url: string, signed: boolean, method: string) => number): S3Config => ({
   endpoint: "http://store:8333",
@@ -53,3 +60,27 @@ describe("ensureBucket", () => {
     await expect(ensureBucket(config(() => 403))).rejects.toThrow(/403/);
   });
 });
+
+describe("listKeys", () => {
+  const page = (keys: string[], next?: string) =>
+    `<ListBucketResult>${keys.map((k) => `<Contents><Key>${k}</Key></Contents>`).join("")}<IsTruncated>${Boolean(next)}</IsTruncated>${next ? `<NextContinuationToken>${next}</NextContinuationToken>` : ""}</ListBucketResult>`;
+
+  it("follows every page and decodes names", async () => {
+    const asked: string[] = [];
+    const config: S3Config = {
+      ...config200,
+      fetch: (async (input: Request) => {
+        asked.push(new URL(input.url).searchParams.get("continuation-token") ?? "");
+        return new Response(asked.length === 1 ? page(["a/1", "a&amp;b"], "t/2=") : page(["c"]));
+      }) as typeof fetch,
+    };
+    expect(await all(listKeys(config))).toEqual(["a/1", "a&b", "c"]);
+    expect(asked).toEqual(["", "t/2="]);
+  });
+
+  it("fails on a refused listing, never returning an empty one", async () => {
+    await expect(all(listKeys(config(() => 403)))).rejects.toThrow(/403/);
+  });
+});
+
+const config200 = config(() => 200);
