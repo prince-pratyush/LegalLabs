@@ -60,3 +60,9 @@ export function sanitiseToolOutput(raw: string, cap: number = TOOL_OUTPUT_CAP): 
   if (truncated) text += "\n[truncated]";
   return { text, flagged, truncated };
 }
+
+// An address inside words someone else wrote is not one we vouch for. These are the forms a mail client
+// turns into a link: any scheme with "//", "mailto:", "www." and a bare "//host".
+const ADDRESS =
+  /(?:\b[a-z][a-z0-9+.-]*:\/\/|\bmailto:|\bwww\.|(?<![\p{L}\p{N}:/])\/\/(?=[^\s/]))\S+/giu;
+export const noLinks = (text: string) => text.replace(ADDRESS, "[link removed]");

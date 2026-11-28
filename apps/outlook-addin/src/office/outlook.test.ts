@@ -73,6 +73,13 @@ describe("the Outlook host", () => {
     ).toBeNull();
   });
 
+  it("opens a reply with the body, and does nothing that sends", () => {
+    const displayReplyForm = vi.fn();
+    office({ ...message, displayReplyForm });
+    createOutlookHost().reply("<p>Hi</p>");
+    expect(displayReplyForm).toHaveBeenCalledWith({ htmlBody: "<p>Hi</p>" });
+  });
+
   it("has nothing to read with no message open, or one being written", () => {
     office(null);
     expect(createOutlookHost().item()).toBeNull();

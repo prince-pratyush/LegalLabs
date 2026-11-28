@@ -475,7 +475,12 @@ const app = createApp({
     }),
   ),
   tables,
-  outlook: createOutlook(pool, { documents, threads: threadService, vaults: vaultService }),
+  outlook: createOutlook(pool, {
+    documents,
+    threads: threadService,
+    vaults: vaultService,
+    eml: Boolean(process.env.DOCPROC_URL),
+  }),
   // The socket address, or the client behind a proxy the deployer listed in
   // LEGALLABS_TRUSTED_PROXIES (comma-separated addresses or CIDR blocks of the ingress).
   clientIp: createClientIp(

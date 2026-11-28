@@ -12,8 +12,14 @@ import { type FormEvent, useEffect, useState } from "react";
 import { type Answer, ask, ingest, latestAnswer, type MailThread } from "../mail/ask.js";
 import type { Skipped } from "../mail/collect.js";
 import type { MailHost, MailItem } from "../office/host.js";
+import { DraftCard } from "./DraftCard.js";
 
 const MAX_QUESTION = 4_000;
+
+const DRAFT_REQUEST =
+  "Draft a reply to this email. Answer each question or request in it, stating only facts from " +
+  "the email and its attachments. Write only the body of the reply, and leave [placeholders] " +
+  "for anything you can't support.";
 
 const SKIPPED: Record<Skipped["reason"], string> = {
   UNSUPPORTED_TYPE: "can't be read",
@@ -45,6 +51,7 @@ export function AskPanel({
   const [step, setStep] = useState<"reading" | "answering" | null>(null);
   const [streamed, setStreamed] = useState("");
   const [answer, setAnswer] = useState<Answer | null>(null);
+  const [drafted, setDrafted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Set when the workspace wants a matter named before anything is stored.
   const [matters, setMatters] = useState<Matter[] | null>(null);
@@ -71,8 +78,9 @@ export function AskPanel({
     setError("Choose the matter this email belongs to, then ask again.");
   };
 
-  const put = async (q: string) => {
+  const put = async (q: string, draft = false) => {
     setError(null);
+    setDrafted(draft);
     setStreamed("");
     setAnswer(null);
     try {
@@ -84,7 +92,7 @@ export function AskPanel({
       }
       setStep("answering");
       setAnswer(await ask(api, held.threadId, q, setStreamed));
-      setQuestion("");
+      if (!draft) setQuestion("");
     } catch (err) {
       if (err instanceof ApiError && err.code === "MATTER_REQUIRED") {
         await needMatter().catch((e) => setError(messageOf(e)));
@@ -150,9 +158,18 @@ export function AskPanel({
                   ? "Follow-ups stay in this thread."
                   : ""}
           </span>
-          <Button type="submit" disabled={!question.trim() || step !== null}>
-            Ask
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              disabled={step !== null}
+              onClick={() => void put(DRAFT_REQUEST, true)}
+            >
+              Draft reply
+            </Button>
+            <Button type="submit" disabled={!question.trim() || step !== null}>
+              Ask
+            </Button>
+          </div>
         </div>
       </form>
       {error && <StatusText tone="failed">{error}</StatusText>}
@@ -176,6 +193,17 @@ export function AskPanel({
       )}
       {answer && (
         <article className="grid gap-3">
+          {drafted && thread && (
+            <DraftCard
+              key={answer.messageId}
+              api={api}
+              host={host}
+              item={item}
+              threadId={thread.threadId}
+              messageId={answer.messageId}
+              ungrounded={answer.ungrounded.length > 0}
+            />
+          )}
           <AnswerText
             text={answer.text}
             citations={answer.citations}

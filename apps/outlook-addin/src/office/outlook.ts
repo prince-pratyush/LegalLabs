@@ -64,6 +64,9 @@ export function createOutlookHost(): MailHost {
           open().getAttachmentContentAsync(id, done),
         ),
       ),
+    reply(htmlBody) {
+      open().displayReplyForm({ htmlBody });
+    },
     openInBrowser(url) {
       try {
         Office.context.ui.openBrowserWindow(url);

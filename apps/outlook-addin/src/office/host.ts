@@ -30,6 +30,11 @@ export interface MailHost {
   body(): Promise<string>;
   /** One attachment of the open message; null when it isn't a file the pane can take. */
   attachment(id: string): Promise<AttachmentContent | null>;
+  /**
+   * Opens Outlook's own reply to the open message with this body filled in. The person edits
+   * and sends it, or doesn't; the pane has no way to send.
+   */
+  reply(htmlBody: string): void;
   /** Opens a LegalLabs page, such as the document viewer, in the user's browser. */
   openInBrowser(url: string): void;
 }

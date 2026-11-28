@@ -1,14 +1,31 @@
-import { OUTLOOK_LIMITS, type OutlookIngest, type OutlookItem } from "@legallabs/contracts";
+import {
+  OUTLOOK_LIMITS,
+  type OutlookDraft,
+  type OutlookIngest,
+  type OutlookItem,
+  type OutlookSaved,
+} from "@legallabs/contracts";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { track, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
+import { mayCopy } from "../documents/copy.js";
 import type { Documents, Summary } from "../documents/documents.js";
 import type { Threads } from "../threads/threads.js";
 import type { Vaults } from "../vaults/vaults.js";
-import { emailText, fileName, oneLine } from "./message.js";
+import { emailEml, emailText, fileName, oneLine, replyHtml } from "./message.js";
 
-export type OutlookFailure = "FORBIDDEN" | "MATTER_NOT_FOUND" | "MATTER_REQUIRED" | "NOT_STORED";
+export type OutlookFailure =
+  | "FORBIDDEN"
+  | "MATTER_NOT_FOUND"
+  | "MATTER_REQUIRED"
+  | "NOT_STORED"
+  | "NOT_FOUND"
+  | "COPY_DISABLED"
+  | "TOO_LONG"
+  | "VAULT_NOT_FOUND"
+  | "VAULT_READ_ONLY"
+  | "VAULT_FULL";
 
 export type OutlookResult<T> = { ok: true; value: T } | { ok: false; reason: OutlookFailure };
 
@@ -23,9 +40,55 @@ export interface OutlookOptions {
   documents: Documents;
   threads: Threads;
   vaults: Vaults;
+  /** Whether email files can be read (docproc); otherwise a saved email is kept as text. */
+  eml?: boolean;
 }
 
 const encode = (text: string) => new TextEncoder().encode(text);
+
+type Db = pg.PoolClient;
+
+/** Whether everything an answer in this thread could repeat may be copied out by the caller. */
+async function mayLeave(db: Db, threadId: string): Promise<boolean> {
+  // Every file the thread holds or cites must still be readable: an unreadable one can't be asked
+  // about its controls.
+  const { rows } = await db.query<{ id: string | null }>(
+    `select v.document_id id
+       from (select version_id from work.thread_document where thread_id = $1
+             union
+             select c.version_id from work.citation c
+               join work.message m on m.id = c.message_id
+              where m.thread_id = $1 and c.kind = 'document') held
+       left join content.document_version v on v.id = held.version_id
+     union all
+     select unnest(source_documents) from work.thread where id = $1`,
+    [threadId],
+  );
+  const ids = rows.map((row) => row.id);
+  if (ids.includes(null)) return false;
+  const documents = [...new Set(ids as string[])];
+  const { rows: readable } = await db.query<{ id: string; vault_id: string | null }>(
+    "select id, vault_id from content.document where id = any($1::uuid[])",
+    [documents],
+  );
+  if (readable.length !== documents.length) return false;
+  // Only vaults carry copy controls.
+  const filed = readable.flatMap((row) => (row.vault_id ? [row.id] : []));
+  // A vault searched without a citation is part of the thread too.
+  const { rows: vaults } = await db.query<{ closed: boolean }>(
+    `select exists (
+       select 1 from work.thread t
+        cross join unnest(t.vault_ids) held(id)
+         left join content.vault v on v.id = held.id
+        where t.id = $1
+          and (v.id is null
+               or (content.vault_level(v.id) is distinct from 'owner'
+                   and (v.content_controls ->> 'allow_download' = 'false'
+                        or v.content_controls ->> 'allow_duplicate' = 'false')))) closed`,
+    [threadId],
+  );
+  return !vaults[0]?.closed && (filed.length === 0 || (await mayCopy(db, filed)));
+}
 
 const documentOf = (found: Summary, kind: "email" | "attachment") => ({
   document_id: found.id,
@@ -36,7 +99,39 @@ const documentOf = (found: Summary, kind: "email" | "attachment") => ({
 
 /** What the Outlook pane does with the open message. Nothing here sends mail or can. */
 export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
-  const { documents, threads } = options;
+  const { documents, threads, vaults } = options;
+
+  const audit = (
+    db: Db,
+    p: Principal,
+    action: string,
+    objectType: "thread" | "vault",
+    objectId: string,
+    details: object,
+    client: Client,
+  ) =>
+    // Ids and counts only: nothing an email says reaches the log.
+    db.query("select admin.append_audit_event($1, 'user', $2, $3, $4, $5, $6, $7)", [
+      action,
+      p.userId,
+      objectType,
+      objectId,
+      JSON.stringify(details),
+      client.ip,
+      uaHash(client),
+    ]);
+
+  const used = (p: Principal, action: string, objectType: string, objectId: string) =>
+    track(pool, p, (db) =>
+      trackUsage(db, {
+        surface: "outlook",
+        accessPoint: "outlook",
+        action,
+        actionClass: "other",
+        objectType,
+        objectId,
+      }),
+    );
 
   return {
     /** The open message and its attachments as documents on a new thread of the caller's. */
@@ -99,36 +194,139 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
       }
       const attachments = stored.length - 1;
       await asApp(pool, p, (db) =>
-        db.query(
-          "select admin.append_audit_event('mail.items_ingested', 'user', $1, 'thread', $2, $3, $4, $5)",
-          [
-            p.userId,
-            opened.threadId,
-            JSON.stringify({
-              count: 1,
-              attachments,
-              skipped: skipped.length,
-              surface: "outlook",
-            }),
-            client.ip,
-            uaHash(client),
-          ],
+        audit(
+          db,
+          p,
+          "mail.items_ingested",
+          "thread",
+          opened.threadId,
+          { count: 1, attachments, skipped: skipped.length, surface: "outlook" },
+          client,
         ),
       );
-      await track(pool, p, (db) =>
-        trackUsage(db, {
-          surface: "outlook",
-          accessPoint: "outlook",
-          action: "outlook.thread_opened",
-          actionClass: "other",
-          objectType: "thread",
-          objectId: opened.threadId,
-          documentCount: stored.length,
-        }),
-      );
+      await used(p, "outlook.thread_opened", "thread", opened.threadId);
       return {
         ok: true,
         value: { thread_id: opened.threadId, documents: stored, skipped },
+      };
+    },
+
+    /**
+     * An answer as the body for Outlook's reply window. No draft is made here and nothing is
+     * sent: the person's own Outlook opens the reply. This is where the words leave, so the
+     * sources' copy controls are asked now.
+     */
+    async replyDraft(
+      p: Principal,
+      input: OutlookDraft,
+      client: Client,
+    ): Promise<OutlookResult<{ body_html: string }>> {
+      const thread = await threads.get(p, input.thread_id);
+      if (!thread?.mine || thread.surface !== "outlook") return refused("NOT_FOUND");
+      const message = thread.messages.find(
+        (m) => m.id === input.message_id && m.role === "assistant",
+      );
+      if (!message) return refused("NOT_FOUND");
+      const html = replyHtml(message.content);
+      if (Buffer.byteLength(html) > OUTLOOK_LIMITS.replyHtmlBytes) return refused("TOO_LONG");
+      const allowed = await asApp(pool, p, async (db) => {
+        if (!(await mayLeave(db, thread.id))) return false;
+        await audit(
+          db,
+          p,
+          "mail.draft_prepared",
+          "thread",
+          thread.id,
+          { message_id: message.id },
+          client,
+        );
+        return true;
+      });
+      if (!allowed) return refused("COPY_DISABLED");
+      await used(p, "outlook.draft_prepared", "thread", thread.id);
+      return { ok: true, value: { body_html: html } };
+    },
+
+    /** The message and its attachments, filed in a folder of a vault the caller can add to. */
+    async saveToVault(
+      p: Principal,
+      input: {
+        item: OutlookItem;
+        vaultId: string;
+        folderId: string | null;
+        attachments: readonly Attached[];
+      },
+      client: Client,
+    ): Promise<OutlookResult<OutlookSaved>> {
+      const { item, vaultId } = input;
+      const subject = fileName(item.subject, "Email");
+      let folder: Awaited<ReturnType<Vaults["createFolder"]>>;
+      try {
+        folder = await vaults.createFolder(
+          p,
+          vaultId,
+          {
+            name: fileName(`${item.date.slice(0, 10)} ${subject}`),
+            parentId: input.folderId,
+          },
+          client,
+        );
+      } catch (err) {
+        // A synced vault mirrors its source and takes nothing by hand.
+        if (err instanceof Error && err.message === "VAULT_READ_ONLY") {
+          return refused("VAULT_READ_ONLY");
+        }
+        throw err;
+      }
+      if (!folder.ok) {
+        return refused(folder.reason === "FORBIDDEN" ? "FORBIDDEN" : "VAULT_NOT_FOUND");
+      }
+
+      const files: OutlookSaved["files"] = [];
+      const skipped: OutlookSaved["skipped"] = [];
+      const names = input.attachments.map((a) => fileName(a.name));
+      const upload = (name: string, bytes: Uint8Array) =>
+        vaults.upload(p, vaultId, { name, bytes, folderId: folder.value.id }, client);
+
+      const message = await upload(
+        fileName(`${subject}.${options.eml ? "eml" : "txt"}`),
+        encode(options.eml ? emailEml(item) : emailText(item, names)),
+      );
+      if (!message.ok) {
+        return refused(message.reason.startsWith("VAULT_") ? "VAULT_FULL" : "NOT_STORED");
+      }
+      files.push({ document_id: message.document.id, name: message.document.name });
+
+      for (const [i, attachment] of input.attachments.entries()) {
+        const name = names[i] ?? "attachment";
+        const result = await upload(name, attachment.bytes);
+        if (result.ok) {
+          files.push({ document_id: result.document.id, name: result.document.name });
+        } else {
+          skipped.push({
+            name,
+            reason:
+              result.reason === "UNSUPPORTED_TYPE" || result.reason === "FILE_TOO_LARGE"
+                ? result.reason
+                : "OVER_LIMIT",
+          });
+        }
+      }
+      await asApp(pool, p, (db) =>
+        audit(
+          db,
+          p,
+          "mail.saved_to_vault",
+          "vault",
+          vaultId,
+          { count: files.length, folder_id: folder.value.id },
+          client,
+        ),
+      );
+      await used(p, "outlook.saved_to_vault", "vault", vaultId);
+      return {
+        ok: true,
+        value: { folder_id: folder.value.id, folder_name: folder.value.name, files, skipped },
       };
     },
   };
