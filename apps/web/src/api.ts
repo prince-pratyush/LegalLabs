@@ -24,6 +24,8 @@ export interface Citation {
   version_id: string | null;
   version_no: number | null;
   document_name: string | null;
+  /** The spreadsheet cell quoted, such as Fees!B2. */
+  cell?: string | null;
   page: number | null;
   quote: string | null;
   char_from: number | null;

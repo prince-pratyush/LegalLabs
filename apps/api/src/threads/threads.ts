@@ -70,6 +70,8 @@ export interface CitationView {
   status: CitationStatus;
   authority: { id: string; citation: string; title: string; url: string } | null;
   web: { url: string; title: string; fetchedAt: string } | null;
+  /** The spreadsheet cell the quote is, such as Fees!B2. */
+  cell: string | null;
 }
 
 export interface MessageView {
@@ -511,11 +513,12 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     web_url: string | null;
     web_title: string | null;
     web_fetched_at: Date | null;
+    cell_ref: string | null;
   }>(
     `select c.message_id, c.ordinal, c.anchor, c.kind, c.version_id, v.version_no, v.document_id,
             d.name, c.page_no, c.quote, c.char_from, c.char_to, c.status, c.authority_id,
             c.authority_citation, c.authority_title, c.authority_url,
-            c.web_url, c.web_title, c.web_fetched_at
+            c.web_url, c.web_title, c.web_fetched_at, c.cell_ref
        from work.citation c
        join work.message m on m.id = c.message_id
        left join content.document_version v on v.id = c.version_id
@@ -589,6 +592,7 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
           from: citation.char_from,
           to: citation.char_to,
           status: citation.status,
+          cell: citation.cell_ref,
           authority:
             citation.authority_id === null
               ? null
@@ -754,11 +758,11 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         `insert into work.citation
            (workspace_id, message_id, ordinal, anchor, kind, version_id, page_no, quote, char_from,
             char_to, status, authority_id, authority_citation, authority_title, authority_url,
-            web_url, web_title, web_fetched_at)
+            web_url, web_title, web_fetched_at, cell_ref)
          select $1, $2, * from unnest($3::int[], $4::int[], $5::text[], $6::uuid[], $7::int[],
                                      $8::text[], $9::int[], $10::int[], $11::text[], $12::text[],
                                      $13::text[], $14::text[], $15::text[], $16::text[],
-                                     $17::text[], $18::timestamptz[])`,
+                                     $17::text[], $18::timestamptz[], $19::text[])`,
         [
           workspaceId,
           messageId,
@@ -778,6 +782,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           column((c) => c.web?.url ?? null),
           column((c) => c.web?.title.slice(0, 300) ?? null),
           column((c) => c.web?.fetchedAt ?? null),
+          column((c) => c.cell ?? null),
         ],
       );
     }
@@ -790,7 +795,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         messageId,
         JSON.stringify(reply.coverage),
         model?.model ?? null,
-        (model?.cost_usd ?? 0) + spent,
+        (model?.cost_usd ?? 0) + (reply.extraCostUsd ?? 0) + spent,
       ],
     );
     if (finished.rowCount === 0) throw new RunStopped();
@@ -809,7 +814,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             outputTokens: model.usage.output_tokens,
           }
         : {}),
-      costUsd: (model?.cost_usd ?? 0) + spent,
+      costUsd: (model?.cost_usd ?? 0) + (reply.extraCostUsd ?? 0) + spent,
     });
     if (model) {
       const count = (status: CitationStatus) =>
@@ -1335,7 +1340,21 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         return;
       }
       const split = personalisation.split(plan, answered.text);
-      const reply = { ...answered, text: split.text };
+      // Added after the split, which trims what the model wrote, so the cells' places hold.
+      const reply = await answer.addFigures(
+        {
+          principal,
+          documents,
+          sources: input.scope.sources,
+          history: [],
+          question: context.question,
+          exclude: models.exclude,
+          emit,
+          cancelled: () => cancelled(run.id),
+        },
+        run.id,
+        { ...answered, text: split.text },
+      );
       await emit({ type: "status", status: "verifying" });
       let messageId: string;
       try {
@@ -1373,7 +1392,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           input_tokens: reply.model?.usage.input_tokens ?? 0,
           output_tokens: reply.model?.usage.output_tokens ?? 0,
         },
-        cost_usd: reply.model?.cost_usd ?? 0,
+        cost_usd: (reply.model?.cost_usd ?? 0) + (reply.extraCostUsd ?? 0),
         citations: {
           total: reply.citations.length,
           ok: count("ok"),
