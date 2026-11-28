@@ -49,7 +49,7 @@ export async function bootstrap(io: BootstrapIo): Promise<void> {
     io.print("ok: the API can log in as legallabs_api");
     if (io.env.TEMPORAL_DB_PASSWORD) {
       // Temporal creates its own two databases, so it needs that one right.
-      await setLogin(client, "temporal", io.env.TEMPORAL_DB_PASSWORD, "createdb");
+      await setLogin(client, "legallabs_temporal", io.env.TEMPORAL_DB_PASSWORD, "createdb");
       io.print("ok: Temporal's database login is ready");
     }
   } finally {
