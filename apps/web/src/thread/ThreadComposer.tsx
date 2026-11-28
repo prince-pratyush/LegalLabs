@@ -53,6 +53,7 @@ export function ThreadComposer({
   const [model, setModel] = useState(AUTO);
   const [deep, setDeep] = useState(false);
   const [format, setFormat] = useState("");
+  const [planning, setPlanning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   // Files are read in the background, so their chips are refreshed until each settles.
@@ -164,6 +165,7 @@ export function ThreadComposer({
       ...(model !== AUTO ? { model } : {}),
       // A file is made in one pass, so it never goes with a deep analysis.
       ...(format ? { output_format: format as FileFormat } : deep ? { deep_analysis: true } : {}),
+      ...(planning ? { plan_mode: true } : {}),
     };
     if (await onSend(input)) {
       setDraft("");
@@ -213,6 +215,8 @@ export function ThreadComposer({
         onModel={setModel}
         deepAnalysis={deep}
         onDeepAnalysis={setDeep}
+        planMode={planning}
+        onPlanMode={setPlanning}
         fileFormat={format}
         onFileFormat={setFormat}
         mentionables={mentionables}

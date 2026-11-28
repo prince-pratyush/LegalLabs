@@ -25,6 +25,8 @@ export function useRunStream(run: KnownRun | null, onFinished: (runId: string) =
   const [attempt, setAttempt] = useState(0);
   const seq = useRef(0);
   const failures = useRef(0);
+  // Whether the run had already moved past approval when the page first saw it.
+  const approved = useRef(false);
   const finished = useRef(onFinished);
   useEffect(() => {
     finished.current = onFinished;
@@ -37,6 +39,7 @@ export function useRunStream(run: KnownRun | null, onFinished: (runId: string) =
   useEffect(() => {
     if (!run) return;
     setLive(startRun(run.id, { status: run.status, plan: run.plan }));
+    approved.current = !["planned", "awaiting_approval"].includes(run.status);
     seq.current = 0;
     failures.current = 0;
     setHeld(false);
@@ -58,7 +61,12 @@ export function useRunStream(run: KnownRun | null, onFinished: (runId: string) =
           ended = true;
           close();
           finished.current(runId);
-        } else if (event.type === "status" && event.status === "awaiting_approval") {
+        } else if (
+          event.type === "status" &&
+          event.status === "awaiting_approval" &&
+          // A replayed approval request must not close a stream that is already past it.
+          !approved.current
+        ) {
           // Nothing more comes until a person decides, so the connection is let go.
           close();
           setHeld(true);

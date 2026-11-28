@@ -102,6 +102,7 @@ const askFields = z.object({
   use_memory: z.boolean().optional(),
   writing_style_id: z.uuid().optional(),
   output_format: FileFormat.optional(),
+  plan_mode: z.boolean().optional(),
 });
 
 // A file is made in one pass from the workspace's own material.
@@ -110,6 +111,15 @@ const askBody = askFields.refine(
     !body.output_format ||
     (!body.deep_analysis && !body.scope.sources.some((s) => s.source_id === WEB_SOURCE_ID)),
 );
+
+const answerBody = z
+  .strictObject({
+    question_id: z.string().min(1).max(40),
+    option_id: z.string().max(40).optional(),
+    text: z.string().trim().min(1).max(4000).refine(noNul).optional(),
+    skip: z.literal(true).optional(),
+  })
+  .refine((a) => [a.option_id, a.text, a.skip].filter((v) => v !== undefined).length === 1);
 
 const planEditBody = z.object({ instruction: z.string().trim().min(1).max(4000).refine(noNul) });
 
@@ -296,6 +306,7 @@ export function threadHttp(options: ThreadHttpOptions) {
         ...(body.use_memory !== undefined ? { useMemory: body.use_memory } : {}),
         ...(body.writing_style_id ? { writingStyleId: body.writing_style_id } : {}),
         ...(body.output_format ? { outputFormat: body.output_format } : {}),
+        ...(body.plan_mode !== undefined ? { planMode: body.plan_mode } : {}),
       },
       clientOf(c),
     );
@@ -450,6 +461,9 @@ export function threadHttp(options: ThreadHttpOptions) {
   app.post("/runs/:id/plan/edit", limitBody, async (c) => {
     const parsed = planEditBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return invalid(c);
+    // Each re-plan is a model call, so it draws on the same budget as asking.
+    const limited = tooMany(c);
+    if (limited) return limited;
     return (await threads.editPlan(
       c.get("principal"),
       c.req.param("id"),
@@ -461,6 +475,29 @@ export function threadHttp(options: ThreadHttpOptions) {
           { code: "NOT_AWAITING_APPROVAL", message: "That plan isn't waiting for approval." },
           409,
         );
+  });
+
+  app.post("/runs/:id/answer", limitBody, async (c) => {
+    const parsed = answerBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return invalid(c);
+    const { question_id, option_id, text, skip } = parsed.data;
+    const outcome = await threads.answerQuestion(
+      c.get("principal"),
+      c.req.param("id"),
+      {
+        questionId: question_id,
+        ...(option_id ? { optionId: option_id } : {}),
+        ...(text ? { text } : {}),
+        ...(skip ? { skip } : {}),
+      },
+      clientOf(c),
+    );
+    if (outcome === "ok") return c.body(null, 202);
+    if (outcome === "INVALID_ANSWER") return invalid(c);
+    return c.json(
+      { code: "NOT_AWAITING_INPUT", message: "Nothing is waiting for an answer." },
+      409,
+    );
   });
 
   app.post("/runs/:id/cancel", async (c) =>

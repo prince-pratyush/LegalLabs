@@ -62,6 +62,15 @@ describe("a matter's model policy in threads", () => {
     expect(calls).toBe(0);
   });
 
+  it("refuses a plan, and a plan approved before the policy was set", async () => {
+    const r = await matterRoom();
+    await r.deny();
+    calls = 0;
+    const refused = await r.ask({ plan_mode: true });
+    expect([refused.status, refused.body.code]).toEqual([403, "MODEL_NOT_ALLOWED"]);
+    expect(calls).toBe(0);
+  });
+
   it("applies a policy set after a deep plan was made", async () => {
     const r = await matterRoom();
     const res = await r.ask({ deep_analysis: true });

@@ -8,9 +8,11 @@ import {
   ModelBadge,
   PlanCard,
   PlanCardSkeleton,
+  type QuestionAnswer,
+  QuestionCard,
   RunProgress,
 } from "@legallabs/ui";
-import { FilePen, Share2, Table } from "lucide-react";
+import { FilePen, PanelRight, Share2, Table } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -28,6 +30,7 @@ import { SharePanel } from "../share/SharePanel.js";
 import { Shell } from "../shell.js";
 import { goTables } from "../tables/route.js";
 import { openCitation } from "../viewer/open-citation.js";
+import { ContextPanel } from "./ContextPanel.js";
 import { toAnswerCitation } from "./compose.js";
 import { FileCard } from "./FileCard.js";
 import type { LiveCitation, LiveRun } from "./run-state.js";
@@ -54,6 +57,7 @@ function follow(citation: LiveCitation, all: readonly LiveCitation[]) {
 type Panel =
   | { kind: "sources"; answerId: string; n?: number; unavailable?: boolean }
   | { kind: "share" }
+  | { kind: "context" }
   | { kind: "drafts"; draftId?: string }
   | null;
 
@@ -198,8 +202,9 @@ export function ThreadScreen({
     setPanel({ kind: "sources", answerId, n, ...(unavailable ? { unavailable } : {}) });
   };
 
-  const awaiting = live?.status === "awaiting_approval" && !live.finished;
-  // While a plan waits, the composer is blocked rather than offering Stop.
+  const awaiting =
+    (live?.status === "awaiting_approval" || live?.status === "awaiting_input") && !live.finished;
+  // While a plan or a question waits, the composer is blocked rather than offering Stop.
   const streaming = sending || (live !== null && !live.finished && !awaiting);
 
   const decide = async (action: () => Promise<void>, then?: () => void) => {
@@ -231,6 +236,14 @@ export function ThreadScreen({
         key={panel.draftId ?? "drafts"}
         threadId={thread.id}
         {...(panel.draftId ? { draftId: panel.draftId } : {})}
+        onClose={() => setPanel(null)}
+      />
+    ) : panel?.kind === "context" && thread ? (
+      <ContextPanel
+        thread={thread}
+        live={live}
+        vaultName={(id) => options?.vaults.find((v) => v.id === id)?.name ?? "Vault"}
+        sourceName={(id) => options?.sources.find((s) => s.id === id)?.name ?? "Source"}
         onClose={() => setPanel(null)}
       />
     ) : panel?.kind === "share" && thread ? (
@@ -294,6 +307,10 @@ export function ThreadScreen({
           <header className="flex items-start justify-between gap-4 max-tablet:flex-wrap">
             <h1 className="text-title font-semibold">{thread.title}</h1>
             <div className="flex shrink-0 gap-2">
+              <Button variant="quiet" size="sm" onClick={() => setPanel({ kind: "context" })}>
+                <PanelRight aria-hidden />
+                Context
+              </Button>
               <Button
                 variant="quiet"
                 size="sm"
@@ -351,6 +368,14 @@ export function ThreadScreen({
                     onRetry={() => retry(message.id)}
                     planBusy={planBusy}
                     onApprove={() => decide(() => api.approve(live.runId), resume)}
+                    onAnswer={(answer) =>
+                      decide(() =>
+                        api.answerRun(live.runId, {
+                          question_id: live.question?.stepId ?? "",
+                          ...answer,
+                        }),
+                      )
+                    }
                     onEditPlan={(text) => decide(() => api.editPlan(live.runId, text), resume)}
                     lost={lost}
                     onReconnect={reconnect}
@@ -481,6 +506,7 @@ function LiveAnswer({
   onRetry,
   planBusy,
   onApprove,
+  onAnswer,
   onEditPlan,
   onCancelPlan,
   lost,
@@ -491,6 +517,7 @@ function LiveAnswer({
   onRetry: () => void;
   planBusy: boolean;
   onApprove: () => void;
+  onAnswer: (answer: QuestionAnswer) => void;
   onEditPlan: (instruction: string) => void;
   onCancelPlan: () => void;
   /** The stream gave up reconnecting. */
@@ -517,6 +544,18 @@ function LiveAnswer({
       </div>
     ) : (
       <PlanCardSkeleton />
+    );
+  }
+  if (run.status === "awaiting_input" && run.question && !run.finished) {
+    return (
+      <QuestionCard
+        text={run.question.text}
+        options={run.question.options}
+        allowText={run.question.allowText}
+        allowSkip={run.question.allowSkip}
+        busy={planBusy}
+        onAnswer={onAnswer}
+      />
     );
   }
   return (
