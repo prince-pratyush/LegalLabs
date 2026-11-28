@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+from .adopt import compare, load_summaries
 from .config import DEFAULT_SYSTEMS, load_config
 from .io import write_json
 from .registry import SUITES, make_harness, make_suite
@@ -37,6 +38,19 @@ def main(argv: list[str] | None = None) -> int:
     again.add_argument("--gold", type=Path, required=True, help="corpus dir holding gold.json")
     again.add_argument("--outcomes", type=Path, required=True, help="dir of <contract id>.json")
     again.add_argument("--out", type=Path, help="write the summary here as well")
+    adopt = commands.add_parser(
+        "adopt",
+        help="MDL-006 gates: does a candidate match a frontier system at a tenth of the cost",
+    )
+    for side in ("candidate", "baseline"):
+        adopt.add_argument(
+            f"--{side}",
+            type=Path,
+            required=True,
+            nargs="+",
+            help="run directories or summary.json files, one per suite",
+        )
+    adopt.add_argument("--out", type=Path, help="write the verdict here as well")
     room = commands.add_parser("make-room", help="write a coverage-vdr data room to disk")
     room.add_argument("--out", type=Path, required=True)
     room.add_argument("--docs", type=int, default=DEFAULT_DOCS)
@@ -53,6 +67,17 @@ def main(argv: list[str] | None = None) -> int:
             write_json(args.out, summary)
         print(json.dumps(summary, indent=2))
         return 0
+
+    if args.command == "adopt":
+        try:
+            verdict = compare(load_summaries(args.candidate), load_summaries(args.baseline))
+        except (OSError, ValueError, KeyError, TypeError) as err:
+            print(f"failed: {err}", file=sys.stderr)
+            return 2
+        if args.out:
+            write_json(args.out, verdict)
+        print(json.dumps(verdict, indent=2))
+        return 0 if verdict["adopt"] else 1
 
     if args.command == "make-room":
         try:

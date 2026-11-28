@@ -1,6 +1,6 @@
 from typing import Any
 
-from ..models import ModelClient, Send
+from ..models import ModelClient, Send, model_name
 from ..schemas import Document, HarnessRequest, HarnessResult, NonRetryableError
 from .base import Harness
 from .bm25 import Bm25Index, chunk
@@ -16,17 +16,24 @@ class PlainModelHarness(Harness):
     def __init__(self, system_name: str, system: dict[str, Any], send: Send | None = None) -> None:
         super().__init__(system_name, system)
         params = system.get("params", {})
-        if not self.vendor or "model" not in params:
+        if not self.vendor or not params.keys() & {"model", "model_env"}:
             raise NonRetryableError(f"{system_name} needs a vendor and params.model")
         self.max_context_chars = int(params.get("max_context_chars", 400_000))
         context = params.get("context_tokens")
         self.client = ModelClient(
             self.vendor,
-            params["model"],
+            model_name(system_name, params),
             int(params.get("max_tokens", 2048)),
             send,
             int(context) if context else None,
         )
+
+    def fingerprint(self) -> str:
+        return self.client.fingerprint()
+
+    def environment(self) -> dict[str, Any]:
+        # A system whose model comes from the environment is otherwise one name for many.
+        return {"model": self.client.model}
 
     def prepare(self, corpus: list[Document]) -> None:
         self.client.preflight()

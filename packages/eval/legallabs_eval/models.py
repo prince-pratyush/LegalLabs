@@ -1,9 +1,12 @@
+import hashlib
 import json
+import math
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -16,7 +19,7 @@ from .schemas import Cost, HarnessError, NonRetryableError, raise_for_status
 class Vendor:
     url: str
     key_env: str
-    style: str  # "anthropic", "openai" or "ollama": the shape of the request and reply
+    style: str  # "anthropic", "openai", "ollama" or "openai-compatible": request and reply
     url_env: str = ""  # overrides url when set, for servers that move (a local Ollama)
 
 
@@ -31,7 +34,57 @@ VENDORS = {
     ),
     # Local and free. The native API, since only it takes num_ctx and a JSON schema format.
     "ollama": Vendor("http://localhost:11434/api/chat", "", "ollama", "OLLAMA_BASE_URL"),
+    # A server of the operator's own that speaks the OpenAI chat API, such as a local
+    # extractor under trial. It has no default address, and its key is optional.
+    "openai-compatible": Vendor(
+        "",
+        "LEGALLABS_EVAL_EXTRACTOR_KEY",
+        "openai-compatible",
+        "LEGALLABS_EVAL_EXTRACTOR_URL",
+    ),
 }
+
+# What the operator says that server costs to run, in USD per million tokens.
+EXTRACTOR_PRICES = (
+    "LEGALLABS_EVAL_EXTRACTOR_INPUT_USD_PER_MTOK",
+    "LEGALLABS_EVAL_EXTRACTOR_OUTPUT_USD_PER_MTOK",
+)
+
+
+def model_name(system_name: str, params: dict[str, Any]) -> str:
+    """The model a system names, or reads from the environment variable it names."""
+    variable = params.get("model_env")
+    if variable is None:
+        return params["model"]
+    value = os.environ.get(variable, "").strip()
+    if not value:
+        raise NonRetryableError(f"{system_name}: {variable} is not set")
+    return value
+
+
+def endpoint(spec: "Vendor") -> str:
+    """The operator's own server, from the environment and nowhere else."""
+    base = os.environ.get(spec.url_env, "").strip().rstrip("/")
+    parts = urlsplit(base)
+    if parts.scheme not in ("http", "https") or not parts.hostname or "@" in parts.netloc:
+        raise NonRetryableError(f"{spec.url_env} must be set to an http(s) base URL")
+    return f"{base}/chat/completions"
+
+
+def extractor_rates() -> tuple[float, float] | None:
+    """Both prices or neither. A server someone runs is never free, so zero is refused."""
+    given = [os.environ.get(name, "").strip() for name in EXTRACTOR_PRICES]
+    if not any(given):
+        return None
+    try:
+        rates = (float(given[0]), float(given[1]))
+    except ValueError:
+        rates = (0.0, 0.0)
+    if not all(math.isfinite(rate) and rate > 0 for rate in rates):
+        names = " and ".join(EXTRACTOR_PRICES)
+        raise NonRetryableError(f"set both {names} to numbers above zero, or neither")
+    return rates
+
 
 # Takes the vendor and request body, returns (text, input_tokens, output_tokens).
 Send = Callable[[str, dict[str, Any]], tuple[str, int, int]]
@@ -57,10 +110,32 @@ class ModelClient:
         # Ollama serves 4k unless told otherwise; other vendors ignore it.
         self.context_tokens = context_tokens
         self._send = send or _http
+        self._own = self.spec.style == "openai-compatible"
+        self._rates = extractor_rates() if self._own else None
 
     def preflight(self) -> None:
-        if self._send is _http and self.spec.key_env and not os.environ.get(self.spec.key_env):
+        if self._send is not _http:
+            return
+        if self._own:
+            endpoint(self.spec)
+        elif self.spec.key_env and not os.environ.get(self.spec.key_env):
             raise NonRetryableError(f"{self.spec.key_env} is not set")
+
+    def fingerprint(self) -> str:
+        """For the operator's own server, what the environment decides about a run."""
+        if not self._own:
+            return ""
+        said = json.dumps([os.environ.get(self.spec.url_env, ""), self.model, self._rates])
+        return hashlib.sha256(said.encode()).hexdigest()[:16]
+
+    def cost(self, input_tokens: int, output_tokens: int) -> Cost:
+        # The price table is for the vendors' models, whatever this server calls its own.
+        if not self._own:
+            return price(self.model, input_tokens, output_tokens)
+        if self._rates is None:
+            return Cost(None, False, input_tokens, output_tokens)
+        usd = (input_tokens * self._rates[0] + output_tokens * self._rates[1]) / 1_000_000
+        return Cost(usd, True, input_tokens, output_tokens)
 
     def complete(
         self, system: str, prompt: str, trace_dir: Path, schema: dict[str, Any] | None = None
@@ -72,7 +147,7 @@ class ModelClient:
             trace_dir / "responses.jsonl",
             {"text": text, "usage": {"input": input_tokens, "output": output_tokens}},
         )
-        return text, price(self.model, input_tokens, output_tokens)
+        return text, self.cost(input_tokens, output_tokens)
 
     def _body(self, system: str, prompt: str, schema: dict[str, Any] | None) -> dict[str, Any]:
         if schema:
@@ -102,9 +177,11 @@ class ModelClient:
                 "system": system,
                 "messages": [{"role": "user", "content": prompt}],
             }
+        # Servers other than OpenAI's mostly know only the older name of the limit.
+        limit = "max_tokens" if self._own else "max_completion_tokens"
         body: dict[str, Any] = {
             "model": self.model,
-            "max_completion_tokens": self.max_tokens,
+            limit: self.max_tokens,
             "temperature": 0,
             "messages": [
                 {"role": "system", "content": system},
@@ -123,7 +200,10 @@ def _http(vendor: str, body: dict[str, Any]) -> tuple[str, int, int]:
     spec = VENDORS[vendor]
     key = os.environ.get(spec.key_env, "") if spec.key_env else ""
     url = spec.url
-    if spec.url_env and os.environ.get(spec.url_env):
+    own = spec.style == "openai-compatible"
+    if own:
+        url = endpoint(spec)
+    elif spec.url_env and os.environ.get(spec.url_env):
         url = os.environ[spec.url_env].rstrip("/") + "/api/chat"
     if spec.style == "anthropic":
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
@@ -133,7 +213,9 @@ def _http(vendor: str, body: dict[str, Any]) -> tuple[str, int, int]:
         headers = {}
     try:
         # A small local model on a busy laptop can take minutes on one long prompt.
-        response = httpx.post(url, json=body, headers=headers, timeout=900)
+        # No proxy from the environment on the way to the operator's own server.
+        direct = {"trust_env": False} if own else {}
+        response = httpx.post(url, json=body, headers=headers, timeout=900, **direct)
     except httpx.TransportError as err:
         raise HarnessError(str(err)) from err
     raise_for_status(response.status_code, vendor)
