@@ -263,6 +263,8 @@ export function historyParams(query: HistoryQuery): string {
 export const api = {
   session: () => call<{ user_id: string; workspace_id: string; guest?: boolean }>("/auth/session"),
   logout: () => send<void>("POST", "/auth/logout"),
+  acceptInvite: (token: string, password: string) =>
+    send<{ workspace: string; email: string }>("POST", "/auth/invite/accept", { token, password }),
 
   documents: async () =>
     (await call<{ documents: DocumentSummary[] }>(`${V1}/documents`)).documents,
