@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { bootstrap } from "./bootstrap.js";
@@ -8,7 +9,7 @@ const pool = new pg.Pool({ connectionString: url, max: 1 });
 // Roles belong to the whole cluster, so they are put back for the other tests.
 afterAll(async () => {
   await pool.query("alter role legallabs_api nologin password null");
-  await pool.query("drop role if exists temporal");
+  await pool.query("drop role if exists legallabs_temporal");
   await pool.end();
 });
 
@@ -35,16 +36,27 @@ describe("bootstrap", () => {
     }
     const { rows } = await pool.query<{ rolname: string; login: boolean; createdb: boolean }>(
       `select rolname, rolcanlogin as login, rolcreatedb as createdb from pg_roles
-        where rolname in ('legallabs_api', 'temporal') order by 1`,
+        where rolname in ('legallabs_api', 'legallabs_temporal') order by 1`,
     );
     expect(rows).toEqual([
       { rolname: "legallabs_api", login: true, createdb: false },
-      { rolname: "temporal", login: true, createdb: true },
+      { rolname: "legallabs_temporal", login: true, createdb: true },
     ]);
     expect(requests).toContain("PUT http://store:8333/legallabs");
     for (const secret of [env.LEGALLABS_DB_PASSWORD, env.TEMPORAL_DB_PASSWORD]) {
       expect(lines.join("\n")).not.toContain(secret);
     }
+  });
+
+  it("gives Temporal a login its setup script will not mistake for a database", () => {
+    // auto-setup skips creating a database that has the login's name, and then cannot start.
+    const compose = readFileSync(
+      new URL("../../../../infra/compose/compose.yaml", import.meta.url),
+      "utf8",
+    );
+    const user = /POSTGRES_USER: (\S+)/.exec(compose)?.[1];
+    expect(user).toBe("legallabs_temporal");
+    expect(["temporal", "temporal_visibility"]).not.toContain(user);
   });
 
   it("refuses to run without the API role's password", async () => {
