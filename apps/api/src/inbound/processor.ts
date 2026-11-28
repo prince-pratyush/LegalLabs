@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { detectType, type Scanner, ScannerRefused, ScannerUnavailable } from "@legallabs/ingest";
+import type { Scanner } from "@legallabs/ingest";
 import type pg from "pg";
 import { asWorker } from "../db.js";
-import { type Documents, MAX_FILE_BYTES } from "../documents/documents.js";
+import type { Documents } from "../documents/documents.js";
 import { type InboundAttachment, type InboundMessage, readEmail, senderHash } from "./email.js";
+import { inboxFiling, NotYet } from "./filing.js";
 
 // Reads the queue of received mail. Each message becomes one request, with the message itself
 // and its files filed in the Inbox by the intake service user, through the same upload,
@@ -41,16 +42,6 @@ interface Claim {
 const MESSAGE_PART = 0;
 const BATCH = 25;
 const LEASE_SECONDS = 300;
-
-/** Something outside the message's control is not ready: wait, without using up an attempt. */
-class NotYet extends Error {
-  constructor(
-    readonly why: string,
-    readonly seconds: number,
-  ) {
-    super(why);
-  }
-}
 
 const sha = (...parts: (string | Buffer)[]) => {
   const hash = createHash("sha256");
@@ -90,50 +81,7 @@ export function createEmailProcessor(pool: pg.Pool, options: EmailProcessorOptio
       counts,
     ]);
 
-  /** Why a file isn't kept, or null to keep it. */
-  async function unwanted(file: InboundAttachment): Promise<string | null> {
-    if (file.bytes.length === 0) return "empty";
-    if (file.bytes.length > MAX_FILE_BYTES) return "too large";
-    try {
-      if (!(await scanner.scan(file.bytes)).clean) return "failed the malware scan";
-    } catch (err) {
-      if (err instanceof ScannerRefused) return "too large to scan";
-      if (err instanceof ScannerUnavailable) throw new NotYet("scanner_unavailable", 300);
-      throw err;
-    }
-    return detectType(file.bytes, file.name) ? null : "not a type that can be read";
-  }
-
-  async function file(job: Claim, partNo: number, name: string, bytes: Uint8Array) {
-    const principal = {
-      sessionId: "intake",
-      userId: job.service_user_id,
-      workspaceId: job.workspace_id,
-    };
-    const stored = await documents.upload(
-      principal,
-      {
-        name,
-        bytes,
-        matterId: null,
-        vaultId: job.vault_id,
-        keepName: true,
-        within: (db, documentId) =>
-          db.query(
-            `insert into apps.intake_attachment
-               (workspace_id, document_id, inbound_email_id, part_no)
-             values ($1, $2, $3, $4)`,
-            [job.workspace_id, documentId, job.id, partNo],
-          ),
-      },
-      { ip: null, userAgent: null },
-    );
-    if (stored.ok) return null;
-    if (stored.reason === "UNSUPPORTED_TYPE") return "not a type that can be read";
-    if (stored.reason === "FILE_TOO_LARGE") return "too large";
-    // A full Inbox, say: the message waits for room rather than losing a file.
-    throw new NotYet(stored.reason, 3600);
-  }
+  const inbox = inboxFiling(documents, scanner);
 
   async function handle(job: Claim) {
     const read = await readEmail(job.raw, {
@@ -166,17 +114,17 @@ export function createEmailProcessor(pool: pg.Pool, options: EmailProcessorOptio
     const judged: { part: number; file: InboundAttachment; why: string | null }[] = [];
     for (const [index, attachment] of message.attachments.entries()) {
       const part = index + 1;
-      const why = done.has(part) ? null : await unwanted(attachment);
+      const why = done.has(part) ? null : await inbox.unwanted(attachment);
       judged.push({ part, file: attachment, why });
     }
     for (const one of judged) {
       if (one.why === null && !done.has(one.part)) {
-        one.why = await file(job, one.part, one.file.name, one.file.bytes);
+        one.why = await inbox.file(job, one.part, one.file.name, one.file.bytes);
       }
     }
     const dropped = judged.filter((j) => j.why !== null);
     if (!done.has(MESSAGE_PART)) {
-      const why = await file(
+      const why = await inbox.file(
         job,
         MESSAGE_PART,
         "Email message.txt",

@@ -280,24 +280,29 @@ export function RequestPage({ requestId }: { requestId: string }) {
             )}
           </>
         )}
-        {open && request.channel === "email" && request.requester.email && (
-          <form className="grid justify-items-start gap-2" onSubmit={reply}>
-            <Field label="Reply by email" className="w-full">
-              {(props) => (
-                <textarea
-                  {...props}
-                  className="min-h-20 w-full rounded-md border border-border bg-transparent p-2"
-                  value={answer}
-                  maxLength={INTAKE_LIMITS.value_chars}
-                  onChange={(e) => setAnswer(e.target.value)}
-                />
-              )}
-            </Field>
-            <Button type="submit" size="sm" disabled={busy || !answer.trim()}>
-              Send reply
-            </Button>
-          </form>
-        )}
+        {open &&
+          (request.channel === "slack" ||
+            (request.channel === "email" && request.requester.email)) && (
+            <form className="grid justify-items-start gap-2" onSubmit={reply}>
+              <Field
+                label={request.channel === "slack" ? "Reply in Slack" : "Reply by email"}
+                className="w-full"
+              >
+                {(props) => (
+                  <textarea
+                    {...props}
+                    className="min-h-20 w-full rounded-md border border-border bg-transparent p-2"
+                    value={answer}
+                    maxLength={INTAKE_LIMITS.value_chars}
+                    onChange={(e) => setAnswer(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Button type="submit" size="sm" disabled={busy || !answer.trim()}>
+                Send reply
+              </Button>
+            </form>
+          )}
         {error && (
           <p role="alert" className="text-destructive">
             {error}

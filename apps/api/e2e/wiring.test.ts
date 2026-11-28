@@ -81,6 +81,13 @@ describe("Intake in the running server", () => {
     });
   });
 
+  it("mounts the Slack channels, and their hook outside the session check", async () => {
+    expect(await json("/api/v1/apps/intake/slack-channels")).toEqual({ channels: [] });
+    const res = await call(`/hooks/slack/${"a".repeat(32)}`, { method: "POST" });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
   it("mounts the email channels, and the hook outside the session check", async () => {
     expect(await json("/api/v1/apps/intake/channels")).toEqual({ channels: [] });
     expect(await json("/api/v1/apps/intake/my-tasks")).toEqual({ requests: [], tasks: [] });

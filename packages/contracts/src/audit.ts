@@ -221,6 +221,7 @@ export const auditActions: string[] = [
   ]),
   ...family("intake.channel", ["created", "updated", "secret_rotated"]),
   ...family("email", ["inbound_rejected", "inbound_failed"]),
+  ...family("slack", ["inbound_rejected", "inbound_failed"]),
   ...family("facts", ["created_manual", "edited", "status_changed"]),
   ...family("facts", ["entity_created", "entity_updated", "issue_created", "issue_updated"]),
   ...family("facts", ["extraction_started", "extracted", "extraction_failed"]),

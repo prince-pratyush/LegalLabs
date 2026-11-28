@@ -7,21 +7,23 @@ import type {
 import type pg from "pg";
 import type { z } from "zod";
 import type { SecretBox } from "../admin-models/secrets.js";
-import { type Client, type Principal, uaHash } from "../auth/auth.js";
-import { asApp, asWorker, RLS_REFUSED } from "../db.js";
+import type { Client, Principal } from "../auth/auth.js";
+import { asWorker } from "../db.js";
 import type { EmailRules } from "../inbound/email.js";
+import {
+  type ChannelFailure,
+  type ChannelResult,
+  channelAudit,
+  managed,
+  refuse,
+  roomForChannel,
+  UUID,
+} from "./channel-admin.js";
 
 // The workspace's intake addresses. Each has a secret the receiving mail server signs with,
 // sealed like any other stored secret and shown only when it is made.
 
-export type ChannelFailure =
-  | "FORBIDDEN"
-  | "NOT_FOUND"
-  | "NAME_TAKEN"
-  | "TOO_MANY_CHANNELS"
-  | "SECRETS_UNAVAILABLE";
-
-export type ChannelResult<T> = { ok: true; value: T } | { ok: false; reason: ChannelFailure };
+export type { ChannelFailure, ChannelResult };
 
 type Create = z.output<typeof IntakeEmailChannelCreate>;
 type Patch = z.output<typeof IntakeEmailChannelPatch>;
@@ -70,9 +72,6 @@ export interface EmailChannelsOptions {
   now?: () => number;
 }
 
-const MAX_CHANNELS = 10;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const COLUMNS = `id, name, address, authserv_id, allowed_domains, status, key,
   previous_secret_until, created_at, updated_at`;
 
@@ -95,59 +94,11 @@ const toChannel = ({ key, ...row }: Row): IntakeEmailChannel => ({
   updated_at: row.updated_at.toISOString(),
 });
 
-class Refused extends Error {
-  constructor(readonly reason: ChannelFailure) {
-    super(reason);
-  }
-}
-const refuse = (reason: ChannelFailure): never => {
-  throw new Refused(reason);
-};
-
 export function createEmailChannels(
   pool: pg.Pool,
   options: EmailChannelsOptions = {},
 ): EmailChannels {
   const { secrets, now = Date.now } = options;
-
-  async function managed<T>(
-    principal: Principal,
-    work: (db: pg.PoolClient) => Promise<T>,
-  ): Promise<ChannelResult<T>> {
-    try {
-      const value = await asApp(pool, principal, async (db) => {
-        const { rows } = await db.query<{ ok: boolean }>(
-          "select apps.intake_may('intake.manage') ok",
-        );
-        if (!rows[0]?.ok) refuse("FORBIDDEN");
-        return work(db);
-      });
-      return { ok: true, value };
-    } catch (err) {
-      if (err instanceof Refused) return { ok: false, reason: err.reason };
-      const { code } = err as { code?: string };
-      if (code === RLS_REFUSED) return { ok: false, reason: "FORBIDDEN" };
-      if (code === "23505") return { ok: false, reason: "NAME_TAKEN" };
-      throw err;
-    }
-  }
-
-  const audit = (
-    db: pg.PoolClient,
-    principal: Principal,
-    action: string,
-    id: string,
-    details: object,
-    client: Client,
-  ) =>
-    db.query("select admin.append_audit_event($1, 'user', $2, 'intake_channel', $3, $4, $5, $6)", [
-      action,
-      principal.userId,
-      id,
-      JSON.stringify(details),
-      client.ip,
-      uaHash(client),
-    ]);
 
   const newSecret = () => {
     const box = secrets ?? refuse("SECRETS_UNAVAILABLE");
@@ -157,19 +108,18 @@ export function createEmailChannels(
 
   return {
     list(principal) {
-      return managed(principal, async (db) => {
+      return managed(pool, principal, async (db) => {
         const { rows } = await db.query<Row>(
-          `select ${COLUMNS} from apps.intake_channel order by lower(name)`,
+          `select ${COLUMNS} from apps.intake_channel where kind = 'email' order by lower(name)`,
         );
         return rows.map(toChannel);
       });
     },
 
     create(principal, input, client) {
-      return managed(principal, async (db) => {
+      return managed(pool, principal, async (db) => {
         const { secret, sealed } = newSecret();
-        const count = await db.query<{ n: string }>("select count(*) n from apps.intake_channel");
-        if (Number(count.rows[0]?.n) >= MAX_CHANNELS) refuse("TOO_MANY_CHANNELS");
+        await roomForChannel(db);
         // The Inbox and its service account must exist before any mail can be filed.
         await db.query("select from apps.ensure_intake_inbox()");
         const { rows } = await db.query<Row>(
@@ -188,18 +138,26 @@ export function createEmailChannels(
           ],
         );
         const row = rows[0] as Row;
-        await audit(db, principal, "intake.channel.created", row.id, { kind: "email" }, client);
+        await channelAudit(
+          db,
+          principal,
+          "intake.channel.created",
+          row.id,
+          { kind: "email" },
+          client,
+        );
         return { channel: toChannel(row), secret };
       });
     },
 
     update(principal, id, patch, client) {
-      return managed(principal, async (db) => {
+      return managed(pool, principal, async (db) => {
         if (!UUID.test(id)) refuse("NOT_FOUND");
         // The keys are the schema's own, so each is a column name.
         const changed = Object.entries(patch).filter(([, value]) => value !== undefined);
         const before = await db.query<Row>(
-          `select ${COLUMNS} from apps.intake_channel where id = $1 for update`,
+          `select ${COLUMNS} from apps.intake_channel
+            where id = $1 and kind = 'email' for update`,
           [id],
         );
         const was = before.rows[0] ?? refuse("NOT_FOUND");
@@ -211,7 +169,7 @@ export function createEmailChannels(
           [id, ...changed.map(([, value]) => value)],
         );
         const row = rows[0] ?? refuse("NOT_FOUND");
-        await audit(
+        await channelAudit(
           db,
           principal,
           "intake.channel.updated",
@@ -228,7 +186,7 @@ export function createEmailChannels(
     },
 
     rotate(principal, id, graceHours, client) {
-      return managed(principal, async (db) => {
+      return managed(pool, principal, async (db) => {
         if (!UUID.test(id)) refuse("NOT_FOUND");
         const { secret, sealed } = newSecret();
         const until = graceHours > 0 ? new Date(now() + graceHours * 3_600_000) : null;
@@ -237,11 +195,11 @@ export function createEmailChannels(
               set previous_secret_sealed =
                     case when $3::timestamptz is null then null else secret_sealed end,
                   previous_secret_until = $3, secret_sealed = $2, updated_at = now()
-            where id = $1 returning ${COLUMNS}`,
+            where id = $1 and kind = 'email' returning ${COLUMNS}`,
           [id, sealed, until],
         );
         const row = rows[0] ?? refuse("NOT_FOUND");
-        await audit(
+        await channelAudit(
           db,
           principal,
           "intake.channel.secret_rotated",

@@ -921,7 +921,10 @@ export function createIntake(pool: pg.Pool, options: IntakeOptions): Intake {
       return audited(principal, id, client, async (db) => {
         await openRequest(db, id);
         const request = await loadRequest(db, id);
-        if (request.channel !== "email" || !request.requester_email) refuse("WRONG_STATE");
+        const answerable =
+          request.channel === "slack" ||
+          (request.channel === "email" && request.requester_email !== null);
+        if (!answerable) refuse("WRONG_STATE");
         // The words wait here until they are sent; the audit log never holds them.
         await db.query(
           `insert into apps.intake_outbound (workspace_id, request_id, kind, ref, body, created_by)

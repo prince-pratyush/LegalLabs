@@ -18,7 +18,7 @@ export interface MailRow {
   id: string;
   lease: string;
   attempt: number;
-  kind: "ask" | "assigned" | "done" | "reply" | "reminder" | "no_response" | "merged";
+  kind: "ack" | "ask" | "assigned" | "done" | "reply" | "reminder" | "no_response" | "merged";
   body: string | null;
   token: string;
   request_id: string;
@@ -39,6 +39,8 @@ const line = (text: string | null) =>
   (text ?? "").replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").trim();
 
 const SUBJECTS: Record<MailRow["kind"], string> = {
+  // Only Slack is sent one; mail is not.
+  ack: "We have your request",
   ask: "We need one more detail",
   reminder: "We are still waiting for a detail",
   assigned: "Your request has been assigned",
@@ -48,13 +50,24 @@ const SUBJECTS: Record<MailRow["kind"], string> = {
   merged: "Your request has been combined",
 };
 
-function text(row: MailRow): string {
+/** The words, by mail or in Slack. */
+export function intakeText(
+  row: Pick<
+    MailRow,
+    "kind" | "number" | "prompt" | "label" | "assignee_name" | "author_name" | "body"
+  >,
+  via: "email" | "slack" = "email",
+): string {
   const request = `request #${row.number}`;
   const question = line(row.prompt) || `Please send: ${line(row.label) || "the missing detail"}`;
   switch (row.kind) {
+    case "ack":
+      return `We have your ${request}.`;
     case "ask":
     case "reminder":
-      return `We need one more detail for ${request}.\n\n${question}\n\nReply to this message with your answer.`;
+      return `We need one more detail for ${request}.\n\n${question}\n\n${
+        via === "slack" ? "Reply in this thread" : "Reply to this message"
+      } with your answer.`;
     case "assigned":
       return `Your ${request} is assigned to ${line(row.assignee_name) || "a member of the legal team"}.`;
     case "done":
@@ -73,7 +86,7 @@ export function intakeEmail(row: MailRow): EmailMessage {
   return {
     to: { email: row.email, name: "" },
     subject: `[Request #${row.number}] ${SUBJECTS[row.kind]}`,
-    text: text(row),
+    text: intakeText(row),
     replyTo: row.address,
     messageId: `<lli.${row.token}@${domain}>`,
     // A lawyer's reply is a person writing; the rest is not.

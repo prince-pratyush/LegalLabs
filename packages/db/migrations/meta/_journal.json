@@ -820,6 +820,13 @@
       "when": 1794022300000,
       "tag": "0271_work_citation_cell",
       "breakpoints": false
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1794022400000,
+      "tag": "0280_apps_intake_slack",
+      "breakpoints": false
     }
   ]
 }

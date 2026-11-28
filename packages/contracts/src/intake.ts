@@ -219,6 +219,56 @@ export const IntakeEmailChannel = z.object({
 });
 export type IntakeEmailChannel = z.infer<typeof IntakeEmailChannel>;
 
+// Slack's own ids, so nothing else can be typed in where one is expected.
+const SlackTeam = z.string().regex(/^T[A-Z0-9]{2,30}$/);
+const SlackChannelId = z.string().regex(/^[CG][A-Z0-9]{2,30}$/);
+
+const slackChannelShape = {
+  name: Name(100),
+  team_id: SlackTeam,
+  /** Where a new request may be made from. */
+  channel_ids: z.array(SlackChannelId).min(1).max(50),
+};
+
+/** Both come from the Slack app's own settings. They are kept sealed and never shown again. */
+const SigningSecret = z.string().regex(/^[A-Za-z0-9_-]{16,200}$/);
+const BotToken = z.string().regex(/^xoxb-[A-Za-z0-9-]{10,200}$/);
+
+export const IntakeSlackChannelCreate = z
+  .object({
+    ...slackChannelShape,
+    signing_secret: SigningSecret,
+    /** Without one, requests are taken in but nothing is sent to Slack or fetched from it. */
+    bot_token: BotToken.optional(),
+  })
+  .strict();
+export type IntakeSlackChannelCreate = z.input<typeof IntakeSlackChannelCreate>;
+
+export const IntakeSlackChannelPatch = z
+  .object({
+    ...slackChannelShape,
+    signing_secret: SigningSecret,
+    /** Null removes it. */
+    bot_token: BotToken.nullable(),
+    status: z.enum(["live", "disabled"]),
+  })
+  .partial()
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, { error: "EMPTY" });
+export type IntakeSlackChannelPatch = z.input<typeof IntakeSlackChannelPatch>;
+
+export const IntakeSlackChannel = z.object({
+  id: Id,
+  ...slackChannelShape,
+  has_bot_token: z.boolean(),
+  status: z.enum(["live", "disabled"]),
+  /** The request URL for events, the slash command and the message shortcut, on this server. */
+  hook_path: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type IntakeSlackChannel = z.infer<typeof IntakeSlackChannel>;
+
 export const IntakeStatus = z.enum([
   "new",
   "unclassified",

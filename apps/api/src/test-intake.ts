@@ -12,8 +12,11 @@ import { createViewer } from "./documents/viewer.js";
 import { createDrafts } from "./drafts/drafts.js";
 import { senderHash } from "./inbound/email.js";
 import { createEmailProcessor } from "./inbound/processor.js";
+import { createSlackProcessor } from "./inbound/slack-processor.js";
 import { createEmailChannels } from "./intake/channels.js";
 import { createIntake } from "./intake/intake.js";
+import type { Posted, SlackApi } from "./intake/slack-api.js";
+import { createSlackChannels } from "./intake/slack-channels.js";
 import { createIntakeWorker } from "./intake/worker.js";
 import { createFakeEmailProvider } from "./notifications/email-port.js";
 import { createHub } from "./notifications/hub.js";
@@ -21,6 +24,7 @@ import { createNotifier } from "./notifications/notify.js";
 import { createRunLog } from "./runs/log.js";
 import { PASSWORD, type Seeded, seedMember, testDocuments } from "./test-db.js";
 import { eml, type Mail } from "./test-email.js";
+import { INTAKE_CHANNEL, SIGNING_SECRET, signed, TEAM } from "./test-slack.js";
 import { noKnowledge, noVaults } from "./threads/ports.js";
 import { createThreads } from "./threads/threads.js";
 
@@ -34,9 +38,9 @@ export type Person = Seeded & { cookie: string };
 export function intakeDesk(pool: pg.Pool) {
   const documents = testDocuments(pool, { scanner: createStubScanner() });
   const raw = createDocuments(pool, { store: documents.store });
-  const channels = createEmailChannels(pool, {
-    secrets: createSecretBox(randomBytes(32).toString("base64")),
-  });
+  const secrets = createSecretBox(randomBytes(32).toString("base64"));
+  const channels = createEmailChannels(pool, { secrets });
+  const slackChannels = createSlackChannels(pool, { secrets });
   const model = { answer: null as unknown, calls: [] as string[] };
   const gateway = createGateway({
     providers: {
@@ -67,10 +71,47 @@ export function intakeDesk(pool: pg.Pool) {
     drafts: createDrafts(pool, { gateway }),
     intake,
     emailChannels: channels,
+    slackChannels,
     // A fresh address for every call, so the sign-in limit never bites.
     clientIp: () => `10.${randomBytes(3).join(".")}`,
   });
   const provider = createFakeEmailProvider();
+  /** Slack as the tests see it: what was posted, and the files it will hand out. */
+  const slack = {
+    posted: [] as { token: string; channel: string; threadTs: string | null; text: string }[],
+    fetched: [] as string[],
+    files: new Map<string, Buffer>(),
+    /** What the next posts answer, before posting works again. */
+    refuse: [] as Posted[],
+  };
+  const slackApi: SlackApi = {
+    async post(token, message) {
+      const refused = slack.refuse.shift();
+      if (refused) return refused;
+      slack.posted.push({ token, ...message });
+      const channel = /^[UW]/.test(message.channel)
+        ? `D${message.channel.slice(1)}`
+        : message.channel;
+      return {
+        ok: true,
+        channel,
+        ts: `1800000099.${String(slack.posted.length).padStart(6, "0")}`,
+      };
+    },
+    async download(_token, file, maxBytes) {
+      slack.fetched.push(file.url);
+      const bytes = slack.files.get(file.url);
+      return bytes && bytes.length <= maxBytes
+        ? { ok: true, bytes }
+        : { ok: false, why: "not fetched" };
+    },
+  };
+  const slackProcessor = createSlackProcessor(pool, {
+    documents: raw,
+    scanner: createStubScanner(),
+    secrets,
+    api: slackApi,
+  });
   const processor = createEmailProcessor(pool, { documents: raw, scanner: createStubScanner() });
   /** Null for the real time. */
   const clock = { at: null as Date | null };
@@ -79,6 +120,7 @@ export function intakeDesk(pool: pg.Pool) {
     gateway,
     store: documents.store,
     mail: { provider },
+    slack: { api: slackApi, secrets },
     notifier,
   });
 
@@ -195,8 +237,78 @@ export function intakeDesk(pool: pg.Pool) {
         ...over,
       });
 
-    return { admin, lawyer, spaceId, channelId, type, deliver, tick, requests, request, answer };
+    /** A Slack channel of this workspace, and a way to post to it as Slack would. */
+    const slackChannel = async (over: Record<string, unknown> = {}) => {
+      const res = await call(admin, "POST", "/apps/intake/slack-channels", {
+        name: "Slack",
+        team_id: TEAM,
+        channel_ids: [INTAKE_CHANNEL],
+        signing_secret: SIGNING_SECRET,
+        bot_token: "xoxb-test-token-0000",
+        ...over,
+      });
+      expect(res.status).toBe(201);
+      const { id, hook_path: path } = res.body.channel as { id: string; hook_path: string };
+      const send = async (body: unknown, headers: Record<string, string> = {}) => {
+        const text = typeof body === "string" ? body : JSON.stringify(body);
+        const sent = await app.request(path, {
+          method: "POST",
+          headers: { ...signed(text, Date.now()), ...headers },
+          body: text,
+        });
+        const answered = await sent.text();
+        return {
+          status: sent.status,
+          retryAfter: sent.headers.get("retry-after"),
+          body: (answered ? JSON.parse(answered) : null) as Json,
+        };
+      };
+      /** What was queued is read, and everything due is done. */
+      const run = async () => {
+        await slackProcessor.tick(admin.workspaceId);
+        // Each tick posts the oldest message of each request.
+        await worker.tick(admin.workspaceId);
+        await worker.tick(admin.workspaceId);
+      };
+      const receive = async (body: unknown) => {
+        const sent = await send(body);
+        expect(sent.status).toBe(200);
+        await run();
+        return sent;
+      };
+      return { id, path, send, run, receive };
+    };
+
+    return {
+      admin,
+      lawyer,
+      spaceId,
+      channelId,
+      type,
+      deliver,
+      tick,
+      requests,
+      request,
+      answer,
+      slackChannel,
+    };
   };
 
-  return { app, call, member, workspace, open, model, provider, worker, intake, channels, clock };
+  return {
+    app,
+    call,
+    member,
+    workspace,
+    open,
+    model,
+    provider,
+    worker,
+    intake,
+    channels,
+    clock,
+    slack,
+    slackProcessor,
+    slackChannels,
+    secrets,
+  };
 }

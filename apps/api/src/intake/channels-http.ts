@@ -2,12 +2,16 @@ import {
   IntakeEmailChannelCreate,
   IntakeEmailChannelPatch,
   IntakeSecretRotate,
+  IntakeSlackChannelCreate,
+  IntakeSlackChannelPatch,
 } from "@legallabs/contracts";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
-import type { ChannelFailure, ChannelResult, EmailChannels } from "./channels.js";
+import type { ChannelFailure, ChannelResult } from "./channel-admin.js";
+import type { EmailChannels } from "./channels.js";
+import type { SlackChannels } from "./slack-channels.js";
 
 type Env = { Variables: { principal: Principal } };
 
@@ -19,7 +23,10 @@ const FAILURES: Record<ChannelFailure, { status: 403 | 404 | 409 | 503; message:
   SECRETS_UNAVAILABLE: { status: 503, message: "This server can't store secrets yet." },
 };
 
-export function emailChannelHttp(channels: EmailChannels, clientOf: (c: Context) => Client) {
+export function channelHttp(
+  { email: channels, slack }: { email?: EmailChannels; slack?: SlackChannels },
+  clientOf: (c: Context) => Client,
+) {
   const app = new Hono<Env>();
   const limitBody = bodyLimit({
     maxSize: 16 * 1024,
@@ -45,6 +52,27 @@ export function emailChannelHttp(channels: EmailChannels, clientOf: (c: Context)
   };
   const me = (c: Context<Env>) => c.get("principal");
   const id = (c: Context<Env>) => c.req.param("id") ?? "";
+
+  if (slack) {
+    app.get("/apps/intake/slack-channels", async (c) =>
+      reply(c, await slack.list(me(c)), (list) => ({ channels: list })),
+    );
+
+    app.post("/apps/intake/slack-channels", limitBody, async (c) => {
+      const body = await parse(c, IntakeSlackChannelCreate);
+      if (!("data" in body)) return body.response;
+      const result = await slack.create(me(c), body.data, clientOf(c));
+      return reply(c, result, (channel) => ({ channel }), 201);
+    });
+
+    app.patch("/apps/intake/slack-channels/:id", limitBody, async (c) => {
+      const body = await parse(c, IntakeSlackChannelPatch);
+      if (!("data" in body)) return body.response;
+      const result = await slack.update(me(c), id(c), body.data, clientOf(c));
+      return reply(c, result, (channel) => ({ channel }));
+    });
+  }
+  if (!channels) return app;
 
   app.get("/apps/intake/channels", async (c) =>
     reply(c, await channels.list(me(c)), (list) => ({ channels: list })),
