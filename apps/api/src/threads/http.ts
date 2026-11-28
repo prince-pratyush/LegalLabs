@@ -7,6 +7,9 @@ import {
   type KnowledgePort,
   ResponseMode,
   ThreadScope,
+  TRANSLATE_LIMITS,
+  TRANSLATION_LANGUAGES,
+  type TranslationLanguage,
   type VaultPort,
   WEB_SOURCE_ID,
 } from "@legallabs/contracts";
@@ -29,6 +32,7 @@ import type {
   RunView,
   Threads,
   ThreadView,
+  TranslateFailure,
 } from "./threads.js";
 
 type Env = { Variables: { principal: Principal } };
@@ -120,6 +124,47 @@ const answerBody = z
     skip: z.literal(true).optional(),
   })
   .refine((a) => [a.option_id, a.text, a.skip].filter((v) => v !== undefined).length === 1);
+
+const translateBody = z
+  .strictObject({
+    target_lang: z.enum(Object.keys(TRANSLATION_LANGUAGES) as [TranslationLanguage]),
+    // Past ten is refused by name, so the count is only loosely bounded here.
+    document_ids: z.array(z.uuid()).min(1).max(100).optional(),
+    text: z.string().max(TRANSLATE_LIMITS.textChars).refine(noNul).optional(),
+  })
+  .refine((body) => (body.document_ids === undefined) !== (body.text === undefined))
+  .refine((body) => body.text === undefined || body.text.trim().length > 0);
+
+const TRANSLATE_FAILURES: Record<
+  TranslateFailure,
+  { status: 400 | 403 | 404 | 409; message: string }
+> = {
+  FORBIDDEN: { status: 403, message: "You don't have permission to translate here." },
+  NOT_FOUND: FAILURES.NOT_FOUND,
+  READ_ONLY: FAILURES.READ_ONLY,
+  MIXED_MATTERS: FAILURES.MIXED_MATTERS,
+  MODEL_NOT_ALLOWED: { status: 403, message: "This matter allows no model that can translate." },
+  LIMIT_TRANSLATE_DOCS: { status: 400, message: "Translate up to 10 files at a time." },
+  LIMIT_TRANSLATE_CHARS: {
+    status: 400,
+    message: "That is more than can be translated at once. Choose fewer or shorter files.",
+  },
+  UNSUPPORTED_TYPE: {
+    status: 400,
+    message: "Only Word, PDF, text and Markdown files can be translated.",
+  },
+  UNREADABLE_FILE: {
+    status: 409,
+    message: "A file wasn't accepted or couldn't be read, so it can't be translated.",
+  },
+  ACTIVE_CONTENT: {
+    status: 400,
+    message:
+      "A file holds macros, embedded objects or links to outside files. Remove them and upload it again.",
+  },
+  LIMIT_FILE_SIZE: { status: 400, message: "A file is too large to translate." },
+  NOT_READY: { status: 409, message: "A file is still being read. Try again shortly." },
+};
 
 const planEditBody = z.object({ instruction: z.string().trim().min(1).max(4000).refine(noNul) });
 
@@ -323,6 +368,29 @@ export function threadHttp(options: ThreadHttpOptions) {
 
   app.post("/threads", limitBody, (c) => ask(c));
   app.post("/threads/:id/messages", limitBody, (c) => ask(c, c.req.param("id")));
+
+  app.post("/threads/:id/translate", limitBody, async (c) => {
+    const parsed = translateBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return invalid(c);
+    const limited = tooMany(c);
+    if (limited) return limited;
+    const { target_lang, document_ids, text } = parsed.data;
+    const result = await threads.translate(
+      c.get("principal"),
+      c.req.param("id"),
+      {
+        language: target_lang,
+        ...(document_ids ? { documentIds: document_ids } : {}),
+        ...(text !== undefined ? { text } : {}),
+      },
+      clientOf(c),
+    );
+    if (!result.ok) {
+      const { status, message } = TRANSLATE_FAILURES[result.reason];
+      return c.json({ code: result.reason, message }, status);
+    }
+    return c.json({ message_id: result.questionId, run_id: result.runId }, 202);
+  });
 
   app.get("/threads/:id", async (c) => {
     const thread = await threads.get(c.get("principal"), c.req.param("id"));

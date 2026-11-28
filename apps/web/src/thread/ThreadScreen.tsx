@@ -12,7 +12,7 @@ import {
   QuestionCard,
   RunProgress,
 } from "@legallabs/ui";
-import { FilePen, PanelRight, Share2, Table } from "lucide-react";
+import { FilePen, Languages, PanelRight, Share2, Table } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -36,6 +36,7 @@ import { FileCard } from "./FileCard.js";
 import type { LiveCitation, LiveRun } from "./run-state.js";
 import { SourcesPanel } from "./SourcesPanel.js";
 import { ThreadComposer } from "./ThreadComposer.js";
+import { TranslatePanel } from "./TranslatePanel.js";
 import { useRunStream } from "./use-run-stream.js";
 
 /** Verified citations open the viewer (or the authority); flagged ones never link. */
@@ -58,6 +59,7 @@ type Panel =
   | { kind: "sources"; answerId: string; n?: number; unavailable?: boolean }
   | { kind: "share" }
   | { kind: "context" }
+  | { kind: "translate"; text: string }
   | { kind: "drafts"; draftId?: string }
   | null;
 
@@ -246,6 +248,18 @@ export function ThreadScreen({
         sourceName={(id) => options?.sources.find((s) => s.id === id)?.name ?? "Source"}
         onClose={() => setPanel(null)}
       />
+    ) : panel?.kind === "translate" && thread ? (
+      <TranslatePanel
+        key={panel.text}
+        thread={thread}
+        initialText={panel.text}
+        onStarted={() => {
+          setPanel(null);
+          setLive(null);
+          void load().then(onChanged, (err) => setSendError(messageOf(err)));
+        }}
+        onClose={() => setPanel(null)}
+      />
     ) : panel?.kind === "share" && thread ? (
       <SharePanel threadId={thread.id} onClose={() => setPanel(null)} />
     ) : panel?.kind === "sources" ? (
@@ -311,6 +325,16 @@ export function ThreadScreen({
                 <PanelRight aria-hidden />
                 Context
               </Button>
+              {!thread.read_only && (
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => setPanel({ kind: "translate", text: "" })}
+                >
+                  <Languages aria-hidden />
+                  Translate
+                </Button>
+              )}
               <Button
                 variant="quiet"
                 size="sm"
@@ -353,7 +377,12 @@ export function ThreadScreen({
                     selected={panel?.kind === "sources" && panel.answerId === message.id}
                     onCite={(n) => cite(message.id, message.citations.map(toAnswerCitation), n)}
                     onSources={() => setPanel({ kind: "sources", answerId: message.id })}
-                    {...(thread.read_only ? {} : { onDraft: () => void draftFrom(message.id) })}
+                    {...(thread.read_only
+                      ? {}
+                      : {
+                          onDraft: () => void draftFrom(message.id),
+                          onTranslate: () => setPanel({ kind: "translate", text: message.content }),
+                        })}
                   />
                 )}
                 {(thread.outputs ?? [])
@@ -444,6 +473,7 @@ function SavedAnswer({
   onCite,
   onSources,
   onDraft,
+  onTranslate,
 }: {
   message: Message;
   selected: boolean;
@@ -451,6 +481,7 @@ function SavedAnswer({
   onSources: () => void;
   /** Absent on a read-only thread. */
   onDraft?: () => void;
+  onTranslate?: () => void;
 }) {
   const fallbackFrom =
     message.requested_model && message.requested_model !== message.model
@@ -484,6 +515,17 @@ function SavedAnswer({
           <Button variant="quiet" size="sm" onClick={onDraft}>
             <FilePen aria-hidden />
             Draft from this answer
+          </Button>
+        )}
+        {onTranslate && (
+          <Button
+            variant="quiet"
+            size="sm"
+            aria-label="Translate this answer"
+            onClick={onTranslate}
+          >
+            <Languages aria-hidden />
+            Translate
           </Button>
         )}
       </div>

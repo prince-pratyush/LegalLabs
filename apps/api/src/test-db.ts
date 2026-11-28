@@ -104,6 +104,16 @@ export function testThreads(
 ) {
   const gateway = createGateway({ providers, recordUsage: async () => {} });
   const log = createRunLog(pool);
-  const threads = createThreads(pool, { gateway, documents, log, vaults, knowledge, ...extra });
+  // testDocuments carries its store, which translating a .docx reads the original from.
+  const { store } = documents as Partial<Pick<IngestWorkerOptions, "store">>;
+  const threads = createThreads(pool, {
+    gateway,
+    documents,
+    log,
+    vaults,
+    knowledge,
+    ...(store ? { store } : {}),
+    ...extra,
+  });
   return { threads, log, gateway, vaults, knowledge };
 }

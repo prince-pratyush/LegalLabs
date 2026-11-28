@@ -287,6 +287,7 @@ const threadService = createThreads(pool, {
   web: webSearch,
   notifier,
   personalisation: memory.personalisation,
+  store,
 });
 registerThreadActions(notifications.actions, threadService);
 const asks = Number(process.env.LEGALLABS_ASKS_PER_10_MIN);
