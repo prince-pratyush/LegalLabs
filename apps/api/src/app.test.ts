@@ -36,6 +36,34 @@ function harness(ip = "203.0.113.9", webRoot?: string) {
 
 const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
 
+describe("GET /healthz", () => {
+  const app = (ready: () => Promise<unknown>) =>
+    createApp({
+      auth: createAuth(pool),
+      documents: testDocuments(pool),
+      threads: testThreads(pool, testDocuments(pool)),
+      drafts: createDrafts(pool, {
+        gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+      }),
+      clientIp: () => null,
+      ready,
+    });
+
+  it("answers without a session once the database does", async () => {
+    const res = await app(() => pool.query("select 1")).request("/healthz");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("says unavailable, and nothing about why, when it does not", async () => {
+    const res = await app(async () => {
+      throw new Error("password authentication failed");
+    }).request("/healthz");
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false });
+  });
+});
+
 describe("POST /auth/login", () => {
   it("sets the session cookie with every protection, and never returns the token", async () => {
     const m = await seedMember(pool);

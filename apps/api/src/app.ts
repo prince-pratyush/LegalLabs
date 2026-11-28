@@ -223,6 +223,8 @@ export interface AppOptions {
   users?: Users;
   /** SCIM 2.0 under /scim/v2 and its admin API; left out, neither is mounted. */
   scim?: { service: Scim; admin: ScimAdmin };
+  /** What /healthz waits on; left out, it only says the process answers. */
+  ready?: () => Promise<unknown>;
   /** The socket address only: forwarded headers can be forged by the caller. */
   clientIp: (c: Context) => string | null;
   now?: () => number;
@@ -290,6 +292,7 @@ export function createApp({
   publicApi,
   clientIp,
   now = Date.now,
+  ready,
   webRoot,
   addin,
 }: AppOptions) {
@@ -330,6 +333,16 @@ export function createApp({
       }
     }
     await next();
+  });
+
+  // For the container health check and the proxy: no session, no detail.
+  app.get("/healthz", async (c) => {
+    try {
+      await ready?.();
+      return c.json({ ok: true });
+    } catch {
+      return c.json({ ok: false }, 503);
+    }
   });
 
   // Signed by the sender rather than signed in, so it comes before every session check.

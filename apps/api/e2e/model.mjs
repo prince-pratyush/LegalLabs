@@ -212,7 +212,7 @@ export function reply(messages) {
   return `${quote}<c doc="${passage[1]}" page="${passage[2]}" quote="${attr(quote)}"/>`;
 }
 
-export function startFakeModel() {
+export function startFakeModel({ host = "127.0.0.1", port: wanted = 0 } = {}) {
   const server = createServer(async (req, res) => {
     let raw = "";
     for await (const chunk of req) raw += chunk;
@@ -257,7 +257,7 @@ export function startFakeModel() {
     res.end("data: [DONE]\n\n");
   });
   return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(wanted, host, () => {
       const { port } = server.address();
       resolve({ url: `http://127.0.0.1:${port}`, stop: () => server.close() });
     });

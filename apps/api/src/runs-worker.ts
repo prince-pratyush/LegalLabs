@@ -15,6 +15,8 @@ import { createAgents } from "./agents/agents.js";
 import { createContextPort } from "./agents/context.js";
 import { createScheduleFirer } from "./agents/schedule-fire.js";
 import { assertRestrictedRole } from "./database-role.js";
+import { publicBuckets } from "./deploy/buckets.js";
+import { assertSafeDeployment } from "./deploy/posture.js";
 import { createDocuments } from "./documents/documents.js";
 
 // The process that does agent and workflow runs. Stopping it mid-run loses nothing:
@@ -27,6 +29,8 @@ if (!databaseUrl) throw new Error("DATABASE_URL is not set");
 const pool = new pg.Pool({ connectionString: databaseUrl, max: 10 });
 pool.on("error", (err) => console.error(`database connection lost: ${err.message}`));
 await assertRestrictedRole(pool);
+// The worker reads the same settings and the same files, so it holds to the same bar (SEC-002).
+await assertSafeDeployment(process.env, pool, () => publicBuckets(process.env));
 
 // Workflow steps call models and search documents from this process, as the run's owner.
 const gateway = createWorkspaceGateway(pool, {

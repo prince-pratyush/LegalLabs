@@ -9,3 +9,5 @@ coverage/
 *.tsbuildinfo
 storybook-static
 .zitadel/
+infra/compose/app.env
+infra/compose/backups/
