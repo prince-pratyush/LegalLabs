@@ -88,4 +88,18 @@ describe("web search in the database", () => {
       expect(await insert(7, "javascript:alert(1)")).toMatch(/check constraint/);
     });
   });
+
+  it("never clears a thread's record of having used the web", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      const { threadId } = s.threads.acme;
+      const used = async () =>
+        (await tx.one("select used_web from work.thread where id = $1", [threadId])).used_web;
+      expect(await used()).toBe(false);
+      await tx.rows("update work.thread set used_web = true where id = $1", [threadId]);
+      await tx.rows("update work.thread set used_web = false where id = $1", [threadId]);
+      expect(await used()).toBe(true);
+    });
+  });
 });

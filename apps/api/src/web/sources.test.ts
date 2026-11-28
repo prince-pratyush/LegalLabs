@@ -367,6 +367,53 @@ describe("asking with web search", () => {
     expect(inferred).toEqual([[]]);
   });
 
+  it("keeps inferring no memory for the rest of a thread that once used the web", async () => {
+    const inferred: string[][] = [];
+    const real = createPersonalisation(pool, createMemories(pool), { infer: true });
+    const personalisation: Personalisation = {
+      ...real,
+      split: (_plan, text) => ({ text, candidates: ["Likes short answers"] }),
+      finish: async (_p, _id, _plan, candidates) => {
+        inferred.push([...candidates]);
+      },
+    };
+    // No page can be read and nothing is cited, so only the thread itself can remember.
+    const h = harness({ fetcher: pages({}), personalisation, answer: "Five." });
+    const m = await member();
+    const document = await upload(h, m, null);
+    const turn = (sources: { source_id: string }[], threadId?: string) =>
+      question("rent", {
+        ...(threadId ? { threadId } : {}),
+        scope: { document_ids: [document.id], vault_ids: [], sources },
+      });
+    const first = await done(
+      await h.threads.ask(asPrincipal(m), turn([{ source_id: "web" }]), client),
+    );
+    await done(await h.threads.ask(asPrincipal(m), turn([], first.threadId), client));
+    await done(await h.threads.ask(asPrincipal(m), turn([], first.threadId), client));
+    expect(inferred).toEqual([[], [], []]);
+
+    await done(await h.threads.ask(asPrincipal(m), turn([]), client));
+    expect(inferred.at(-1)).toEqual(["Likes short answers"]);
+  });
+
+  it("is not added by a mention, which would skip the note on what is sent", async () => {
+    const m = await member();
+    const h = harness();
+    const mention = { type: "mention", ref_type: "source", ref_id: "web", label: "Web" } as const;
+    const asked = question("", { blocks: [{ type: "text", text: "rent " }, mention] });
+    asked.scope.sources = [];
+    expect(await h.threads.ask(asPrincipal(m), asked, client)).toEqual({
+      ok: false,
+      reason: "EMPTY_SCOPE",
+    });
+    const document = await upload(h, m, null);
+    asked.scope.document_ids = [document.id];
+    const run = await done(await h.threads.ask(asPrincipal(m), asked, client));
+    expect(h.search.queries).toEqual([]);
+    expect((await h.threads.get(asPrincipal(m), run.threadId))?.sources).toEqual([]);
+  });
+
   it("answers without the web when the search service fails", async () => {
     const m = await member();
     const down: WebSearchProvider = {

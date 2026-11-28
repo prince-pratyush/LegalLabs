@@ -89,6 +89,8 @@ export interface ThreadView extends ThreadSummary {
   mine: boolean;
   vaultIds: string[];
   sources: SourceSelection[];
+  /** True once any turn asked for the web; never goes back. */
+  usedWeb: boolean;
   documents: ThreadDocument[];
   messages: MessageView[];
   runs: RunView[];
@@ -366,9 +368,11 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     owner_id: string;
     vault_ids: string[];
     sources: SourceSelection[];
+    used_web: boolean;
     created_at: Date;
   }>(
-    "select id, title, matter_id, owner_id, vault_ids, sources, created_at from work.thread where id = $1",
+    `select id, title, matter_id, owner_id, vault_ids, sources, used_web, created_at
+       from work.thread where id = $1`,
     [threadId],
   );
   const thread = found[0];
@@ -450,6 +454,7 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     mine: thread.owner_id === principal.userId,
     vaultIds: thread.vault_ids,
     sources: thread.sources,
+    usedWeb: thread.used_web,
     documents: documents.map(toDocument),
     runs: runs.map(toRun),
     messages: messages.map((message) => ({
@@ -1067,8 +1072,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       const sourceIds = new Set(input.scope.sources.map((source) => source.source_id));
       const sources = [
         ...input.scope.sources,
+        // The web is only ever picked: a mention would skip the note on what it sends.
         ...mentioned("source")
-          .filter((id) => !sourceIds.has(id))
+          .filter((id) => id !== WEB_SOURCE_ID && !sourceIds.has(id))
           .map((source_id) => ({ source_id })),
       ].slice(0, 5);
       if (![...documentIds, ...vaultIds].every((id) => UUID.test(id))) {
@@ -1142,8 +1148,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           let threadId = existing?.id;
           if (!threadId) {
             const { rows } = await db.query<{ id: string }>(
-              `insert into work.thread (workspace_id, owner_id, matter_id, title, vault_ids, sources)
-               values ($1, $2, $3, $4, $5, $6) returning id`,
+              `insert into work.thread
+                 (workspace_id, owner_id, matter_id, title, vault_ids, sources, used_web)
+               values ($1, $2, $3, $4, $5, $6, $7) returning id`,
               [
                 principal.workspaceId,
                 principal.userId,
@@ -1151,6 +1158,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
                 titleOf(question),
                 vaultIds,
                 JSON.stringify(sources),
+                webOf(sources) !== undefined,
               ],
             );
             threadId = rows[0]?.id;
@@ -1166,8 +1174,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           } else {
             // Scope changes apply from this turn on; earlier answers keep theirs.
             await db.query(
-              "update work.thread set vault_ids = $2, sources = $3, last_activity_at = now() where id = $1",
-              [threadId, vaultIds, JSON.stringify(sources)],
+              `update work.thread set vault_ids = $2, sources = $3, used_web = used_web or $4,
+                      last_activity_at = now() where id = $1`,
+              [threadId, vaultIds, JSON.stringify(sources), webOf(sources) !== undefined],
             );
           }
           const added = attached.filter((d) => !existing?.documents.some((e) => e.id === d.id));
@@ -1248,11 +1257,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
               {
                 question,
                 history,
-                webBefore:
-                  webOf(existing?.sources ?? []) !== undefined ||
-                  (existing?.messages ?? []).some((message) =>
-                    message.citations.some((citation) => citation.kind === "web"),
-                  ),
+                // This turn counts too, even if no page could be read.
+                webBefore: existing?.usedWeb === true || webOf(sources) !== undefined,
               },
               { ...input, scope: { ...input.scope, sources } },
               client,
