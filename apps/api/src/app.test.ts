@@ -245,3 +245,22 @@ describe("the web page", () => {
     expect((await h.app.request("/%2e%2e/package.json")).status).toBe(404);
   });
 });
+
+describe("installable web app", () => {
+  it("has the browser revalidate the worker, manifest and offline page on every load", async () => {
+    const root = mkdtempSync(join(tmpdir(), "web-"));
+    mkdirSync(join(root, "assets"));
+    for (const name of ["sw.js", "manifest.webmanifest", "offline.html", "offline.css"]) {
+      writeFileSync(join(root, name), "x");
+    }
+    const { app } = harness("203.0.113.9", root);
+    for (const path of ["/sw.js", "/manifest.webmanifest", "/offline.html", "/offline.css"]) {
+      const res = await app.request(path);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-cache");
+      expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
+    }
+    const manifest = await app.request("/manifest.webmanifest");
+    expect(manifest.headers.get("content-type")).toContain("application/manifest+json");
+  });
+});

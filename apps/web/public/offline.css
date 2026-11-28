@@ -1,0 +1,17 @@
+:root {
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+  padding: 3rem 1rem;
+  font:
+    16px / 1.5 system-ui,
+    sans-serif;
+  text-align: center;
+}
+a {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 1rem;
+}

@@ -49,6 +49,7 @@ import { mattersHash, parseMattersRoute } from "./matters/route.js";
 import { NotificationBell } from "./notifications/NotificationHub.js";
 import { PlaybooksApp } from "./playbooks/PlaybooksApp.js";
 import { goPlaybooks, parsePlaybookRoute } from "./playbooks/route.js";
+import { clearShellCache } from "./pwa/register.js";
 import { RetentionApp } from "./retention/RetentionApp.js";
 import { parseRetentionRoute, retentionHash } from "./retention/route.js";
 import { ReviewsApp } from "./reviews/ReviewsApp.js";
@@ -93,7 +94,10 @@ export function App() {
   const current = useHash();
   const [hash, setHash] = useState(current);
   if (!viewing && hash !== current) setHash(current);
-  const signedOut = () => setSession("none");
+  const signedOut = () => {
+    void clearShellCache();
+    setSession("none");
+  };
   if (inviting) {
     return (
       <GuestAccept
