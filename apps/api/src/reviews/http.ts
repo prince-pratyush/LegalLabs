@@ -12,6 +12,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import type { Limiter } from "../auth/limiter.js";
+import { NO_MODEL_MESSAGE } from "../matters/model-policy.js";
 import type { FileOut, ReviewFailure, Reviews } from "./reviews.js";
 
 type Env = { Variables: { principal: Principal } };
@@ -41,6 +42,7 @@ const FAILURES: Record<ReviewFailure, { status: Status; message: string }> = {
   RULE_NOT_FOUND: { status: 404, message: "That rule isn't part of this review." },
   ALTERNATE_NOT_FOUND: { status: 404, message: "That alternate wasn't found." },
   MODEL_UNAVAILABLE: { status: 503, message: "No model could answer. Try again shortly." },
+  MODEL_NOT_ALLOWED: { status: 403, message: NO_MODEL_MESSAGE },
   OOXML_INVALID: { status: 422, message: "The redline couldn't be written into that file." },
 };
 

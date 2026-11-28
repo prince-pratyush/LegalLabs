@@ -10,6 +10,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import type { Limiter } from "../auth/limiter.js";
+import { NO_MODEL_MESSAGE } from "../matters/model-policy.js";
 import type { PlaybookFailure, Playbooks } from "./playbooks.js";
 
 type Env = { Variables: { principal: Principal } };
@@ -33,6 +34,7 @@ const FAILURES: Record<PlaybookFailure, { status: Status; message: string }> = {
     status: 503,
     message: "No model could read the document. Try again shortly.",
   },
+  MODEL_NOT_ALLOWED: { status: 403, message: NO_MODEL_MESSAGE },
   STALE: {
     status: 409,
     message: "Someone else saved this playbook since you opened it. Reload to see their changes.",

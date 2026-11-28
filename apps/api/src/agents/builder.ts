@@ -4,6 +4,7 @@ import type { RunContext, RunHandler } from "@legallabs/runs";
 import type pg from "pg";
 import { z } from "zod";
 import { asApp, newMessageId } from "../db.js";
+import { modelsFor, NO_MODEL_MESSAGE } from "../matters/model-policy.js";
 import type { Agents } from "./agents.js";
 
 /** At most this many clarifying questions before the builder writes (§3.1). */
@@ -68,6 +69,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
     system: string,
     user: string,
     cls: "synthesize" | "draft_edit",
+    exclude: readonly string[],
   ) => {
     const used = await ctx.store.totals();
     return deps.gateway.call({
@@ -79,6 +81,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
       budget: { max_output: 4000, max_cost_usd: Math.max(2 - used.cost_usd, 0.01) },
       routing: { workspace: ctx.run.workspace_id },
       trace: `${ctx.run.id}:${ordinal}`,
+      ...(exclude.length ? { exclude } : {}),
     });
   };
 
@@ -164,6 +167,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
     ordinal: number,
     outcome: string,
     qa: { q: string; a: string | null }[],
+    exclude: readonly string[],
   ) {
     const { step } = await ctx.store.beginStep({
       ordinal,
@@ -178,7 +182,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
     ]
       .filter(Boolean)
       .join("\n\n");
-    const r = await call(ctx, ordinal, WRITE_SYSTEM, prompt, "synthesize");
+    const r = await call(ctx, ordinal, WRITE_SYSTEM, prompt, "synthesize", exclude);
     const parsed = Written.safeParse(firstJson(r.output));
     // A model that ignores the format still gives the person its text to edit.
     const written = parsed.success
@@ -249,6 +253,16 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
     },
 
     async step(ctx, ordinal) {
+      // The thread may be a matter's, and everything asked of the model comes from it.
+      const models = await asApp(deps.pool, principal(ctx.run), (db) =>
+        modelsFor(db, deps.gateway, {
+          matters: [ctx.run.matter_id],
+          threads: [ctx.run.thread_id],
+        }),
+      );
+      if (!models.allows(ctx.run.test_mode ? "draft_edit" : "synthesize")) {
+        return { kind: "fail", code: "MODEL_POLICY_NO_ELIGIBLE_MODEL", message: NO_MODEL_MESSAGE };
+      }
       const texts = await lastUserText(ctx);
 
       // Test mode: "Request changes" revises the instructions, with no questions.
@@ -265,6 +279,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
           REVISE_SYSTEM,
           `Current instructions:\n${current?.base?.instructions ?? ""}\n\nRequested change:\n${texts.last}`,
           "draft_edit",
+          models.exclude,
         );
         const revised = r.output.trim().slice(0, AGENT_LIMITS.instructions);
         const saved = revised ? await saveDraft(ctx, revised, "request_changes") : null;
@@ -285,7 +300,9 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
 
       const qa = await answers(ctx);
       const skipped = qa.some((x) => x.a === null);
-      if (qa.length >= MAX_QUESTIONS || skipped) return finalize(ctx, ordinal, texts.first, qa);
+      if (qa.length >= MAX_QUESTIONS || skipped) {
+        return finalize(ctx, ordinal, texts.first, qa, models.exclude);
+      }
 
       const { step } = await ctx.store.beginStep({
         ordinal,
@@ -298,6 +315,7 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
         BUILDER_SYSTEM,
         `Outcome:\n${texts.first}\n\nAnswers so far:\n${qa.map((x) => `Q: ${x.q}\nA: ${x.a ?? ""}`).join("\n") || "(none)"}`,
         "synthesize",
+        models.exclude,
       );
       const asked = QUESTION.exec(r.output.trim());
       if (!asked) {
@@ -311,13 +329,13 @@ export function createBuilderHandler(deps: BuilderDeps): RunHandler {
           output: { summary: "Ready to write." },
         });
         void step;
-        return finalize(ctx, ordinal + 1, texts.first, qa);
+        return finalize(ctx, ordinal + 1, texts.first, qa, models.exclude);
       }
       let q: { question: string; options?: { id: string; label: string }[]; allow_text?: boolean };
       try {
         q = JSON.parse(asked[1] as string);
       } catch {
-        return finalize(ctx, ordinal + 1, texts.first, qa);
+        return finalize(ctx, ordinal + 1, texts.first, qa, models.exclude);
       }
       const question = {
         text: q.question,

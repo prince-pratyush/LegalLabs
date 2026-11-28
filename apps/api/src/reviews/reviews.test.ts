@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Finding, type Gap, paraHash, type Review, type Rule } from "@legallabs/contracts";
 import { type Block, buildDocx, buildPdf, readDocx } from "@legallabs/docx";
-import { createGateway, type ModelProvider } from "@legallabs/model-gateway";
+import { createGateway, type GatewayOptions, type ModelProvider } from "@legallabs/model-gateway";
 import type { ReviewInput, ReviewOutcome, runReview } from "@legallabs/review";
 import { strFromU8, unzipSync } from "fflate";
 import type pg from "pg";
@@ -25,6 +25,7 @@ import {
   testPool,
   testThreads,
 } from "../test-db.js";
+import { countingProviders, denyProviders, fileInMatter, newMatter } from "../test-model-policy.js";
 import { noKnowledge, noVaults } from "../threads/ports.js";
 import { createThreads } from "../threads/threads.js";
 import { createReviews } from "./reviews.js";
@@ -202,13 +203,14 @@ function harness(
     maxCostUsd?: number;
     asksPerWindow?: number;
     validate?: (bytes: Uint8Array) => Promise<boolean>;
+    providers?: GatewayOptions["providers"];
   } = {},
 ) {
   const provider: ModelProvider = {
     complete: async () => ({ text: reply(), usage: { input_tokens: 10, output_tokens: 10 } }),
   };
   const gateway = createGateway({
-    providers: { anthropic: provider },
+    providers: limits.providers ?? { anthropic: provider },
     recordUsage: async () => {},
   });
   const documents = testDocuments(pool);
@@ -1264,5 +1266,72 @@ describe("redline and export", () => {
     expect(body).toContain("Liability cap");
     const actions = (await auditTrail(pool, s.m.workspaceId)).map((r) => r.action);
     expect(actions.filter((a) => a === "review.exported")).toHaveLength(2);
+  });
+});
+
+describe("a matter's model policy in playbook reviews", () => {
+  async function inMatter() {
+    const model = countingProviders(
+      () => '{"alternates":[{"after":"is capped","justification":"x"}]}',
+    );
+    const h = harness(fakeEngine({ callModel: true }), () => "{}", { providers: model.providers });
+    const s = await setup(h);
+    const matterId = await newMatter(pool, s.m);
+    await fileInMatter(pool, s.versionId, matterId);
+    const seal = (...providers: string[]) => denyProviders(pool, matterId, ...providers);
+    return { h, s, calls: model.calls, seal };
+  }
+  const refused = { status: 403, body: { code: "MODEL_NOT_ALLOWED" } };
+  const start = (r: Awaited<ReturnType<typeof inMatter>>) =>
+    r.h.call(r.s.cookie, "POST", `/playbooks/${r.s.playbook.id}/reviews`, {
+      document_version_id: r.s.versionId,
+      party: "Acme (Customer)",
+      surface: "web",
+    });
+
+  it("refuses a review when no model is left", async () => {
+    const r = await inMatter();
+    await r.seal("anthropic", "ollama");
+    expect(await start(r)).toMatchObject(refused);
+    expect(r.calls).toEqual({ anthropic: 0, ollama: 0 });
+  });
+
+  it("leaves a denied provider out of a review and its re-run", async () => {
+    const r = await inMatter();
+    await r.seal("anthropic");
+    const { review_id } = await started(r.h, r.s);
+    const review = await waitFor(r.h, r.s.cookie, review_id);
+    expect(review.status).toBe("done");
+    const rerun = await r.h.call(
+      r.s.cookie,
+      "POST",
+      `/reviews/${review_id}/rules/${r.s.playbook.rules[0]?.id}/rerun`,
+      { document_version_id: r.s.versionId },
+    );
+    expect(rerun.status).toBe(202);
+    await runStatus(rerun.body.run_id, ["done"]);
+    expect(r.calls.anthropic).toBe(0);
+    expect(r.calls.ollama).toBeGreaterThan(3);
+  });
+
+  it("refuses redrafts and a re-run once no model is left", async () => {
+    const r = await inMatter();
+    const { review_id } = await started(r.h, r.s);
+    const review = await waitFor(r.h, r.s.cookie, review_id);
+    const base = `/reviews/${review_id}/suggestions/${sidOf(review, "Liability")}`;
+    await r.seal("anthropic", "ollama");
+    const before = { ...r.calls };
+    expect(await r.h.call(r.s.cookie, "POST", `${base}/alternates`)).toMatchObject(refused);
+    expect(
+      await r.h.call(r.s.cookie, "POST", `${base}/revise`, { instruction: "Shorter" }),
+    ).toMatchObject(refused);
+    const rerun = await r.h.call(
+      r.s.cookie,
+      "POST",
+      `/reviews/${review_id}/rules/${r.s.playbook.rules[0]?.id}/rerun`,
+      { document_version_id: r.s.versionId },
+    );
+    expect(rerun).toMatchObject(refused);
+    expect(r.calls).toEqual(before);
   });
 });

@@ -13,6 +13,7 @@ import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackUsage } from "../command-center/record.js";
 import { asApp, asWorker, RLS_REFUSED } from "../db.js";
 import { describeError } from "../log-error.js";
+import { modelsFor } from "../matters/model-policy.js";
 import type { RunLog } from "../runs/log.js";
 import {
   type Db,
@@ -275,25 +276,11 @@ export function createFactExtractions(
   /** Models the Space's matter and the document's matter both leave usable. */
   const excluded = (p: Principal, spaceId: string, documentId: string) =>
     asApp(pool, p, async (db) => {
-      const { rows } = await db.query<{
-        model_policy: { deny_providers?: string[]; deny_models?: string[] } | null;
-      }>(
-        `select m.model_policy from core.matter m
-          where m.id in (select matter_id from work.space where id = $1
-                         union select matter_id from content.document where id = $2)`,
-        [spaceId, documentId],
-      );
-      const all = gateway.models("read_extract").map((m) => m.id);
-      const exclude = all.filter((model) => {
-        const [provider = "", ...name] = model.split("/");
-        return rows.some(
-          ({ model_policy: policy }) =>
-            policy?.deny_providers?.includes(provider) ||
-            policy?.deny_models?.includes(model) ||
-            policy?.deny_models?.includes(name.join("/")),
-        );
+      const models = await modelsFor(db, gateway, {
+        spaces: [spaceId],
+        documents: [documentId],
       });
-      return { exclude, none: all.length > 0 && exclude.length === all.length };
+      return { exclude: models.exclude, none: !models.allows("read_extract") };
     });
 
   /** The pages of a version the caller can still open in a vault shared with the Space. */

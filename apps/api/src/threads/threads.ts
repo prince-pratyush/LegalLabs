@@ -27,6 +27,7 @@ import { asApp } from "../db.js";
 import { mayTake } from "../documents/copy.js";
 import type { Documents } from "../documents/documents.js";
 import { CopyRefused } from "../drafts/drafts.js";
+import { modelsFor } from "../matters/model-policy.js";
 import { noPersonalisation, type Personalisation } from "../memory/port.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 import { DOCX, type VersionMeta, versionMeta } from "../reviews/source.js";
@@ -41,7 +42,6 @@ import {
 } from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
 import { createFileMaker, FILE_LIMITS, type FileAnswer } from "./files.js";
-import { modelsFor, threadModels } from "./matter-models.js";
 import { surfaceOf } from "./surface.js";
 import {
   loadTranslatable,
@@ -1122,7 +1122,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     tasks: readonly TaskClass[],
   ) {
     const models = await asApp(pool, principal, (db) =>
-      threadModels(db, options.gateway, run.threadId),
+      modelsFor(db, options.gateway, { threads: [run.threadId] }),
     );
     if (tasks.every(models.allows)) return models;
     await fail(principal, run.id, "MODEL_NOT_ALLOWED", RUN_MESSAGES.MODEL_NOT_ALLOWED, false);
@@ -1678,7 +1678,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       if (!replanning) await emit({ type: "status", status: "planned" });
       // Read again each time: the matter's policy may have changed since the question.
       const models = await asApp(pool, principal, (db) =>
-        threadModels(db, options.gateway, run.threadId),
+        modelsFor(db, options.gateway, { threads: [run.threadId] }),
       );
       const refused = !models.allows("plan");
       const request = {
@@ -1866,7 +1866,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         if (chosen.some((row) => row.matter_id !== thread.matterId)) {
           return "MIXED_MATTERS" as const;
         }
-        const models = await modelsFor(db, options.gateway, thread.matterId);
+        const models = await modelsFor(db, options.gateway, { matters: [thread.matterId] });
         if (!models.allows("draft_edit")) return "MODEL_NOT_ALLOWED" as const;
         const wanted: { meta: VersionMeta; pages: string[] }[] = [];
         for (const row of chosen) {
@@ -2036,7 +2036,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           return "MATTER_REQUIRED" as const;
         }
         // Refused before anything is stored when the matter leaves no model for the work.
-        const models = await modelsFor(db, options.gateway, matterId);
+        const models = await modelsFor(db, options.gateway, { matters: [matterId] });
         const needed: TaskClass[] = input.deepAnalysis
           ? ["read_extract", "synthesize"]
           : planMode

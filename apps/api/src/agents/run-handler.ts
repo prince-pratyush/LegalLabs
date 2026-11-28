@@ -7,6 +7,7 @@ import type { OfferedTool } from "../admin-models/connectors.js";
 import type { ToolExecutor } from "../connectors/executor.js";
 import { storable } from "../connectors/sanitise.js";
 import { asApp, newMessageId } from "../db.js";
+import { modelsFor } from "../matters/model-policy.js";
 import type { ContextPort } from "./context.js";
 import { checkAnswer, citationEvent, type ShownDocument } from "./run-citations.js";
 import {
@@ -199,31 +200,20 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
   };
 
   /** The models the run's matter leaves usable (§4.13), or "walled" if the matter is closed off. */
-  async function modelsFor(
+  async function matterModels(
     ctx: RunContext,
   ): Promise<{ exclude: string[]; none: boolean } | "walled"> {
     const matterId = ctx.run.matter_id;
     if (!matterId) return { exclude: [], none: false };
-    const found = await asApp(deps.pool, principal(ctx.run), async (db) => {
-      const { rows } = await db.query<{
-        open: boolean;
-        model_policy: { deny_providers?: string[]; deny_models?: string[] } | null;
-      }>(
-        `select core.can_access_matter($1) as open,
-                (select model_policy from core.matter where id = $1) as model_policy`,
+    return asApp(deps.pool, principal(ctx.run), async (db) => {
+      const { rows } = await db.query<{ open: boolean }>(
+        "select core.can_access_matter($1) as open",
         [matterId],
       );
-      return rows[0];
+      if (!rows[0]?.open) return "walled" as const;
+      const models = await modelsFor(db, deps.gateway, { matters: [matterId] });
+      return { exclude: models.exclude, none: !models.allows(TASK_CLASS.reason) };
     });
-    if (!found?.open) return "walled";
-    const providers = found.model_policy?.deny_providers ?? [];
-    const names = found.model_policy?.deny_models ?? [];
-    const all = deps.gateway.models(TASK_CLASS.reason).map((m) => m.id);
-    const exclude = all.filter((id) => {
-      const [provider = "", ...model] = id.split("/");
-      return providers.includes(provider) || names.includes(id) || names.includes(model.join("/"));
-    });
-    return { exclude, none: all.length > 0 && exclude.length === all.length };
   }
 
   async function stepsBefore(ctx: RunContext, ordinal: number): Promise<StepLog[]> {
@@ -632,7 +622,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
         return { fail: { code: "NOT_FOUND", message: "That agent version isn't available." } };
       const who = { workspaceId: ctx.run.workspace_id, userId: ctx.run.owner_id };
 
-      const models = await modelsFor(ctx);
+      const models = await matterModels(ctx);
       if (models === "walled") return WALLED;
       if (models.none) {
         return {
@@ -766,7 +756,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
       if (!v)
         return { kind: "fail", code: "NOT_FOUND", message: "That agent version isn't available." };
       // A wall raised since the run began stops it before anything else is read or sent.
-      const models = await modelsFor(ctx);
+      const models = await matterModels(ctx);
       if (models === "walled") return { kind: "fail", ...WALLED.fail };
 
       const log = await stepsBefore(ctx, ordinal);

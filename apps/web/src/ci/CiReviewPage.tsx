@@ -16,6 +16,7 @@ const FAILURES: Record<string, string> = {
   REVIEW_FAILED: "The review stopped before it finished.",
   REVIEW_CANCELLED: "The review was cancelled.",
   TIMED_OUT: "The review took too long and was given up on.",
+  MODEL_NOT_ALLOWED: "The contract's matter allows no model for this review.",
 };
 
 const WAITING: Partial<Record<CiReview["status"], string>> = {

@@ -16,6 +16,7 @@ import type pg from "pg";
 import type { z } from "zod";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { asApp, RLS_REFUSED } from "../db.js";
+import { modelsFor } from "../matters/model-policy.js";
 import {
   type GeneratedRule,
   GenerateError,
@@ -37,6 +38,7 @@ export type PlaybookFailure =
   | "DOC_TOO_LARGE"
   | "NO_RULES_FOUND"
   | "MODEL_UNAVAILABLE"
+  | "MODEL_NOT_ALLOWED"
   | "STALE"
   | "INVALID_CONDITION";
 
@@ -373,8 +375,12 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
         return { rules: fresh(from.rules), ...(from.guidance ? { guidance: from.guidance } : {}) };
       }
       case "document": {
-        const doc = await asApp(pool, principal, (db) => documentPages(db, source.document_id));
+        const { doc, models } = await asApp(pool, principal, async (db) => ({
+          doc: await documentPages(db, source.document_id),
+          models: await modelsFor(db, gateway, { documents: [source.document_id] }),
+        }));
         if (!doc) throw new Refused("NOT_FOUND");
+        if (!models.allows("draft_edit")) throw new Refused("MODEL_NOT_ALLOWED");
         if (doc.chars > PLAYBOOK_LIMITS.doc_chars) throw new Refused("DOC_TOO_LARGE");
         if (doc.pages.length === 0) throw new Refused("NO_PARSEABLE_INPUT");
         try {
@@ -383,6 +389,7 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
             documentId: source.document_id,
             contractType: input.contract_type,
             pages: doc.pages,
+            exclude: models.exclude,
           });
           return {
             rules: generated.rules,

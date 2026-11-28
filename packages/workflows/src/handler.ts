@@ -302,6 +302,8 @@ export function createWorkflowHandler(deps: WorkflowHandlerDeps): RunHandler {
             extra: {
               ...(result.citations ? { citations: result.citations } : {}),
               ...(prompt.truncated ? { truncated: true } : {}),
+              // Kept so a later step that quotes this one answers to the same model policy.
+              read: { versions: documents.map((d) => d.version_id), tables },
             },
           },
         };
