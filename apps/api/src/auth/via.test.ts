@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { surfaceOf } from "../threads/surface.js";
-import { viaOf } from "./via.js";
+import { paneOf, viaOf } from "./via.js";
 
 const IPHONE =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
@@ -21,5 +21,16 @@ describe("where a call comes from", () => {
     expect(surfaceOf("mobile")).toEqual({ surface: "web", accessPoint: "mobile" });
     expect(surfaceOf("word")).toEqual({ surface: "word", accessPoint: "word" });
     expect(surfaceOf(undefined)).toEqual({ surface: "web", accessPoint: "web" });
+  });
+});
+
+describe("the Outlook pane", () => {
+  it("counts as Outlook only when it carries a pane's bearer token", () => {
+    expect(viaOf(true, undefined, "outlook")).toBe("outlook");
+    expect(viaOf(true, undefined, "something else")).toBe("word");
+    expect(viaOf(false, undefined, "outlook")).toBeUndefined();
+    expect(paneOf("outlook")).toBe("outlook");
+    expect(paneOf(undefined)).toBe("word");
+    expect(surfaceOf("outlook")).toEqual({ surface: "outlook", accessPoint: "outlook" });
   });
 });

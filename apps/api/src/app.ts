@@ -92,15 +92,33 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // Nothing inline and nothing from elsewhere, so injected text can't run as script.
 const CONTENT_POLICY =
   "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'";
-// The Word pane loads Office's script from Microsoft and runs framed inside Word on the web.
-const ADDIN_POLICY = [
-  "default-src 'self'",
-  "script-src 'self' https://appsforoffice.microsoft.com",
-  "base-uri 'none'",
-  "object-src 'none'",
-  "form-action 'self'",
-  "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com https://*.office365.com https://*.sharepoint.com https://*.microsoft365.com https://*.cloud.microsoft",
-].join("; ");
+// An add-in page loads Office's script from Microsoft; who may frame it differs by page.
+const officePolicy = (framedBy: string) =>
+  [
+    "default-src 'self'",
+    "script-src 'self' https://appsforoffice.microsoft.com",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "form-action 'self'",
+    `frame-ancestors ${framedBy}`,
+  ].join("; ");
+// The Word pane runs framed inside Word on the web.
+const ADDIN_POLICY = officePolicy(
+  "'self' https://*.office.com https://*.officeapps.live.com https://*.office365.com https://*.sharepoint.com https://*.microsoft365.com https://*.cloud.microsoft",
+);
+// Named hosts only: where Outlook on the web and new Outlook are served from.
+const OUTLOOK_POLICY = officePolicy(
+  "'self' https://outlook.office.com https://outlook.office365.com https://outlook.live.com https://outlook.cloud.microsoft",
+);
+// A sign-in dialog is a window of its own, never framed.
+const DIALOG_POLICY = officePolicy("'none'");
+
+function policyFor(path: string): string {
+  if (path === "/addin/auth.html" || path === "/outlook/auth.html") return DIALOG_POLICY;
+  if (path === "/addin" || path.startsWith("/addin/")) return ADDIN_POLICY;
+  if (path === "/outlook" || path.startsWith("/outlook/")) return OUTLOOK_POLICY;
+  return CONTENT_POLICY;
+}
 const BEARER = /^Bearer ([\w-]{20,100})$/;
 
 // Capped so nobody can make the server hash a huge password.
@@ -193,13 +211,21 @@ export interface AppOptions {
   now?: () => number;
   /** The built web app, served on the same origin so the session cookie needs no CORS. */
   webRoot?: string;
-  /** The Word add-in: its tools, its audit hook and, when built, its pane under /addin/. */
+  /**
+   * The Office add-ins: the shared sign-in, Word's tools and, when built, the panes under
+   * /addin/ (Word) and /outlook/ (Outlook).
+   */
   addin?: {
     /** Counts a tool's use for Command Center. */
     countUse?: CountAddinUse;
     language: Language;
-    recordSignIn: (principal: Principal, client: Client) => Promise<void>;
+    recordSignIn: (
+      principal: Principal,
+      client: Client,
+      surface: "word" | "outlook",
+    ) => Promise<void>;
     root?: string;
+    outlookRoot?: string;
   };
 }
 
@@ -264,11 +290,7 @@ export function createApp({
 
   app.use(async (c, next) => {
     await next();
-    // Only the pane is framed by Word; the sign-in dialog is a window of its own, never framed.
-    const pane =
-      (c.req.path === "/addin" || c.req.path.startsWith("/addin/")) &&
-      c.req.path !== "/addin/auth.html";
-    c.header("Content-Security-Policy", pane ? ADDIN_POLICY : CONTENT_POLICY);
+    c.header("Content-Security-Policy", policyFor(c.req.path));
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "no-referrer");
   });
@@ -415,9 +437,9 @@ export function createApp({
       if (principal.guest && !c.req.path.startsWith("/api/v1/guest/")) {
         return c.json({ code: "FORBIDDEN", message: "Guests can't use this." }, 403);
       }
-      // Only the Word pane carries a session as a bearer header; the web app uses the cookie.
+      // Only an add-in pane carries a session as a bearer header; the web app uses the cookie.
       const fromPane = BEARER.test(c.req.header("authorization") ?? "");
-      const via = viaOf(fromPane, c.req.header("user-agent"));
+      const via = viaOf(fromPane, c.req.header("user-agent"), c.req.header("x-legallabs-client"));
       c.set("principal", via ? { ...principal, via } : principal);
     }
     await next();
@@ -498,6 +520,12 @@ export function createApp({
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now, addin.countUse));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));
+  }
+  if (addin?.outlookRoot) {
+    app.get(
+      "/outlook/*",
+      serveStatic({ root: addin.outlookRoot, rewriteRequestPath: (p) => p.slice(8) }),
+    );
   }
   if (knowledge) app.route("/api/v1/knowledge", knowledgeRoutes(knowledge));
   if (webRoot) {

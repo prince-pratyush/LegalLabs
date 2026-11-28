@@ -1,4 +1,12 @@
 import {
+  type Api,
+  createApi,
+  type DialogOpener,
+  messageOf,
+  SignInError,
+  signIn,
+} from "@legallabs/addin";
+import {
   Button,
   formatCount,
   StatusText,
@@ -9,8 +17,7 @@ import {
 } from "@legallabs/ui";
 import { LogOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type Api, createApi, messageOf } from "./api.js";
-import { type DialogOpener, SignInError, signIn, tokenStore } from "./auth/session.js";
+import { tokenStore } from "./auth/token.js";
 import { LibraryPanel } from "./library/LibraryPanel.js";
 import type { Scope, WordHost } from "./office/host.js";
 import { AskPanel } from "./threads/AskPanel.js";
@@ -137,7 +144,7 @@ export function App({
     setSigningIn(true);
     setNotice(null);
     try {
-      const session = await signIn(openDialog, anonymous, origin);
+      const session = await signIn(openDialog, anonymous, `${origin}/addin/auth.html`);
       tokenStore.write(session.token);
       setToken(session.token);
     } catch (err) {

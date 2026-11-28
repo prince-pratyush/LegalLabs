@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Auth, Client, Principal } from "../auth/auth.js";
 import { createLimiter } from "../auth/limiter.js";
+import { paneOf } from "../auth/via.js";
 import type { CodeStore } from "./codes.js";
 import { LANGUAGES, type Language, MAX_BATCH_CHARS, MAX_BATCH_PARAGRAPHS } from "./language.js";
 
@@ -15,7 +16,11 @@ export interface AddinAuthOptions {
   tokenOf: (c: Context) => string | null;
   clientOf: (c: Context) => Client;
   /** Audits the pane's sign-in under the user, in the same log as web sign-ins. */
-  recordSignIn: (principal: Principal, client: Client) => Promise<void>;
+  recordSignIn: (
+    principal: Principal,
+    client: Client,
+    surface: "word" | "outlook",
+  ) => Promise<void>;
   now: () => number;
 }
 
@@ -60,7 +65,7 @@ export function addinAuthRoutes({
     // Checked again: the session may have been revoked since the code was issued.
     const principal = token ? await auth.resolve(token) : null;
     if (!token || !principal) return c.json({ error: "invalid_code" }, 401);
-    await recordSignIn(principal, clientOf(c));
+    await recordSignIn(principal, clientOf(c), paneOf(c.req.header("x-legallabs-client")));
     return c.json({ token, user_id: principal.userId, workspace_id: principal.workspaceId });
   });
 

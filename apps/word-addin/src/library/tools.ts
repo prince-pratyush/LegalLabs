@@ -1,4 +1,4 @@
-import type { Api } from "../api.js";
+import type { Api } from "@legallabs/addin";
 import { type Card, sortCards } from "../cards/card.js";
 import { paraHash } from "../edits/anchor.js";
 import type { Scope, WordHost } from "../office/host.js";

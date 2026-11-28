@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xsi:type="MailApp">
+  <Id>{{ID}}</Id>
+  <Version>0.1.0.0</Version>
+  <ProviderName>LegalLabs</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="LegalLabs"/>
+  <Description DefaultValue="Ask about the open email and its attachments, draft a reply and save them to a vault. Nothing is ever sent for you."/>
+  <IconUrl DefaultValue="{{ORIGIN}}/outlook/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="{{ORIGIN}}/outlook/icon-80.png"/>
+  <SupportUrl DefaultValue="{{ORIGIN}}/"/>
+  <AppDomains>
+    <AppDomain>{{ORIGIN}}</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.1"/>
+    </Sets>
+  </Requirements>
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="{{ORIGIN}}/outlook/taskpane.html"/>
+        <RequestedHeight>450</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+  <!-- The open item only: the pane can't send, move, delete or change mail. -->
+  <Permissions>ReadItem</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.8">
+        <bt:Set Name="Mailbox"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="LegalLabs.Group">
+                <Label resid="Title"/>
+                <Control xsi:type="Button" id="LegalLabs.Open">
+                  <Label resid="Title"/>
+                  <Supertip>
+                    <Title resid="Title"/>
+                    <Description resid="Description"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon16"/>
+                    <bt:Image size="32" resid="Icon32"/>
+                    <bt:Image size="80" resid="Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="Pane"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon16" DefaultValue="{{ORIGIN}}/outlook/icon-16.png"/>
+        <bt:Image id="Icon32" DefaultValue="{{ORIGIN}}/outlook/icon-32.png"/>
+        <bt:Image id="Icon80" DefaultValue="{{ORIGIN}}/outlook/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Pane" DefaultValue="{{ORIGIN}}/outlook/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Title" DefaultValue="LegalLabs"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Description" DefaultValue="Ask about this email, draft a reply and save it to a vault."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

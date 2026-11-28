@@ -1,7 +1,6 @@
+import { followOfficeTheme, SignInDialog } from "@legallabs/addin";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { followOfficeTheme } from "../office/theme.js";
-import { SignInDialog } from "./SignInDialog.js";
 import "../styles.css";
 
 const root = document.getElementById("root");

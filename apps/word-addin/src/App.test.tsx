@@ -28,7 +28,7 @@ describe("App", () => {
   });
 
   it("stays signed out quietly when the dialog is closed", async () => {
-    const { SignInError } = await import("./auth/session.js");
+    const { SignInError } = await import("@legallabs/addin");
     const openDialog = vi.fn(async () => {
       throw new SignInError("closed", "Sign-in was closed.");
     });

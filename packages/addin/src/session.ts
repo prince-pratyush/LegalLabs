@@ -1,25 +1,28 @@
-import type { Api } from "../api.js";
+import type { Api } from "./api.js";
 
-const TOKEN_KEY = "legallabs.addin.token";
+export interface TokenStore {
+  read(): string | null;
+  write(token: string | null): void;
+}
 
-// Office keeps each add-in's storage apart, so the token is visible only to this pane.
-export const tokenStore = {
-  read(): string | null {
+// Each pane keeps its own key: they are served from one origin.
+export const createTokenStore = (key: string): TokenStore => ({
+  read() {
     try {
-      return localStorage.getItem(TOKEN_KEY);
+      return localStorage.getItem(key);
     } catch {
       return null;
     }
   },
-  write(token: string | null) {
+  write(token) {
     try {
-      if (token) localStorage.setItem(TOKEN_KEY, token);
-      else localStorage.removeItem(TOKEN_KEY);
+      if (token) localStorage.setItem(key, token);
+      else localStorage.removeItem(key);
     } catch {
       // Storage off: the pane still works, it just asks to sign in next time.
     }
   },
-};
+});
 
 /** Resolves with the dialog's one message; rejects when it closes or can't open. */
 export type DialogOpener = (url: string) => Promise<string>;
@@ -77,8 +80,8 @@ export const officeDialog: DialogOpener = (url) =>
 export type Session = { token: string; userId: string; workspaceId: string };
 
 /** The dialog signs in on the web, then passes back a one-time code the pane swaps for a token. */
-export async function signIn(open: DialogOpener, api: Api, origin: string): Promise<Session> {
-  const message = await open(`${origin}/addin/auth.html`);
+export async function signIn(open: DialogOpener, api: Api, dialogUrl: string): Promise<Session> {
+  const message = await open(dialogUrl);
   let code: unknown;
   try {
     code = (JSON.parse(message) as { code?: unknown }).code;

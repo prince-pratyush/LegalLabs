@@ -1,3 +1,4 @@
+import { type Api, messageOf } from "@legallabs/addin";
 import {
   Button,
   Checkbox,
@@ -12,7 +13,6 @@ import {
 } from "@legallabs/ui";
 import { ArrowLeft, BookCheck, Languages, SpellCheck } from "lucide-react";
 import { useId, useState } from "react";
-import { type Api, messageOf } from "../api.js";
 import { CardList } from "../cards/CardList.js";
 import type { Card, CardState } from "../cards/card.js";
 import type { Scope, WordHost } from "../office/host.js";

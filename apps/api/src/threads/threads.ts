@@ -1221,8 +1221,13 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             ...surfaceOf(principal.via),
             action: "thread.message_sent",
             actionClass: "query",
-            // A Word ask counts under Word; the rest as a new thread or a follow-up.
-            counter: principal.via === "word" ? "word" : existing ? "follow_ups" : "threads",
+            // A pane's ask counts under its app; the rest as a new thread or a follow-up.
+            counter:
+              principal.via === "word" || principal.via === "outlook"
+                ? principal.via
+                : existing
+                  ? "follow_ups"
+                  : "threads",
             subsurface: input.deepAnalysis ? "deep_analysis" : "thread",
             objectType: "thread",
             objectId: threadId,

@@ -1,3 +1,4 @@
+import { type Api, messageOf } from "@legallabs/addin";
 import type { PlaybookSummary } from "@legallabs/contracts";
 import {
   Button,
@@ -11,7 +12,6 @@ import {
   StatusText,
 } from "@legallabs/ui";
 import { useEffect, useRef, useState } from "react";
-import { type Api, messageOf } from "../api.js";
 import { CardList } from "../cards/CardList.js";
 import { type Card, type CardState, cardsFromReview } from "../cards/card.js";
 import type { WordHost } from "../office/host.js";

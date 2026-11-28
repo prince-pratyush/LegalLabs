@@ -1,5 +1,5 @@
+import type { Api } from "@legallabs/addin";
 import { describe, expect, it } from "vitest";
-import type { Api } from "../api.js";
 import { ask, safeUrl } from "./ask.js";
 
 function fakeApi() {

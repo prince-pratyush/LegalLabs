@@ -43,11 +43,14 @@ export function createApi(
   token: () => string | null,
   onUnauthorized: () => void = () => {},
   fetchImpl: Fetch = (input, init) => fetch(input, init),
+  /** Names the pane, so its use is counted as its own; the server grants nothing for it. */
+  client?: "outlook",
 ): Api {
   const send = async <T>(path: string, init: RequestInit): Promise<T> => {
     const headers = new Headers(init.headers);
     const current = token();
     if (current) headers.set("authorization", `Bearer ${current}`);
+    if (client) headers.set("x-legallabs-client", client);
     const res = await fetchImpl(path, { ...init, headers, credentials: "omit" });
     if (res.status === 401) onUnauthorized();
     if (!res.ok) throw await failure(res);
