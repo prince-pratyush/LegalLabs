@@ -26,6 +26,7 @@ const FAILURES: Record<DraftFailure, { status: 403 | 404 | 409 | 413 | 503; mess
     message: "This draft is too long for the assistant to rewrite in one go. Edit a shorter draft.",
   },
   TOO_LARGE: { status: 413, message: "A draft can hold up to 1,000,000 characters." },
+  MODEL_NOT_ALLOWED: { status: 403, message: "This matter allows no model that can edit." },
   MODEL_UNAVAILABLE: { status: 503, message: "No model could edit just now. Try again shortly." },
 };
 

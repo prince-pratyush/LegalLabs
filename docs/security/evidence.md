@@ -262,3 +262,20 @@ Found by a review of the Outlook pane changes before any of them was merged.
 | F-78 | Medium   | Outlook drafts  | The reply body kept bare domains with paths, email addresses and UNC paths, which mail clients make live                                                       | Fixed: removed, or the dots broken, for replies (`api/outlook/reply-save.test.ts`)                                                                                                  |
 | F-79 | Low      | Outlook prompts | Attachment names chosen by an email's sender became document names, which prompts list outside the fence that marks quoted material                            | Fixed: stored as `Attachment <n>` with a known extension; the sent name is only in the fenced email text and on screen (`api/outlook/outlook.test.ts`)                              |
 | F-80 | Low      | Outlook save    | The folder was made before the upload's permission and matter checks, left empty and unaudited on refusal, and a refusal was reported as over a limit          | Fixed: checked first, the folder is binned if the email does not go in, and a refusal says forbidden and is audited (`api/outlook/reply-save.test.ts`)                              |
+
+## Threads breadth (F-81 to F-87)
+
+Found by a review of the thread file, plan, calculation and translation changes before any of them
+was merged, with one gap the same work turned up in older code.
+
+| ID   | Severity | Area         | Finding                                                                                                           | Status                                                                                                                                                                                                                |
+| ---- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-85 | Medium   | Model policy | A matter's denied providers and models were not applied to thread answers, deep analysis, files or draft rewrites | Fixed: every thread model call leaves them out, and the turn is refused when none is left, again at the time it runs (`api/threads/matter-models.test.ts`)                                                            |
+| F-87 | Medium   | Draft export | Exporting a draft of an ordinary thread ignored the controls of the vaults the thread had read from               | Fixed: the export asks about every file the thread held, cited or gave to a model and every vault in scope (`api/drafts/export-controls.test.ts`). Messages saved before this change record held and cited files only |
+
+Not applying a matter's model policy yet: playbook and contract reviews and their redrafts
+(`reviews/reviews.ts`), review-table cells and column generation (`tables/`), workflow model steps
+(`workflows/ports.ts`), agent building (`agents/builder.ts`), playbook generation, intake
+classification (`intake/classify.ts`), and the Word pane's proofread and translate. Agent runs and
+fact extraction do apply it. Horizon scanning reads public sources, and memory and style
+derivation read the person's own samples and answers.

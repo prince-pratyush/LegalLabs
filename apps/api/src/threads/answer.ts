@@ -86,6 +86,8 @@ export interface AnswerInput {
   history: readonly Message[];
   question: string;
   model?: string;
+  /** Models the thread's matter keeps this material from. */
+  exclude: readonly string[];
   emit: (event: NewEvent) => Promise<unknown>;
   /** True once the run is cancelled; output after that is dropped. */
   cancelled: () => boolean;
@@ -682,6 +684,7 @@ export function createAnswerer(deps: AnswerDeps) {
           routing: { workspace: principal.workspaceId },
           trace: randomUUID(),
           ...(input.model ? { model: input.model } : {}),
+          ...(input.exclude.length ? { exclude: input.exclude } : {}),
         },
         // Postgres text can't hold a NUL byte, and an answer that can't be saved is money wasted.
         (delta) => {
