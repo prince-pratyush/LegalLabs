@@ -12,8 +12,14 @@ import type {
   ThreadScope,
   VaultPort,
 } from "@legallabs/contracts";
-import { WEB_SOURCE_ID } from "@legallabs/contracts";
+import {
+  TRANSLATE_LIMITS,
+  TRANSLATION_LANGUAGES,
+  type TranslationLanguage,
+  WEB_SOURCE_ID,
+} from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
+import type { ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackUsage } from "../command-center/record.js";
@@ -23,6 +29,7 @@ import type { Documents } from "../documents/documents.js";
 import { CopyRefused } from "../drafts/drafts.js";
 import { noPersonalisation, type Personalisation } from "../memory/port.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
+import { versionMeta } from "../reviews/source.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
 import { type WebSources, webQuery } from "../web/sources.js";
 import {
@@ -33,8 +40,17 @@ import {
   type ScopeDocument,
 } from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
-import { createFileMaker, type FileAnswer } from "./files.js";
+import { createFileMaker, FILE_LIMITS, type FileAnswer } from "./files.js";
 import { surfaceOf } from "./surface.js";
+import {
+  loadTranslatable,
+  modelsFor,
+  modelTranslator,
+  type Translatable,
+  type Translator,
+  translateAll,
+  translatedName,
+} from "./translate.js";
 import {
   type PlanQuestion,
   planCommand,
@@ -224,7 +240,35 @@ export interface Member {
   name: string;
 }
 
+export interface TranslateInput {
+  language: TranslationLanguage;
+  /** Files to translate; each comes back as a .docx. */
+  documentIds?: string[];
+  /** Or words to translate, answered in the thread. */
+  text?: string;
+}
+
+export type TranslateFailure =
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "READ_ONLY"
+  | "MIXED_MATTERS"
+  | "MODEL_NOT_ALLOWED"
+  | "LIMIT_TRANSLATE_DOCS"
+  | "LIMIT_TRANSLATE_CHARS"
+  | "UNSUPPORTED_TYPE"
+  | "NOT_READY";
+
 export interface Threads {
+  translate(
+    principal: Principal,
+    threadId: string,
+    input: TranslateInput,
+    client: Client,
+  ): Promise<
+    | { ok: true; questionId: string; runId: string; finished: Promise<void> }
+    | { ok: false; reason: TranslateFailure }
+  >;
   /** A file the thread made, for its owner; throws CopyRefused when a source forbids it. */
   download(
     principal: Principal,
@@ -292,6 +336,10 @@ export interface Threads {
 }
 
 export interface ThreadsOptions {
+  /** Where original files are, to translate a .docx inside itself. */
+  store?: ObjectStore;
+  /** Left out, the workspace's own models translate. */
+  translator?: Translator;
   gateway: Gateway;
   documents: Documents;
   log: RunLog;
@@ -659,6 +707,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   const longRunMs = options.longRunMs ?? 60_000;
   const answer = createAnswerer({ pool, ...options });
   const makeFile = createFileMaker({ pool, ...options });
+  const translator = options.translator ?? modelTranslator(options.gateway);
   const webOf = (sources: readonly SourceSelection[]) =>
     sources.find((source) => source.source_id === WEB_SOURCE_ID);
 
@@ -1081,9 +1130,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     threadId: string,
     messageId: string,
     file: FileAnswer["file"],
+    sources: readonly string[],
     client: Client,
   ): Promise<string> {
-    const sources = await sourcesOf(db, threadId);
     // Returning the row applies the reading policy, so a source this person lost refuses it.
     const { rows } = await db.query<{ id: string }>(
       `insert into work.thread_output
@@ -1183,6 +1232,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             run.threadId,
             messageId,
             made.file,
+            await sourcesOf(db, run.threadId),
             client,
           );
           return { messageId, outputId };
@@ -1387,6 +1437,189 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     }
   }
 
+  async function executeTranslation(
+    principal: Principal,
+    run: { id: string; threadId: string },
+    work: {
+      language: TranslationLanguage;
+      files: Translatable[];
+      text: string | null;
+      exclude: string[];
+    },
+    client: Client,
+  ) {
+    const started = Date.now();
+    const emit = (event: NewEvent) => log.append(principal, run.id, event);
+    const controller = new AbortController();
+    active.set(run.id, controller);
+    const into = TRANSLATION_LANGUAGES[work.language];
+    let spent = 0;
+    try {
+      await emit({ type: "status", status: "running" });
+      const translate = async (texts: string[], title: string) => {
+        const step = { type: "step", step_id: randomUUID(), kind: "tool" } as const;
+        await emit({ ...step, status: "started", title });
+        const done = await translateAll(
+          translator,
+          {
+            workspaceId: principal.workspaceId,
+            texts,
+            language: work.language,
+            exclude: work.exclude,
+            signal: controller.signal,
+          },
+          () => cancelled(run.id),
+        );
+        spent += done.costUsd;
+        const nothing = done.missing > 0 && done.translated.every((t) => t === null);
+        await emit({ ...step, status: nothing ? "failed" : "finished", title });
+        return nothing ? null : done;
+      };
+
+      let missing = 0;
+      let said: string | null = null;
+      const outputs: { documentId: string; file: FileAnswer["file"] }[] = [];
+      if (work.text !== null) {
+        const lines = work.text.split("\n");
+        const done = await translate(lines, `Translating into ${into}`);
+        if (done) {
+          missing = done.missing;
+          said = lines.map((line, i) => done.translated[i] ?? line).join("\n");
+        }
+      } else {
+        for (const file of work.files) {
+          if (cancelled(run.id)) break;
+          const done = await translate(file.texts, `Translating ${file.name.slice(0, 200)}`);
+          if (!done) continue;
+          const bytes = file.build(done.translated);
+          if (bytes.length > FILE_LIMITS.bytes) continue;
+          missing += done.missing;
+          outputs.push({
+            documentId: file.documentId,
+            file: { name: translatedName(file.name, work.language), format: "docx", bytes },
+          });
+        }
+      }
+      if (cancelled(run.id)) return;
+      if (said === null && outputs.length === 0) {
+        await asApp(pool, principal, (db) =>
+          db.query("update work.run set cost_usd = $2 where id = $1", [run.id, spent]),
+        );
+        await fail(
+          principal,
+          run.id,
+          "TRANSLATION_FAILED",
+          "Nothing could be translated just now. Try again shortly.",
+          true,
+        );
+        return;
+      }
+      const notes = [
+        missing > 0 ? `${missing} passages were left in the original language.` : "",
+        work.files.length > outputs.length
+          ? `${work.files.length - outputs.length} of the files couldn't be translated.`
+          : "",
+      ].filter(Boolean);
+      const content =
+        said !== null
+          ? [said, ...notes].join("\n\n")
+          : [
+              `Translated into ${into}: ${outputs.map((o) => o.file.name).join(", ")}.`,
+              "This is machine translation; check it against the originals. Comments, deleted tracked changes and words in pictures are not translated, and a PDF or text file comes back as a plain document without its layout.",
+              ...notes,
+            ].join("\n\n");
+      const documents = work.files.map((f) => f.documentId);
+      const coverage: Coverage = {
+        docs_in_scope: documents.length,
+        docs_read: outputs.length,
+        pages_in_scope: 0,
+        pages_read: 0,
+        mode: "full_read",
+      };
+      const reply: Answer = {
+        text: content.slice(0, 100_000),
+        model: null,
+        citations: [],
+        ungrounded: [],
+        coverage,
+        read: documents,
+        extraCostUsd: spent,
+      };
+      // The live view reads [[c:N]] as a citation, so translated words can't write one.
+      const live = reply.text.replaceAll("[[", "[\u200b[");
+      await emit({ type: "token", message_id: run.id, delta: live });
+      let saved: { messageId: string; files: { id: string; name: string }[] };
+      try {
+        saved = await asApp(pool, principal, async (db) => {
+          const messageId = await save(db, principal, run, reply, [], client);
+          const files = [];
+          for (const { documentId, file } of outputs) {
+            const id = await keepFile(
+              db,
+              principal,
+              run.threadId,
+              messageId,
+              file,
+              [documentId],
+              client,
+            );
+            files.push({ id, name: file.name });
+          }
+          // Counts and the language only: never the words.
+          await audit(
+            db,
+            principal,
+            "message.translated",
+            run.threadId,
+            { message_id: messageId, language: work.language, files: files.length },
+            client,
+          );
+          return { messageId, files };
+        });
+      } catch (err) {
+        if (err instanceof RunStopped) return;
+        if (isRefusal(err)) {
+          await fail(
+            principal,
+            run.id,
+            "WALL_DENIED",
+            "You no longer have access to what was being translated.",
+            false,
+          );
+          return;
+        }
+        throw err;
+      }
+      for (const file of saved.files) {
+        await emit({
+          type: "output",
+          kind: "file",
+          message_id: saved.messageId,
+          artifact_id: file.id,
+          title: file.name,
+        });
+      }
+      await emit({
+        type: "done",
+        message_id: saved.messageId,
+        model: null,
+        response_mode: "answer",
+        usage: { input_tokens: 0, output_tokens: 0 },
+        cost_usd: spent,
+        citations: { total: 0, ok: 0, mismatch: 0, unresolved: 0, ungrounded_sentences: 0 },
+        duration_ms: Date.now() - started,
+      });
+    } catch (err) {
+      console.error(`run ${run.id} failed: ${err instanceof Error ? err.name : "unknown"}`);
+      await fail(principal, run.id, "INTERNAL", "Something went wrong translating.", true).catch(
+        () => {},
+      );
+    } finally {
+      active.delete(run.id);
+      log.release(run.id);
+    }
+  }
+
   /** Proposes a plan for one turn and stops at awaiting_approval. */
   async function planTurn(
     principal: Principal,
@@ -1562,6 +1795,102 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   }
 
   return {
+    async translate(principal, threadId, input, client) {
+      if (!UUID.test(threadId)) return { ok: false, reason: "NOT_FOUND" };
+      const ids = [...new Set(input.documentIds ?? [])];
+      if (ids.length > TRANSLATE_LIMITS.documents) {
+        return { ok: false, reason: "LIMIT_TRANSLATE_DOCS" };
+      }
+      if (!ids.every((id) => UUID.test(id))) return { ok: false, reason: "NOT_FOUND" };
+      const text = ids.length === 0 ? (input.text ?? "") : null;
+      const prepared = await asApp(pool, principal, async (db) => {
+        if (!(await permitted(db))) return "FORBIDDEN" as const;
+        const thread = await load(db, principal, threadId);
+        if (!thread) return "NOT_FOUND" as const;
+        if (!thread.mine) return "READ_ONLY" as const;
+        const chosen = await latestVersions(db, ids);
+        if (chosen.length !== ids.length) return "NOT_FOUND" as const;
+        // One wall covers the thread, as for a question.
+        if (chosen.some((row) => row.matter_id !== thread.matterId)) {
+          return "MIXED_MATTERS" as const;
+        }
+        const models = await modelsFor(db, options.gateway, thread.matterId);
+        if (models.none) return "MODEL_NOT_ALLOWED" as const;
+        const files: Translatable[] = [];
+        let chars = text?.length ?? 0;
+        for (const row of chosen) {
+          const meta = await versionMeta(db, row.version_id);
+          if (!meta) return "NOT_FOUND" as const;
+          const file = await loadTranslatable(db, options.store, meta);
+          if (typeof file === "string") return file;
+          chars += file.texts.reduce((n, t) => n + t.length, 0);
+          if (chars > TRANSLATE_LIMITS.totalChars) return "LIMIT_TRANSLATE_CHARS" as const;
+          files.push(file);
+        }
+        return { thread, chosen, files, exclude: models.exclude };
+      });
+      if (typeof prepared === "string") return { ok: false, reason: prepared };
+      const { thread, chosen, files, exclude } = prepared;
+      const into = TRANSLATION_LANGUAGES[input.language];
+      const question =
+        text === null
+          ? `Translate into ${into}: ${files.map((f) => f.name).join(", ")}`
+          : `Translate into ${into}:\n${text}`;
+
+      let created: { questionId: string; runId: string };
+      try {
+        created = await asApp(pool, principal, async (db) => {
+          // Held by the thread, so what governs its files governs this too.
+          await db.query(
+            `insert into work.thread_document (workspace_id, thread_id, version_id)
+             select $1, $2, unnest($3::uuid[]) on conflict do nothing`,
+            [principal.workspaceId, threadId, chosen.map((row) => row.version_id)],
+          );
+          await db.query("update work.thread set last_activity_at = now() where id = $1", [
+            threadId,
+          ]);
+          const { rows: q } = await db.query<{ id: string }>(
+            `insert into work.message (workspace_id, thread_id, role, content)
+             values ($1, $2, 'user', $3) returning id`,
+            [principal.workspaceId, threadId, question.slice(0, 100_000)],
+          );
+          const questionId = q[0]?.id;
+          if (!questionId) throw new Error("insert returned no message");
+          const { rows: r } = await db.query<{ id: string }>(
+            `insert into work.run (workspace_id, thread_id, owner_id, kind, status, question_id)
+             values ($1, $2, $3, 'thread', 'running', $4) returning id`,
+            [principal.workspaceId, threadId, principal.userId, questionId],
+          );
+          const runId = r[0]?.id;
+          if (!runId) throw new Error("insert returned no run");
+          await trackUsage(db, {
+            ...surfaceOf(principal.via),
+            action: "thread.message_sent",
+            actionClass: "query",
+            counter: "follow_ups",
+            subsurface: "thread",
+            objectType: "thread",
+            objectId: threadId,
+            ...(thread.matterId ? { matterRef: thread.matterId } : {}),
+            documentCount: files.length,
+          });
+          return { questionId, runId };
+        });
+      } catch (err) {
+        if (isRefusal(err)) return { ok: false, reason: "FORBIDDEN" };
+        throw err;
+      }
+      const finished = track(
+        executeTranslation(
+          principal,
+          { id: created.runId, threadId },
+          { language: input.language, files, text, exclude },
+          client,
+        ),
+      );
+      return { ok: true, ...created, finished };
+    },
+
     async ask(principal, input, client) {
       const typed = questionText(input.blocks);
       const commanded = planCommand(typed) && !input.deepAnalysis;

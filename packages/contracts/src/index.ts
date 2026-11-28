@@ -357,6 +357,11 @@ export {
 } from "./thread.js";
 export { FileFormat } from "./thread-file.js";
 export {
+  TRANSLATE_LIMITS,
+  TRANSLATION_LANGUAGES,
+  type TranslationLanguage,
+} from "./translate.js";
+export {
   ContentControls,
   FILE_TYPE_LIMITS,
   FileState,

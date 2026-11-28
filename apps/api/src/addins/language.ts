@@ -28,7 +28,8 @@ export interface Language {
     workspaceId: string,
     paragraphs: string[],
     language: (typeof LANGUAGES)[number],
-  ): Promise<LanguageResult<(string | null)[]>>;
+    options?: { exclude?: readonly string[]; signal?: AbortSignal },
+  ): Promise<LanguageResult<(string | null)[]> & { costUsd?: number }>;
 }
 
 export const LANGUAGES = [
@@ -124,21 +125,31 @@ export function parseTranslation(output: string, count: number): (string | null)
 }
 
 export function createLanguage(gateway: Gateway): Language {
-  const run = (workspaceId: string, system: string, body: string, maxOutput: number) =>
-    gateway.call({
-      task_class: "draft_edit",
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: body },
-      ],
-      budget: { max_output: maxOutput, max_cost_usd: 0.2 },
-      routing: { workspace: workspaceId },
-      trace: randomUUID(),
-    });
+  const run = (
+    workspaceId: string,
+    system: string,
+    body: string,
+    maxOutput: number,
+    options: { exclude?: readonly string[]; signal?: AbortSignal } = {},
+  ) =>
+    gateway.call(
+      {
+        task_class: "draft_edit",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: body },
+        ],
+        budget: { max_output: maxOutput, max_cost_usd: 0.2 },
+        routing: { workspace: workspaceId },
+        trace: randomUUID(),
+        ...(options.exclude?.length ? { exclude: options.exclude } : {}),
+      },
+      options.signal,
+    );
 
   const guarded = async <T>(
-    work: () => Promise<{ value: T; model: string }>,
-  ): Promise<LanguageResult<T>> => {
+    work: () => Promise<{ value: T; model: string; costUsd?: number }>,
+  ): Promise<LanguageResult<T> & { costUsd?: number }> => {
     try {
       return { ok: true, ...(await work()) };
     } catch (err) {
@@ -161,7 +172,7 @@ export function createLanguage(gateway: Gateway): Language {
         return { value: parseProofread(result.output, paragraphs), model: result.model };
       }),
 
-    translate: (workspaceId, paragraphs, language) =>
+    translate: (workspaceId, paragraphs, language, options) =>
       guarded(async () => {
         const { code, body } = fence(paragraphs);
         const chars = paragraphs.reduce((n, p) => n + p.length, 0);
@@ -171,8 +182,13 @@ export function createLanguage(gateway: Gateway): Language {
           translatePrompt(code, language),
           body,
           Math.max(500, Math.ceil(chars * 0.75)),
+          options,
         );
-        return { value: parseTranslation(result.output, paragraphs.length), model: result.model };
+        return {
+          value: parseTranslation(result.output, paragraphs.length),
+          model: result.model,
+          costUsd: result.cost_usd,
+        };
       }),
   };
 }

@@ -51,3 +51,4 @@ export {
   TITLE_MARK,
 } from "./template.js";
 export { buildTrackedDocx, type TrackedInput } from "./tracked.js";
+export { type OpenText, openText } from "./translate.js";

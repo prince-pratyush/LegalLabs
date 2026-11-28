@@ -10,6 +10,7 @@ import {
   type SourceSelection,
   type SourceSummary,
   type ThreadScope,
+  type TranslationLanguage,
   type VaultSummary,
 } from "@legallabs/contracts";
 import { ApiError, FALLBACK, type QuestionAnswer } from "@legallabs/ui";
@@ -281,6 +282,10 @@ export const api = {
   run: async (id: string) => (await call<{ run: Run }>(runPath(id))).run,
   cancel: (runId: string) => send<void>("POST", `${runPath(runId)}/cancel`),
   approve: (runId: string) => send<void>("POST", `${runPath(runId)}/approve`),
+  translate: (
+    threadId: string,
+    body: { target_lang: TranslationLanguage; document_ids?: string[]; text?: string },
+  ) => send<void>("POST", `${threadPath(threadId)}/translate`, body),
   answerRun: (runId: string, answer: { question_id: string } & QuestionAnswer) =>
     send<void>("POST", `${runPath(runId)}/answer`, answer),
   editPlan: (runId: string, instruction: string) =>
