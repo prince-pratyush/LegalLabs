@@ -228,6 +228,7 @@ export const auditActions: string[] = [
   ...family("facts", ["generated", "exported"]),
   "horizon.settings.updated",
   ...family("horizon.scan", ["created", "updated", "deleted", "stopped", "degraded"]),
+  "horizon.item.saved_to_vault",
 ];
 
 export const AuditAction = z.enum(auditActions);

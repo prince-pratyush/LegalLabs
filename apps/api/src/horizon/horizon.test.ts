@@ -1,3 +1,4 @@
+import { AuditAction } from "@legallabs/contracts";
 import type { ScanCandidate, ScanCursor, Scanners, ScanSourceId } from "@legallabs/knowledge";
 import { createGateway, type Message } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
@@ -584,6 +585,8 @@ describe("acting on a horizon item", () => {
       object_id: res.body.document_id,
       details: { item_id: w.item },
     });
+    // Every name written is one the audit contract lists, or readers of the log would refuse it.
+    expect(trail.filter((e) => !AuditAction.safeParse(e.action).success)).toEqual([]);
   });
 
   it("holds to the vault's access", async () => {
@@ -665,6 +668,34 @@ describe("acting on a horizon item", () => {
     expect((await w.act("ask")).body.code).toBe("MATTER_REQUIRED");
     expect((await w.act("draft-email")).body.code).toBe("MATTER_REQUIRED");
     expect(await w.documents(w.scanner.userId)).toEqual([]);
+  });
+
+  it("takes out every form of address a mail client would make a link of", () => {
+    for (const address of [
+      "www.evil.test/a",
+      "WWW.EVIL.TEST",
+      "mailto:x@evil.test",
+      "//evil.test/b",
+      "(//evil.test)",
+      "ftp://evil.test/c",
+    ]) {
+      const body = emailDraft({
+        development: `Rule ${address}`,
+        summary: `See ${address} now`,
+        source_url: "https://www.federalregister.gov/d/1",
+        published_at: "2026-03-01",
+        source: "Federal Register",
+      });
+      expect([address, body.toLowerCase().includes("evil.test")]).toEqual([address, false]);
+    }
+    const plain = emailDraft({
+      development: "Parts 10//11 and the www of widgets // notes",
+      summary: "",
+      source_url: "https://www.federalregister.gov/d/1",
+      published_at: "2026-03-01",
+      source: "Federal Register",
+    });
+    expect(plain).toContain("Parts 10//11 and the www of widgets // notes");
   });
 
   it("makes safe names and takes no address out of published words", () => {

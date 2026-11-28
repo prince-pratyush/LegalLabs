@@ -64,8 +64,11 @@ const document = (item: Item, text: string) =>
     text,
   ].join("\n");
 
-// An address inside published words is not one we vouch for.
-const noLinks = (text: string) => text.replace(/\bhttps?:\/\/\S+/gi, "[link removed]");
+// An address inside published words is not one we vouch for. These are the forms a mail client
+// turns into a link: any scheme with "//", "mailto:", "www." and a bare "//host".
+const ADDRESS =
+  /(?:\b[a-z][a-z0-9+.-]*:\/\/|\bmailto:|\bwww\.|(?<![\p{L}\p{N}:/])\/\/(?=[^\s/]))\S+/giu;
+const noLinks = (text: string) => text.replace(ADDRESS, "[link removed]");
 
 export function emailDraft(item: {
   development: string;
