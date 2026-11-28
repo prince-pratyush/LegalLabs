@@ -44,10 +44,12 @@ import type { HorizonActions } from "./horizon/actions.js";
 import type { Horizon } from "./horizon/horizon.js";
 import { horizonHttp } from "./horizon/http.js";
 import { emailHook } from "./inbound/hook.js";
+import { slackHook } from "./inbound/slack-hook.js";
 import type { EmailChannels } from "./intake/channels.js";
-import { emailChannelHttp } from "./intake/channels-http.js";
+import { channelHttp } from "./intake/channels-http.js";
 import { intakeHttp } from "./intake/http.js";
 import type { Intake } from "./intake/intake.js";
+import type { SlackChannels } from "./intake/slack-channels.js";
 import type { Knowledge } from "./knowledge/knowledge.js";
 import { knowledgeRoutes } from "./knowledge/routes.js";
 import type { Library } from "./library/library.js";
@@ -198,6 +200,8 @@ export interface AppOptions {
   factExtraction?: FactExtractions;
   /** Intake by email: its settings and the hook the mail server posts to, under /hooks. */
   emailChannels?: EmailChannels;
+  /** Intake from Slack: its settings and the hook Slack posts to, under /hooks. */
+  slackChannels?: SlackChannels;
   /** Agent and workflow runs: history, steps and signals. Left out, those endpoints are not mounted. */
   agentRuns?: AgentRuns;
   /** The Workflow Builder; left out, its endpoints are not mounted. */
@@ -265,6 +269,7 @@ export function createApp({
   factExtraction,
   chronologies,
   emailChannels,
+  slackChannels,
   agentRuns,
   workflows,
   agents,
@@ -318,6 +323,7 @@ export function createApp({
 
   // Signed by the sender rather than signed in, so it comes before every session check.
   if (emailChannels) app.route("/hooks", emailHook(emailChannels, { clientIp, now }));
+  if (slackChannels) app.route("/hooks", slackHook(slackChannels, { clientIp, now }));
 
   app.use("/auth/*", async (c, next) => {
     await next();
@@ -494,7 +500,13 @@ export function createApp({
   if (facts) app.route("/api/v1", factHttp(facts, clientOf, factExtraction, asks, chronologies));
   if (horizon) app.route("/api/v1", horizonHttp(horizon, clientOf, horizonActions, asks));
   if (webSearch) app.route("/api/v1", webSearchHttp(webSearch, clientOf));
-  if (emailChannels) app.route("/api/v1", emailChannelHttp(emailChannels, clientOf));
+  if (emailChannels || slackChannels) {
+    const channels = {
+      ...(emailChannels ? { email: emailChannels } : {}),
+      ...(slackChannels ? { slack: slackChannels } : {}),
+    };
+    app.route("/api/v1", channelHttp(channels, clientOf));
+  }
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)
     app.route(

@@ -13,6 +13,7 @@ import { asWorker } from "../db.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 import { type Classifiable, classify, requestText } from "./classify.js";
 import { type IntakeMail, sendIntakeMail } from "./mail.js";
+import { type IntakeSlack, sendIntakeSlack } from "./slack-post.js";
 import { sweepIntake } from "./sweep.js";
 
 // Takes each request that has something new: classifies it, asks for what is missing and
@@ -25,6 +26,8 @@ export interface IntakeWorkerOptions {
   store: ObjectStore;
   /** Without a mail server nothing is sent and the mail stays queued. */
   mail?: IntakeMail;
+  /** Without it nothing is posted to Slack and what is queued stays. */
+  slack?: IntakeSlack;
   notifier?: Notifier;
   intervalMs?: number;
   /** What the sweep judges lateness against. */
@@ -182,6 +185,7 @@ export function createIntakeWorker(pool: pg.Pool, options: IntakeWorkerOptions) 
     await classifyDue(only);
     await sweepIntake(pool, { now: options.now?.() ?? new Date(), notifier, log }, only);
     if (options.mail) await sendIntakeMail(pool, options.mail, only, log);
+    if (options.slack) await sendIntakeSlack(pool, options.slack, only, log);
   }
 
   let timer: NodeJS.Timeout | null = null;

@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { createLimiter } from "../auth/limiter.js";
 import type { EmailChannels } from "../intake/channels.js";
+import { places, readCapped } from "./body.js";
 import { checkSender, EMAIL_LIMITS, senderHash } from "./email.js";
 import { verifyTimestamped } from "./signature.js";
 
@@ -25,59 +26,6 @@ const MAX_CONCURRENT = 4;
 const MAX_PER_SOURCE = 2;
 const IDLE_MS = 10_000;
 const READ_DEADLINE_MS = 60_000;
-
-/** The body, unless it passes the cap, goes quiet or takes too long in all. */
-async function readCapped(
-  body: ReadableStream<Uint8Array> | null,
-  max: number,
-  idleMs: number,
-): Promise<Buffer | "large" | "late"> {
-  if (!body) return Buffer.alloc(0);
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  let late = false;
-  const drop = () => {
-    late = true;
-    reader.cancel().catch(() => {});
-  };
-  const deadline = setTimeout(drop, READ_DEADLINE_MS);
-  let idle = setTimeout(drop, idleMs);
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (late) return "late";
-      if (done) return Buffer.concat(chunks);
-      clearTimeout(idle);
-      idle = setTimeout(drop, idleMs);
-      size += value.length;
-      if (size > max) {
-        reader.cancel().catch(() => {});
-        return "large";
-      }
-      chunks.push(value);
-    }
-  } finally {
-    clearTimeout(deadline);
-    clearTimeout(idle);
-  }
-}
-
-/** Counts what is in progress for each key. */
-function places(max: number) {
-  const held = new Map<string, number>();
-  return {
-    full: (key: string) => (held.get(key) ?? 0) >= max,
-    take(key: string) {
-      held.set(key, (held.get(key) ?? 0) + 1);
-    },
-    free(key: string) {
-      const left = (held.get(key) ?? 1) - 1;
-      if (left > 0) held.set(key, left);
-      else held.delete(key);
-    },
-  };
-}
 
 export function emailHook(channels: EmailChannels, options: EmailHookOptions) {
   const { now = Date.now, idleMs = IDLE_MS } = options;
@@ -136,7 +84,11 @@ export function emailHook(channels: EmailChannels, options: EmailHookOptions) {
     byAddress.take(address);
     byChannel.take(channel.id);
     try {
-      const raw = await readCapped(c.req.raw.body, EMAIL_LIMITS.bytes, idleMs);
+      const raw = await readCapped(c.req.raw.body, {
+        max: EMAIL_LIMITS.bytes,
+        idleMs,
+        deadlineMs: READ_DEADLINE_MS,
+      });
       if (raw === "large") return tooLarge(c);
       if (raw === "late") {
         failures.take(address);

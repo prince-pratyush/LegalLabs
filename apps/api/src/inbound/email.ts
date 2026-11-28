@@ -161,14 +161,14 @@ function automatic(email: Email, from: string, own: string): boolean {
 }
 
 /** Text safe to store: no control or direction characters, cut by whole characters. */
-const printable = (value: string, max: number) =>
+export const printable = (value: string, max: number) =>
   Array.from(value.replace(/[\p{C}\p{Zl}\p{Zp}]/gu, " "))
     .slice(0, max)
     .join("")
     .trim();
 
 /** The last part of a name, without anything that could place or disguise the file. */
-function fileName(given: string | null, index: number): string {
+export function fileName(given: string | null, index: number): string {
   const base = (given ?? "").split(/[/\\]/).at(-1) ?? "";
   const clean = base
     .replace(/[\p{C}\p{Zl}\p{Zp}]/gu, "")

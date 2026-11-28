@@ -195,6 +195,7 @@ describe("agent runs on the composed server", () => {
 
   it("sends the write once the person approves it", async () => {
     const before = mcp.calls.length;
+    const asked = prompts.length;
     const run = await post<{ run_id: string }>(
       `/api/v1/agents/${agent}/run`,
       { inputs: "Check Acme again" },
@@ -223,8 +224,10 @@ describe("agent runs on the composed server", () => {
     });
     expect((await events(run.run_id)).at(-1)?.event).toBe("done");
     expect(mcp.calls.slice(before).map((c) => c.name)).toEqual(["search", "send_mail"]);
-    // The model is told what it sent, not only that a call returned.
-    expect(prompts.at(-1)).toMatch(
+    // The model is told what it sent, not only that a call returned. The server's workers may
+    // call the same model, so the run's own prompt is picked out rather than the newest.
+    const told = prompts.slice(asked).filter((prompt) => prompt.includes("<tool-arguments-"));
+    expect(told.at(-1)).toMatch(
       /<tool-arguments-\w+>\n\{"to":"attacker@evil\.example"\}\n<\/tool-arguments-/,
     );
   });

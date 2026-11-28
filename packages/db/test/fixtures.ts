@@ -485,6 +485,18 @@ export async function seed(tx: Tx) {
        values ($1, $2, sha256('mail'), 4, 'queued', 'mail')`,
       [ws, channelId],
     );
+    const slackId = await id(
+      `insert into apps.intake_channel (workspace_id, kind, key, name, team_id, slack_channel_ids,
+         secret_sealed, created_by)
+       values ($1, 'slack', replace(gen_random_uuid()::text, '-', ''), 'Slack', 'T0001',
+         array['C0001'], 'sealed', $2) returning id`,
+      [ws, owner],
+    );
+    await tx.rows(
+      `insert into apps.slack_thread (request_id, workspace_id, channel_id, slack_user)
+       values ($1, $2, $3, 'U0001')`,
+      [requestId, ws, slackId],
+    );
     await tx.rows(
       "insert into apps.intake_work (request_id, workspace_id) values ($1, $2) on conflict do nothing",
       [requestId, ws],

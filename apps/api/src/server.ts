@@ -43,8 +43,11 @@ import { createHorizonActions } from "./horizon/actions.js";
 import { createHorizon } from "./horizon/horizon.js";
 import { createHorizonRefresh } from "./horizon/refresh.js";
 import { createEmailProcessor } from "./inbound/processor.js";
+import { createSlackProcessor } from "./inbound/slack-processor.js";
 import { createEmailChannels } from "./intake/channels.js";
 import { createIntake } from "./intake/intake.js";
+import { createSlackApi } from "./intake/slack-api.js";
+import { createSlackChannels } from "./intake/slack-channels.js";
 import { createIntakeWorker } from "./intake/worker.js";
 import { createKnowledge } from "./knowledge/knowledge.js";
 import { knowledgePort } from "./knowledge/port.js";
@@ -368,6 +371,20 @@ const emailProcessor = createEmailProcessor(pool, {
 emailProcessor.start();
 process.once("SIGTERM", () => void emailProcessor.stop());
 process.once("SIGINT", () => void emailProcessor.stop());
+// Intake from Slack works the same way. Nothing is sent to or fetched from Slack until a
+// channel has been given a bot token.
+const slackApi = createSlackApi();
+const slackChannels = createSlackChannels(pool, secrets ? { secrets } : {});
+const slackProcessor = createSlackProcessor(pool, {
+  documents,
+  scanner,
+  api: slackApi,
+  ...(secrets ? { secrets } : {}),
+  log: (line) => console.log(line),
+});
+slackProcessor.start();
+process.once("SIGTERM", () => void slackProcessor.stop());
+process.once("SIGINT", () => void slackProcessor.stop());
 // Classifies and routes intake requests, and mails requesters. Without a mail server the
 // mail waits in its queue.
 const intakeWorker = createIntakeWorker(pool, {
@@ -375,6 +392,7 @@ const intakeWorker = createIntakeWorker(pool, {
   store,
   notifier,
   ...(smtp ? { mail: { provider: smtp } } : {}),
+  ...(secrets ? { slack: { api: slackApi, secrets } } : {}),
   log: (line) => console.log(line),
 });
 intakeWorker.start();
@@ -456,6 +474,7 @@ const app = createApp({
   horizon: createHorizon(pool),
   horizonActions,
   emailChannels,
+  slackChannels,
   drafts,
   knowledge: knowledgeStore,
   webSearch,
