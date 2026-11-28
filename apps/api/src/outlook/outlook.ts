@@ -9,7 +9,7 @@ import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { track, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
-import { mayCopy } from "../documents/copy.js";
+import { mayLeaveThread } from "../documents/copy.js";
 import type { Documents, Summary } from "../documents/documents.js";
 import type { Threads } from "../threads/threads.js";
 import type { Vaults } from "../vaults/vaults.js";
@@ -50,48 +50,6 @@ export interface OutlookOptions {
 const encode = (text: string) => new TextEncoder().encode(text);
 
 type Db = pg.PoolClient;
-
-/** Whether everything an answer in this thread could repeat may be copied out by the caller. */
-async function mayLeave(db: Db, threadId: string): Promise<boolean> {
-  // Every file the thread holds or cites must still be readable: an unreadable one can't be asked
-  // about its controls.
-  const { rows } = await db.query<{ id: string | null }>(
-    `select v.document_id id
-       from (select version_id from work.thread_document where thread_id = $1
-             union
-             select c.version_id from work.citation c
-               join work.message m on m.id = c.message_id
-              where m.thread_id = $1 and c.kind = 'document') held
-       left join content.document_version v on v.id = held.version_id
-     union all
-     select unnest(source_documents) from work.thread where id = $1`,
-    [threadId],
-  );
-  const ids = rows.map((row) => row.id);
-  if (ids.includes(null)) return false;
-  const documents = [...new Set(ids as string[])];
-  const { rows: readable } = await db.query<{ id: string; vault_id: string | null }>(
-    "select id, vault_id from content.document where id = any($1::uuid[])",
-    [documents],
-  );
-  if (readable.length !== documents.length) return false;
-  // Only vaults carry copy controls.
-  const filed = readable.flatMap((row) => (row.vault_id ? [row.id] : []));
-  // A vault searched without a citation is part of the thread too.
-  const { rows: vaults } = await db.query<{ closed: boolean }>(
-    `select exists (
-       select 1 from work.thread t
-        cross join unnest(t.vault_ids) held(id)
-         left join content.vault v on v.id = held.id
-        where t.id = $1
-          and (v.id is null
-               or (content.vault_level(v.id) is distinct from 'owner'
-                   and (v.content_controls ->> 'allow_download' = 'false'
-                        or v.content_controls ->> 'allow_duplicate' = 'false')))) closed`,
-    [threadId],
-  );
-  return !vaults[0]?.closed && (filed.length === 0 || (await mayCopy(db, filed)));
-}
 
 const documentOf = (found: Summary, kind: "email" | "attachment") => ({
   document_id: found.id,
@@ -236,7 +194,7 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
       const html = replyHtml(message.content);
       if (Buffer.byteLength(html) > OUTLOOK_LIMITS.replyHtmlBytes) return refused("TOO_LONG");
       const allowed = await asApp(pool, p, async (db) => {
-        if (!(await mayLeave(db, thread.id))) return false;
+        if (!(await mayLeaveThread(db, thread.id))) return false;
         await audit(
           db,
           p,

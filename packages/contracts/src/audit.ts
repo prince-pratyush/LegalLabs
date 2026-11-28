@@ -233,6 +233,7 @@ export const auditActions: string[] = [
   ...family("web.search", ["settings_updated", "matter_updated", "sent"]),
   "web.pages.fetched",
   ...family("mail", ["items_ingested", "saved_to_vault", "draft_prepared"]),
+  ...family("thread", ["file_created", "file_downloaded"]),
 ];
 
 export const AuditAction = z.enum(auditActions);

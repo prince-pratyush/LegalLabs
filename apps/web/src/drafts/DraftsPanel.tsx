@@ -16,24 +16,9 @@ import {
 } from "@legallabs/ui";
 import { type FormEvent, useCallback, useEffect, useId, useState } from "react";
 import { api, type Draft, messageOf } from "../api.js";
+import { download } from "../download.js";
 
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-/**
- * Hands the browser a file to save, without leaving the page. The link is in the
- * document while clicked, and the URL lives until the browser has taken the file.
- */
-function download(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 const fileName = (title: string) =>
   `${title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "Draft"}.docx`;

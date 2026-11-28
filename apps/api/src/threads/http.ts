@@ -2,11 +2,13 @@ import {
   ContentBlock,
   citationPath,
   FINISHED,
+  FileFormat,
   isTerminal,
   type KnowledgePort,
   ResponseMode,
   ThreadScope,
   type VaultPort,
+  WEB_SOURCE_ID,
 } from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
 import { type Context, Hono } from "hono";
@@ -15,6 +17,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Client, Principal } from "../auth/auth.js";
 import { createLimiter, type Limiter } from "../auth/limiter.js";
+import { CopyRefused } from "../drafts/drafts.js";
 import { wallShareBlocked } from "../matters/blocked.js";
 import type { RunLog } from "../runs/log.js";
 import type { WebSources } from "../web/sources.js";
@@ -84,7 +87,12 @@ const blocks = z
     { message: "Write a question of up to 100,000 characters." },
   );
 
-const askBody = z.object({
+const MIME: Record<FileFormat, string> = {
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+const askFields = z.object({
   content: blocks,
   scope: ThreadScope.default({ document_ids: [], vault_ids: [], sources: [] }),
   matter_id: z.uuid().nullable().optional(),
@@ -93,7 +101,15 @@ const askBody = z.object({
   deep_analysis: z.boolean().optional(),
   use_memory: z.boolean().optional(),
   writing_style_id: z.uuid().optional(),
+  output_format: FileFormat.optional(),
 });
+
+// A file is made in one pass from the workspace's own material.
+const askBody = askFields.refine(
+  (body) =>
+    !body.output_format ||
+    (!body.deep_analysis && !body.scope.sources.some((s) => s.source_id === WEB_SOURCE_ID)),
+);
 
 const planEditBody = z.object({ instruction: z.string().trim().min(1).max(4000).refine(noNul) });
 
@@ -207,6 +223,14 @@ const threadJson = (thread: ThreadView) => ({
     empty_page_count: document.emptyPageCount,
   })),
   messages: thread.messages.map(messageJson),
+  outputs: thread.outputs.map((output) => ({
+    id: output.id,
+    message_id: output.messageId,
+    name: output.name,
+    format: output.format,
+    size: output.size,
+    created_at: output.createdAt,
+  })),
   runs: thread.runs.map(runJson),
 });
 
@@ -271,6 +295,7 @@ export function threadHttp(options: ThreadHttpOptions) {
         ...(body.deep_analysis ? { deepAnalysis: true } : {}),
         ...(body.use_memory !== undefined ? { useMemory: body.use_memory } : {}),
         ...(body.writing_style_id ? { writingStyleId: body.writing_style_id } : {}),
+        ...(body.output_format ? { outputFormat: body.output_format } : {}),
       },
       clientOf(c),
     );
@@ -290,6 +315,28 @@ export function threadHttp(options: ThreadHttpOptions) {
   app.get("/threads/:id", async (c) => {
     const thread = await threads.get(c.get("principal"), c.req.param("id"));
     return thread ? c.json({ thread: threadJson(thread) }) : notFound(c);
+  });
+
+  app.get("/thread-outputs/:id/download", async (c) => {
+    let file: Awaited<ReturnType<Threads["download"]>>;
+    try {
+      file = await threads.download(c.get("principal"), c.req.param("id"), clientOf(c));
+    } catch (err) {
+      if (!(err instanceof CopyRefused)) throw err;
+      return c.json(
+        { code: "EXPORT_DISABLED", message: "A source vault doesn't allow copies or downloads." },
+        403,
+      );
+    }
+    if (!file) return notFound(c);
+    c.header("Content-Type", MIME[file.format]);
+    c.header(
+      "Content-Disposition",
+      `attachment; filename="file.${file.format}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+    );
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Cache-Control", "no-store");
+    return c.body(new Uint8Array(file.bytes).buffer as ArrayBuffer);
   });
 
   app.get("/history", async (c) => {

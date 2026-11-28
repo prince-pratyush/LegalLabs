@@ -84,7 +84,9 @@ describe("P-03 retention leaves no residue", () => {
       );
       await expire(tx, s.acme, "thread", t.threadId, "Falcon bid");
       await tx.rows("select retention.sweep_all()");
-      expect(await residue(tx, [t.threadId, t.messageId, t.runId, t.draftId, note.id])).toEqual([]);
+      expect(
+        await residue(tx, [t.threadId, t.messageId, t.runId, t.draftId, t.outputId, note.id]),
+      ).toEqual([]);
     });
   });
 

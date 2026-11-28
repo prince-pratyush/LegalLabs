@@ -15,7 +15,8 @@ import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
-import { mayCopy } from "../documents/copy.js";
+import { mayLeaveThread } from "../documents/copy.js";
+import { threadModels } from "../threads/matter-models.js";
 
 export type DraftKind = "notepad" | "editor";
 
@@ -43,6 +44,7 @@ export type DraftFailure =
   | "FORBIDDEN"
   | "LIMIT_DRAFTS"
   | "MODEL_UNAVAILABLE"
+  | "MODEL_NOT_ALLOWED"
   | "STALE"
   | "TOO_LONG_TO_EDIT"
   | "TOO_LARGE";
@@ -387,6 +389,10 @@ export function createDrafts(
       if (!current) return { ok: false, reason: "NOT_FOUND" };
       if (current.latest.body.length > MAX_EDIT_CHARS)
         return { ok: false, reason: "TOO_LONG_TO_EDIT" };
+      const models = await asApp(pool, principal, (db) =>
+        threadModels(db, gateway, current.threadId),
+      );
+      if (!models.allows("draft_edit")) return { ok: false, reason: "MODEL_NOT_ALLOWED" };
       // Fresh each call, so the draft can't close its own fence.
       const code = randomBytes(12).toString("hex");
       let output: string;
@@ -404,6 +410,7 @@ export function createDrafts(
           budget: { max_output: MAX_EDIT_OUTPUT, max_cost_usd: 0.2 },
           routing: { workspace: principal.workspaceId },
           trace: randomUUID(),
+          ...(models.exclude.length ? { exclude: models.exclude } : {}),
         });
         output = unfence(result.output);
         model = result.model;
@@ -486,12 +493,7 @@ export function createDrafts(
         const draft = await load(db, principal, draftId);
         if (!draft) return null;
         // Asked of whoever is downloading, now: not of the maker when the draft was made.
-        const { rows: thread } = await db.query<{ source_documents: string[] }>(
-          "select source_documents from work.thread where id = $1",
-          [draft.threadId],
-        );
-        const sources = thread[0]?.source_documents ?? [];
-        if (sources.length > 0 && !(await mayCopy(db, sources))) throw new CopyRefused();
+        if (!(await mayLeaveThread(db, draft.threadId))) throw new CopyRefused();
         const { rows: author } = await db.query<{ name: string; email: string }>(
           `select name, email from core."user" where id = $1`,
           [principal.userId],

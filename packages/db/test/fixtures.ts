@@ -298,7 +298,13 @@ export async function seed(tx: Tx) {
        values ($1, $2, 1, 'Draft text.', 'user', $3)`,
       [ws, draftId, owner],
     );
-    return { threadId, messageId, runId, draftId };
+    const outputId = await id(
+      `insert into work.thread_output
+         (workspace_id, thread_id, message_id, owner_id, name, format, size, bytes)
+       values ($1, $2, $3, $4, 'Memo.docx', 'docx', 1, '\\x00') returning id`,
+      [ws, threadId, messageId, owner],
+    );
+    return { threadId, messageId, runId, draftId, outputId };
   };
   const threads = {
     acme: await thread(acme, ana, documents.acme.versionId),
