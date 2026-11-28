@@ -42,6 +42,12 @@ export { DEFAULT_SUBSET, loaderFor, subsetSchema } from "./subset.js";
 export type { SyncSummary, Upserted, Writer } from "./sync.js";
 export { createFileLoader, sync } from "./sync.js";
 export type { Chunk } from "./text.js";
-export { CHUNK_CHARS, chunkText, htmlToText, splitSections } from "./text.js";
+export {
+  CHUNK_CHARS,
+  chunkText,
+  decodeEntities,
+  htmlToText,
+  splitSections,
+} from "./text.js";
 export type { UkItem, UkLegislationOptions } from "./uk.js";
 export { createUkLegislationLoader, ukRecord } from "./uk.js";
