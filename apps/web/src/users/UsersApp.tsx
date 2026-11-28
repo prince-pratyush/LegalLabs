@@ -210,6 +210,23 @@ function Person({
             Resend
           </Button>
         )}
+        {!user.is_self && user.sso_linked && (
+          <ConfirmDialog
+            trigger={
+              <Button
+                size="sm"
+                variant="quiet"
+                aria-label={`Unlink single sign-on for ${user.email}`}
+              >
+                Unlink SSO
+              </Button>
+            }
+            title={`Unlink single sign-on for ${user.email}?`}
+            description="Use this after changing identity provider. They are signed out, and link again by verified email if that is turned on."
+            confirmLabel="Unlink"
+            onConfirm={() => act(() => usersApi.unlink(user.id).then(() => null))}
+          />
+        )}
         {!user.is_self && !theirs && off && (
           <Button
             size="sm"
@@ -299,7 +316,7 @@ function View({
         <>
           <p className="text-dense text-fg-muted">
             {directory.sso_enabled
-              ? "Single sign-on is on: people you add sign in through your identity provider."
+              ? "Single sign-on is on: people you add sign in through your identity provider, which needs linking by verified email to be on under Single sign-on."
               : directory.mail_configured
                 ? "Invitations are emailed."
                 : "No mail server is set up, so each link is shown to you once to pass on."}

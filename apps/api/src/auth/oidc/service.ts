@@ -1,8 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import type pg from "pg";
+import type { SecretBox } from "../../admin-models/secrets.js";
 import { asApp, type Identity } from "../../db.js";
 import type { FetchPolicy } from "../../net/fetch.js";
 import { type Client, type Principal, uaHash } from "../auth.js";
+import { openSecret } from "./providers.js";
 import { createRp, RpError } from "./rp.js";
 import { insertSession } from "./session.js";
 
@@ -55,6 +57,8 @@ export interface OidcOptions {
   /** The public address of this API, which the IdP redirects back to. */
   baseUrl: string;
   policy?: FetchPolicy;
+  /** Opens the sealed client secret; without it a provider with a secret can't be used. */
+  secrets?: SecretBox;
   now?: () => number;
 }
 
@@ -182,12 +186,14 @@ export function createOidc(pool: pg.Pool, opts: OidcOptions): Oidc {
           return fail("iss_mismatch");
         }
         if (!params.code) return fail("missing_code");
+        const clientSecret = req.client_secret && openSecret(opts.secrets, req.client_secret);
+        if (req.client_secret && !clientSecret) return fail("secret_unreadable");
         const idToken = await rp.exchangeCode(meta, {
           code: params.code,
           verifier: req.code_verifier,
           redirectUri,
           clientId: req.client_id,
-          clientSecret: req.client_secret,
+          clientSecret,
         });
         const claims = await rp.verifyIdToken(idToken, {
           issuer: req.issuer,

@@ -20,12 +20,22 @@ export interface OidcRouteOptions {
 export function oidcRoutes({ oidc, clientOf, signedIn, now = Date.now }: OidcRouteOptions) {
   const perIp = createLimiter({ limit: 30, windowMs: 60_000, now });
   const app = new Hono();
+  // A person's browser is taken back to the sign-in screen; anything else gets the code.
+  const turnedAway = (
+    c: Context,
+    error: string,
+    status: 401 | 404 | 429 | 502,
+    why: "failed" | "unavailable" | "busy",
+  ) =>
+    c.req.header("accept")?.includes("text/html")
+      ? c.redirect(`/#/auth/sso?error=${why}`, 302)
+      : c.json({ error }, status);
 
   app.get("/start", async (c) => {
     const wait = perIp.take(clientOf(c).ip ?? "unknown");
     if (wait > 0) {
       c.header("Retry-After", String(wait));
-      return c.json({ error: "too_many_attempts" }, 429);
+      return turnedAway(c, "too_many_attempts", 429, "busy");
     }
     const workspace = c.req.query("workspace");
     if (!workspace || workspace.length > 63 || workspace.includes("\0")) {
@@ -35,9 +45,9 @@ export function oidcRoutes({ oidc, clientOf, signedIn, now = Date.now }: OidcRou
     try {
       started = await oidc.begin(workspace, { returnTo: c.req.query("return_to") ?? null });
     } catch {
-      return c.json({ error: "sso_unavailable" }, 502);
+      return turnedAway(c, "sso_unavailable", 502, "unavailable");
     }
-    if (!started) return c.json({ error: "sso_not_enabled" }, 404);
+    if (!started) return turnedAway(c, "sso_not_enabled", 404, "unavailable");
     setCookie(c, BINDING_COOKIE, started.binding, {
       prefix: "host",
       httpOnly: true,
@@ -65,7 +75,7 @@ export function oidcRoutes({ oidc, clientOf, signedIn, now = Date.now }: OidcRou
       clientOf(c),
     );
     // The reason stays in the audit log: the caller learns only that sign-in failed.
-    if (!result.ok) return c.json({ error: "sso_failed" }, 401);
+    if (!result.ok) return turnedAway(c, "sso_failed", 401, "failed");
     if ("pending" in result) {
       const { kind, mfaToken, methods } = result.pending;
       // Never in the address: only the browser that started sign-in gets to finish it.

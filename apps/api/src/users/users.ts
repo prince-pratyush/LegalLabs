@@ -133,6 +133,8 @@ export function createUsers(pool: pg.Pool, opts: UsersOptions) {
 
   const USERS = `
     select u.id, u.email, u.name, u.status, u.role_id, r.name as role_name, u.role_from_group,
+           exists (select 1 from core.external_identity e
+                    where e.workspace_id = u.workspace_id and e.user_id = u.id) as sso_linked,
            case when u.scim_managed then 'scim' else 'manual' end as source,
            array(select m.group_id from core.group_member m
                   where m.workspace_id = u.workspace_id and m.user_id = u.id)::text[] as group_ids
@@ -515,6 +517,22 @@ export function createUsers(pool: pg.Pool, opts: UsersOptions) {
             ...(roleChanged ? { role: { from: target.role_id, to: roleId } } : {}),
           });
         }
+        return one(db, p, userId);
+      });
+    },
+
+    /** Forgets who someone was at the identity provider, so that they can link again. */
+    async unlink(p: Principal, id: string, client: Client): Promise<ManagedUser> {
+      const userId = id.toLowerCase();
+      return as(p, async (db) => {
+        await need(db);
+        await one(db, p, userId);
+        const { rows } = await db.query<{ n: number }>("select core.unlink_identities($1) as n", [
+          userId,
+        ]);
+        await audit(db, p, client, "sso.identity_unlinked", "user", userId, {
+          identities: rows[0]?.n ?? 0,
+        });
         return one(db, p, userId);
       });
     },

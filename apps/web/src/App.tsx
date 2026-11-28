@@ -32,6 +32,7 @@ import { goAgents, parseAgentRoute } from "./agents/route.js";
 import { ApiError, api, type HistoryItem } from "./api.js";
 import { AcceptInvite, inviteTokenFrom, type Joined } from "./auth/AcceptInvite.js";
 import { handoffFrom } from "./auth/handoff.js";
+import { ssoErrorFrom, ssoStart } from "./auth/sso.js";
 import { CiApp } from "./ci/CiApp.js";
 import { goCi, parseCiRoute } from "./ci/route.js";
 import { CommandCenterApp } from "./command-center/CommandCenterApp.js";
@@ -41,6 +42,8 @@ import { GuestAccept, GuestSignIn, type Prefill } from "./guest/GuestEntry.js";
 import { HistoryPage } from "./history/HistoryPage.js";
 import { HorizonApp } from "./horizon/HorizonApp.js";
 import { goHorizon, parseHorizonRoute } from "./horizon/route.js";
+import { IdentityApp } from "./identity/IdentityApp.js";
+import { identityHash, parseIdentityRoute } from "./identity/route.js";
 import { IntakeApp } from "./intake/IntakeApp.js";
 import { goIntake, parseIntakeRoute } from "./intake/route.js";
 import { LibraryApp } from "./library/LibraryApp.js";
@@ -194,6 +197,8 @@ export function App() {
           <AdminModelsApp onLeave={() => navigate(paths.new)} />
         ) : parseUsersRoute(hash) ? (
           <UsersApp onLeave={() => navigate(paths.new)} />
+        ) : parseIdentityRoute(hash) ? (
+          <IdentityApp onLeave={() => navigate(paths.new)} />
         ) : parseWebSearchRoute(hash) ? (
           <WebSearchApp onLeave={() => navigate(paths.new)} />
         ) : parseSettingsRoute(hash) ? (
@@ -222,13 +227,13 @@ function SignIn({ joined, onSignedIn }: { joined: Joined | null; onSignedIn: () 
   const [workspace, setWorkspace] = useState(joined?.workspace ?? "");
   const [email, setEmail] = useState(joined?.email ?? "");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(() => ssoErrorFrom(window.location.hash));
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(() => handoffFrom(window.location.hash));
 
   // The single sign-on handoff comes off the address bar and the history as soon as it is read.
   useEffect(() => {
-    if (!handoffFrom(window.location.hash)) return;
+    if (!handoffFrom(window.location.hash) && !ssoErrorFrom(window.location.hash)) return;
     window.history.replaceState(null, "", "/");
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   }, []);
@@ -325,6 +330,20 @@ function SignIn({ joined, onSignedIn }: { joined: Joined | null; onSignedIn: () 
           Sign in
         </Button>
       </form>
+      <p>
+        {/* A real navigation: the provider's page has to take over the window. */}
+        <a
+          className="underline"
+          href={ssoStart(workspace.trim())}
+          onClick={(e) => {
+            if (workspace.trim()) return;
+            e.preventDefault();
+            setError("Enter your workspace first.");
+          }}
+        >
+          Sign in with SSO
+        </a>
+      </p>
       <p>
         <a className="underline" href="#/guest">
           Guest sign-in
@@ -479,6 +498,13 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
       group: "Go to",
       label: "Admin: Users and groups",
       run: () => navigate(usersHash().slice(1)),
+    },
+    {
+      id: "admin-identity",
+      kind: "action",
+      group: "Go to",
+      label: "Admin: Single sign-on",
+      run: () => navigate(identityHash().slice(1)),
     },
     {
       id: "history",
