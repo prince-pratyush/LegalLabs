@@ -117,6 +117,7 @@ export {
 export {
   HORIZON_LIMITS,
   HORIZON_SOURCES,
+  HorizonBulk,
   type HorizonItem,
   type HorizonItemState,
   HorizonJurisdiction,
@@ -126,6 +127,8 @@ export {
   HorizonScanPatch,
   HorizonSettings,
   HorizonSource,
+  HorizonStatePatch,
+  HorizonTab,
 } from "./horizon.js";
 export { Id } from "./id.js";
 export {

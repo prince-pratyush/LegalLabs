@@ -1,11 +1,14 @@
 import {
   HORIZON_LIMITS,
   HORIZON_SOURCES,
+  type HorizonBulk,
   type HorizonItem,
   type HorizonScan,
   type HorizonScanCreate,
   type HorizonScanPatch,
   type HorizonSource,
+  type HorizonStatePatch,
+  type HorizonTab,
 } from "@legallabs/contracts";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
@@ -149,6 +152,67 @@ export const itemView = ({
 // "2026-03-01_<uuid>": where the last page ended.
 const CURSOR =
   /^(\d{4}-\d{2}-\d{2})_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+export interface ItemQuery {
+  tab: HorizonTab;
+  relevance: string[];
+  type: string[];
+  source: string[];
+  jurisdiction: string[];
+  topic: string[];
+  industry: string[];
+  q?: string | undefined;
+  cursor?: string | undefined;
+}
+
+const TABS: Record<HorizonTab, string> = {
+  all: `not ${ARCHIVED}`,
+  unread: `st.read_at is null and not ${ARCHIVED}`,
+  starred: `st.starred and not ${ARCHIVED}`,
+  archived: ARCHIVED,
+};
+
+/** The columns each filter looks in; a value list matches any of its entries. */
+const FILTERS = [
+  ["relevance", "i.relevance = any ($)"],
+  ["type", "i.doc_type = any ($)"],
+  ["source", "i.source_id = any ($)"],
+  ["jurisdiction", "i.jurisdiction = any ($)"],
+  ["topic", "i.topics && $::text[]"],
+  ["industry", "i.industries && $::text[]"],
+] as const;
+
+/** Sets what is given for the items among `ids` the caller can see; the rest stays. */
+async function setState(db: Db, p: Principal, ids: string[], state: HorizonStatePatch) {
+  const { rowCount } = await db.query(
+    `insert into apps.horizon_item_state as st
+       (workspace_id, user_id, item_id, read_at, starred, archived)
+     select $1, $2, i.id, case when $4::boolean then now() end,
+            coalesce($5::boolean, false), $6::boolean
+       from apps.horizon_item i where i.id = any ($3)
+     on conflict (user_id, item_id) do update set
+       read_at = case when $4::boolean is null then st.read_at
+                      when $4 then coalesce(st.read_at, now()) end,
+       starred = coalesce($5::boolean, st.starred),
+       archived = coalesce($6::boolean, st.archived)`,
+    [
+      p.workspaceId,
+      p.userId,
+      ids,
+      state.read ?? null,
+      state.starred ?? null,
+      state.archived ?? null,
+    ],
+  );
+  return rowCount ?? 0;
+}
+
+const BULK: Record<HorizonBulk["action"], HorizonStatePatch> = {
+  archive: { archived: true },
+  unarchive: { archived: false },
+  star: { starred: true },
+  read: { read: true },
+};
 
 const dayBefore = (when: Date, days: number) =>
   new Date(when.getTime() - days * 86_400_000).toISOString().slice(0, 10);
@@ -365,7 +429,7 @@ export function createHorizon(pool: pg.Pool) {
         return done(null);
       }),
 
-    items: (p: Principal, scanId: string, query: { cursor?: string | undefined }) =>
+    items: (p: Principal, scanId: string, query: ItemQuery) =>
       on<{ items: HorizonItem[]; next_cursor: string | null }>(p, async (db) => {
         const at = query.cursor === undefined ? null : CURSOR.exec(query.cursor);
         if (query.cursor !== undefined && !at) return refused("BAD_CURSOR");
@@ -373,13 +437,29 @@ export function createHorizon(pool: pg.Pool) {
           ? await db.query("select 1 from apps.horizon_scan where id = $1", [scanId])
           : null;
         if (!seen?.rowCount) return refused("NOT_FOUND");
+        const params: unknown[] = [scanId, at?.[1] ?? null, at?.[2] ?? null];
+        const where = [TABS[query.tab]];
+        for (const [name, clause] of FILTERS) {
+          if (query[name].length === 0) continue;
+          params.push(query[name]);
+          where.push(clause.replace("$", `$${params.length}`));
+        }
+        if (query.q) {
+          params.push(query.q);
+          // Matched as written: strpos has no wildcards.
+          where.push(
+            `strpos(lower(i.title || ' ' || i.summary || ' ' || i.explanation),
+               lower($${params.length})) > 0`,
+          );
+        }
         const { rows } = await db.query<ItemRow>(
           `select ${ITEM} from ${ITEM_FROM}
             where i.scan_id = $1
               and ($2::date is null or (i.published_on, i.id) < ($2::date, $3::uuid))
+              and ${where.map((w) => `(${w})`).join(" and ")}
             order by i.published_on desc, i.id desc
             limit ${HORIZON_LIMITS.page_size + 1}`,
-          [scanId, at?.[1] ?? null, at?.[2] ?? null],
+          params,
         );
         const page = rows.slice(0, HORIZON_LIMITS.page_size);
         const last = page.at(-1);
@@ -388,6 +468,20 @@ export function createHorizon(pool: pg.Pool) {
           next_cursor: rows.length > page.length && last ? `${last.published_at}_${last.id}` : null,
         });
       }),
+
+    setState: (p: Principal, itemId: string, state: HorizonStatePatch) =>
+      on<null>(p, async (db) => {
+        if (!UUID.test(itemId)) return refused("NOT_FOUND");
+        return (await setState(db, p, [itemId], state)) ? done(null) : refused("NOT_FOUND");
+      }),
+
+    /** Items that aren't the caller's are passed over, and not counted. */
+    bulk: (p: Principal, input: HorizonBulk) =>
+      on<{ changed: number }>(p, async (db) =>
+        done({
+          changed: await setState(db, p, [...new Set(input.ids)], BULK[input.action]),
+        }),
+      ),
   };
 }
 
