@@ -12,7 +12,7 @@ const FUNCTIONS = [
   "apps.receive_slack_event(gen_random_uuid(), 'x', null, null, null, null)",
   "apps.slack_thread_request(gen_random_uuid(), 'C1', '1.1', 'U1')",
   "apps.claim_slack_event(60, 600, 10)",
-  "apps.file_slack_event(gen_random_uuid(), gen_random_uuid(), 'U1', 'a', null, null, 0)",
+  "apps.file_slack_event(gen_random_uuid(), gen_random_uuid(), 'U1', 'a', null, null, 0, null, false)",
   "apps.append_slack_reply(gen_random_uuid(), gen_random_uuid(), 'U1', 'C1', '1.1', 0)",
   "apps.claim_slack_post(60, 1, 1)",
   "apps.sent_slack_post(gen_random_uuid(), gen_random_uuid(), 'C1', '1.1')",
@@ -43,6 +43,47 @@ describe("intake from Slack in the database", () => {
         expect(await open("open_email_channel")).toBe(kind === "email" ? 1 : 0);
         expect(await open("open_slack_channel")).toBe(kind === "slack" ? 1 : 0);
       }
+    });
+  });
+
+  it("counts what each kind has taken in an hour on its own", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const channel = (kind: string) =>
+        tx.one<{ id: string }>(
+          "select id from apps.intake_channel where kind = $1 and workspace_id = $2",
+          [kind, s.acme],
+        );
+      const [email, slack] = [await channel("email"), await channel("slack")];
+      const add = (id: string, status: "queued" | "accepted", mark: string) =>
+        tx.rows(
+          `insert into apps.inbound_email
+             (workspace_id, channel_id, event_hash, size_bytes, status, raw, processed_at)
+           values ($1, $2, sha256(convert_to($3, 'utf8')), 1, $4,
+                   case when $4 = 'queued' then 'x'::bytea end,
+                   case when $4 = 'accepted' then now() end)`,
+          [s.acme, id, mark, status],
+        );
+      const claims = async (sql: string) => {
+        await tx.rows("update apps.inbound_email set next_attempt_at = now() - interval '1s'");
+        await tx.asWorker();
+        const rows = await tx.rows(sql, [[s.acme]]);
+        await tx.asOwner();
+        return rows.length;
+      };
+      const mail = "select * from apps.claim_inbound_email(60, 2, 10, $1)";
+      const posts = "select * from apps.claim_slack_event(60, 2, 10, $1)";
+      await add(slack.id, "queued", "s");
+      await add(slack.id, "accepted", "s1");
+      await add(slack.id, "accepted", "s2");
+      // Slack has had its two; mail has had none.
+      expect(await claims(posts)).toBe(0);
+      expect(await claims(mail)).toBe(1);
+      await tx.rows("delete from apps.inbound_email where status = 'accepted'");
+      await add(email.id, "accepted", "m1");
+      await add(email.id, "accepted", "m2");
+      expect(await claims(mail)).toBe(0);
+      expect(await claims(posts)).toBe(1);
     });
   });
 

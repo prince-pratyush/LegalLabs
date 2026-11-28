@@ -47,6 +47,11 @@ export interface SlackChannels {
   ): Promise<ChannelResult<IntakeSlackChannel>>;
   /** For the hook: the live channel at this key. */
   open(key: string): Promise<OpenSlackChannel | null>;
+  /** For the hook, after the signature: whether this person has an open request there. */
+  awaits(
+    channelId: string,
+    thread: { channel: string; threadTs: string | null; user: string },
+  ): Promise<boolean>;
   /** For the hook, after the signature. `thread` is given for an answer in one. */
   receive(
     channelId: string,
@@ -202,6 +207,16 @@ export function createSlackChannels(
         channelIds: row.slack_channel_ids,
         signingSecret: secrets.open(row.secret_sealed),
       };
+    },
+
+    awaits(channelId, thread) {
+      return asWorker(pool, async (db) => {
+        const { rows } = await db.query<{ open: boolean }>(
+          "select apps.slack_thread_request($1, $2, $3, $4) is not null open",
+          [channelId, thread.channel, thread.threadTs, thread.user],
+        );
+        return rows[0]?.open === true;
+      });
     },
 
     receive(channelId, raw, fromHash, thread) {

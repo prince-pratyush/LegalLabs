@@ -121,13 +121,19 @@ export function slackHook(channels: SlackChannels, options: SlackHookOptions) {
           ? c.json(ephemeral("This command isn't set up for this channel."))
           : done(c);
       }
+      const thread = item.reply
+        ? { channel: item.channel, threadTs: item.threadTs, user: item.user }
+        : null;
+      // Talk in a thread that is no request's of this person's is dropped before it counts
+      // against anyone's minute.
+      if (thread && !(await channels.awaits(channel.id, thread))) return done(c);
       const busy = perSender.take(`${channel.id}:${item.user}`) || perChannel.take(channel.id);
       if (busy) return later(c, 429, busy);
       const outcome = await channels.receive(
         channel.id,
         queued(item),
         senderHash(channel.workspaceId, item.user),
-        item.reply ? { channel: item.channel, threadTs: item.threadTs, user: item.user } : null,
+        thread,
       );
       if (outcome === "unknown") return unauthorised(c, address);
       if (outcome === "full") return later(c, 429, 600);

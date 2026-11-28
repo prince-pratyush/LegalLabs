@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { createStubScanner } from "@legallabs/ingest";
 import { createGateway } from "@legallabs/model-gateway";
+import { contentKey } from "@legallabs/storage";
 import type pg from "pg";
 import { expect } from "vitest";
 import { createSecretBox } from "./admin-models/secrets.js";
@@ -81,6 +82,8 @@ export function intakeDesk(pool: pg.Pool) {
     posted: [] as { token: string; channel: string; threadTs: string | null; text: string }[],
     fetched: [] as string[],
     files: new Map<string, Buffer>(),
+    /** Run while a file is being fetched, to change things in the middle of processing. */
+    fetching: null as (() => Promise<void>) | null,
     /** What the next posts answer, before posting works again. */
     refuse: [] as Posted[],
   };
@@ -100,6 +103,7 @@ export function intakeDesk(pool: pg.Pool) {
     },
     async download(_token, file, maxBytes) {
       slack.fetched.push(file.url);
+      await slack.fetching?.();
       const bytes = slack.files.get(file.url);
       return bytes && bytes.length <= maxBytes
         ? { ok: true, bytes }
@@ -294,7 +298,14 @@ export function intakeDesk(pool: pg.Pool) {
     };
   };
 
+  /** The words of a filed message. */
+  const read = async (workspaceId: string, sha256: string) =>
+    Buffer.from(
+      (await documents.store.get(contentKey(workspaceId, sha256))) ?? new Uint8Array(),
+    ).toString("utf8");
+
   return {
+    read,
     app,
     call,
     member,

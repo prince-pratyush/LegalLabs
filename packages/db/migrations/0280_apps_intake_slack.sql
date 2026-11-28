@@ -105,7 +105,7 @@ begin
 end
 $$;
 
--- As 0233, for mail only.
+-- As 0233, for mail only, and its hourly limit counts only mail.
 create or replace function apps.claim_inbound_email(p_lease_seconds integer, p_per_hour integer,
                                          p_max_attempts integer,
                                          p_workspaces uuid[] default null)
@@ -140,6 +140,7 @@ begin
       where x.status = 'queued' and x.next_attempt_at <= pg_catalog.now()
         and (p_workspaces is null or x.workspace_id = any (p_workspaces))
         and (select count(*) from apps.inbound_email d
+               join apps.intake_channel k on k.id = d.channel_id and k.kind = 'email'
               where d.workspace_id = x.workspace_id and d.status = 'accepted'
                 and d.processed_at > pg_catalog.now() - interval '1 hour') < p_per_hour
       order by (select max(d.claimed_at) from apps.inbound_email d
@@ -436,7 +437,8 @@ language sql stable security definer set search_path = '' as $$
    limit 1
 $$;
 
--- As claim_inbound_email, for Slack: workspaces in turn, and the same hourly limit.
+-- As claim_inbound_email, for Slack: workspaces in turn, and an hourly limit of its own, so
+-- neither kind can use up the other's.
 create function apps.claim_slack_event(p_lease_seconds integer, p_per_hour integer,
                                        p_max_attempts integer,
                                        p_workspaces uuid[] default null)
@@ -470,6 +472,7 @@ begin
       where x.status = 'queued' and x.next_attempt_at <= pg_catalog.now()
         and (p_workspaces is null or x.workspace_id = any (p_workspaces))
         and (select count(*) from apps.inbound_email d
+               join apps.intake_channel k on k.id = d.channel_id and k.kind = 'slack'
               where d.workspace_id = x.workspace_id and d.status = 'accepted'
                 and d.processed_at > pg_catalog.now() - interval '1 hour') < p_per_hour
       order by (select max(d.claimed_at) from apps.inbound_email d
@@ -491,9 +494,12 @@ $$;
 -- Makes the request, its thread and the first answer to the requester, all at once. The
 -- Slack user is a requester and nothing else: no matter, assignee, type or user comes from
 -- them. The team is the channel's own, not one the message names.
+-- `p_author` is set when the words are someone else's than the requester's, sent in by a
+-- message shortcut.
 create function apps.file_slack_event(p_id uuid, p_lease uuid, p_user text, p_name text,
                                       p_slack_channel text, p_thread_ts text,
-                                      p_attachments integer) returns uuid
+                                      p_attachments integer, p_author text,
+                                      p_author_outside boolean) returns uuid
 language plpgsql volatile security definer set search_path = '' as $$
 declare
   was text := coalesce(pg_catalog.current_setting('app.workspace_id', true), '');
@@ -531,7 +537,10 @@ begin
    where inbound_email_id = p_id and request_id is null;
   insert into apps.intake_event (workspace_id, request_id, kind, actor_type, details)
   values (message.workspace_id, request.id, 'inbound', 'requester',
-          pg_catalog.jsonb_build_object('channel', 'slack', 'attachments', p_attachments));
+          pg_catalog.jsonb_build_object('channel', 'slack', 'attachments', p_attachments)
+          || pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
+               'written_by', p_author,
+               'author_outside', case when p_author_outside then true end)));
   update apps.inbound_email
      set status = 'accepted', raw = null, lease = null, processed_at = pg_catalog.now(),
          request_id = request.id, attachment_count = p_attachments
@@ -546,7 +555,9 @@ begin
 end
 $$;
 
--- An answer in the request's thread joins it. Null when there is no longer one to join.
+-- An answer in the request's thread joins it. When the request closed while the answer's
+-- files were being filed, they still go on it, so none is left on no request; nothing more is
+-- done with it. Null when the thread is no request's, or the message is no longer ours.
 create function apps.append_slack_reply(p_id uuid, p_lease uuid, p_user text,
                                         p_slack_channel text, p_thread_ts text,
                                         p_attachments integer) returns uuid
@@ -562,9 +573,13 @@ begin
     return null;
   end if;
   select * into request from apps.intake_request r
-   where r.id = apps.slack_thread_request(message.channel_id, p_slack_channel, p_thread_ts,
-                                          p_user)
-     and r.workspace_id = message.workspace_id and r.status not in ('done', 'closed')
+   where r.id = coalesce(
+           apps.slack_thread_request(message.channel_id, p_slack_channel, p_thread_ts, p_user),
+           (select t.request_id from apps.slack_thread t
+             where t.channel_id = message.channel_id and t.slack_channel = p_slack_channel
+               and t.thread_ts = p_thread_ts and t.slack_user = p_user
+             order by t.created_at desc, t.request_id desc limit 1))
+     and r.workspace_id = message.workspace_id
    for update;
   if request.id is null then
     return null;
@@ -578,8 +593,10 @@ begin
      set status = 'accepted', raw = null, lease = null, processed_at = pg_catalog.now(),
          request_id = request.id, attachment_count = p_attachments
    where id = p_id;
-  perform apps.queue_intake_work(request.workspace_id, request.id);
-  update apps.intake_sweep set due_at = pg_catalog.now() where request_id = request.id;
+  if request.status not in ('done', 'closed') then
+    perform apps.queue_intake_work(request.workspace_id, request.id);
+    update apps.intake_sweep set due_at = pg_catalog.now() where request_id = request.id;
+  end if;
   return request.id;
 end
 $$;
@@ -697,7 +714,7 @@ begin
     'apps.receive_slack_event(uuid, bytea, bytea, text, text, text)',
     'apps.slack_thread_request(uuid, text, text, text)',
     'apps.claim_slack_event(integer, integer, integer, uuid[])',
-    'apps.file_slack_event(uuid, uuid, text, text, text, text, integer)',
+    'apps.file_slack_event(uuid, uuid, text, text, text, text, integer, text, boolean)',
     'apps.append_slack_reply(uuid, uuid, text, text, text, integer)',
     'apps.claim_slack_post(integer, integer, integer, uuid[])',
     'apps.sent_slack_post(uuid, uuid, text, text)']
@@ -710,7 +727,8 @@ $$;
 grant execute on function apps.open_slack_channel(text),
   apps.receive_slack_event(uuid, bytea, bytea, text, text, text),
   apps.claim_slack_event(integer, integer, integer, uuid[]),
-  apps.file_slack_event(uuid, uuid, text, text, text, text, integer),
+  apps.slack_thread_request(uuid, text, text, text),
+  apps.file_slack_event(uuid, uuid, text, text, text, text, integer, text, boolean),
   apps.append_slack_reply(uuid, uuid, text, text, text, integer),
   apps.claim_slack_post(integer, integer, integer, uuid[]),
   apps.sent_slack_post(uuid, uuid, text, text) to legallabs_worker;

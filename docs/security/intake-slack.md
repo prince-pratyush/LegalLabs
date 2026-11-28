@@ -32,6 +32,14 @@ tested against fixtures only: no Slack workspace has been used.
 | Content in logs and records             | Logs carry ids, error names and Slack's error codes. The queued item is deleted when it is filed, refused or given up                                                                                                                                                 |
 | Database reach                          | The app role has no access to the queue or to threads. The workspace comes from the channel key's row, never from the payload                                                                                                                                         |
 
+A shortcut can send in someone else's message. The requester is the person who used it; the
+filed message says who wrote it and who submitted it, marks an author from another workspace, and
+the timeline records the author's id. A reply that arrives after its request closed is dropped
+before anything is stored; if the request closes while its files are being filed, they stay on it.
+Replies in threads that are not the sender's open request count against no limit. The hourly limit
+on what is accepted is separate for mail and for Slack. Review findings: F-88 to F-91 in
+[evidence.md](evidence.md).
+
 ## What the deployer must do
 
 - Create a Slack app and add a channel in LegalLabs (`POST /api/v1/apps/intake/slack-channels`)
@@ -53,6 +61,7 @@ tested against fixtures only: no Slack workspace has been used.
 - Slack retries a refused delivery only a few times, so what is over a limit for several
   minutes is lost, and many refusals can make Slack turn the subscription off.
 - A reply sent before the request has been filed (a few seconds) is ignored.
+- A shortcut on one message by several people makes a request for each.
 - A file that cannot be fetched at that moment is not tried again; the message file says so.
 - A crash between posting and recording posts the message twice.
 - Deleting or editing a message in Slack changes nothing here.

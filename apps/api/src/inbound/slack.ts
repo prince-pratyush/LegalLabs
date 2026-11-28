@@ -35,6 +35,8 @@ export interface SlackItem {
   trigger: string | null;
   text: string;
   files: SlackFile[];
+  /** Set when the words are not the requester's own: a shortcut on someone else's message. */
+  author: { user: string | null; team: string | null; outside: boolean } | null;
 }
 
 export type SlackPost =
@@ -140,6 +142,7 @@ function event(body: Json): SlackPost {
       trigger: null,
       text,
       files: sent,
+      author: null,
     },
   };
 }
@@ -166,6 +169,7 @@ function command(form: URLSearchParams): SlackPost {
       trigger,
       text,
       files: [],
+      author: null,
     },
   };
 }
@@ -184,6 +188,17 @@ function shortcut(body: Json): SlackPost {
   const text = words(message.text);
   const sent = files(message.files);
   if (text === "" && sent.length === 0) return IGNORE;
+  // The person who used it may not be the one who wrote it, who may not even be of this
+  // workspace. Both are carried, so the words are never taken for the requester's.
+  const writer = matching(message.user, USER);
+  const teams = [message.team, message.user_team, message.source_team]
+    .map((given) => matching(given, TEAM))
+    .filter((given) => given !== null);
+  const other = teams.find((given) => given !== team);
+  const author =
+    writer === user && !other
+      ? null
+      : { user: writer, team: other ?? teams[0] ?? null, outside: other !== undefined };
   return {
     kind: "item",
     team,
@@ -198,6 +213,7 @@ function shortcut(body: Json): SlackPost {
       trigger: null,
       text,
       files: sent,
+      author,
     },
   };
 }

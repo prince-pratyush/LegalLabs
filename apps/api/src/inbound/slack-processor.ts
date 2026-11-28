@@ -50,12 +50,15 @@ const LEASE_SECONDS = 300;
 const sha = (...parts: string[]) => createHash("sha256").update(parts.join("\n")).digest();
 
 function messageFile(item: SlackItem, dropped: readonly string[]): Uint8Array {
-  const lines = [
-    `From: ${item.name} (Slack ${item.user})`,
-    `Slack channel: ${item.channel}`,
-    "",
-    item.text,
-  ];
+  const { author } = item;
+  const who = author?.user ? `Slack user ${author.user}` : "someone Slack did not name";
+  const from = author
+    ? [
+        `Written by ${who}${author.outside ? `, outside this workspace (team ${author.team})` : ""}`,
+        `Submitted by ${item.name} (Slack ${item.user})`,
+      ]
+    : [`From: ${item.name} (Slack ${item.user})`];
+  const lines = [...from, `Slack channel: ${item.channel}`, "", item.text];
   if (dropped.length > 0) lines.push("", "Files not kept:", ...dropped.map((d) => `- ${d}`));
   return Buffer.from(`${lines.join("\n")}\n`);
 }
@@ -81,13 +84,15 @@ export function createSlackProcessor(pool: pg.Pool, options: SlackProcessorOptio
       counts,
     ]);
 
-  /** Files what can be kept of a message's attachments, and says why of the rest. */
-  async function attachments(job: Claim, item: SlackItem) {
-    const filed = new Set(
+  const partsFiled = async (job: Claim) =>
+    new Set(
       (
         await query<{ part_no: number }>("select apps.inbound_email_parts($1) part_no", [job.id])
       ).map((row) => row.part_no),
     );
+
+  /** Files what can be kept of a message's attachments, and says why of the rest. */
+  async function attachments(job: Claim, item: SlackItem, filed: Set<number>) {
     const token = job.bot_token_sealed && secrets ? secrets.open(job.bot_token_sealed) : undefined;
     const dropped: string[] = [];
     let kept = 0;
@@ -113,12 +118,13 @@ export function createSlackProcessor(pool: pg.Pool, options: SlackProcessorOptio
       if (why) dropped.push(`${file.name} (${why})`);
       else kept++;
     }
-    return { kept, dropped, filed };
+    return { kept, dropped };
   }
 
   async function handle(job: Claim) {
     const item = JSON.parse(job.raw.toString("utf8")) as SlackItem;
-    // One message is one request however it arrived: as an event, a mention or a shortcut.
+    // One message is one request from each person, however it arrived: as an event or by their
+    // shortcut.
     const which = item.ts ?? item.trigger ?? "";
     const [begun] = await query<{ outcome: string }>(
       "select apps.begin_inbound_email($1, $2, $3, $4, $5) outcome",
@@ -126,7 +132,7 @@ export function createSlackProcessor(pool: pg.Pool, options: SlackProcessorOptio
         job.id,
         job.lease,
         senderHash(job.workspace_id, item.user),
-        sha(job.channel_id, item.channel, which),
+        sha(job.channel_id, item.channel, which, item.user),
         senderPerHour,
       ],
     );
@@ -134,7 +140,17 @@ export function createSlackProcessor(pool: pg.Pool, options: SlackProcessorOptio
     if (begun?.outcome === "defer") return postpone(job, 600, false);
     if (begun?.outcome !== "ok") return;
 
-    const { kept, dropped, filed } = await attachments(job, item);
+    const filed = await partsFiled(job);
+    // An answer to a request that has since closed is dropped before anything is stored. One
+    // part way filed goes on, and joins its request whatever its state now.
+    if (item.reply && filed.size === 0) {
+      const [thread] = await query<{ id: string | null }>(
+        "select apps.slack_thread_request($1, $2, $3, $4) id",
+        [job.channel_id, item.channel, item.threadTs, item.user],
+      );
+      if (!thread?.id) return refuse(job, "rejected", "request_closed");
+    }
+    const { kept, dropped } = await attachments(job, item, filed);
     if (!filed.has(MESSAGE_PART)) {
       const why = await inbox.file(
         job,
@@ -145,15 +161,18 @@ export function createSlackProcessor(pool: pg.Pool, options: SlackProcessorOptio
       if (why) return refuse(job, "failed", "message_unreadable");
     }
     if (item.reply) {
-      const [joined] = await query<{ id: string | null }>(
-        "select apps.append_slack_reply($1, $2, $3, $4, $5, $6) id",
-        [job.id, job.lease, item.user, item.channel, item.threadTs, kept],
-      );
-      // The request finished while this waited. An answer never starts another.
-      if (!joined?.id) await refuse(job, "rejected", "request_closed");
+      // An answer never starts a request.
+      await query("select apps.append_slack_reply($1, $2, $3, $4, $5, $6)", [
+        job.id,
+        job.lease,
+        item.user,
+        item.channel,
+        item.threadTs,
+        kept,
+      ]);
       return;
     }
-    await query("select apps.file_slack_event($1, $2, $3, $4, $5, $6, $7)", [
+    await query("select apps.file_slack_event($1, $2, $3, $4, $5, $6, $7, $8, $9)", [
       job.id,
       job.lease,
       item.user,
@@ -161,6 +180,8 @@ export function createSlackProcessor(pool: pg.Pool, options: SlackProcessorOptio
       item.threadTs ? item.channel : null,
       item.threadTs,
       kept,
+      item.author?.user ?? null,
+      item.author?.outside ?? false,
     ]);
   }
 

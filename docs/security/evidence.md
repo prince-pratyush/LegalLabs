@@ -284,3 +284,14 @@ Not applying a matter's model policy yet: playbook and contract reviews and thei
 classification (`intake/classify.ts`), and the Word pane's proofread and translate. Agent runs and
 fact extraction do apply it. Horizon scanning reads public sources, and memory and style
 derivation read the person's own samples and answers.
+
+## Intake from Slack (F-88 to F-91)
+
+Found by a review of the Slack intake change before it was merged.
+
+| ID   | Severity | Area         | Finding                                                                                                             | Status                                                                                                                                 |
+| ---- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| F-88 | Medium   | Slack hook   | Talk in threads that were no request's used up the per-person and per-channel minute, so real commands were refused | Fixed: such a reply is answered as taken before any limit (`api/inbound/intake-slack.test.ts`)                                         |
+| F-89 | Medium   | Intake queue | Mail and Slack shared one hourly count of accepted messages, so Slack could stop a workspace's mail from being read | Fixed: each kind counts its own (`db/test/intake-slack.test.ts`)                                                                       |
+| F-90 | Medium   | Slack intake | A message shortcut recorded the person who used it as the author of someone else's words, outsiders included        | Fixed: the filed message and timeline name author and submitter and mark outsiders; the user is part of what makes a message a request |
+| F-91 | Low      | Slack intake | An answer to a request that closed while it was queued left files in the Inbox on no request                        | Fixed: checked before filing; if the request closes during filing the files stay on it (`api/inbound/intake-slack.test.ts`)            |

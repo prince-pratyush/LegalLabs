@@ -34,6 +34,7 @@ describe("reading what Slack posts", () => {
         trigger: null,
         text: "Need an NDA with Acme by Friday",
         files: [],
+        author: null,
       },
     });
   });
@@ -151,6 +152,24 @@ describe("reading what Slack posts", () => {
       message: { text: "see above", ts: "1800000000.000950", thread_ts: "1800000000.000900" },
     });
     expect(item(inThread).item).toMatchObject({ threadTs: "1800000000.000900", reply: false });
+  });
+
+  it("carries who wrote a shortcut's message, and whether they are outside", () => {
+    const by = (message: Record<string, unknown>) =>
+      item(shortcut({ message: { text: "x", ts: "1800000000.000900", ...message } })).item.author;
+    expect(by({ user: "U0SAM" })).toBeNull();
+    expect(by({ user: "U0JO" })).toEqual({ user: "U0JO", team: null, outside: false });
+    expect(by({ user: "U0JO", team: TEAM })).toEqual({
+      user: "U0JO",
+      team: TEAM,
+      outside: false,
+    });
+    expect(by({ user: "U0JO", team: TEAM, source_team: "T9999" })).toEqual({
+      user: "U0JO",
+      team: "T9999",
+      outside: true,
+    });
+    expect(by({})).toEqual({ user: null, team: null, outside: false });
   });
 
   it("ignores other interactions and shortcuts on a bot's message", () => {

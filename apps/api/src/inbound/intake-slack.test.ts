@@ -22,6 +22,7 @@ beforeEach(() => {
   desk.slack.fetched.length = 0;
   desk.slack.files.clear();
   desk.slack.refuse.length = 0;
+  desk.slack.fetching = null;
   desk.provider.clear();
 });
 afterEach(() => vi.restoreAllMocks());
@@ -212,6 +213,74 @@ describe("the Slack hook", () => {
   }, 30_000);
 });
 
+describe("talk in threads that are no request's", () => {
+  it("is answered as taken and spends nobody's limit", async () => {
+    const { slack } = await set();
+    const chatter = (user: string) =>
+      slack.send(message(stamp(), { user, thread_ts: "1700000000.000001" }));
+    for (let n = 0; n < 40; n++) expect((await chatter("U0JO")).status).toBe(200);
+    for (let n = 0; n < 100; n++) expect((await chatter(`U0T${n}`)).status).toBe(200);
+    expect(await stored(slack.id)).toEqual([]);
+    const command = await slack.send(slashCommand());
+    expect(command.status).toBe(200);
+    expect(await stored(slack.id)).toHaveLength(1);
+  }, 30_000);
+});
+
+describe("an answer to a request that is closing", () => {
+  const FILE = "https://files.slack.com/files-pri/T1-F9/more.txt";
+  const withFile = { subtype: "file_share", files: [{ name: "more.txt", url_private: FILE }] };
+  const close = (d: Awaited<ReturnType<typeof set>>["d"], id: string) =>
+    desk.call(d.lawyer, "POST", `/apps/intake/requests/${id}/status`, {
+      status: "closed",
+      reason: "withdrawn",
+    });
+  const loose = async (workspaceId: string) =>
+    (
+      await pool.query<{ n: number }>(
+        `select count(*)::int n from apps.intake_attachment
+          where workspace_id = $1 and request_id is null`,
+        [workspaceId],
+      )
+    ).rows[0]?.n;
+
+  it("files nothing once the request has closed", async () => {
+    const { d, slack } = await set();
+    const ts = stamp();
+    await slack.receive(message(ts));
+    const request = await d.request();
+    desk.slack.files.set(FILE, Buffer.from("more"));
+    await slack.send(message(stamp(), { thread_ts: ts, ...withFile }));
+    expect((await close(d, request.id)).status).toBe(200);
+    await slack.run();
+    expect(desk.slack.fetched).toEqual([]);
+    expect(await loose(d.admin.workspaceId)).toBe(0);
+    expect((await stored(slack.id)).at(-1)).toMatchObject({
+      status: "rejected",
+      reason: "request_closed",
+    });
+  });
+
+  it("keeps its files on the request when that closes while they are filed", async () => {
+    const { d, slack } = await set();
+    const ts = stamp();
+    await slack.receive(message(ts));
+    const request = await d.request();
+    desk.slack.files.set(FILE, Buffer.from("more"));
+    desk.slack.fetching = async () => {
+      expect((await close(d, request.id)).status).toBe(200);
+    };
+    await slack.receive(message(stamp(), { thread_ts: ts, ...withFile }));
+    expect(await loose(d.admin.workspaceId)).toBe(0);
+    const detail = await desk.call(d.lawyer, "GET", `/apps/intake/requests/${request.id}`);
+    expect(detail.body.request.status).toBe("closed");
+    expect(detail.body.request.attachments.map((a: { name: string }) => a.name)).toContain(
+      "more.txt",
+    );
+    expect(await d.requests()).toHaveLength(1);
+  });
+});
+
 describe("a Slack request", () => {
   it("is acknowledged and asked for what is missing in the same thread, then routed", async () => {
     const { d, typeId, slack } = await set();
@@ -364,9 +433,47 @@ describe("a Slack request", () => {
       channel: INTAKE_CHANNEL,
       threadTs: "1800000000.000900",
     });
-    // Used again on the same message, by whoever: still one request.
-    await slack.receive(shortcut({ user: { id: "U0KIM" }, trigger_id: "9.9.z" }));
+    // Used again by the same person: still one request. Someone else's is their own.
+    await slack.receive(shortcut({ trigger_id: "9.9.z" }));
     expect(await d.requests()).toHaveLength(1);
+    await slack.receive(shortcut({ user: { id: "U0KIM" }, trigger_id: "9.9.y" }));
+    expect(await d.requests()).toHaveLength(2);
+  });
+
+  it("says who wrote the words a shortcut sent in, and who sent them", async () => {
+    const { d, slack } = await set();
+    await slack.receive(
+      shortcut({
+        message: {
+          user: "U0GUEST",
+          user_team: "T0OTHER",
+          text: "Please wire the fee",
+          ts: "1800000000.000940",
+        },
+      }),
+    );
+    const request = await d.request();
+    expect(request.requester.external_user_id).toBe("T0001:U0SAM");
+    const detail = await desk.call(d.lawyer, "GET", `/apps/intake/requests/${request.id}`);
+    const file = detail.body.request.attachments[0] as { document_id: string };
+    const { rows } = await pool.query<{ sha256: Buffer; workspace_id: string }>(
+      "select sha256, workspace_id from content.document_version where document_id = $1",
+      [file.document_id],
+    );
+    const filed = await desk.read(
+      rows[0]?.workspace_id as string,
+      rows[0]?.sha256.toString("hex") as string,
+    );
+    expect(filed).toContain(
+      "Written by Slack user U0GUEST, outside this workspace (team T0OTHER)\nSubmitted by sam (Slack U0SAM)",
+    );
+    const events = await desk.call(d.lawyer, "GET", `/apps/intake/requests/${request.id}/audit`);
+    expect(events.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "inbound",
+        details: expect.objectContaining({ written_by: "U0GUEST", author_outside: true }),
+      }),
+    );
   });
 
   it("takes requests without a bot token, and then sends and fetches nothing", async () => {
