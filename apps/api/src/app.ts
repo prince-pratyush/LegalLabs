@@ -59,6 +59,8 @@ import type { MemoryModule } from "./memory/module.js";
 import { memoryRoutes, styleRoutes } from "./memory/routes.js";
 import type { Notifications } from "./notifications/notifications.js";
 import { notificationRoutes } from "./notifications/routes.js";
+import { outlookHttp } from "./outlook/http.js";
+import type { Outlook } from "./outlook/outlook.js";
 import { playbookHttp } from "./playbooks/http.js";
 import type { Playbooks } from "./playbooks/playbooks.js";
 import { publicApiRoutes, tokenGate, tokenLimiter } from "./public-api/routes.js";
@@ -141,6 +143,8 @@ export interface AppOptions {
   mfa?: Mfa;
   documents: Documents;
   threads: Omit<ThreadHttpOptions, "clientOf" | "now">;
+  /** What the Outlook pane does with a message; needs `addin` for its sign-in. */
+  outlook?: Outlook;
   /** Pages and files for the document viewer. */
   viewer?: Viewer;
   drafts: Drafts;
@@ -234,6 +238,7 @@ export function createApp({
   mfa,
   documents,
   threads,
+  outlook,
   viewer,
   drafts,
   oidc,
@@ -518,6 +523,7 @@ export function createApp({
     app.route("/api/v1", styleRoutes(memory.styles, clientOf));
   }
   if (addin) app.route("/api/v1/addin", addinRoutes(addin.language, now, addin.countUse));
+  if (outlook) app.route("/api/v1/addins/outlook", outlookHttp(outlook, clientOf, now));
   if (addin?.root) {
     app.get("/addin/*", serveStatic({ root: addin.root, rewriteRequestPath: (p) => p.slice(6) }));
   }

@@ -36,6 +36,43 @@ describe("the Outlook host", () => {
     });
   });
 
+  const answer =
+    (value: unknown) =>
+    (...args: unknown[]) =>
+      (args.at(-1) as (r: unknown) => void)({ status: "succeeded", value });
+
+  const withReading = (content: unknown) => {
+    office({
+      ...message,
+      body: { getAsync: vi.fn(answer("Body text")) },
+      getAttachmentContentAsync: answer(content),
+    });
+    Object.assign(Office, {
+      AsyncResultStatus: { Succeeded: "succeeded" },
+      CoercionType: { Text: "text" },
+      MailboxEnums: { AttachmentContentFormat: { Base64: "base64", Eml: "eml", Url: "url" } },
+    });
+    return createOutlookHost();
+  };
+
+  it("reads the body as plain text only", async () => {
+    const host = withReading({});
+    expect(await host.body()).toBe("Body text");
+    expect(
+      (Office.context.mailbox.item as unknown as { body: { getAsync: unknown } }).body.getAsync,
+    ).toHaveBeenCalledWith("text", expect.any(Function));
+  });
+
+  it("decodes files and attached messages, and never takes a link", async () => {
+    const pdf = await withReading({ format: "base64", content: btoa("%PDF") }).attachment("a1");
+    expect(new TextDecoder().decode(pdf?.bytes)).toBe("%PDF");
+    const eml = await withReading({ format: "eml", content: "Subject: x" }).attachment("a1");
+    expect(eml?.extension).toBe("eml");
+    expect(
+      await withReading({ format: "url", content: "https://drive.example/f" }).attachment("a2"),
+    ).toBeNull();
+  });
+
   it("has nothing to read with no message open, or one being written", () => {
     office(null);
     expect(createOutlookHost().item()).toBeNull();

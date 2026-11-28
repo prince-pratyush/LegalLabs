@@ -233,6 +233,7 @@ export {
   UserToolPolicyInput,
 } from "./models-admin.js";
 export * from "./notification.js";
+export * from "./outlook.js";
 export {
   Action,
   Alternate,

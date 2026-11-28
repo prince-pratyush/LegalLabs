@@ -85,7 +85,11 @@ export interface ThreadSummary {
   createdAt: string;
 }
 
+/** Where a thread was started. */
+export type ThreadSurface = "web" | "word" | "outlook";
+
 export interface ThreadView extends ThreadSummary {
+  surface: ThreadSurface;
   /** False for a thread shared with the caller, which they can read but not add to. */
   mine: boolean;
   vaultIds: string[];
@@ -108,6 +112,7 @@ export interface HistoryFilters {
 }
 
 export interface HistoryRow {
+  surface: ThreadSurface;
   id: string;
   title: string;
   type: "assist" | "deep_analysis";
@@ -215,7 +220,13 @@ export interface Threads {
   /** A thread of the caller's with files attached and nothing asked yet. */
   open(
     principal: Principal,
-    input: { title: string; matterId: string | null; documentIds: string[] },
+    input: {
+      title: string;
+      matterId: string | null;
+      documentIds: string[];
+      /** Set by a pane that makes the thread itself; otherwise it is the caller's client. */
+      surface?: ThreadSurface;
+    },
     client: Client,
   ): Promise<
     | { ok: true; threadId: string }
@@ -365,9 +376,10 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     vault_ids: string[];
     sources: SourceSelection[];
     used_web: boolean;
+    surface: ThreadSurface;
     created_at: Date;
   }>(
-    `select id, title, matter_id, owner_id, vault_ids, sources, used_web, created_at
+    `select id, title, matter_id, owner_id, vault_ids, sources, used_web, surface, created_at
        from work.thread where id = $1`,
     [threadId],
   );
@@ -451,6 +463,7 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     vaultIds: thread.vault_ids,
     sources: thread.sources,
     usedWeb: thread.used_web,
+    surface: thread.surface,
     documents: documents.map(toDocument),
     runs: runs.map(toRun),
     messages: messages.map((message) => ({
@@ -931,6 +944,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       history: { role: "user" | "assistant"; content: string }[];
       /** Whether an earlier answer in the thread cited the web. */
       webBefore: boolean;
+      /** The thread holds an email: words someone else wrote and chose. */
+      fromMail: boolean;
     },
     input: AskInput,
     client: Client,
@@ -999,8 +1014,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         messageId = await asApp(pool, principal, (db) =>
           save(db, principal, run, reply, documents, client),
         );
-        // Words a web page put in a reply must not become a standing memory.
-        const candidates = answered.usedWeb || context.webBefore ? [] : split.candidates;
+        // Words a web page or an email put in a reply must not become a standing memory.
+        const candidates =
+          answered.usedWeb || context.webBefore || context.fromMail ? [] : split.candidates;
         await personalisation.finish(principal, messageId, plan, candidates);
       } catch (err) {
         if (err instanceof RunStopped) return;
@@ -1145,8 +1161,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           if (!threadId) {
             const { rows } = await db.query<{ id: string }>(
               `insert into work.thread
-                 (workspace_id, owner_id, matter_id, title, vault_ids, sources, used_web)
-               values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+                 (workspace_id, owner_id, matter_id, title, vault_ids, sources, used_web, surface)
+               values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
               [
                 principal.workspaceId,
                 principal.userId,
@@ -1155,6 +1171,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
                 vaultIds,
                 JSON.stringify(sources),
                 webOf(sources) !== undefined,
+                surfaceOf(principal.via).surface,
               ],
             );
             threadId = rows[0]?.id;
@@ -1260,6 +1277,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
                 history,
                 // This turn counts too, even if no page could be read.
                 webBefore: existing?.usedWeb === true || webOf(sources) !== undefined,
+                fromMail: existing?.surface === "outlook",
               },
               { ...input, scope: { ...input.scope, sources } },
               client,
@@ -1290,9 +1308,10 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           run_status: RunStatus | null;
           deep: boolean;
           favourite: boolean;
+          surface: ThreadSurface;
         }>(
           `with listed as (
-             select t.id, t.title, t.matter_id, t.owner_id, t.last_activity_at,
+             select t.id, t.title, t.matter_id, t.owner_id, t.last_activity_at, t.surface,
                     (select count(*)::int from work.thread_document td
                       where td.thread_id = t.id) document_count,
                     (select m.model from work.message m
@@ -1343,6 +1362,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         return {
           rows: page.map((row) => ({
             id: row.id,
+            surface: row.surface,
             title: row.title,
             type: row.deep ? ("deep_analysis" as const) : ("assist" as const),
             matterId: row.matter_id,
@@ -1656,9 +1676,16 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             return { ok: false, reason: "NOT_FOUND" } as const;
           }
           const { rows } = await db.query<{ id: string }>(
-            `insert into work.thread (workspace_id, owner_id, matter_id, title, vault_ids, sources)
-             values ($1, $2, $3, $4, '{}', '[]') returning id`,
-            [principal.workspaceId, principal.userId, input.matterId, titleOf(input.title)],
+            `insert into work.thread
+               (workspace_id, owner_id, matter_id, title, vault_ids, sources, surface)
+             values ($1, $2, $3, $4, '{}', '[]', $5) returning id`,
+            [
+              principal.workspaceId,
+              principal.userId,
+              input.matterId,
+              titleOf(input.title),
+              input.surface ?? surfaceOf(principal.via).surface,
+            ],
           );
           const threadId = rows[0]?.id;
           if (!threadId) throw new Error("insert returned no thread");
@@ -1693,8 +1720,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           const source = await load(db, principal, threadId);
           if (!source) return null;
           const { rows } = await db.query<{ id: string }>(
-            `insert into work.thread (workspace_id, owner_id, matter_id, title, vault_ids, sources)
-             values ($1, $2, $3, $4, $5, $6) returning id`,
+            `insert into work.thread
+               (workspace_id, owner_id, matter_id, title, vault_ids, sources, surface)
+             values ($1, $2, $3, $4, $5, $6, $7) returning id`,
             [
               principal.workspaceId,
               principal.userId,
@@ -1702,6 +1730,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
               titleOf(`Copy of ${source.title}`),
               source.vaultIds,
               JSON.stringify(source.sources),
+              source.surface,
             ],
           );
           const copy = rows[0]?.id;

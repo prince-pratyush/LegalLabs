@@ -129,6 +129,7 @@ export interface HistoryItem {
   status: "done" | "running" | "needs_input" | "failed";
   favourite: boolean;
   shared: boolean;
+  surface?: "web" | "word" | "outlook";
 }
 
 export interface Share {

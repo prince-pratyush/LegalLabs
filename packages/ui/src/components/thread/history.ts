@@ -13,6 +13,8 @@ export type HistoryRow = {
   lastActivityAt: string;
   status: HistoryStatus;
   favourite: boolean;
+  /** Where the thread was started; only Outlook is marked, as its files are an email. */
+  surface?: "web" | "word" | "outlook";
   /** The caller lost access to the matter, so the title is withheld. */
   restricted: boolean;
 };

@@ -20,7 +20,29 @@ export interface Api {
   upload<T>(path: string, form: FormData): Promise<T>;
 }
 
+/** The API with the one call only a stream-reading pane needs. */
+export interface StreamingApi extends Api {
+  /** Reads a server-sent event stream to its end. EventSource can't send the token. */
+  events(path: string, on: (type: string, data: unknown) => void): Promise<void>;
+}
+
 type Fetch = typeof fetch;
+
+// One event is the lines up to a blank one; comments keep the connection open.
+function dispatch(block: string, on: (type: string, data: unknown) => void) {
+  let type = "message";
+  const data: string[] = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) type = line.slice(6).trim();
+    else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+  }
+  if (data.length === 0) return;
+  try {
+    on(type, JSON.parse(data.join("\n")));
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+  }
+}
 
 async function failure(res: Response): Promise<ApiError> {
   const body = (await res.json().catch(() => null)) as {
@@ -45,8 +67,8 @@ export function createApi(
   fetchImpl: Fetch = (input, init) => fetch(input, init),
   /** Names the pane, so its use is counted as its own; the server grants nothing for it. */
   client?: "outlook",
-): Api {
-  const send = async <T>(path: string, init: RequestInit): Promise<T> => {
+): StreamingApi {
+  const request = async (path: string, init: RequestInit): Promise<Response> => {
     const headers = new Headers(init.headers);
     const current = token();
     if (current) headers.set("authorization", `Bearer ${current}`);
@@ -54,6 +76,10 @@ export function createApi(
     const res = await fetchImpl(path, { ...init, headers, credentials: "omit" });
     if (res.status === 401) onUnauthorized();
     if (!res.ok) throw await failure(res);
+    return res;
+  };
+  const send = async <T>(path: string, init: RequestInit): Promise<T> => {
+    const res = await request(path, init);
     return (res.status === 204 ? null : await res.json()) as T;
   };
 
@@ -66,5 +92,20 @@ export function createApi(
         body: JSON.stringify(body ?? {}),
       }),
     upload: (path, form) => send(path, { method: "POST", body: form }),
+    async events(path, on) {
+      const res = await request(path, { method: "GET" });
+      const reader = res.body?.getReader();
+      if (!reader) return;
+      const decoder = new TextDecoder();
+      let waiting = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        waiting += decoder.decode(value, { stream: true }).replaceAll("\r", "");
+        const blocks = waiting.split("\n\n");
+        waiting = blocks.pop() ?? "";
+        for (const block of blocks) dispatch(block, on);
+      }
+    },
   };
 }

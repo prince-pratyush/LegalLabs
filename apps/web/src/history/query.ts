@@ -33,4 +33,5 @@ export const toRow = (item: HistoryItem): HistoryRow => ({
   status: item.status,
   favourite: item.favourite,
   restricted: false,
+  ...(item.surface ? { surface: item.surface } : {}),
 });

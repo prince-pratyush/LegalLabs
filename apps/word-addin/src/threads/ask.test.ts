@@ -1,6 +1,6 @@
-import type { Api } from "@legallabs/addin";
+import { type Api, safeUrl } from "@legallabs/addin";
 import { describe, expect, it } from "vitest";
-import { ask, safeUrl } from "./ask.js";
+import { ask } from "./ask.js";
 
 function fakeApi() {
   const calls: string[] = [];

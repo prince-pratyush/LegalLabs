@@ -7,6 +7,7 @@ import { createAuth } from "./auth/auth.js";
 import { hashPassword } from "./auth/password.js";
 import { createDrafts } from "./drafts/drafts.js";
 import { createMatters } from "./matters/matters.js";
+import { createOutlook } from "./outlook/outlook.js";
 import { PASSWORD, type Seeded, seedMember, testDocuments, testThreads } from "./test-db.js";
 import { createVaults } from "./vaults/vaults.js";
 
@@ -23,14 +24,16 @@ export function matterHarness(pool: pg.Pool) {
   const store = createMemoryStore();
   const documents = testDocuments(pool, { store });
   const vaults = createVaults(pool, { documents, store });
+  const threads = testThreads(pool, documents);
   const app = createApp({
     auth: createAuth(pool),
     documents,
-    threads: testThreads(pool, documents),
+    threads,
     drafts: createDrafts(pool, {
       gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
     }),
     vaults,
+    outlook: createOutlook(pool, { documents, threads: threads.threads, vaults }),
     matters: createMatters(pool),
     clientIp: () => "203.0.113.9",
   });
