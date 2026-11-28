@@ -104,6 +104,27 @@ describe("the page fetcher", () => {
     expect(paths).not.toContain("/no");
   });
 
+  it("keeps a site's rules for the next page, but not a failure", async () => {
+    let asked = 0;
+    let status = 503;
+    await serve(
+      (req, res) => {
+        if (req.url !== "/robots.txt") return void res.writeHead(200, html).end("<p>x</p>");
+        asked += 1;
+        res.writeHead(status).end("User-agent: *\nDisallow: /no");
+      },
+      async (base) => {
+        const one = fetcher();
+        expect((await one.fetch(`${base}/a`)).ok).toBe(false);
+        status = 200;
+        expect((await one.fetch(`${base}/a`)).ok).toBe(true);
+        expect((await one.fetch(`${base}/b`)).ok).toBe(true);
+        expect((await one.fetch(`${base}/no`)).ok).toBe(false);
+      },
+    );
+    expect(asked).toBe(2);
+  });
+
   it("stays out when robots.txt fails on the server's side", async () => {
     await serve(
       site({ "/robots.txt": [503, {}, ""], "/a": [200, html, "<p>x</p>"] }),
