@@ -11,6 +11,11 @@ export interface FetchPolicy {
   /** How long the whole exchange may take, however steadily bytes arrive. */
   deadlineMs?: number;
   maxBytes?: number;
+  /**
+   * One operator-configured origin that may be plain http or on a private network, such as a
+   * self-hosted search service. Never set from anything a person or a model can influence.
+   */
+  trustedOrigin?: string;
 }
 
 export interface FetchResult {
@@ -19,7 +24,16 @@ export interface FetchResult {
   body: string;
 }
 
-export class BlockedFetch extends Error {}
+export type BlockedCode = "url" | "address" | "host" | "size" | "redirects";
+
+export class BlockedFetch extends Error {
+  constructor(
+    message: string,
+    readonly code: BlockedCode,
+  ) {
+    super(message);
+  }
+}
 
 const V4_BLOCKED: [string, number][] = [
   ["0.0.0.0", 8], // this network
@@ -85,6 +99,11 @@ export interface DownloadPolicy extends FetchPolicy {
   /** When given, the only host names that may be visited, matched exactly. Empty allows none. */
   allowHosts?: readonly string[];
   maxRedirects?: number;
+  /**
+   * A further check made before every hop, the first included; throwing ends the download.
+   * It is told how much of the deadline is left, and its own time counts against it.
+   */
+  onHop?: (url: URL, msLeft: number) => void | Promise<void>;
 }
 
 export interface DownloadResult {
@@ -105,7 +124,12 @@ const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 export async function safeDownload(
   url: string,
   policy: DownloadPolicy = {},
-  init: { headers?: Record<string, string>; signal?: AbortSignal } = {},
+  init: {
+    headers?: Record<string, string>;
+    /** Sent to every host visited, so nothing secret belongs here. */
+    publicHeaders?: Record<string, string>;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<DownloadResult> {
   const { allowHosts, maxRedirects = 5, deadlineMs = 60_000, maxBytes = 10_000_000 } = policy;
   const allowed = allowHosts?.map((host) => host.toLowerCase());
@@ -114,14 +138,18 @@ export async function safeDownload(
   let headers = init.headers;
   for (let hop = 0; hop <= maxRedirects; hop += 1) {
     if (allowed && !allowed.includes(target.hostname)) {
-      throw new BlockedFetch("host is not allowed");
+      throw new BlockedFetch("host is not allowed", "host");
     }
+    await policy.onHop?.(new URL(target), until - Date.now());
     const left = until - Date.now();
     if (left <= 0) throw new Error("request took too long");
     const res = await exchange(
       target.href,
       { ...policy, deadlineMs: left, maxBytes },
-      { ...init, headers: { accept: "*/*", ...headers } },
+      {
+        ...(init.signal ? { signal: init.signal } : {}),
+        headers: { accept: "*/*", ...headers, ...init.publicHeaders },
+      },
     );
     const { location } = res.headers;
     if (!REDIRECTS.has(res.status) || location === undefined) {
@@ -131,14 +159,14 @@ export async function safeDownload(
     if (next.origin !== target.origin) headers = undefined;
     target = next;
   }
-  throw new BlockedFetch("too many redirects");
+  throw new BlockedFetch("too many redirects", "redirects");
 }
 
 function parse(url: string, base?: URL): URL {
   try {
     return new URL(url, base);
   } catch {
-    throw new BlockedFetch("not a URL");
+    throw new BlockedFetch("not a URL", "url");
   }
 }
 
@@ -164,18 +192,19 @@ function exchange(
   return new Promise((resolve, reject) => {
     // A throw here rejects the promise.
     const target = parse(url);
-    if (target.protocol !== "https:" && !(insecureDev && target.protocol === "http:")) {
-      reject(new BlockedFetch("only https is allowed"));
+    const open = insecureDev || target.origin === policy.trustedOrigin;
+    if (target.protocol !== "https:" && !(open && target.protocol === "http:")) {
+      reject(new BlockedFetch("only https is allowed", "url"));
       return;
     }
     if (target.username || target.password) {
-      reject(new BlockedFetch("credentials in a URL are not allowed"));
+      reject(new BlockedFetch("credentials in a URL are not allowed", "url"));
       return;
     }
     const host = target.hostname.replace(/^\[|\]$/g, "");
     // A literal address skips DNS, so it is judged here.
-    if (!insecureDev && isIP(host) !== 0 && isPrivateAddress(host)) {
-      reject(new BlockedFetch("address is not allowed"));
+    if (!open && isIP(host) !== 0 && isPrivateAddress(host)) {
+      reject(new BlockedFetch("address is not allowed", "address"));
       return;
     }
     const lookup: typeof dnsLookup = ((hostname: string, options: unknown, cb: unknown) => {
@@ -187,8 +216,8 @@ function exchange(
       const wantAll = typeof options === "object" && options !== null && "all" in options;
       dnsLookup(hostname, { all: true }, (err, addresses) => {
         if (err) return callback(err);
-        if (!insecureDev && addresses.some((a) => isPrivateAddress(a.address))) {
-          return callback(new BlockedFetch("address is not allowed"));
+        if (!open && addresses.some((a) => isPrivateAddress(a.address))) {
+          return callback(new BlockedFetch("address is not allowed", "address"));
         }
         const first = addresses[0];
         if (!first) return callback(new Error("no address"));
@@ -224,7 +253,7 @@ function exchange(
           size += chunk.length;
           if (size > maxBytes) {
             tooBig = true;
-            req.destroy(new BlockedFetch("response too large"));
+            req.destroy(new BlockedFetch("response too large", "size"));
             return;
           }
           chunks.push(chunk);
@@ -234,7 +263,7 @@ function exchange(
           }
         });
         res.on("end", () => {
-          if (tooBig) return reject(new BlockedFetch("response too large"));
+          if (tooBig) return reject(new BlockedFetch("response too large", "size"));
           done();
         });
         res.on("error", reject);
