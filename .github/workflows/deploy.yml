@@ -1,0 +1,87 @@
+name: deploy
+
+# Builds the images and stands the whole bundle up from the install guide's own commands. It is
+# slow, so it runs only when something that could break an install changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &paths
+      - .github/workflows/deploy.yml
+      - .dockerignore
+      - infra/**
+      - docs/deploy/**
+      - services/docproc/**
+      - packages/db/migrations/**
+      - packages/storage/**
+      - apps/api/src/deploy/**
+      - apps/api/src/server.ts
+      - apps/api/src/runs-worker.ts
+      - apps/api/e2e/model.mjs
+      - pnpm-lock.yaml
+  pull_request:
+    paths: *paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DOMAIN: localhost
+      TLS: internal
+      WORKSPACE: smoke
+      ADMIN_EMAIL: admin@example.test
+      # Relative to infra/compose, where the guide's commands run.
+      COMPOSE_FILE: compose.yaml:ci/compose.ci.yaml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Make an administrator password
+        run: |
+          password=$(openssl rand -hex 16)
+          echo "::add-mask::$password"
+          echo "ADMIN_PASSWORD=$password" >> "$GITHUB_ENV"
+      - name: Follow the install guide
+        run: infra/compose/ci/run-guide.sh docs/deploy/install.md configure start admin
+      - name: Smoke test
+        run: |
+          docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/ca.crt"
+          NODE_EXTRA_CA_CERTS="$RUNNER_TEMP/ca.crt" node ci/smoke.mjs
+        working-directory: infra/compose
+      - name: The runs worker is polling Temporal
+        working-directory: infra/compose
+        run: |
+          timeout 120 sh -c 'until docker compose exec -T temporal sh -c \
+            "temporal task-queue describe --task-queue legallabs-runs --address \$(hostname -i):7233" \
+            | grep -Eq "[0-9]+@[0-9a-f]+"; do sleep 3; done'
+      - name: Unsafe settings and an unprotected table stop the API (SEC-002)
+        working-directory: infra/compose
+        run: |
+          refuses() {
+            expected=$1
+            shift
+            if out=$(timeout 90 docker compose run --rm --no-deps -T "$@" api 2>&1); then
+              echo "started: $out"; return 1
+            fi
+            grep -q "$expected" <<<"$out" || { echo "$out"; return 1; }
+          }
+          refuses "S3_SECRET_ACCESS_KEY is a default" -e S3_SECRET_ACCESS_KEY=changeme
+          psql() { docker compose exec -T postgres psql -qv ON_ERROR_STOP=1 -U postgres -d legallabs -c "$1"; }
+          psql "alter table content.document disable row level security"
+          refuses "table content.document lacks forced row-level security"
+          psql "alter table content.document enable row level security"
+      - name: Logs
+        if: failure()
+        working-directory: infra/compose
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 150

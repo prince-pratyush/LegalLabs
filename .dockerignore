@@ -1,0 +1,16 @@
+# Secrets never enter an image or a build context.
+**/.env
+**/.env.*
+**/*.env
+infra/compose/backups
+.git
+.claude
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/storybook-static
+**/*.tsbuildinfo
+services/docproc/.venv
+services/docproc/models
+.zitadel

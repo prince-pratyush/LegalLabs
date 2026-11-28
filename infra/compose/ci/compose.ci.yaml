@@ -1,0 +1,26 @@
+# CI only: a stand-in for a model server, so the smoke test asks a real question without a key
+# or a paid call. Added with COMPOSE_FILE; nothing in the product knows about it.
+services:
+  fake-model:
+    image: node:22.23.5-bookworm-slim
+    command:
+      - node
+      - --input-type=module
+      - -e
+      - |
+        import { startFakeModel } from "/model/model.mjs";
+        await startFakeModel({ host: "0.0.0.0", port: 11434 });
+    volumes:
+      - ../../apps/api/e2e/model.mjs:/model/model.mjs:ro
+    networks: [egress]
+
+  api:
+    environment:
+      OLLAMA_BASE_URL: http://fake-model:11434
+    depends_on:
+      fake-model:
+        condition: service_started
+
+  worker:
+    environment:
+      OLLAMA_BASE_URL: http://fake-model:11434

@@ -1,0 +1,247 @@
+# One server, everything on it (ADR-024). Run from this directory after ./init-env.sh; see
+# docs/deploy/install.md. Only the proxy publishes ports.
+name: legallabs
+
+x-store-env: &store-env
+  S3_ENDPOINT: http://objectstore:8333
+  S3_BUCKET: ${S3_BUCKET:-legallabs}
+  S3_ANCHOR_BUCKET: ${S3_ANCHOR_BUCKET:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?run ./init-env.sh first}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?run ./init-env.sh first}
+
+x-app-env: &app-env
+  S3_ENDPOINT: http://objectstore:8333
+  S3_BUCKET: ${S3_BUCKET:-legallabs}
+  S3_ANCHOR_BUCKET: ${S3_ANCHOR_BUCKET:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?run ./init-env.sh first}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?run ./init-env.sh first}
+  NODE_ENV: production
+  DATABASE_URL: postgres://legallabs_api:${LEGALLABS_DB_PASSWORD:?run ./init-env.sh first}@postgres:5432/legallabs
+  TEMPORAL_ADDRESS: temporal:7233
+  DOCPROC_URL: http://docproc:8000
+  CLAMAV_HOST: clamav
+  LEGALLABS_SECRETS_KEY: ${LEGALLABS_SECRETS_KEY:?run ./init-env.sh first}
+  LEGALLABS_MFA_KEY: ${LEGALLABS_MFA_KEY:?run ./init-env.sh first}
+  LEGALLABS_MFA_RP_ID: ${LEGALLABS_DOMAIN:?run ./init-env.sh first}
+  LEGALLABS_MFA_ORIGINS: https://${LEGALLABS_DOMAIN}
+  LEGALLABS_PUBLIC_URL: https://${LEGALLABS_DOMAIN}
+  LEGALLABS_TRUSTED_PROXIES: ${LEGALLABS_EDGE_SUBNET:-172.30.99.0/24}
+
+# Settings of your own (model keys, mail, sync): app.env, which may be absent.
+x-app-settings: &app-settings
+  - path: app.env
+    required: false
+
+services:
+  proxy:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile
+      target: proxy
+    image: legallabs-proxy:${LEGALLABS_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      LEGALLABS_DOMAIN: ${LEGALLABS_DOMAIN:?run ./init-env.sh first}
+      LEGALLABS_TLS: ${LEGALLABS_TLS:?run ./init-env.sh first}
+    ports:
+      - "${LEGALLABS_HTTP_PORT:-80}:80"
+      - "${LEGALLABS_HTTPS_PORT:-443}:443"
+    volumes:
+      - proxy-data:/data
+      - proxy-config:/config
+    networks: [edge]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile
+      target: api
+      args:
+        ADDIN_ORIGIN: https://${LEGALLABS_DOMAIN}
+    image: legallabs-api:${LEGALLABS_VERSION:-local}
+    restart: unless-stopped
+    env_file: *app-settings
+    environment: *app-env
+    networks: [edge, egress, data, files]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      objectstore:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      docproc:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile
+      target: worker
+    image: legallabs-worker:${LEGALLABS_VERSION:-local}
+    restart: unless-stopped
+    env_file: *app-settings
+    environment: *app-env
+    networks: [egress, data, files]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Migrations, the logins and the bucket; runs to the end on every `up`.
+  bootstrap:
+    image: legallabs-api:${LEGALLABS_VERSION:-local}
+    pull_policy: never
+    command: ["node", "apps/api/dist/deploy/bootstrap.js"]
+    environment:
+      <<: *store-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?run ./init-env.sh first}@postgres:5432/legallabs
+      LEGALLABS_DB_PASSWORD: ${LEGALLABS_DB_PASSWORD}
+      TEMPORAL_DB_PASSWORD: ${TEMPORAL_DB_PASSWORD:?run ./init-env.sh first}
+    networks: [data]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      objectstore:
+        condition: service_healthy
+
+  # `docker compose run --rm -T admin create-admin <workspace> <email>`, password on stdin.
+  admin:
+    image: legallabs-api:${LEGALLABS_VERSION:-local}
+    pull_policy: never
+    profiles: [tools]
+    entrypoint: ["node", "apps/api/dist/cli.js"]
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/legallabs
+    networks: [data]
+
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ./init-env.sh first}
+      POSTGRES_DB: legallabs
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [data]
+    healthcheck:
+      # Over TCP: the first-run setup server listens on the socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "legallabs"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  objectstore:
+    image: chrislusf/seaweedfs:4.53
+    restart: unless-stopped
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    # The key file is written at start from the environment. With an identity configured,
+    # requests without a signature are refused.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        umask 077
+        printf '{"identities":[{"name":"legallabs","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' \
+          "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY" > /tmp/s3.json
+        exec weed server -dir=/data -ip=objectstore -ip.bind=0.0.0.0 -volume.max=0 \
+          -master.volumeSizeLimitMB=1024 -s3 -s3.config=/tmp/s3.json
+    volumes:
+      - object-data:/data
+    working_dir: /data
+    networks: [data]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8333"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  temporal:
+    image: temporalio/auto-setup:1.29.7
+    restart: unless-stopped
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_DB_PASSWORD}
+    networks: [data]
+    healthcheck:
+      # Healthy once the default namespace exists, which is what the services need.
+      test:
+        - CMD-SHELL
+        - temporal operator namespace describe -n default --address "$$(hostname -i):7233"
+      interval: 5s
+      timeout: 10s
+      retries: 60
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+
+  clamav:
+    image: clamav/clamav:1.4.7
+    restart: unless-stopped
+    volumes:
+      - clamav-data:/var/lib/clamav
+    # Outbound access is for signature updates.
+    networks: [egress]
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  # Reads untrusted files, so it has no route out.
+  docproc:
+    build:
+      context: ../../services/docproc
+    image: legallabs-docproc:${LEGALLABS_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      DOCPROC_CONCURRENCY: ${DOCPROC_CONCURRENCY:-2}
+      DOCPROC_THREADS: ${DOCPROC_THREADS:-4}
+      DOCPROC_TIMEOUT_SECONDS: ${DOCPROC_TIMEOUT_SECONDS:-120}
+      DOCPROC_OCR_LANG: ${DOCPROC_OCR_LANG:-eng}
+    networks: [files]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: ${LEGALLABS_EDGE_SUBNET:-172.30.99.0/24}
+  egress:
+  data:
+    internal: true
+  files:
+    internal: true
+
+volumes:
+  postgres-data:
+  object-data:
+  clamav-data:
+  proxy-data:
+  proxy-config:
