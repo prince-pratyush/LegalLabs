@@ -11,7 +11,7 @@ import time
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from ..models import ModelClient, Send, parse_json
+from ..models import ModelClient, Send, model_name, parse_json
 from ..schemas import Cost, Document, HarnessRequest, HarnessResult, NonRetryableError
 from ..typed import fold, match_option, parse_date, parse_money, verify_quote
 from .base import Harness
@@ -121,17 +121,24 @@ class ReviewCellHarness(Harness):
     def __init__(self, system_name: str, system: dict[str, Any], send: Send | None = None) -> None:
         super().__init__(system_name, system)
         params = system.get("params", {})
-        if not self.vendor or "model" not in params:
+        if not self.vendor or not params.keys() & {"model", "model_env"}:
             raise NonRetryableError(f"{system_name} needs a vendor and params.model")
         self.context_tokens = int(params.get("context_tokens", 4096))
         self.chunk_size = int(params.get("chunk_size", 1200))
         self.client = ModelClient(
             self.vendor,
-            params["model"],
+            model_name(system_name, params),
             int(params.get("max_tokens", 512)),
             send,
             self.context_tokens,
         )
+
+    def fingerprint(self) -> str:
+        return self.client.fingerprint()
+
+    def environment(self) -> dict[str, Any]:
+        # A system whose model comes from the environment is otherwise one name for many.
+        return {"model": self.client.model}
 
     def prepare(self, corpus: list[Document]) -> None:
         self.client.preflight()
