@@ -18,6 +18,7 @@ import {
   useState,
 } from "react";
 import { cn } from "../cn.js";
+import { useMobile } from "../use-mobile.js";
 import { Skeleton } from "./status.js";
 
 export type TableColumn<T extends object> = {
@@ -29,6 +30,8 @@ export type TableColumn<T extends object> = {
   /** Numbers and money sit on the right so their digits line up. */
   align?: "start" | "end";
   width?: number;
+  /** Left out on a phone, where only what identifies the row fits. */
+  secondary?: boolean;
 };
 
 const features = tableFeatures({
@@ -63,7 +66,7 @@ const rowHeight = (element: HTMLElement | null) =>
 /** Renders only the visible rows, so 10,000 scroll as smoothly as 10. */
 export function DataTable<T extends object>({
   label,
-  columns,
+  columns: all,
   rows,
   getRowId,
   onActivate,
@@ -82,6 +85,8 @@ export function DataTable<T extends object>({
   height?: number;
   className?: string;
 }) {
+  const mobile = useMobile();
+  const columns = useMemo(() => (mobile ? all.filter((c) => !c.secondary) : all), [all, mobile]);
   const helper = useMemo(() => createColumnHelper<typeof features, T>(), []);
   const defs = useMemo(
     () =>

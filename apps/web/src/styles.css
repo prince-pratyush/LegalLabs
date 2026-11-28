@@ -1,1 +1,42 @@
 @import "@legallabs/ui/styles.css";
+
+/*
+ * Phones: every control is at least 44px to touch. Left unlayered so it beats the utility heights,
+ * and fields use 16px text, below which iOS zooms the page on focus. In the web app only: the
+ * Word pane is just as narrow and keeps its own sizes.
+ */
+@media (max-width: 767.98px) {
+  :root {
+    --row-height: 48px;
+  }
+
+  button:not([role="checkbox"], [role="switch"]),
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  select,
+  input:not([type="checkbox"], [type="radio"], [type="hidden"]) {
+    min-height: 44px;
+  }
+
+  button:not([role="checkbox"], [role="switch"]) {
+    min-width: 44px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* A checkbox keeps its size and gets a larger area to hit. */
+  [role="checkbox"] {
+    position: relative;
+  }
+
+  [role="checkbox"]::after {
+    content: "";
+    position: absolute;
+    inset: -14px;
+  }
+}

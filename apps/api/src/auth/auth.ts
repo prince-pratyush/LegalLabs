@@ -25,8 +25,8 @@ export interface Principal {
   mfaAt?: Date | null;
   /** A guest of an external Space: let in to /api/v1/guest only, whatever else they ask for. */
   guest?: boolean;
-  /** Set when the Word pane is calling, so its work counts under Word. */
-  via?: "word";
+  /** Set for the Word pane or a phone, so its work is counted there. */
+  via?: "word" | "mobile";
 }
 
 export interface Auth {

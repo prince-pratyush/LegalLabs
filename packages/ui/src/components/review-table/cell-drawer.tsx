@@ -83,6 +83,7 @@ export function CellDrawer({
   onLock,
   onSave,
   onOpenCitation,
+  readOnly = false,
   height = 320,
 }: {
   columnLabel: string;
@@ -97,6 +98,8 @@ export function CellDrawer({
   onLock: (locked: boolean) => void;
   onSave: (value: string) => void;
   onOpenCitation: (citation: DrawerCitation) => void;
+  /** Shows the cell without re-run, verify, flag, lock or editing. */
+  readOnly?: boolean;
   height?: number;
 }) {
   const cell = detail?.cell;
@@ -134,7 +137,7 @@ export function CellDrawer({
       aria-busy={!detail || undefined}
       onKeyDown={onKeyDown}
       style={{ height }}
-      className="flex shrink-0 flex-col border-t border-border bg-bg-subtle animate-fade-in"
+      className="flex shrink-0 flex-col border-t border-border bg-bg-subtle animate-fade-in max-tablet:fixed max-tablet:inset-0 max-tablet:z-40 max-tablet:h-auto! max-tablet:pt-[env(safe-area-inset-top)]"
     >
       <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
         <div className="grid min-w-0 flex-1">
@@ -153,59 +156,63 @@ export function CellDrawer({
             )}
           </span>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onRerun}
-          disabled={!cell || locked}
-          title={lockTip}
-        >
-          <RotateCcw aria-hidden />
-          Re-run
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => onVerify(!cell?.verified_at)}
-          disabled={!cell || locked}
-          title={lockTip}
-          aria-pressed={Boolean(cell?.verified_at)}
-        >
-          <CircleCheck aria-hidden />
-          {cell?.verified_at ? "Verified" : "Verify"}
-        </Button>
-        <Menu>
-          <MenuTrigger asChild>
-            <Button variant="secondary" size="sm" disabled={!cell || locked} title={lockTip}>
-              <Flag
-                aria-hidden
-                className={cell?.flag_color ? FLAG_CLASS[cell.flag_color].text : undefined}
-                fill={cell?.flag_color ? "currentColor" : "none"}
-              />
-              {cell?.flag_color ? `Flagged ${flagName(cell.flag_color).toLowerCase()}` : "Flag"}
+        {!readOnly && (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onRerun}
+              disabled={!cell || locked}
+              title={lockTip}
+            >
+              <RotateCcw aria-hidden />
+              Re-run
             </Button>
-          </MenuTrigger>
-          <MenuContent>
-            {FLAG_COLORS.map((color) => (
-              <MenuItem key={color} onSelect={() => onFlag(color)}>
-                <Flag aria-hidden className={FLAG_CLASS[color].text} fill="currentColor" />
-                {flagName(color)}
-              </MenuItem>
-            ))}
-            <MenuSeparator />
-            <MenuItem onSelect={() => onFlag(null)}>Remove flag</MenuItem>
-          </MenuContent>
-        </Menu>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => onLock(!locked)}
-          disabled={!cell}
-          aria-pressed={locked}
-        >
-          {locked ? <LockOpen aria-hidden /> : <Lock aria-hidden />}
-          {locked ? "Unlock" : "Lock"}
-        </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onVerify(!cell?.verified_at)}
+              disabled={!cell || locked}
+              title={lockTip}
+              aria-pressed={Boolean(cell?.verified_at)}
+            >
+              <CircleCheck aria-hidden />
+              {cell?.verified_at ? "Verified" : "Verify"}
+            </Button>
+            <Menu>
+              <MenuTrigger asChild>
+                <Button variant="secondary" size="sm" disabled={!cell || locked} title={lockTip}>
+                  <Flag
+                    aria-hidden
+                    className={cell?.flag_color ? FLAG_CLASS[cell.flag_color].text : undefined}
+                    fill={cell?.flag_color ? "currentColor" : "none"}
+                  />
+                  {cell?.flag_color ? `Flagged ${flagName(cell.flag_color).toLowerCase()}` : "Flag"}
+                </Button>
+              </MenuTrigger>
+              <MenuContent>
+                {FLAG_COLORS.map((color) => (
+                  <MenuItem key={color} onSelect={() => onFlag(color)}>
+                    <Flag aria-hidden className={FLAG_CLASS[color].text} fill="currentColor" />
+                    {flagName(color)}
+                  </MenuItem>
+                ))}
+                <MenuSeparator />
+                <MenuItem onSelect={() => onFlag(null)}>Remove flag</MenuItem>
+              </MenuContent>
+            </Menu>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onLock(!locked)}
+              disabled={!cell}
+              aria-pressed={locked}
+            >
+              {locked ? <LockOpen aria-hidden /> : <Lock aria-hidden />}
+              {locked ? "Unlock" : "Lock"}
+            </Button>
+          </>
+        )}
         <Button variant="quiet" size="icon" aria-label="Close cell detail" onClick={onClose}>
           <X aria-hidden />
         </Button>
@@ -262,18 +269,20 @@ export function CellDrawer({
                 id={valueId}
                 value={draft}
                 rows={3}
-                readOnly={locked}
+                readOnly={readOnly || locked}
                 onChange={(e) => setDraft(e.target.value)}
               />
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  disabled={locked || draft === (detail.cell.value_text ?? "")}
-                  onClick={() => onSave(draft)}
-                >
-                  Save value
-                </Button>
-              </div>
+              {!readOnly && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    disabled={locked || draft === (detail.cell.value_text ?? "")}
+                    onClick={() => onSave(draft)}
+                  >
+                    Save value
+                  </Button>
+                </div>
+              )}
             </TabsContent>
             <TabsContent value="reasoning">
               <p className="whitespace-pre-wrap text-dense">

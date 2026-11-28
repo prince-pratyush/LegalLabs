@@ -470,7 +470,7 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
   const current = (match: boolean) => (match ? ("page" as const) : undefined);
 
   const sidebar = (
-    <div className="grid min-w-0 gap-6">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6">
       <div className="grid gap-1">
         <Button
           variant="secondary"
@@ -593,14 +593,14 @@ function Workspace({ hash, onSignedOut }: { hash: string; onSignedOut: () => voi
           Settings
         </Button>
       </div>
-      <section className="grid gap-2" aria-labelledby="recents-heading">
+      <section className="grid grid-cols-[minmax(0,1fr)] gap-2" aria-labelledby="recents-heading">
         <h2 id="recents-heading" className="text-caption font-semibold text-fg-muted uppercase">
           Recents
         </h2>
         {recents.length === 0 ? (
           <p className="text-dense text-fg-muted">Your threads will show here.</p>
         ) : (
-          <ul className="grid">
+          <ul className="grid grid-cols-[minmax(0,1fr)]">
             {recents.map((item) => (
               <li key={item.id}>
                 <Button
