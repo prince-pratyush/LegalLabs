@@ -67,7 +67,7 @@ export async function ingest(
         if (document.kind === "email") {
           throw new ApiError(422, "READ_FAILED", "LegalLabs couldn't read this email.");
         }
-        all.push({ name: document.name, reason: "UNSUPPORTED_TYPE" });
+        all.push({ name: document.sent_name ?? document.name, reason: "UNSUPPORTED_TYPE" });
       } else if (now.status !== "indexed") still.push(document);
     }
     reading = still;

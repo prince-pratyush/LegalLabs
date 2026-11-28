@@ -1,4 +1,4 @@
-import type { OutlookItem } from "@legallabs/contracts";
+import { fileTypeLimit, type OutlookItem } from "@legallabs/contracts";
 import { storable, stripInvisible } from "../connectors/sanitise.js";
 
 // Everything here is the sender's words: hidden characters go, and nothing can pass for a header.
@@ -20,6 +20,15 @@ export function fileName(name: string, fallback = "attachment"): string {
   const dot = safe.lastIndexOf(".");
   const extension = dot > 0 && safe.length - dot <= 10 ? safe.slice(dot) : "";
   return `${safe.slice(0, MAX_NAME - extension.length).trim()}${extension}`;
+}
+
+/**
+ * What an attachment is called as a document. Of the sender's name only an extension that is a
+ * known file type is kept.
+ */
+export function neutralName(sent: string, index: number): string {
+  const extension = fileTypeLimit(sent) ? sent.slice(sent.lastIndexOf(".")).toLowerCase() : "";
+  return `Attachment ${index + 1}${extension}`;
 }
 
 /** The message as the text document that is read and cited. */
