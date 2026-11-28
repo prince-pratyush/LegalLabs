@@ -81,10 +81,34 @@ describe("horizon scans in the database", () => {
         "update apps.horizon_scan set owner_id = owner_id",
         "update apps.horizon_scan set created_at = now() - interval '1 year'",
         "update apps.horizon_spend set usd = 0",
+        "update apps.horizon_spend set settled = false",
         "delete from apps.horizon_spend",
       ]) {
         expect(await tx.error(sql)).toMatch(/permission denied/);
       }
+    });
+  });
+
+  it("settles a reservation once, for whoever made it", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      const { id } = await tx.one<{ id: string }>(
+        `insert into apps.horizon_spend (workspace_id, owner_id, usd, settled)
+         values ($1, $2, 0.1, false) returning id`,
+        [s.acme, s.ana],
+      );
+      const settle = (usd: number) =>
+        tx.rows("select apps.settle_horizon_spend($1, $2)", [id, usd]);
+      const usd = async () =>
+        Number((await tx.one("select usd from apps.horizon_spend where id = $1", [id])).usd);
+      await tx.as(s.ben, s.acme);
+      await settle(0);
+      await tx.as(s.ana, s.acme);
+      expect(await usd()).toBe(0.1);
+      await settle(0.02);
+      await settle(0);
+      expect(await usd()).toBe(0.02);
     });
   });
 
@@ -117,7 +141,13 @@ describe("horizon scans in the database", () => {
       await tx.asWorker();
       expect(await tx.error("select * from apps.horizon_scan")).toMatch(/permission denied/);
       expect(await claim()).toEqual([
-        { id: s.horizons.acme.scanId, workspace_id: s.acme, owner_id: s.ana },
+        {
+          id: s.horizons.acme.scanId,
+          workspace_id: s.acme,
+          owner_id: s.ana,
+          lease: expect.any(String),
+          revision: 1,
+        },
       ]);
       // Held for the lease.
       expect(await claim()).toEqual([]);
