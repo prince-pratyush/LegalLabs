@@ -90,6 +90,11 @@ export function ThreadComposer({
   const vaultName = (id: string) => options?.vaults.find((v) => v.id === id)?.name ?? "Vault";
   const sourceName = (id: string) => options?.sources.find((s) => s.id === id)?.name ?? "Source";
 
+  // What a picked source sends elsewhere, said while it is picked.
+  const notices = sources.flatMap(
+    (s) => options?.sources.find((o) => o.id === s.source_id)?.notice ?? [],
+  );
+
   const attachments: Attachment[] = [
     ...files.map((f) => ({ ...f, kind: "file" as const })),
     ...vaultIds.map((id) => ({ id, label: vaultName(id), kind: "vault" as const })),
@@ -105,7 +110,10 @@ export function ThreadComposer({
       .filter((f) => f.status === "ready")
       .map((f) => ({ type: "document" as const, id: f.id, label: f.label })),
     ...(options?.vaults ?? []).map((v) => ({ type: "vault" as const, id: v.id, label: v.name })),
-    ...(options?.sources ?? []).map((s) => ({ type: "source" as const, id: s.id, label: s.name })),
+    // A source with something to say first is picked, not mentioned, so its note is seen.
+    ...(options?.sources ?? [])
+      .filter((s) => !s.notice)
+      .map((s) => ({ type: "source" as const, id: s.id, label: s.name })),
   ];
 
   const models: ModelOption[] = [
@@ -208,6 +216,12 @@ export function ThreadComposer({
           setMentions((list) => [...list.filter((m) => m.label !== item.label), item])
         }
       />
+      {notices.map((line) => (
+        <p key={line} role="note" className="px-1 text-caption text-fg">
+          {line}
+          {deep ? " Deep analysis does not search the web." : ""}
+        </p>
+      ))}
       <div className="flex justify-end">
         <PromptPicker onPick={setDraft} />
       </div>

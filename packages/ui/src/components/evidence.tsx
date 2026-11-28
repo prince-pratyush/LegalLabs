@@ -11,6 +11,8 @@ export type Evidence = {
   documentName: string | null;
   page: number | null;
   quote: string | null;
+  /** Where a source without pages was found, such as a site and the day it was read. */
+  place?: string;
 };
 
 const QUOTE_LIMIT = 400;
@@ -66,7 +68,9 @@ export function CitationMarker({
                 {evidence.documentName ?? "Unknown document"}
               </span>
               <span className="shrink-0 text-caption text-fg-muted tabular-nums">
-                {evidence.page === null ? "No page given" : `Page ${evidence.page}`}
+                {evidence.page === null
+                  ? (evidence.place ?? "No page given")
+                  : `Page ${evidence.page}`}
               </span>
             </p>
             <blockquote className="border-l-2 border-citation pl-2 text-fg">

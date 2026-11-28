@@ -877,6 +877,22 @@ export async function seed(tx: Tx) {
   };
   const horizons = { acme: await horizon(acme, ana), beta: await horizon(beta, bob) };
 
+  // Web search turned on, a matter it is kept from, and a page a run read, per workspace.
+  const web = async (ws: string, matterId: string, runId: string) => {
+    await tx.rows("insert into work.web_settings (workspace_id, enabled) values ($1, true)", [ws]);
+    await tx.rows("insert into work.web_blocked_matter (workspace_id, matter_id) values ($1, $2)", [
+      ws,
+      matterId,
+    ]);
+    await tx.rows(
+      `insert into work.web_fetch_cache (workspace_id, run_id, url, title, text, fetched_at)
+       values ($1, $2, 'https://example.org/a', 'A', 'Page text.', now())`,
+      [ws, runId],
+    );
+  };
+  await web(acme, m1, threads.acme.runId);
+  await web(beta, mb, threads.beta.runId);
+
   // An external Space with a party, its connection, an invite, a guest and a login code, per workspace.
   const guestRoom = async (ws: string, owner: string, domain: string) => {
     const spaceId = await id(

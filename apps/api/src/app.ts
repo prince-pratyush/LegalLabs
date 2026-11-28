@@ -80,6 +80,8 @@ import type { ReviewTables } from "./tables/module.js";
 import { ASK_WINDOW_MS, type ThreadHttpOptions, threadHttp } from "./threads/http.js";
 import { adminVaultRoutes, vaultRoutes } from "./vaults/routes.js";
 import type { Vaults } from "./vaults/vaults.js";
+import { webSearchHttp } from "./web/http.js";
+import type { WebSources } from "./web/sources.js";
 import { workflowHttp } from "./workflows/http.js";
 import type { Workflows } from "./workflows/workflows.js";
 
@@ -151,6 +153,8 @@ export interface AppOptions {
   publicApi?: PublicApiService;
   /** Public-law sources; left out, the knowledge endpoints are not mounted. */
   knowledge?: Knowledge;
+  /** Web search settings; left out, /web-search is not mounted. */
+  webSearch?: WebSources;
   /** Optional, so harnesses that don't touch playbooks needn't build one. */
   playbooks?: Playbooks;
   /** Playbook reviews; mounted only with playbooks. */
@@ -218,6 +222,7 @@ export function createApp({
   adminModels,
   sync,
   knowledge,
+  webSearch,
   playbooks,
   reviews,
   ci,
@@ -459,6 +464,7 @@ export function createApp({
   if (intake) app.route("/api/v1", intakeHttp(intake, clientOf));
   if (facts) app.route("/api/v1", factHttp(facts, clientOf, factExtraction, asks, chronologies));
   if (horizon) app.route("/api/v1", horizonHttp(horizon, clientOf, horizonActions, asks));
+  if (webSearch) app.route("/api/v1", webSearchHttp(webSearch, clientOf));
   if (emailChannels) app.route("/api/v1", emailChannelHttp(emailChannels, clientOf));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)

@@ -8,6 +8,8 @@ export type AnswerCitation = {
   documentName: string | null;
   page: number | null;
   quote: string | null;
+  /** Where a source without pages was found, such as a site and the day it was read. */
+  place?: string;
 };
 
 /** A half-open character range the verifier found no support for. */

@@ -6,6 +6,7 @@ export const ADMIN_PAGES = [
   { id: "command-center", label: "Command Center", hash: "#/admin/command-center/overview" },
   { id: "retention", label: "Retention", hash: "#/admin/retention/policies" },
   { id: "models", label: "Models and connectors", hash: "#/admin/models" },
+  { id: "web-search", label: "Web search", hash: "#/admin/web-search" },
 ] as const;
 
 export type AdminPage = (typeof ADMIN_PAGES)[number]["id"];

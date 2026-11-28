@@ -3,6 +3,7 @@ import type { Mentionable } from "@legallabs/ui";
 import type { Citation } from "../api.js";
 import { anchorOf } from "../viewer/open-citation.js";
 import type { LiveCitation } from "./run-state.js";
+import { webLabels } from "./web-source.js";
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -37,8 +38,9 @@ export const toAnswerCitation = (citation: Citation): LiveCitation => ({
   at: citation.at,
   status: citation.status,
   documentName: citation.document_name ?? citation.authority?.title ?? null,
+  ...(citation.web ? webLabels(citation.web) : {}),
   page: citation.page,
   quote: citation.quote,
   anchor: citation.status === "ok" && citation.kind === "document" ? anchorOf(citation) : null,
-  openUrl: citation.status === "ok" && citation.authority ? citation.authority.url : null,
+  openUrl: citation.status === "ok" ? (citation.web?.url ?? citation.authority?.url ?? null) : null,
 });

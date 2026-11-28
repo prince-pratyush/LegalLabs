@@ -387,6 +387,15 @@ export {
 } from "./viewer.js";
 export { Wall, WallMode } from "./wall.js";
 export {
+  WEB_QUERY_CHARS,
+  WEB_SOURCE_ID,
+  WebMatterSwitch,
+  type WebSearchSettings,
+  WebSearchSwitch,
+  WebSourceFilter,
+  webSearchNotice,
+} from "./web-search.js";
+export {
   Block,
   type BlockType,
   blockTexts,

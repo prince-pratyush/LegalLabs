@@ -9,6 +9,7 @@ import type {
   ThreadScope,
   VaultPort,
 } from "@legallabs/contracts";
+import { WEB_SOURCE_ID } from "@legallabs/contracts";
 import type { Gateway } from "@legallabs/model-gateway";
 import type pg from "pg";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
@@ -18,6 +19,7 @@ import type { Documents } from "../documents/documents.js";
 import { noPersonalisation, type Personalisation } from "../memory/port.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
+import { type WebSources, webQuery } from "../web/sources.js";
 import { type Answer, type Checked, createAnswerer, type ScopeDocument } from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
 
@@ -32,7 +34,7 @@ export interface CitationView {
   n: number;
   /** Where the citation sits in the message text. */
   at: number;
-  kind: "document" | "authority";
+  kind: "document" | "authority" | "web";
   documentId: string | null;
   versionId: string | null;
   versionNo: number | null;
@@ -44,6 +46,7 @@ export interface CitationView {
   to: number | null;
   status: CitationStatus;
   authority: { id: string; citation: string; title: string; url: string } | null;
+  web: { url: string; title: string; fetchedAt: string } | null;
 }
 
 export interface MessageView {
@@ -138,7 +141,8 @@ export type AskFailure =
   | "EMPTY_SCOPE"
   | "MODEL_NOT_ALLOWED"
   | "READ_ONLY"
-  | "MATTER_REQUIRED";
+  | "MATTER_REQUIRED"
+  | "SOURCE_NOT_ALLOWED";
 
 export type AskResult =
   | {
@@ -225,6 +229,8 @@ export interface ThreadsOptions {
   log: RunLog;
   vaults: VaultPort;
   knowledge: KnowledgePort;
+  /** Web search as a source; left out, asking for it is refused. */
+  web?: WebSources;
   /** Tells people about approvals, failures, long runs and shares; left out, nobody is told. */
   notifier?: Notifier;
   /** A deep analysis that took longer than this notifies its owner when it finishes. */
@@ -401,7 +407,7 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     message_id: string;
     ordinal: number;
     anchor: number;
-    kind: "document" | "authority";
+    kind: "document" | "authority" | "web";
     version_id: string | null;
     version_no: number | null;
     document_id: string | null;
@@ -415,10 +421,14 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
     authority_citation: string | null;
     authority_title: string | null;
     authority_url: string | null;
+    web_url: string | null;
+    web_title: string | null;
+    web_fetched_at: Date | null;
   }>(
     `select c.message_id, c.ordinal, c.anchor, c.kind, c.version_id, v.version_no, v.document_id,
             d.name, c.page_no, c.quote, c.char_from, c.char_to, c.status, c.authority_id,
-            c.authority_citation, c.authority_title, c.authority_url
+            c.authority_citation, c.authority_title, c.authority_url,
+            c.web_url, c.web_title, c.web_fetched_at
        from work.citation c
        join work.message m on m.id = c.message_id
        left join content.document_version v on v.id = c.version_id
@@ -478,6 +488,14 @@ async function load(db: Db, principal: Principal, threadId: string): Promise<Thr
                   title: citation.authority_title ?? "",
                   url: citation.authority_url ?? "",
                 },
+          web:
+            citation.web_url === null || citation.web_fetched_at === null
+              ? null
+              : {
+                  url: citation.web_url,
+                  title: citation.web_title ?? "",
+                  fetchedAt: citation.web_fetched_at.toISOString(),
+                },
         })),
     })),
   };
@@ -519,6 +537,8 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
   const personalisation: Personalisation = options.personalisation ?? noPersonalisation;
   const longRunMs = options.longRunMs ?? 60_000;
   const answer = createAnswerer({ pool, ...options });
+  const webOf = (sources: readonly SourceSelection[]) =>
+    sources.find((source) => source.source_id === WEB_SOURCE_ID);
 
   /** Tells the person running (and owning) a thread how a run went; never throws. */
   async function tell(
@@ -607,10 +627,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       await db.query(
         `insert into work.citation
            (workspace_id, message_id, ordinal, anchor, kind, version_id, page_no, quote, char_from,
-            char_to, status, authority_id, authority_citation, authority_title, authority_url)
+            char_to, status, authority_id, authority_citation, authority_title, authority_url,
+            web_url, web_title, web_fetched_at)
          select $1, $2, * from unnest($3::int[], $4::int[], $5::text[], $6::uuid[], $7::int[],
                                      $8::text[], $9::int[], $10::int[], $11::text[], $12::text[],
-                                     $13::text[], $14::text[], $15::text[])`,
+                                     $13::text[], $14::text[], $15::text[], $16::text[],
+                                     $17::text[], $18::timestamptz[])`,
         [
           workspaceId,
           messageId,
@@ -627,6 +649,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           column((c) => c.authority?.citation_string.slice(0, 500) ?? null),
           column((c) => c.authority?.title.slice(0, 500) ?? null),
           column((c) => c.authority?.url.slice(0, 2000) ?? null),
+          column((c) => c.web?.url ?? null),
+          column((c) => c.web?.title.slice(0, 300) ?? null),
+          column((c) => c.web?.fetchedAt ?? null),
         ],
       );
     }
@@ -900,7 +925,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     principal: Principal,
     run: { id: string; threadId: string },
     documents: ThreadDocument[],
-    context: { question: string; history: { role: "user" | "assistant"; content: string }[] },
+    context: {
+      question: string;
+      history: { role: "user" | "assistant"; content: string }[];
+      /** Whether an earlier answer in the thread cited the web. */
+      webBefore: boolean;
+    },
     input: AskInput,
     client: Client,
   ) {
@@ -921,6 +951,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         },
         client,
       );
+      const web = webOf(input.scope.sources);
       // Streamed tokens carry the run id; the saved answer gets its own id at the end.
       const answered = await answer(
         {
@@ -931,6 +962,17 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           question: context.question,
           ...(input.model ? { model: input.model } : {}),
           ...(plan?.guidance ? { guidance: plan.guidance } : {}),
+          ...(web
+            ? {
+                web: {
+                  threadId: run.threadId,
+                  runId: run.id,
+                  query: webQuery(input.blocks),
+                  filter: web.filter,
+                  client,
+                },
+              }
+            : {}),
           emit,
           cancelled: () => cancelled(run.id),
           signal: controller.signal,
@@ -956,7 +998,9 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         messageId = await asApp(pool, principal, (db) =>
           save(db, principal, run, reply, documents, client),
         );
-        await personalisation.finish(principal, messageId, plan, split.candidates);
+        // Words a web page put in a reply must not become a standing memory.
+        const candidates = answered.usedWeb || context.webBefore ? [] : split.candidates;
+        await personalisation.finish(principal, messageId, plan, candidates);
       } catch (err) {
         if (err instanceof RunStopped) return;
         // A wall or permission can change while the model is answering.
@@ -1074,6 +1118,23 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
       if (inScope.length === 0 && sources.length === 0) {
         return { ok: false, reason: "EMPTY_SCOPE" };
       }
+      // Refused before anything is stored: off, or a matter involved is kept from the web.
+      const web = webOf(sources);
+      if (
+        web &&
+        !(await options.web?.allowed(
+          principal,
+          {
+            threadId: existing?.id ?? null,
+            matterIds: [matterId],
+            documentIds: inScope.map((d) => d.id),
+            vaultIds,
+          },
+          web.filter,
+        ))
+      ) {
+        return { ok: false, reason: "SOURCE_NOT_ALLOWED" };
+      }
 
       let created: { threadId: string; questionId: string; runId: string };
       try {
@@ -1184,7 +1245,15 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
               principal,
               run,
               inScope,
-              { question, history },
+              {
+                question,
+                history,
+                webBefore:
+                  webOf(existing?.sources ?? []) !== undefined ||
+                  (existing?.messages ?? []).some((message) =>
+                    message.citations.some((citation) => citation.kind === "web"),
+                  ),
+              },
               { ...input, scope: { ...input.scope, sources } },
               client,
             ),

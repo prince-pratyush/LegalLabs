@@ -135,3 +135,13 @@ describe("parseCitedAnswer authority tags", () => {
     expect(citation).not.toHaveProperty("pin");
   });
 });
+
+describe("a web citation tag", () => {
+  it("keeps the page's label", () => {
+    const { text, citations } = parseCitedAnswer('Yes.<c web="W2" quote="as written"/>');
+    expect(text).toBe("Yes.");
+    expect(citations).toEqual([
+      { at: 4, doc: null, auth: null, page: null, quote: "as written", web: "W2" },
+    ]);
+  });
+});

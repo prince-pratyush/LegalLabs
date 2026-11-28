@@ -60,6 +60,15 @@ describe("Horizon scanning in the running server", () => {
   });
 });
 
+describe("Web search in the running server", () => {
+  it("is mounted, and off until set up and turned on", async () => {
+    expect(await json("/api/v1/web-search/settings")).toMatchObject({
+      configured: false,
+      enabled: false,
+    });
+  });
+});
+
 describe("Intake in the running server", () => {
   it("is mounted", async () => {
     expect(await json("/api/v1/apps/intake/request-types")).toEqual({
