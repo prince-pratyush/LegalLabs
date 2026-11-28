@@ -1,4 +1,4 @@
-import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, type Zippable, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { buildDocx } from "./docx.js";
 import { openText } from "./translate.js";
@@ -22,7 +22,7 @@ const rels = (type: string, target: string, mode = "") =>
   );
 const EXTERNAL = ' TargetMode="External"';
 
-const refused = (files: Record<string, Uint8Array>) => {
+const refused = (files: Zippable) => {
   try {
     openText(zipSync(files));
     return "opened";
@@ -99,8 +99,23 @@ describe("what a translated copy may carry", () => {
     expect(refused(many)).toBe("TOO_LARGE");
     const long = { ...parts(), "word/header1.xml": strToU8(`<a>${"x".repeat(6_000_000)}</a>`) };
     expect(refused(long)).toBe("TOO_LARGE");
-    const heavy = parts();
-    for (let i = 0; i < 4; i++) heavy[`word/media/p${i}.png`] = new Uint8Array(15 * 1024 * 1024);
+    // Stored, not compressed: only the declared sizes matter, and compressing 45 MB is slow.
+    const media = new Uint8Array(15 * 1024 * 1024);
+    const heavy: Zippable = { ...parts() };
+    for (let i = 0; i < 3; i++) heavy[`word/media/p${i}.png`] = [media, { level: 0 }];
     expect(refused(heavy)).toBe("TOO_LARGE");
+  });
+
+  it("counts before anything is parsed, the package's own index included", () => {
+    // Never closed, so parsing it would fail differently from counting it.
+    const index = { ...parts(), "_rels/.rels": strToU8(`<a>${"<b/>".repeat(200_001)}`) };
+    expect(refused(index)).toBe("TOO_LARGE");
+  });
+
+  it("parses no main part that the limits don't count", () => {
+    const files = parts();
+    files["word/main.dat"] = files["word/document.xml"] as Uint8Array<ArrayBuffer>;
+    files["_rels/.rels"] = rels("officeDocument", "word/main.dat");
+    expect(refused(files)).toBe("OOXML_INVALID");
   });
 });
