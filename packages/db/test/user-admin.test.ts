@@ -96,6 +96,33 @@ describe("the last administrator", () => {
   });
 });
 
+describe("group membership", () => {
+  const add = "insert into core.group_member (workspace_id, group_id, user_id) values ($1, $2, $3)";
+  const remove = "delete from core.group_member where group_id = $1 and user_id = $2";
+
+  it("is never one's own to change", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error(add, [s.acme, s.groups.litTeam, s.ana])).toMatch(/OWN_ACCOUNT/);
+      expect(await tx.error(remove, [s.groups.corpTeam, s.ana])).toMatch(/OWN_ACCOUNT/);
+    });
+  });
+
+  it("of a group a wall names takes admin.matters", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      // dee manages users but not matters; a wall allows corp-team.
+      await tx.as(s.dee, s.acme);
+      expect(await tx.error(add, [s.acme, s.groups.corpTeam, s.cal])).toMatch(/WALLED_GROUP/);
+      expect(await tx.error(remove, [s.groups.corpTeam, s.ben])).toMatch(/WALLED_GROUP/);
+      expect(await tx.error(add, [s.acme, s.groups.everyone, s.cal])).toBeUndefined();
+      await tx.as(s.ana, s.acme);
+      expect(await tx.error(add, [s.acme, s.groups.corpTeam, s.cal])).toBeUndefined();
+    });
+  });
+});
+
 describe("people an identity provider manages", () => {
   it("keeps their status, and a mapped role, out of an administrator's hands", async () => {
     await withTx(async (tx) => {
@@ -185,6 +212,68 @@ describe("invitation links", () => {
       ]);
       await tx.as(null, null);
       expect(await tx.rows(accept, [third])).toEqual([]);
+    });
+  });
+
+  // As over HTTP, where accepting runs with no workspace set.
+  it("die if the role has since been given administrator rights", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const r = await roleIds(tx, s);
+      const who = await invited(tx, s, r.user);
+      const token = hash();
+      await tx.as(s.ana, s.acme);
+      await tx.rows(create, [who, token]);
+      await tx.asOwner();
+      await tx.rows("update core.role set permissions = '{admin.users}' where id = $1", [r.user]);
+      await tx.as(null, null);
+      expect(await tx.rows(accept, [token])).toEqual([]);
+    });
+  });
+
+  it("do not outlive the standing of whoever sent them", async () => {
+    await withTx(async (tx) => {
+      const s = await seed(tx);
+      const r = await roleIds(tx, s);
+      await tx.asOwner();
+      const eve = await tx.one<{ id: string }>(
+        `insert into core."user" (workspace_id, email, role_id, status)
+         values ($1, 'eve@acme.test', $2, 'active') returning id`,
+        [s.acme, r.admin],
+      );
+      const issue = async () => {
+        const who = await invited(tx, s, r.user);
+        const token = hash();
+        await tx.as(eve.id, s.acme);
+        await tx.rows(create, [who, token]);
+        await tx.asOwner();
+        return token;
+      };
+      const refused = async (token: Buffer) => {
+        await tx.as(null, null);
+        expect(await tx.rows(accept, [token])).toEqual([]);
+        await tx.asOwner();
+      };
+      const setEve = (sql: string, value: unknown) =>
+        tx.rows(`update core."user" set ${sql} = $2 where id = $1`, [eve.id, value]);
+
+      // Suspended or removed, by any route, and the link stays dead if they come back.
+      for (const status of ["suspended", "deprovisioned"]) {
+        const token = await issue();
+        await setEve("status", status);
+        await refused(token);
+        await setEve("status", "active");
+        await refused(token);
+      }
+      // Demoted below admin.users.
+      const demoted = await issue();
+      await setEve("role_id", r.user);
+      await refused(demoted);
+      await setEve("role_id", r.admin);
+      // The sender's role edited, which no user row records.
+      const edited = await issue();
+      await tx.rows("update core.role set permissions = '{threads.use}' where id = $1", [r.admin]);
+      await refused(edited);
     });
   });
 

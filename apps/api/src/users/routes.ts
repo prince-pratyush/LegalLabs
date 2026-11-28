@@ -42,7 +42,7 @@ export function userAdminRoutes(
   const id = (c: Context) => {
     const parsed = z.uuid().safeParse(c.req.param("id"));
     if (!parsed.success) throw new UsersRefused(404, "NOT_FOUND", "That wasn't found.");
-    return parsed.data;
+    return parsed.data.toLowerCase();
   };
 
   app.get("/admin/users", async (c) => c.json(await users.list(c.get("principal"))));

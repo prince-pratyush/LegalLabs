@@ -67,19 +67,21 @@ const name = z
   .min(1)
   .max(100)
   .refine((t) => !t.includes("\0"), "Text cannot hold a NUL byte");
-const groupIds = z.array(z.uuid()).max(50);
+// Lower case, as the database writes them, so that comparing ids as text means something.
+const id = z.uuid().transform((value) => value.toLowerCase());
+const groupIds = z.array(id).max(50);
 
 export const InviteUsers = z.strictObject({
   // Counted again by the server, which answers INVITE_LIMIT for a longer list.
   emails: z.array(z.string().max(320)).min(1).max(1000),
-  role_id: z.uuid(),
+  role_id: id,
   group_ids: groupIds.optional(),
 });
 export type InviteUsers = z.infer<typeof InviteUsers>;
 
 export const UserPatch = z
   .strictObject({
-    role_id: z.uuid().optional(),
+    role_id: id.optional(),
     group_ids: groupIds.optional(),
     status: z.enum(["active", "suspended"]).optional(),
   })

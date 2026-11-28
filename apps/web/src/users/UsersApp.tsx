@@ -9,7 +9,8 @@ import type {
 import { Button, Checkbox, ConfirmDialog, Field, Input } from "@legallabs/ui";
 import { type FormEvent, useState } from "react";
 import { AdminShell } from "../admin/AdminShell.js";
-import { messageOf, Panel, useLoad } from "../admin/load.js";
+import { Panel, useLoad } from "../admin/load.js";
+import { useStepUp } from "../retention/StepUp.js";
 import { usersApi } from "./api.js";
 
 const SELECT = "h-9 rounded-md border border-border bg-bg px-2 text-ui";
@@ -88,7 +89,8 @@ function GroupBoxes({
   );
 }
 
-type Act = (work: () => Promise<InviteResult | null>) => Promise<boolean>;
+/** Makes a change, asking for a second factor first where the server wants one. */
+type Act = (work: () => Promise<InviteResult | null>, done?: () => void) => void;
 
 function Invite({ roles, groups, act }: { roles: Role[]; groups: Group[]; act: Act }) {
   // Administrators are made from the list, once someone has joined.
@@ -99,12 +101,12 @@ function Invite({ roles, groups, act }: { roles: Role[]; groups: Group[]; act: A
   const role = chosen || offered.find((r) => r.builtin)?.id || offered[0]?.id || "";
   const list = emails.split(/[\s,;]+/).filter(Boolean);
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
-    const done = await act(() =>
-      usersApi.invite({ emails: list, role_id: role, group_ids: picked }),
+    act(
+      () => usersApi.invite({ emails: list, role_id: role, group_ids: picked }),
+      () => setEmails(""),
     );
-    if (done) setEmails("");
   };
 
   return (
@@ -259,9 +261,12 @@ function Person({
 
 function NewGroup({ act }: { act: Act }) {
   const [name, setName] = useState("");
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (await act(() => usersApi.createGroup(name.trim()).then(() => null))) setName("");
+    act(
+      () => usersApi.createGroup(name.trim()).then(() => null),
+      () => setName(""),
+    );
   };
   return (
     <form onSubmit={submit} className="flex max-w-md items-end gap-2">
@@ -325,24 +330,24 @@ function View({
 /** Admin: who is in the workspace, what role they hold and which groups they are in. */
 export function UsersApp({ onLeave }: { onLeave: () => void }) {
   const state = useLoad(usersApi.load, []);
-  const [error, setError] = useState<string | null>(null);
+  const { run, prompt } = useStepUp();
   const [result, setResult] = useState<InviteResult | null>(null);
   // Kept while reloading, so the list doesn't blink out after each change.
   const [shown, setShown] = useState(state.data);
   if (state.data && state.data !== shown) setShown(state.data);
 
-  const act: Act = async (work) => {
-    setError(null);
-    try {
-      const done = await work();
-      if (done) setResult(done);
-      state.reload();
-      return true;
-    } catch (err) {
-      setError(messageOf(err));
-      state.reload();
-      return false;
-    }
+  const act: Act = (work, done) => {
+    let outcome: InviteResult | null = null;
+    void run(
+      async () => {
+        outcome = await work();
+      },
+      () => {
+        if (outcome) setResult(outcome);
+        done?.();
+        state.reload();
+      },
+    );
   };
 
   return (
@@ -353,11 +358,7 @@ export function UsersApp({ onLeave }: { onLeave: () => void }) {
       onLeave={onLeave}
     >
       <div className="grid gap-6">
-        {error && (
-          <p role="alert" className="text-destructive">
-            {error}
-          </p>
-        )}
+        {prompt}
         {result && <Outcome result={result} />}
         <Panel state={shown && !state.error ? { ...state, data: shown } : state}>
           {(data) => <View {...data} act={act} />}

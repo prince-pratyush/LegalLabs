@@ -552,6 +552,93 @@ describe("changing people", () => {
     expect(await statusOf(pool, other.userId)).toBe("active");
   });
 
+  it("never lets anyone change their own groups, however their id is written", async () => {
+    const m = await seedMember(pool);
+    const h = harness();
+    const api = await h.as(m);
+    const group = await api("POST", "/admin/groups", { name: "Deal team" });
+    const manager = await member(m, "manager", ["admin.users"]);
+    const own = await h.as(manager);
+    for (const id of [manager.id, manager.id.toUpperCase()]) {
+      const res = await own("PATCH", `/admin/users/${id}`, { group_ids: [group.body.id] });
+      expect(res).toMatchObject({ status: 409, body: { code: "OWN_ACCOUNT" } });
+    }
+    const rows = await pool.query("select 1 from core.group_member where user_id = $1", [
+      manager.id,
+    ]);
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it("reads ids the same whatever their case", async () => {
+    const m = await seedMember(pool);
+    const api = await harness().as(m);
+    const bo = await member(m, "bo", ["threads.use"]);
+    const group = await api("POST", "/admin/groups", { name: "Deal team" });
+    await api("PATCH", `/admin/users/${bo.id}`, { group_ids: [group.body.id] });
+    const again = await api("PATCH", `/admin/users/${bo.id}`, {
+      group_ids: [group.body.id.toUpperCase()],
+      role_id: bo.roleId.toUpperCase(),
+    });
+    expect(again.status).toBe(200);
+    expect(again.body.group_ids).toEqual([group.body.id]);
+    const updates = (await auditTrail(pool, m.workspaceId)).filter(
+      (r) => r.action === "user.updated",
+    );
+    expect(updates).toHaveLength(1);
+  });
+
+  it("needs admin.matters to move anyone into or out of a group a wall names", async () => {
+    const m = await seedMember(pool);
+    const h = harness();
+    const owner = await h.as(m);
+    const matter = await pool.query<{ id: string }>(
+      `insert into core.matter (workspace_id, client_id, client_name, matter_number, matter_name)
+       values ($1, 'c', 'Client', '1', 'Deal') returning id`,
+      [m.workspaceId],
+    );
+    const walled: string[] = [];
+    for (const [name, effect, provider] of [
+      ["Screened out", "deny", "internal"],
+      ["Cleared", "allow", "intapp"],
+    ] as const) {
+      const group = await owner("POST", "/admin/groups", { name });
+      await pool.query(
+        `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect, provider)
+         values ($1, $2, 'group', $3, $4, $5)`,
+        [m.workspaceId, matter.rows[0]?.id, group.body.id, effect, provider],
+      );
+      walled.push(group.body.id);
+    }
+    const manager = await member(m, "manager", ["admin.users", "threads.use"]);
+    const limited = await h.as(manager);
+    const bo = await member(m, "bo", ["threads.use"]);
+    await owner("PATCH", `/admin/users/${bo.id}`, { group_ids: [walled[0]] });
+
+    const refusal = { status: 403, body: { code: "WALLED_GROUP" } };
+    // Out of the wall, into the other, or both.
+    for (const group_ids of [[], [walled[0], walled[1]], [walled[1]]]) {
+      expect(await limited("PATCH", `/admin/users/${bo.id}`, { group_ids })).toMatchObject(refusal);
+    }
+    // Leaving it as it is changes nothing and is allowed.
+    expect(
+      (await limited("PATCH", `/admin/users/${bo.id}`, { group_ids: [walled[0]] })).status,
+    ).toBe(200);
+    const invite = await limited("POST", "/admin/users/invite", {
+      emails: [`wa@${m.slug}.test`],
+      role_id: bo.roleId,
+      group_ids: [walled[1]],
+    });
+    expect(invite).toMatchObject(refusal);
+    const left = await pool.query("select group_id from core.group_member where user_id = $1", [
+      bo.id,
+    ]);
+    expect(left.rows).toEqual([{ group_id: walled[0] }]);
+    const made = await pool.query(`select 1 from core."user" where email = $1`, [
+      `wa@${m.slug}.test`,
+    ]);
+    expect(made.rowCount).toBe(0);
+  });
+
   it("sets group membership, leaving an identity provider's groups alone", async () => {
     const m = await seedMember(pool);
     const api = await harness().as(m);

@@ -62,11 +62,15 @@ begin
   if current_setting('role', true) is distinct from 'legallabs_app' then
     return new;
   end if;
-  if old.kind <> 'member' or old.status <> 'active'
-     or not coalesce('*' = any (core.role_permissions(old.role_id)), false) then
+  -- Roles are read by the row's workspace, so the rule holds whatever the request has set.
+  if old.kind <> 'member' or old.status <> 'active' or not exists (
+       select 1 from core.role r where r.workspace_id = old.workspace_id and r.id = old.role_id
+          and '*' = any (r.permissions)) then
     return new;
   end if;
-  if new.status = 'active' and coalesce('*' = any (core.role_permissions(new.role_id)), false) then
+  if new.status = 'active' and exists (
+       select 1 from core.role r where r.workspace_id = new.workspace_id and r.id = new.role_id
+          and '*' = any (r.permissions)) then
     return new;
   end if;
   -- One change at a time, or two administrators could remove each other at once.
@@ -82,9 +86,45 @@ begin
 end
 $$;
 alter function core.keep_last_admin() owner to legallabs_definer;
-grant execute on function core.role_permissions(uuid) to legallabs_definer;
 create trigger user_keep_last_admin before update on core."user"
   for each row execute function core.keep_last_admin();
+
+-- Groups decide what people reach. Nobody changes their own, and a group a wall names is part of
+-- that wall, so moving anyone into or out of it needs admin.matters. The identity provider is not
+-- a person: its walls are synced to its groups on purpose.
+create function core.guard_group_member() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  m core.group_member;
+begin
+  if tg_op = 'DELETE' then m := old; else m := new; end if;
+  if current_setting('role', true) is distinct from 'legallabs_app' or scim.is_principal()
+     -- Anyone else is refused by row-level security.
+     or not core.has_permission('admin.users')
+     -- The Spaces flow puts guests into their own organisation's group.
+     or exists (select 1 from core."group" g
+                  join core."user" u on u.workspace_id = g.workspace_id and u.id = m.user_id
+                 where g.id = m.group_id and g.kind = 'party' and u.kind = 'guest') then
+    return m;
+  end if;
+  if m.user_id = core.current_user_id()
+     or (tg_op = 'UPDATE' and old.user_id = core.current_user_id()) then
+    raise exception 'OWN_ACCOUNT' using errcode = 'insufficient_privilege';
+  end if;
+  if not core.has_permission('admin.matters') and exists (
+       select 1 from core.wall w
+        where w.workspace_id = m.workspace_id and w.principal_type = 'group'
+          and (w.principal_id = m.group_id
+               or (tg_op = 'UPDATE' and w.principal_id = old.group_id))) then
+    raise exception 'WALLED_GROUP' using errcode = 'insufficient_privilege';
+  end if;
+  return m;
+end
+$$;
+alter function core.guard_group_member() owner to legallabs_definer;
+grant execute on function scim.is_principal(), core.has_permission(text) to legallabs_definer;
+create trigger group_member_guard before insert or update or delete on core.group_member
+  for each row execute function core.guard_group_member();
 
 -- The built-in Admin role is what the rule above counts, so no request may change it.
 create function core.keep_admin_role() returns trigger
@@ -210,6 +250,25 @@ begin
 end
 $$;
 
+-- A link is only as good as whoever sent it: it dies for good when they are suspended, removed
+-- or given other access, by whatever route.
+create function core.revoke_sent_invites() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if (new.status <> 'active' and old.status = 'active')
+     or (new.role_id, new.extra_permissions) is distinct from (old.role_id, old.extra_permissions)
+  then
+    update core.user_invite i set revoked_at = now()
+     where i.workspace_id = new.workspace_id and i.invited_by = new.id
+       and i.used_at is null and i.revoked_at is null;
+  end if;
+  return null;
+end
+$$;
+alter function core.revoke_sent_invites() owner to legallabs_definer;
+create trigger user_revoke_sent_invites after update on core."user"
+  for each row execute function core.revoke_sent_invites();
+
 -- Runs before anyone is signed in. Every reason to refuse answers the same: no rows.
 create function core.accept_invite(p_token_hash bytea, p_password_hash text)
 returns table (workspace_id uuid, user_id uuid, email text, workspace_slug text)
@@ -217,6 +276,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   invite core.user_invite;
   target core."user";
+  granted text[];
 begin
   select * into invite from core.user_invite i
    where i.token_hash = p_token_hash and i.used_at is null and i.revoked_at is null
@@ -227,9 +287,23 @@ begin
   end if;
   select * into target from core."user" u
    where u.workspace_id = invite.workspace_id and u.id = invite.user_id for update;
+  -- Read by the invitation's workspace: no workspace is set on this request yet.
+  granted := coalesce((select r.permissions from core.role r
+                        where r.workspace_id = invite.workspace_id and r.id = target.role_id), '{}');
   if target.status <> 'invited' or target.kind <> 'member' or target.scim_managed
      or target.role_id is distinct from invite.role_id or target.extra_permissions <> '{}'
-     or core.role_is_admin(core.role_permissions(target.role_id)) then
+     or core.role_is_admin(granted) then
+    return;
+  end if;
+  -- Whoever sent it must still be able to: active, managing users, holding what it gives.
+  if not exists (
+       select 1 from core."user" u
+         join core.role r on r.workspace_id = u.workspace_id and r.id = u.role_id
+        where u.workspace_id = invite.workspace_id and u.id = invite.invited_by
+          and u.status = 'active' and u.kind = 'member'
+          and ('*' = any (r.permissions)
+               or ('admin.users' = any (r.permissions || u.extra_permissions)
+                   and granted <@ (r.permissions || u.extra_permissions)))) then
     return;
   end if;
   -- With single sign-on or SCIM on, a password is no longer how members get in.
