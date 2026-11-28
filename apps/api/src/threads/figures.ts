@@ -243,7 +243,7 @@ export async function workOut(
           { role: "user", content: `${sheets.join("\n\n")}\n\nQuestion: ${input.question}` },
         ],
         budget: { max_output: 600, max_cost_usd: 0.1 },
-        routing: { workspace: input.principal.workspaceId },
+        routing: { workspace: input.principal.workspaceId, user: input.principal.userId },
         trace: randomUUID(),
         ...(input.exclude.length ? { exclude: input.exclude } : {}),
       },

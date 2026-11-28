@@ -955,14 +955,16 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             },
           ],
           budget: { max_output: 3_000, max_cost_usd: 1 },
-          routing: { workspace: principal.workspaceId },
+          routing: { workspace: principal.workspaceId, user: principal.userId },
           trace: tableId,
           ...(models.exclude.length ? { exclude: models.exclude } : {}),
         });
         output = result.output;
       } catch (err) {
         if (err instanceof GatewayError)
-          return fail("MODEL_UNAVAILABLE", "No model could propose columns just now.");
+          return err.refused
+            ? fail("MODEL_NOT_ALLOWED", err.message)
+            : fail("MODEL_UNAVAILABLE", "No model could propose columns just now.");
         throw err;
       }
       const proposals: ColumnProposal[] = [];

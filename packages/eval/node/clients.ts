@@ -169,7 +169,7 @@ export function makeClient(opts: ClientOptions): { complete: Complete; model: st
                 { role: "user", content: prompt },
               ],
               budget: { max_output: maxTokens, max_cost_usd: 1 },
-              routing: { workspace: "eval" },
+              routing: { workspace: "eval", user: null },
               trace: "playbook-review",
               model,
             },

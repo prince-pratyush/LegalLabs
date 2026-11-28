@@ -14,23 +14,29 @@ export interface MatterLimits {
 
 const keyOf = (m: Pick<ModelConfig, "provider" | "model">) => `${m.provider}/${m.model}`;
 
+/** The workspace-wide rules: zero retention only, and one region. */
+export const withinPolicy = (config: ModelConfig, policy: ModelPolicy) =>
+  (!policy.zdr_only || config.zdr) &&
+  (policy.region_only === null || config.region === policy.region_only);
+
 /**
  * Whether one model may be used by this caller: enabled, listed for their role or for them,
  * and inside the workspace policy and the matter's limits. Anything missing fails closed.
+ * With no caller (work no person is behind) it must be listed for someone.
  */
 export function modelAllowed(
   config: ModelConfig,
-  caller: Caller,
+  caller: Caller | null,
   policy: ModelPolicy,
   matter?: MatterLimits,
 ): boolean {
   if (!config.enabled) return false;
-  const listed =
-    config.enabled_for_users.includes(caller.userId) ||
-    (caller.roleId !== null && config.enabled_for_roles.includes(caller.roleId));
+  const listed = caller
+    ? config.enabled_for_users.includes(caller.userId) ||
+      (caller.roleId !== null && config.enabled_for_roles.includes(caller.roleId))
+    : config.enabled_for_users.length > 0 || config.enabled_for_roles.length > 0;
   if (!listed) return false;
-  if (policy.zdr_only && !config.zdr) return false;
-  if (policy.region_only !== null && config.region !== policy.region_only) return false;
+  if (!withinPolicy(config, policy)) return false;
   if (matter?.allowedModels && !matter.allowedModels.includes(keyOf(config))) return false;
   return true;
 }

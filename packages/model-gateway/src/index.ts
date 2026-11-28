@@ -9,8 +9,10 @@ export type {
   Message,
   ModelInfo,
   ModelProvider,
+  Routing,
   Usage,
   UsageRecord,
+  WorkspaceModels,
 } from "./gateway.js";
 export { createGateway, GatewayError } from "./gateway.js";
 export type { ProviderId, TaskClass } from "./routes.js";

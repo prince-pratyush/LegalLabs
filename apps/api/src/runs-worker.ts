@@ -1,10 +1,11 @@
 import { embedderFromEnv, rerankerFromEnv } from "@legallabs/embed";
-import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
+import { gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { createRunWorker } from "@legallabs/runs/temporal";
 import { objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
 import { createAdminConnectors } from "./admin-models/connectors.js";
 import { httpDiscovery } from "./admin-models/discovery.js";
+import { createWorkspaceGateway } from "./admin-models/gateway.js";
 import { createSecretBox } from "./admin-models/secrets.js";
 import { runAudit } from "./agent-runs/audit.js";
 import { runEngineFromEnv, schedulerFromEnv } from "./agent-runs/engine.js";
@@ -28,7 +29,7 @@ pool.on("error", (err) => console.error(`database connection lost: ${err.message
 await assertRestrictedRole(pool);
 
 // Workflow steps call models and search documents from this process, as the run's owner.
-const gateway = createGateway({
+const gateway = createWorkspaceGateway(pool, {
   ...gatewayOptionsFromEnv(process.env),
   recordUsage: async () => {},
 });

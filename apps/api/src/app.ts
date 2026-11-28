@@ -1,5 +1,6 @@
 import { serveStatic } from "@hono/node-server/serve-static";
 import { PublicApi } from "@legallabs/contracts";
+import { GatewayError } from "@legallabs/model-gateway";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -595,6 +596,11 @@ export function createApp({
       );
     }
     if (err instanceof HTTPException) return err.getResponse();
+    if (err instanceof GatewayError && (err.refused || err.code === "SETTINGS_UNAVAILABLE")) {
+      return err.refused
+        ? c.json({ code: "MODEL_NOT_ALLOWED", message: err.message }, 403)
+        : c.json({ code: "MODEL_UNAVAILABLE", message: err.message }, 503);
+    }
     // Not the object itself: a database error's properties quote the failing row.
     console.error(describeError(err));
     return c.text("Internal Server Error", 500);

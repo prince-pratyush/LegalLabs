@@ -350,7 +350,7 @@ export function createFactExtractions(
             { role: "user", content: readPrompt(group, issues.names, issues.only) },
           ],
           budget: { max_output: MAX_OUTPUT, max_cost_usd: 0.1 },
-          routing: { workspace: p.workspaceId },
+          routing: { workspace: p.workspaceId, user: p.userId },
           trace: randomUUID(),
           ...(policy.exclude.length ? { exclude: policy.exclude } : {}),
         });
@@ -365,6 +365,10 @@ export function createFactExtractions(
         );
       } catch (err) {
         if (!(err instanceof GatewayError)) throw err;
+        if (err.refused) {
+          reason = "MODEL_NOT_ALLOWED";
+          break;
+        }
         if (doc.attempts + 1 < MAX_ATTEMPTS) return null;
         reason = "MODEL_UNAVAILABLE";
         break;

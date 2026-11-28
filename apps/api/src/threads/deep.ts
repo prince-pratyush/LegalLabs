@@ -218,7 +218,7 @@ export async function readDeep(
             },
           ],
           budget: { max_output: READ_OUTPUT, max_cost_usd: 0.05 },
-          routing: { workspace: principal.workspaceId },
+          routing: { workspace: principal.workspaceId, user: principal.userId },
           trace: randomUUID(),
           ...(input.exclude.length ? { exclude: input.exclude } : {}),
         },
@@ -233,7 +233,11 @@ export async function readDeep(
       if (!(err instanceof GatewayError)) throw err;
       unread.push({
         name: label(document),
-        reason: input.signal.aborted ? "Stopped before it was read" : "No model could read it",
+        reason: input.signal.aborted
+          ? "Stopped before it was read"
+          : err.refused
+            ? "No model is allowed to read it"
+            : "No model could read it",
       });
       return 0;
     }

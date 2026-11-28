@@ -114,7 +114,9 @@ export function createIntakeWorker(pool: pg.Pool, options: IntakeWorkerOptions) 
         model,
       });
     } catch (err) {
-      if (!(err instanceof GatewayError) || job.attempt < MAX_ATTEMPTS) throw err;
+      if (!(err instanceof GatewayError)) throw err;
+      // A refusal stays one however often it is asked.
+      if (!err.refused && job.attempt < MAX_ATTEMPTS) throw err;
       // No model to be had: keyword rules still apply, and the rest waits for a person.
       result = await classify(gateway, {
         types: job.types,

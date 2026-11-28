@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createGateway, GatewayError, type ModelProvider, type UsageRecord } from "./index.js";
+import {
+  createGateway,
+  GatewayError,
+  type GatewayOptions,
+  type ModelProvider,
+  type UsageRecord,
+} from "./index.js";
 
 const answering = (text: string): ModelProvider => ({
   complete: async () => ({ text, usage: { input_tokens: 10, output_tokens: 5 } }),
@@ -19,7 +25,7 @@ const request = {
   task_class: "synthesize",
   messages: [{ role: "user", content: "What is the notice period?" }],
   budget: { max_output: 100, max_cost_usd: 1 },
-  routing: { workspace: "ws_1" },
+  routing: { workspace: "ws_1", user: null },
   trace: "trace_1",
 } as const;
 
@@ -412,5 +418,125 @@ describe("model choice", () => {
 
     expect(gateway.contextTokens("synthesize")).toBe(4_096);
     expect(raised.contextTokens("synthesize")).toBe(32_768);
+  });
+});
+
+describe("the workspace's model settings", () => {
+  const everything = () => ({
+    anthropic: answering("from haiku"),
+    google: answering("from gemini"),
+  });
+  const only =
+    (...ids: string[]) =>
+    async () => ({ permits: (id: string) => ids.includes(id) });
+  const gatewayWith = (
+    workspacePolicy: GatewayOptions["workspacePolicy"],
+    providers = everything(),
+  ) =>
+    createGateway({
+      providers,
+      allowDemoModels: true,
+      recordUsage: async () => {},
+      ...(workspacePolicy ? { workspacePolicy } : {}),
+    });
+
+  it("are asked about the workspace and person of every call", async () => {
+    const asked: unknown[] = [];
+    const gateway = gatewayWith(async (routing) => {
+      asked.push(routing);
+      return { permits: () => true };
+    });
+
+    await gateway.call({ ...request, routing: { workspace: "ws_1", user: "u_1" } });
+    await gateway.stream(request, () => {});
+
+    expect(asked).toEqual([
+      { workspace: "ws_1", user: "u_1" },
+      { workspace: "ws_1", user: null },
+    ]);
+  });
+
+  it("leave out a model they don't permit, on calls and streams", async () => {
+    const gateway = gatewayWith(only("anthropic/claude-haiku-5-5"));
+
+    expect((await gateway.call(request)).model).toBe("anthropic/claude-haiku-5-5");
+    expect((await gateway.stream(request, () => {})).model).toBe("anthropic/claude-haiku-5-5");
+  });
+
+  it("never fall back to a model they don't permit", async () => {
+    let reached = 0;
+    const gateway = gatewayWith(only("anthropic/claude-haiku-5-5"), {
+      anthropic: failing("down"),
+      google: {
+        complete: async () => {
+          reached += 1;
+          return { text: "no" };
+        },
+      },
+    });
+
+    await expect(gateway.call(request)).rejects.toMatchObject({ code: "ALL_MODELS_FAILED" });
+    expect(reached).toBe(0);
+  });
+
+  it("refuse a chosen model they don't permit", async () => {
+    const gateway = gatewayWith(only("anthropic/claude-haiku-5-5"));
+
+    await expect(
+      gateway.call({ ...request, model: "google/gemini-3.6-flash" }),
+    ).rejects.toMatchObject({ code: "MODEL_NOT_ALLOWED" });
+  });
+
+  it("say so when they leave no model, before any provider is reached", async () => {
+    const gateway = gatewayWith(only());
+
+    const error = await gateway.call(request).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: "NO_ALLOWED_MODEL", attempted: [] });
+    expect((error as Error).message).toContain("workspace's model settings");
+  });
+
+  it("say so when they and a call's own exclusions together leave none", async () => {
+    const gateway = gatewayWith(only("anthropic/claude-haiku-5-5"));
+
+    await expect(
+      gateway.call({ ...request, exclude: ["anthropic/claude-haiku-5-5"] }),
+    ).rejects.toMatchObject({ code: "NO_ALLOWED_MODEL" });
+  });
+
+  it("refuse everything when they can't be read", async () => {
+    let reached = 0;
+    const gateway = gatewayWith(
+      async () => {
+        throw new Error("database down");
+      },
+      {
+        anthropic: {
+          complete: async () => {
+            reached += 1;
+            return { text: "no" };
+          },
+        },
+        google: answering("no"),
+      },
+    );
+
+    await expect(gateway.call(request)).rejects.toMatchObject({ code: "SETTINGS_UNAVAILABLE" });
+    await expect(gateway.stream(request, () => {})).rejects.toMatchObject({
+      code: "SETTINGS_UNAVAILABLE",
+    });
+    await expect(gateway.allowedModels("synthesize", request.routing)).rejects.toMatchObject({
+      code: "SETTINGS_UNAVAILABLE",
+    });
+    expect(reached).toBe(0);
+  });
+
+  it("narrow the models listed for a workspace, not for the install", async () => {
+    const gateway = gatewayWith(only("anthropic/claude-haiku-5-5"));
+
+    expect((await gateway.allowedModels("synthesize", request.routing)).map((m) => m.id)).toEqual([
+      "anthropic/claude-haiku-5-5",
+    ]);
+    expect(gateway.models("synthesize")).toHaveLength(2);
   });
 });

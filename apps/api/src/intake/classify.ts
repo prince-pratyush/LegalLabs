@@ -150,7 +150,7 @@ export async function classify(gateway: Gateway, input: ClassifyInput): Promise<
       { role: "user", content: prompt(candidates, text, input.asked ?? null) },
     ],
     budget: { max_output: 1000, max_cost_usd: 0.05 },
-    routing: { workspace: input.workspace },
+    routing: { workspace: input.workspace, user: null },
     trace: input.trace,
   });
   const answer = parse(result.output);

@@ -146,7 +146,7 @@ export function createWritingStyles(
             { role: "user", content: `Sample:\n${sample}` },
           ],
           budget: { max_output: 700, max_cost_usd: 0.1 },
-          routing: { workspace: p.workspaceId },
+          routing: { workspace: p.workspaceId, user: p.userId },
           trace: createHash("sha256").update(`${id}:${Date.now()}`).digest("hex").slice(0, 32),
         });
         derived = reply.output.replaceAll("\0", "").trim().slice(0, STYLE_LIMITS.derived) || null;

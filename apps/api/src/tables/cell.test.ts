@@ -80,6 +80,7 @@ const input = (col: CellColumn): CellInput => ({
   settings: DEFAULT_SETTINGS,
   documents: [DOC],
   workspaceId: "ws",
+  userId: "u",
   trace: "t",
 });
 

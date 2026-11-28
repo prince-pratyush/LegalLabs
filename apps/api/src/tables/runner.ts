@@ -520,6 +520,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
             settings: request.settings,
             documents: docs,
             workspaceId: principal.workspaceId,
+            userId: principal.userId,
             trace: runId,
             exclude: models.exclude,
           },

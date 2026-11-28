@@ -386,6 +386,7 @@ export function createPlaybooks(pool: pg.Pool, { gateway }: { gateway: Gateway }
         try {
           const generated = await generateRules(gateway, {
             workspaceId: principal.workspaceId,
+            userId: principal.userId,
             documentId: source.document_id,
             contractType: input.contract_type,
             pages: doc.pages,

@@ -365,7 +365,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
               max_output: MAX_OUTPUT,
               max_cost_usd: Math.max((deps.maxCostUsd ?? 5) - used.cost_usd, 0),
             },
-            routing: { workspace: ctx.run.workspace_id },
+            routing: { workspace: ctx.run.workspace_id, user: ctx.run.owner_id },
             trace: `${ctx.run.id}:${ordinal}`,
             ...(exclude.length > 0 ? { exclude } : {}),
           },
@@ -508,8 +508,10 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
       return { kind: "done" };
     } catch (err) {
       const message = err instanceof Error ? err.message : "The model call failed.";
-      const code =
-        err instanceof GatewayError && err.code === "BUDGET_EXCEEDED"
+      const refused = err instanceof GatewayError && err.refused;
+      const code = refused
+        ? "MODEL_POLICY_NO_ELIGIBLE_MODEL"
+        : err instanceof GatewayError && err.code === "BUDGET_EXCEEDED"
           ? "BUDGET_COST"
           : "MODEL_UNAVAILABLE";
       await ctx.store.finishStep(ordinal, {

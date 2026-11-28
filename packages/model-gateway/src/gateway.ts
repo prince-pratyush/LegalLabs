@@ -22,11 +22,17 @@ export type ModelProvider = {
 
 export type Usage = { input_tokens: number; output_tokens: number; estimated: boolean };
 
+export type Routing = { workspace: string; user: string | null };
+
+/** What a workspace's own settings leave usable, as "provider/model" ids. */
+export type WorkspaceModels = { permits(model: string): boolean };
+
 export type GatewayCall = {
   task_class: TaskClass;
   messages: readonly Message[];
   budget: { max_output: number; max_cost_usd: number };
-  routing: { workspace: string };
+  /** Whose settings apply. `user` is null only when no person is behind the call. */
+  routing: Routing;
   trace: string;
   /** "provider/model" the user picked; tried first, others only as fallback. */
   model?: string;
@@ -62,6 +68,8 @@ export type Gateway = {
   ): Promise<GatewayResult>;
   /** Models this install can actually use for a task, in routing order. */
   models(task_class: TaskClass): ModelInfo[];
+  /** Those of them the workspace's settings permit for this person. */
+  allowedModels(task_class: TaskClass, routing: Routing): Promise<ModelInfo[]>;
   /** The smallest window among usable models, so a prompt sized to it fits any of them. */
   contextTokens(task_class: TaskClass): number;
 };
@@ -73,6 +81,11 @@ export type GatewayOptions = {
   contextWindows?: Partial<Record<ProviderId, number>>;
   recordUsage: (record: UsageRecord) => Promise<void>;
   now?: () => number;
+  /**
+   * The workspace's model settings, read for every call. Throwing refuses the call. Left out only
+   * where there is no workspace, such as the eval harness.
+   */
+  workspacePolicy?: (routing: Routing) => Promise<WorkspaceModels>;
 };
 
 export type GatewayErrorCode =
@@ -80,15 +93,30 @@ export type GatewayErrorCode =
   | "BUDGET_EXCEEDED"
   | "ALL_MODELS_FAILED"
   | "MODEL_NOT_ALLOWED"
-  | "STREAM_INTERRUPTED";
+  | "STREAM_INTERRUPTED"
+  | "NO_ALLOWED_MODEL"
+  | "SETTINGS_UNAVAILABLE";
+
+/** Refusals an administrator can act on, so their message is fit to show. */
+const SHOWN: Partial<Record<GatewayErrorCode, string>> = {
+  NO_ALLOWED_MODEL:
+    "No model is allowed for this by the workspace's model settings and any matter policy. An administrator can change the settings under Models.",
+  SETTINGS_UNAVAILABLE:
+    "The workspace's model settings couldn't be read, so no model was used. Try again shortly.",
+};
 
 export class GatewayError extends Error {
   constructor(
     readonly code: GatewayErrorCode,
     readonly attempted: readonly string[],
   ) {
-    super(`${code}: ${attempted.join(", ") || "no models tried"}`);
+    super(SHOWN[code] ?? `${code}: ${attempted.join(", ") || "no models tried"}`);
     this.name = "GatewayError";
+  }
+
+  /** The settings or a policy forbid it, so trying again won't help. */
+  get refused(): boolean {
+    return this.code === "NO_ALLOWED_MODEL" || this.code === "MODEL_NOT_ALLOWED";
   }
 }
 
@@ -119,11 +147,27 @@ export function createGateway(options: GatewayOptions): Gateway {
   const windowOf = (route: Route) =>
     options.contextWindows?.[route.provider] ?? route.context_window;
 
-  function ordered(request: GatewayCall): Route[] {
-    const routes = usable(request.task_class).filter(
-      (route) => !request.exclude?.includes(idOf(route)),
-    );
-    if (request.model === undefined) return routes;
+  // The one place the workspace's settings are applied, so no caller can leave them out.
+  async function permitted(taskClass: TaskClass, routing: Routing): Promise<Route[]> {
+    const routes = usable(taskClass);
+    if (!options.workspacePolicy) return routes;
+    try {
+      const settings = await options.workspacePolicy(routing);
+      return routes.filter((route) => settings.permits(idOf(route)));
+    } catch {
+      // Unread settings could forbid anything, so nothing is used.
+      throw new GatewayError("SETTINGS_UNAVAILABLE", []);
+    }
+  }
+
+  async function ordered(request: GatewayCall): Promise<Route[]> {
+    const allowed = await permitted(request.task_class, request.routing);
+    const routes = allowed.filter((route) => !request.exclude?.includes(idOf(route)));
+    const narrowed = allowed.length < usable(request.task_class).length;
+    if (request.model === undefined) {
+      if (routes.length === 0 && narrowed) throw new GatewayError("NO_ALLOWED_MODEL", []);
+      return routes;
+    }
     const chosen = routes.find((route) => idOf(route) === request.model);
     // A model the install can't use is refused, never quietly swapped.
     if (!chosen) throw new GatewayError("MODEL_NOT_ALLOWED", []);
@@ -140,7 +184,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     const inputTokens = inputUpperBound(request.messages);
     let remainingUsd = request.budget.max_cost_usd;
     let overBudget = false;
-    for (const route of ordered(request)) {
+    for (const route of await ordered(request)) {
       const provider = options.providers[route.provider];
       if (!provider) continue;
       const worstCase = costUsd(route.price, inputTokens, request.budget.max_output);
@@ -192,6 +236,13 @@ export function createGateway(options: GatewayOptions): Gateway {
     throw new GatewayError(overBudget ? "BUDGET_EXCEEDED" : "NO_MODEL_AVAILABLE", attempted);
   }
 
+  const info = (route: Route): ModelInfo => ({
+    id: idOf(route),
+    context_window: windowOf(route),
+    free: route.price.input === 0 && route.price.output === 0,
+    price: { input: route.price.input, output: route.price.output },
+  });
+
   return {
     call: (request, signal) =>
       run(
@@ -226,13 +277,9 @@ export function createGateway(options: GatewayOptions): Gateway {
       );
     },
 
-    models: (taskClass) =>
-      usable(taskClass).map((route) => ({
-        id: idOf(route),
-        context_window: windowOf(route),
-        free: route.price.input === 0 && route.price.output === 0,
-        price: { input: route.price.input, output: route.price.output },
-      })),
+    models: (taskClass) => usable(taskClass).map(info),
+
+    allowedModels: async (taskClass, routing) => (await permitted(taskClass, routing)).map(info),
 
     contextTokens(taskClass) {
       const windows = usable(taskClass).map(windowOf);

@@ -12,6 +12,7 @@ import { DOCX, pageParagraphs, type VersionMeta } from "../reviews/source.js";
 
 export interface TranslateRequest {
   workspaceId: string;
+  userId: string;
   texts: string[];
   language: TranslationLanguage;
   /** Models a matter keeps this material from. */
@@ -35,8 +36,9 @@ export interface Translator {
 export function modelTranslator(gateway: Gateway): Translator {
   const language = createLanguage(gateway);
   return {
-    async translate({ workspaceId, texts, language: into, exclude, signal, maxCostUsd }) {
-      const done = await language.translate(workspaceId, texts, TRANSLATION_LANGUAGES[into], {
+    async translate({ workspaceId, userId, texts, language: into, exclude, signal, maxCostUsd }) {
+      const who = { workspace: workspaceId, user: userId };
+      const done = await language.translate(who, texts, TRANSLATION_LANGUAGES[into], {
         exclude,
         maxCostUsd,
         ...(signal ? { signal } : {}),

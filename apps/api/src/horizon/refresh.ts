@@ -277,7 +277,11 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
     ];
     // The most a model could charge for these, counted as the gateway counts them.
     const input = messages.reduce((n, m) => n + 16 + Buffer.byteLength(m.content), 0);
-    const models = gateway.models("read_extract");
+    const routing = { workspace: p.workspaceId, user: p.userId };
+    // Only what this person's calls can try, so models never tried aren't charged for.
+    const models = await gateway
+      .allowedModels("read_extract", routing)
+      .catch(() => gateway.models("read_extract"));
     const worst = (ids: readonly string[]) =>
       models
         .filter((m) => ids.includes(m.id))
@@ -296,7 +300,7 @@ export function createHorizonRefresh(pool: pg.Pool, options: HorizonRefreshOptio
         task_class: "read_extract",
         messages,
         budget: { max_output: MAX_OUTPUT, max_cost_usd: CALL_BUDGET },
-        routing: { workspace: p.workspaceId },
+        routing,
         trace: randomUUID(),
       });
       output = result.output;
