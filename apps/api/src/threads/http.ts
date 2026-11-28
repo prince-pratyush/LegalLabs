@@ -195,6 +195,7 @@ const threadJson = (thread: ThreadView) => ({
   matter_id: thread.matterId,
   created_at: thread.createdAt,
   read_only: !thread.mine,
+  surface: thread.surface,
   vault_ids: thread.vaultIds,
   sources: thread.sources,
   documents: thread.documents.map((document) => ({
@@ -221,6 +222,7 @@ const historyJson = (row: HistoryRow) => ({
   status: row.status,
   favourite: row.favourite,
   shared: row.shared,
+  surface: row.surface,
 });
 
 const invalid = (c: Context) =>

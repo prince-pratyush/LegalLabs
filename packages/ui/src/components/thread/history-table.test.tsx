@@ -41,6 +41,19 @@ const ROW: HistoryRow = {
 const handlers = { onOpen: vi.fn(), onFavourite: vi.fn(), onStart: vi.fn() };
 
 describe("HistoryTable", () => {
+  it("marks a thread started in Outlook, and no other", () => {
+    render(
+      <HistoryTable
+        {...handlers}
+        rows={[
+          { ...ROW, surface: "outlook" },
+          { ...ROW, id: "2", title: "From the web", surface: "web" },
+        ]}
+      />,
+    );
+    expect(screen.getAllByText("Outlook")).toHaveLength(1);
+  });
+
   it("hands search to the server when filters are controlled", async () => {
     const onFiltersChange = vi.fn();
     // Title doesn't contain the query: the server matched the prompt, so it must still show.

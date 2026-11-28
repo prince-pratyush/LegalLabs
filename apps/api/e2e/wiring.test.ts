@@ -97,3 +97,11 @@ describe("Fact tables in the running server", () => {
     expect(((await res.json()) as { code: string }).code).toBe("NOT_FOUND");
   });
 });
+
+describe("the Outlook pane in the running server", () => {
+  it("is mounted, and wants one email", async () => {
+    const res = await call("/api/v1/addins/outlook/items", { method: "POST" });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe("INVALID_REQUEST");
+  });
+});

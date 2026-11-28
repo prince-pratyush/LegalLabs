@@ -19,10 +19,17 @@ export type MailItem = {
   attachments: MailAttachment[];
 };
 
+/** An attachment's content; `extension` is set when Outlook hands over something to be named. */
+export type AttachmentContent = { bytes: Uint8Array<ArrayBuffer>; extension?: "eml" };
+
 /** Everything the pane asks of Outlook, so the UI is tested without Office. */
 export interface MailHost {
   /** The message open for reading, as it is now; null when there isn't one. */
   item(): MailItem | null;
+  /** The open message's body as plain text. */
+  body(): Promise<string>;
+  /** One attachment of the open message; null when it isn't a file the pane can take. */
+  attachment(id: string): Promise<AttachmentContent | null>;
   /** Opens a LegalLabs page, such as the document viewer, in the user's browser. */
   openInBrowser(url: string): void;
 }

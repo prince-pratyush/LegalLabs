@@ -60,6 +60,7 @@ import { createEmailWorker } from "./notifications/email-worker.js";
 import { createNotifications } from "./notifications/notifications.js";
 import { createPurgeJob } from "./notifications/purge.js";
 import { registerThreadActions } from "./notifications/register.js";
+import { createOutlook } from "./outlook/outlook.js";
 import { createPlaybooks } from "./playbooks/playbooks.js";
 import { createPublicApi } from "./public-api/service.js";
 import { createRetentionSweepJob } from "./retention/job.js";
@@ -474,6 +475,7 @@ const app = createApp({
     }),
   ),
   tables,
+  outlook: createOutlook(pool, { documents, threads: threadService, vaults: vaultService }),
   // The socket address, or the client behind a proxy the deployer listed in
   // LEGALLABS_TRUSTED_PROXIES (comma-separated addresses or CIDR blocks of the ingress).
   clientIp: createClientIp(

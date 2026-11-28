@@ -15,6 +15,8 @@ export function fakeHost(item: MailItem | null = ITEM, overrides: Partial<MailHo
   let current = item;
   const host: MailHost = {
     item: () => current,
+    body: async () => "The notice must be served by 4 March.",
+    attachment: async () => ({ bytes: new Uint8Array([37, 80, 68, 70]) }),
     openInBrowser: (url) => {
       opened.push(url);
     },

@@ -232,6 +232,7 @@ export const auditActions: string[] = [
   // Ids, counts and domains only: never what was searched for.
   ...family("web.search", ["settings_updated", "matter_updated", "sent"]),
   "web.pages.fetched",
+  ...family("mail", ["items_ingested"]),
 ];
 
 export const AuditAction = z.enum(auditActions);

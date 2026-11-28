@@ -1,15 +1,17 @@
 import {
-  type Api,
   createApi,
   type DialogOpener,
   messageOf,
   SignInError,
+  type StreamingApi,
   signIn,
 } from "@legallabs/addin";
 import { Button, StatusText } from "@legallabs/ui";
 import { LogOut } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { AskPanel } from "./ask/AskPanel.js";
 import { tokenStore } from "./auth/token.js";
+import type { MailThread } from "./mail/ask.js";
 import type { MailHost, MailItem } from "./office/host.js";
 
 export const contextLabel = (item: MailItem) => {
@@ -30,6 +32,9 @@ export function App({
   const [token, setToken] = useState<string | null>(() => tokenStore.read());
   const [notice, setNotice] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  // Kept here, so a session that ends doesn't lose the thread. Ids only: after signing in
+  // again the answer is asked for as whoever signed in.
+  const [thread, setThread] = useState<MailThread | null>(null);
 
   const signedOut = useCallback((message: string | null) => {
     tokenStore.write(null);
@@ -37,7 +42,7 @@ export function App({
     setNotice(message);
   }, []);
 
-  const api: Api | null = useMemo(
+  const api: StreamingApi | null = useMemo(
     () =>
       token
         ? createApi(
@@ -74,6 +79,7 @@ export function App({
 
   const signOut = async () => {
     await api?.post("/auth/logout").catch(() => {});
+    setThread(null);
     signedOut(null);
   };
 
@@ -103,11 +109,23 @@ export function App({
             {notice && <StatusText tone="warning">{notice}</StatusText>}
           </>
         ) : item ? (
-          <section aria-label="Open email" className="grid gap-1 rounded-md bg-bg-subtle p-2">
-            <p className="text-caption text-fg-muted">{contextLabel(item)}</p>
-            <p className="truncate text-ui font-medium">{item.subject || "(no subject)"}</p>
-            <p className="truncate text-dense text-fg-muted">{item.from}</p>
-          </section>
+          <>
+            <section aria-label="Open email" className="grid gap-1 rounded-md bg-bg-subtle p-2">
+              <p className="text-caption text-fg-muted">{contextLabel(item)}</p>
+              <p className="truncate text-ui font-medium">{item.subject || "(no subject)"}</p>
+              <p className="truncate text-dense text-fg-muted">{item.from}</p>
+            </section>
+            <AskPanel
+              // A different message starts afresh.
+              key={item.itemId}
+              api={api}
+              host={host}
+              item={item}
+              origin={origin}
+              thread={thread?.itemId === item.itemId ? thread : null}
+              onThread={setThread}
+            />
+          </>
         ) : (
           <p className="text-ui text-fg-muted">Open an email to ask about it.</p>
         )}

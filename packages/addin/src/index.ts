@@ -1,5 +1,6 @@
-export { type Api, ApiError, createApi, messageOf } from "./api.js";
+export { type Api, ApiError, createApi, messageOf, type StreamingApi } from "./api.js";
 export { SignInDialog } from "./SignInDialog.js";
+export { safeUrl } from "./safe-url.js";
 export {
   createTokenStore,
   type DialogOpener,

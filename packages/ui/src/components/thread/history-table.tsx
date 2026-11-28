@@ -168,13 +168,20 @@ export function HistoryTable({
             <Lock aria-hidden className="size-3.5" /> Restricted
           </span>
         ) : (
-          <button
-            type="button"
-            onClick={() => onOpen(row)}
-            className="max-w-[40ch] truncate text-left font-medium text-fg hover:underline max-tablet:max-w-[38vw]"
-          >
-            {row.title}
-          </button>
+          <span className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onOpen(row)}
+              className="max-w-[40ch] truncate text-left font-medium text-fg hover:underline max-tablet:max-w-[38vw]"
+            >
+              {row.title}
+            </button>
+            {row.surface === "outlook" && (
+              <span className="rounded border border-border px-1 text-caption text-fg-muted">
+                Outlook
+              </span>
+            )}
+          </span>
         ),
     },
     { id: "type", secondary: true, header: "Type", cell: (row) => TYPE_LABELS[row.type] },
