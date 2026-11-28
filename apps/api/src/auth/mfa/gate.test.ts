@@ -97,6 +97,13 @@ describe("P-08 step-up on sensitive admin actions", () => {
     expect(isStepUpAction("DELETE", "/api/v1/admin/retention/policy")).toBe(true);
     expect(isStepUpAction("PUT", "/api/v1/admin/retention/holds")).toBe(true);
     expect(isStepUpAction("POST", `/api/v1/spaces/${ZERO}/parties`)).toBe(true);
+    // Who is in the workspace and what they may do.
+    expect(isStepUpAction("PATCH", `/api/v1/admin/users/${ZERO}`)).toBe(true);
+    expect(isStepUpAction("POST", "/api/v1/admin/users/invite")).toBe(true);
+    expect(isStepUpAction("POST", `/api/v1/admin/users/${ZERO}/invite`)).toBe(true);
+    expect(isStepUpAction("POST", "/api/v1/admin/roles")).toBe(true);
+    expect(isStepUpAction("GET", "/api/v1/admin/users")).toBe(false);
+    expect(isStepUpAction("GET", "/api/v1/admin/roles")).toBe(false);
     expect(isStepUpAction("GET", "/api/v1/admin/retention/policy")).toBe(false);
     expect(isStepUpAction("GET", "/api/v1/admin/retention")).toBe(false);
   });

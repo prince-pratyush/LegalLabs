@@ -42,6 +42,9 @@ const notFound = () => new UsersRefused(404, "NOT_FOUND", "That wasn't found.");
 const scimOwned = () =>
   new UsersRefused(409, "SCIM_MANAGED", "Your identity provider manages this. Change it there.");
 
+const ownAccount = () =>
+  new UsersRefused(409, "OWN_ACCOUNT", "Ask another administrator to change yours.");
+
 /** Turns what the database refused into what to tell the administrator. */
 function refusal(err: unknown): never {
   const { code, message } = err as { code?: string; message?: string };
@@ -49,6 +52,14 @@ function refusal(err: unknown): never {
     throw new UsersRefused(409, "LAST_ADMIN", "A workspace needs at least one administrator.");
   }
   if (message === "SCIM_MANAGED") throw scimOwned();
+  if (message === "OWN_ACCOUNT") throw ownAccount();
+  if (message === "WALLED_GROUP") {
+    throw new UsersRefused(
+      403,
+      "WALLED_GROUP",
+      "A wall names this group, so changing who is in it needs the admin.matters permission.",
+    );
+  }
   if (code === RLS_REFUSED) throw forbidden();
   throw err;
 }
@@ -388,12 +399,9 @@ export function createUsers(pool: pg.Pool, opts: UsersOptions) {
       return deliver(done, done.slug);
     },
 
-    async update(
-      p: Principal,
-      userId: string,
-      patch: UserPatch,
-      client: Client,
-    ): Promise<ManagedUser> {
+    async update(p: Principal, id: string, patch: UserPatch, client: Client): Promise<ManagedUser> {
+      // The database writes ids in lower case; an id typed otherwise is still the same person.
+      const userId = id.toLowerCase();
       return as(p, async (db) => {
         await need(db);
         const { rows } = await db.query<{
@@ -411,9 +419,7 @@ export function createUsers(pool: pg.Pool, opts: UsersOptions) {
         );
         const target = rows[0];
         if (!target) throw notFound();
-        if (userId === p.userId) {
-          throw new UsersRefused(409, "OWN_ACCOUNT", "Ask another administrator to change yours.");
-        }
+        if (userId === p.userId.toLowerCase()) throw ownAccount();
         // Covers group changes too, which the database does not weigh.
         if (!(await holds(db, target.permissions))) throw forbidden();
 

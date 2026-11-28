@@ -154,6 +154,34 @@ describe("managing people", () => {
     );
   });
 
+  it("asks for the second factor when a change needs it, then makes the change", async () => {
+    let fresh = false;
+    const sent = serve(
+      routes([person({ status: "suspended" })], {
+        [`PATCH /api/v1/admin/users/${BO}`]: () =>
+          fresh
+            ? [200, person()]
+            : [403, { code: "MFA_REQUIRED", message: "Confirm with your second factor." }],
+        "GET /api/v1/mfa": ok({ totp: true, passkeys: [] }),
+        "POST /api/v1/mfa/step-up/totp": () => {
+          fresh = true;
+          return [200, {}];
+        },
+      }),
+    );
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Reactivate bo@acme.test" }));
+    const prompt = await screen.findByRole("form", { name: "Confirm it's you" });
+    fireEvent.change(within(prompt).getByLabelText("Code from your authenticator app"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(within(prompt).getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "Confirm it's you" })).toBeNull(),
+    );
+    expect(sent.filter((s) => s.route === `PATCH /api/v1/admin/users/${BO}`)).toHaveLength(2);
+  });
+
   it("leaves your own account alone", async () => {
     serve(routes([person({ is_self: true })]));
     show();
