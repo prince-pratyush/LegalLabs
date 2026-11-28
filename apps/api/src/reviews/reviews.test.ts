@@ -1335,3 +1335,61 @@ describe("a matter's model policy in playbook reviews", () => {
     expect(r.calls).toEqual(before);
   });
 });
+
+describe("a matter's model policy after a review is made", () => {
+  async function made(extra: (r: { matterId: string; h: Harness; m: Seeded }) => Promise<object>) {
+    const model = countingProviders(
+      () => '{"alternates":[{"after":"is capped","justification":"x"}]}',
+    );
+    const h = harness(fakeEngine({ callModel: true }), () => "{}", { providers: model.providers });
+    const s = await setup(h);
+    const matterId = await newMatter(pool, s.m);
+    const { review_id } = await started(h, s, await extra({ matterId, h, m: s.m }));
+    const review = await waitFor(h, s.cookie, review_id);
+    await denyProviders(pool, matterId, "anthropic", "ollama");
+    const before = { ...model.calls };
+    const base = `/reviews/${review_id}/suggestions/${sidOf(review, "Liability")}`;
+    const asks = () => [
+      h.call(s.cookie, "POST", `${base}/alternates`),
+      h.call(s.cookie, "POST", `${base}/revise`, { instruction: "Shorter" }),
+      h.call(s.cookie, "POST", `/reviews/${review_id}/rules/${s.playbook.rules[0]?.id}/rerun`, {
+        document_version_id: s.versionId,
+      }),
+    ];
+    const refusedAll = async () => {
+      for (const res of await Promise.all(asks())) {
+        expect(res).toMatchObject({ status: 403, body: { code: "MODEL_NOT_ALLOWED" } });
+      }
+      expect(model.calls).toEqual(before);
+    };
+    return { refusedAll, review };
+  }
+
+  it("keeps to the matter of the thread the review was asked in", async () => {
+    const r = await made(async ({ matterId, m }) => {
+      const { rows } = await pool.query<{ id: string }>(
+        `insert into work.thread (workspace_id, owner_id, matter_id, title)
+         values ($1, $2, $3, 'Deal') returning id`,
+        [m.workspaceId, m.userId, matterId],
+      );
+      return { thread_id: rows[0]?.id };
+    });
+    await r.refusedAll();
+  });
+
+  it("keeps to the matter of a file given as background, without showing it", async () => {
+    let documentId = "";
+    const r = await made(async ({ matterId, h, m }) => {
+      const versionId = await upload(h, { m }, "background.docx", CLAUSES);
+      await fileInMatter(pool, versionId, matterId);
+      const { rows } = await pool.query<{ document_id: string }>(
+        "select document_id from content.document_version where id = $1",
+        [versionId],
+      );
+      documentId = rows[0]?.document_id ?? "";
+      return { extra_context: { document_ids: [documentId] } };
+    });
+    await r.refusedAll();
+    expect(JSON.stringify(r.review)).not.toContain(documentId);
+  });
+});

@@ -104,4 +104,25 @@ describe("a matter's model policy in workflow model steps", () => {
     await expect(s.complete([])).rejects.toMatchObject({ code: "MODEL_POLICY_NO_ELIGIBLE_MODEL" });
     expect(s.calls).toEqual({ anthropic: 0, ollama: 0 });
   });
+
+  it("refuses a later step once a file an earlier one read is out of reach", async () => {
+    const s = await setup();
+    await s.seal("anthropic");
+    await pool.query(
+      `insert into work.run_step (workspace_id, run_id, ordinal, kind, status, block_id, output)
+       values ($1, $2, 0, 'block', 'done', 'b1', $3)`,
+      [
+        s.run.workspace_id,
+        s.run.id,
+        JSON.stringify({ read: { versions: [s.file.version_id], tables: [] } }),
+      ],
+    );
+    await pool.query(
+      `insert into core.wall (workspace_id, matter_id, principal_type, principal_id, effect)
+       values ($1, $2, 'user', $3, 'deny')`,
+      [s.run.workspace_id, s.matterId, s.run.owner_id],
+    );
+    await expect(s.complete([])).rejects.toMatchObject({ code: "MODEL_POLICY_NO_ELIGIBLE_MODEL" });
+    expect(s.calls).toEqual({ anthropic: 0, ollama: 0 });
+  });
 });

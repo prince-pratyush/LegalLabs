@@ -190,6 +190,13 @@ const TASKS: Record<CompleteCall["task"], TaskClass> = {
   verify: "synthesize",
 };
 
+/** Everything a made review draws on: its contract, its background files and its thread. */
+const materialOf = (row: ReviewRow, ...versions: (string | null)[]): Material => ({
+  documents: [row.document_id, ...(row.context_document_ids ?? [])],
+  threads: [row.thread_id],
+  versions,
+});
+
 class Refused extends Error {
   constructor(readonly reason: ReviewFailure) {
     super(reason);
@@ -213,6 +220,8 @@ interface ReviewRow {
   document_name: string;
   surface: "web" | "word";
   customisation: Customisation;
+  thread_id: string | null;
+  context_document_ids: string[] | null;
   status: Review["status"];
   run_status: string;
   clause_map: Record<string, number[]>;
@@ -253,7 +262,8 @@ interface RerunRow {
 
 const REVIEW_COLUMNS = `r.id, r.run_id, r.owner_id, r.playbook_id, r.playbook_version_id, r.playbook_name,
   r.rules, r.guidance, r.document_id, r.document_version_id, d.name document_name, r.surface,
-  r.customisation, r.status, run.status run_status, r.clause_map, r.excluded_regions, r.results,
+  r.customisation - 'context_document_ids' as customisation, r.thread_id,
+  r.customisation -> 'context_document_ids' as context_document_ids, r.status, run.status run_status, r.clause_map, r.excluded_regions, r.results,
   r.gaps, r.summary, r.warnings, r.usage, r.started_at, r.finished_at`;
 const REVIEW_FROM = `work.playbook_review r join work.run run on run.id = r.run_id
   join content.document d on d.id = r.document_id`;
@@ -1043,7 +1053,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
     maxOutput: number,
   ): Promise<Record<string, unknown> | null> {
     const models = await asApp(pool, principal, (db) =>
-      modelsFor(db, gateway, { documents: [row.document_id], versions: [versionId] }),
+      modelsFor(db, gateway, materialOf(row, versionId)),
     );
     if (!models.allows("draft_edit")) throw new Refused("MODEL_NOT_ALLOWED");
     const code = randomBytes(12).toString("hex");
@@ -1171,12 +1181,13 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             documents: [meta.documentId, ...(request.extra_context?.document_ids ?? [])],
             threads: [request.thread_id],
           };
-          await reviewModels(db, material);
           const src = await loadSource(db, store, meta);
           if (typeof src === "string") throw new Refused(src);
           if (src.chars > PLAYBOOK_LIMITS.doc_chars) throw new Refused("DOC_TOO_LARGE");
           const extra = await extraContext(db, request.extra_context);
           if (typeof extra !== "string") throw new Refused(extra.reason);
+          // After the files are read, so one the caller can't open is reported as not found.
+          await reviewModels(db, material);
           await underCap(db, principal);
           const inScope =
             request.scope === "all"
@@ -1222,7 +1233,11 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
               meta.versionId,
               request.surface,
               request.thread_id ?? null,
-              JSON.stringify(customisation),
+              // Kept beside the choices, and left out when the review is read.
+              JSON.stringify({
+                ...customisation,
+                context_document_ids: request.extra_context?.document_ids,
+              }),
               warnings,
               JSON.stringify(src.excludedRegions),
             ],
@@ -1579,7 +1594,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
           // Any version the caller can read: Word uploads a fresh document for each re-run.
           const meta = await versionMeta(db, versionId);
           if (!meta) throw new Refused("NOT_FOUND");
-          const material: Material = { documents: [row.document_id, meta.documentId] };
+          const material = materialOf(row, meta.versionId);
           await reviewModels(db, material);
           const src = await loadSource(db, store, meta);
           if (typeof src === "string") throw new Refused(src);

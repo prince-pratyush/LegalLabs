@@ -7,7 +7,7 @@ import type { OfferedTool } from "../admin-models/connectors.js";
 import type { ToolExecutor } from "../connectors/executor.js";
 import { storable } from "../connectors/sanitise.js";
 import { asApp, newMessageId } from "../db.js";
-import { modelsFor } from "../matters/model-policy.js";
+import { modelsFor, NO_MODEL_MESSAGE } from "../matters/model-policy.js";
 import type { ContextPort } from "./context.js";
 import { checkAnswer, citationEvent, type ShownDocument } from "./run-citations.js";
 import {
@@ -302,12 +302,29 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
     v: Loaded,
     log: readonly StepLog[],
     offered: readonly OfferedTool[],
-    exclude: string[],
   ): Promise<StepOutcome> {
     const code = randomBytes(12).toString("hex");
     const inputs = await inputsOf(ctx);
     const qa = await answersSoFar(ctx, ordinal);
     const material = await materialFor(ctx, code);
+    // Earlier turns' questions and tool calls may quote what they read, so that counts too.
+    const read = [
+      ...new Set([
+        ...material.shown.map((d) => d.versionId),
+        ...log.flatMap((l) => (l.output.read as string[] | undefined) ?? []),
+      ]),
+    ];
+    const models = await asApp(deps.pool, principal(ctx.run), (db) =>
+      modelsFor(db, deps.gateway, {
+        matters: [ctx.run.matter_id],
+        threads: [ctx.run.thread_id],
+        versions: read,
+      }),
+    );
+    if (!models.allows(TASK_CLASS.reason)) {
+      return { kind: "fail", code: "MODEL_POLICY_NO_ELIGIBLE_MODEL", message: NO_MODEL_MESSAGE };
+    }
+    const exclude = models.exclude;
     const calls = callHistory(log, code);
     const prompt = [
       `Instructions:\n${v.instructions}`,
@@ -334,6 +351,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
     await step(ctx, s, "Do the work", "started");
     // Time-ordered like every other message id, and needed before the row exists.
     const messageId = await asApp(deps.pool, principal(ctx.run), newMessageId);
+    await ctx.store.mergeOutput(ordinal, { read });
     // What the model call cost, kept if anything after it fails.
     let spent = {};
     try {
@@ -780,7 +798,7 @@ export function createAgentHandler(deps: AgentHandlerDeps): RunHandler {
           pending,
         });
       }
-      return modelTurn(ctx, ordinal, v, log, offered, models.exclude);
+      return modelTurn(ctx, ordinal, v, log, offered);
     },
 
     async answer(ctx, s: StepRecord, answer) {

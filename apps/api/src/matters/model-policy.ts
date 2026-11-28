@@ -7,7 +7,8 @@ import type pg from "pg";
 const TASKS: readonly TaskClass[] = ["synthesize", "plan", "read_extract", "draft_edit"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const NO_MODEL_MESSAGE = "This matter's model policy leaves no model for this.";
+export const NO_MODEL_MESSAGE =
+  "No model is allowed for this: a matter's model policy, or material you can no longer open, rules them all out.";
 
 type Ids = readonly (string | null | undefined)[];
 
@@ -33,7 +34,10 @@ export interface MatterModels {
   permits(model: string): boolean;
 }
 
-/** What the model policies of the material's matters leave usable, read as the caller. */
+/**
+ * What the model policies of the material's matters leave usable, read as the caller. Nothing is
+ * left when an id named here, or the matter behind it, can't be seen.
+ */
 export async function modelsFor(
   db: pg.PoolClient,
   gateway: Gateway,
@@ -47,32 +51,51 @@ export async function modelsFor(
     material.spaces,
     material.tables,
   ].map((ids) => [...new Set(ids?.filter((id): id is string => !!id && UUID.test(id)))]);
-  const { rows } = params.some((ids) => ids.length > 0)
+  const named = params.reduce((n, ids) => n + ids.length, 0);
+  // Each thing named, with its matter; a table also lists the matters of its rows' files.
+  const { rows } = named
     ? await db.query<{
+        ref: string | null;
+        matter_id: string | null;
+        seen: boolean;
         model_policy: { deny_providers?: string[]; deny_models?: string[] } | null;
       }>(
-        `select m.model_policy from core.matter m
-          where m.model_policy is not null and m.id in (
-            select unnest($1::uuid[])
-            union select d.matter_id from content.document d where d.id = any($2::uuid[])
-            union select d.matter_id from content.document_version v
-                    join content.document d on d.id = v.document_id where v.id = any($3::uuid[])
-            union select t.matter_id from work.thread t where t.id = any($4::uuid[])
-            union select s.matter_id from work.space s where s.id = any($5::uuid[])
-            union select t.matter_id from work.review_table t where t.id = any($6::uuid[])
-            union select d.matter_id from work.rt_row r
-                    join content.document d on d.id = any(r.document_ids)
-                   where r.table_id = any($6::uuid[]) and r.deleted_at is null)`,
+        `with refs (ref, matter_id) as (
+           select 'matter:' || id, id from unnest($1::uuid[]) id
+           union all
+           select 'document:' || d.id, d.matter_id from content.document d where d.id = any($2::uuid[])
+           union all
+           select 'version:' || v.id, d.matter_id from content.document_version v
+             join content.document d on d.id = v.document_id where v.id = any($3::uuid[])
+           union all
+           select 'thread:' || t.id, t.matter_id from work.thread t where t.id = any($4::uuid[])
+           union all
+           select 'space:' || s.id, s.matter_id from work.space s where s.id = any($5::uuid[])
+           union all
+           select 'table:' || t.id, t.matter_id from work.review_table t where t.id = any($6::uuid[])
+           union all
+           select null, d.matter_id from work.rt_row r
+             join content.document d on d.id = any(r.document_ids)
+            where r.table_id = any($6::uuid[]) and r.deleted_at is null)
+         select r.ref, r.matter_id, m.id is not null as seen, m.model_policy
+           from refs r left join core.matter m on m.id = r.matter_id`,
         params,
       )
     : { rows: [] };
+  // A policy that can't be read can't be kept, so anything out of the caller's sight refuses.
+  const hidden =
+    new Set(rows.flatMap((r) => (r.ref ? [r.ref] : []))).size < named ||
+    rows.some((r) => r.matter_id !== null && !r.seen);
   const permits = (id: string) => {
     const [provider = "", ...name] = id.split("/");
-    return !rows.some(
-      ({ model_policy: policy }) =>
-        policy?.deny_providers?.includes(provider) ||
-        policy?.deny_models?.includes(id) ||
-        policy?.deny_models?.includes(name.join("/")),
+    return (
+      !hidden &&
+      !rows.some(
+        ({ model_policy: policy }) =>
+          policy?.deny_providers?.includes(provider) ||
+          policy?.deny_models?.includes(id) ||
+          policy?.deny_models?.includes(name.join("/")),
+      )
     );
   };
   const ids = (task: TaskClass) => gateway.models(task).map((m) => m.id);

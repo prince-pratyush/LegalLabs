@@ -260,6 +260,45 @@ describe("a workflow run", () => {
     expect(error?.data.message).not.toContain("scripted");
   });
 
+  it("records what drafting and table selection read, for the policy of later steps", async () => {
+    const def = workflow(
+      [
+        { type: "user_input.file", id: "f", label: "Files", prompt: "Files" },
+        { type: "user_input.review_table", id: "t", label: "Table", prompt: "Table" },
+        { type: "review_table.select", id: "s", label: "Rows", table: "@Table" },
+        {
+          type: "drafting",
+          id: "d",
+          label: "Letter",
+          format: "docx",
+          mode: "from_scratch",
+          instructions: "Draft from @Files",
+        },
+        { type: "response", id: "out", outputs: [{ ref: "@Letter", as: "file" }] },
+      ],
+      [
+        ["f", "t"],
+        ["t", "s"],
+        ["s", "d"],
+        ["d", "out"],
+      ],
+    );
+    const tableId = "0194f3a0-0000-7000-8000-000000000001";
+    const ports = scriptedPorts(
+      { definition: def, inputs: { Files: [testFile("Lease.pdf")], Table: tableId } },
+      { files: ["Lease.pdf"] },
+    );
+    ports.tables.port.select = async () => ({ table_id: tableId, columns: [], rows: [] });
+    const r = await runInMemory(ports.deps);
+    const read = (id: string) => [...r.steps.values()].find((s) => s.block_id === id)?.output.read;
+    expect(read("s")).toEqual({ versions: [], tables: [tableId] });
+    expect(read("d")).toEqual({
+      versions: ports.drafts.calls[0]?.documents.map((d) => d.version_id),
+      tables: [],
+    });
+    expect(ports.drafts.calls[0]?.documents).toHaveLength(1);
+  });
+
   it("refuses bad inputs before any step", async () => {
     const r = await runInMemory(scriptedPorts({ definition: simple, inputs: {} }).deps);
     expect(r.result).toEqual({ status: "failed", code: "INPUT_INVALID" });
