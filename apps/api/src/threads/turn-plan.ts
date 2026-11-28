@@ -101,6 +101,8 @@ export interface PlanRequest {
   /** A change the person asked for to the last plan. */
   change?: { steps: readonly string[]; instruction: string };
   signal?: AbortSignal;
+  /** Models the thread's matter keeps this material from. */
+  exclude: readonly string[];
 }
 
 export type PlanOutcome =
@@ -131,6 +133,7 @@ export async function proposePlan(gateway: Gateway, request: PlanRequest): Promi
         budget: { max_output: MAX_OUTPUT, max_cost_usd: MAX_COST_USD },
         routing: { workspace: request.workspaceId },
         trace: randomUUID(),
+        ...(request.exclude.length ? { exclude: request.exclude } : {}),
       },
       request.signal,
     );
