@@ -1,7 +1,7 @@
 import { storable, stripInvisible } from "../connectors/sanitise.js";
 import { BlockedFetch, safeDownload } from "../net/fetch.js";
 import { MAX_TEXT, readPage } from "./extract.js";
-import { robotsAllow } from "./robots.js";
+import { parseRobots, type Robots, robotsAllow } from "./robots.js";
 
 /*
  * Fetches one web page so it can be quoted. The address was chosen by a search provider, a
@@ -52,6 +52,8 @@ export const USER_AGENT = "LegalLabs/1.0";
 const MAX_URL = 2000;
 const MAX_REDIRECTS = 3;
 const ROBOTS_BYTES = 500_000;
+const ROBOTS_KEPT_MS = 10 * 60_000;
+const ROBOTS_ORIGINS = 100;
 const TYPES = new Set(["text/html", "application/xhtml+xml", "text/plain"]);
 // No compression is asked for, so there is nothing to expand past the size cap.
 const HEADERS = {
@@ -97,12 +99,18 @@ export function createPageFetcher(options: FetcherOptions = {}): PageFetcher {
   const onRefused =
     options.onRefused ??
     ((reason, host) => console.warn(`web fetch refused: ${reason} host=${host}`));
+  // Read once per site for a while, oldest out first. A server's failure is not remembered.
+  const kept = new Map<string, { rules: Robots; until: number }>();
+  const keep = (origin: string, rules: Robots) => {
+    kept.delete(origin);
+    kept.set(origin, { rules, until: Date.now() + ROBOTS_KEPT_MS });
+    if (kept.size > ROBOTS_ORIGINS) kept.delete(kept.keys().next().value as string);
+  };
 
   return {
     async fetch(url, { signal } = {}) {
       let host = "";
       const until = Date.now() + deadlineMs;
-      const robots = new Map<string, string | null>();
       const policy = { insecureDev, timeoutMs: deadlineMs };
       const init = { publicHeaders: HEADERS, ...(signal ? { signal } : {}) };
 
@@ -115,7 +123,8 @@ export function createPageFetcher(options: FetcherOptions = {}): PageFetcher {
       };
 
       const allowed = async (target: URL, msLeft: number) => {
-        let rules = robots.get(target.origin);
+        const cached = kept.get(target.origin);
+        let rules = cached && cached.until > Date.now() ? cached.rules : undefined;
         if (rules === undefined) {
           const res = await safeDownload(
             `${target.origin}/robots.txt`,
@@ -130,11 +139,13 @@ export function createPageFetcher(options: FetcherOptions = {}): PageFetcher {
           );
           host = target.hostname;
           // No file means no rules; a server that cannot say is taken to mean no.
-          if (res.status >= 200 && res.status < 300) rules = res.body.toString("utf8");
-          else rules = res.status >= 400 && res.status < 500 ? "" : null;
-          robots.set(target.origin, rules);
+          if (res.status >= 200 && res.status < 300) {
+            rules = parseRobots(res.body.toString("utf8"));
+          } else if (res.status >= 400 && res.status < 500) rules = [];
+          else return false;
+          keep(target.origin, rules);
         }
-        return rules !== null && robotsAllow(rules, `${target.pathname}${target.search}`);
+        return robotsAllow(rules, `${target.pathname}${target.search}`);
       };
 
       try {

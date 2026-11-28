@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { robotsAllow } from "./robots.js";
+import { robotsAllow as allow, parseRobots } from "./robots.js";
+
+const robotsAllow = (robots: string, path: string) => allow(parseRobots(robots), path);
 
 describe("robotsAllow", () => {
   it("allows everything when nothing applies", () => {
@@ -36,5 +38,26 @@ describe("robotsAllow", () => {
     const started = Date.now();
     expect(robotsAllow(hostile, `/${"a".repeat(2000)}`)).toBe(true);
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("reads many agents and many rules in time proportional to the file", () => {
+    const hostile = "User-agent: *\n".repeat(20_000) + "Disallow: /x\n".repeat(16_000);
+    const started = Date.now();
+    parseRobots(hostile);
+    expect(Date.now() - started).toBeLessThan(250);
+  });
+
+  it("stays out of a site with more rules or wildcards than it will weigh", () => {
+    const wild = `User-agent: *\n${`Disallow: /${"*a".repeat(200)}\n`.repeat(20)}`;
+    expect(robotsAllow(wild, "/b")).toBe(false);
+    expect(robotsAllow(`User-agent: *\n${"Disallow: /x\n".repeat(1001)}`, "/b")).toBe(false);
+  });
+
+  it("weighs the most it will keep quickly", () => {
+    const needle = `${"a".repeat(200)}b${"a".repeat(200)}`;
+    const rules = parseRobots(`User-agent: *\n${`Disallow: /*${needle}\n`.repeat(900)}`);
+    const started = Date.now();
+    expect(allow(rules, `/${"a".repeat(2000)}`)).toBe(true);
+    expect(Date.now() - started).toBeLessThan(250);
   });
 });
