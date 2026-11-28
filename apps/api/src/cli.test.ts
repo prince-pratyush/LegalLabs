@@ -86,3 +86,51 @@ describe("legallabs-admin create-admin", () => {
     expect(h.lines.join()).toContain("DATABASE_URL");
   });
 });
+
+describe("legallabs-admin create-user", () => {
+  const roleAndPermissions = async (email: string) =>
+    (
+      await pool.query(
+        `select r.name, r.permissions, u.status from core."user" u
+           join core.role r on r.id = u.role_id where u.email = $1`,
+        [email],
+      )
+    ).rows[0];
+
+  it("makes an ordinary user, not an administrator", async () => {
+    const { slug, email } = fresh();
+    await run(["create-admin", slug, email], io(GOOD).io);
+    const other = `second@${slug}.test`;
+    expect(await run(["create-user", slug, other], io(GOOD).io)).toBe(0);
+    const row = await roleAndPermissions(other);
+    expect(row).toMatchObject({ name: "User", status: "active" });
+    expect(row.permissions).toContain("threads.use");
+    expect(row.permissions.join()).not.toMatch(/\*|admin\./);
+    expect(
+      await auth.login({ workspace: slug, email: other, password: GOOD }, client),
+    ).not.toBeNull();
+  });
+
+  it("will not give administrator rights, even when asked by name", async () => {
+    const { slug, email } = fresh();
+    await run(["create-admin", slug, email], io(GOOD).io);
+    const h = io(GOOD);
+    expect(await run(["create-user", slug, `b@${slug}.test`, "Admin"], h.io)).toBe(1);
+    expect(h.lines.join()).toContain("create-admin");
+    expect(await roleAndPermissions(`b@${slug}.test`)).toBeUndefined();
+  });
+
+  it("leaves someone who exists, an unknown workspace and an unknown role alone", async () => {
+    const { slug, email } = fresh();
+    await run(["create-admin", slug, email], io(GOOD).io);
+    expect(await run(["create-user", slug, email], io("another long password").io)).toBe(1);
+    expect(await auth.login({ workspace: slug, email, password: GOOD }, client)).not.toBeNull();
+    expect(await run(["create-user", "nowhere-at-all", `c@${slug}.test`], io(GOOD).io)).toBe(1);
+    expect(await run(["create-user", slug, `c@${slug}.test`, "Nope"], io(GOOD).io)).toBe(1);
+    expect(await run(["create-user", slug, `c@${slug}.test`], io("short").io)).toBe(1);
+    const { rows } = await pool.query(`select 1 from core."user" where email = $1`, [
+      `c@${slug}.test`,
+    ]);
+    expect(rows).toEqual([]);
+  });
+});
