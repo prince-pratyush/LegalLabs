@@ -567,3 +567,15 @@ describe("history", () => {
     );
   });
 });
+
+describe("signing out", () => {
+  it("empties what the app cached", async () => {
+    const gone = vi.fn(async () => true);
+    vi.stubGlobal("caches", { keys: async () => ["legallabs-shell-1"], delete: gone });
+    serve({ ...signedIn, "POST /auth/logout": () => [204, null] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+    await waitFor(() => expect(gone).toHaveBeenCalledWith("legallabs-shell-1"));
+  });
+});

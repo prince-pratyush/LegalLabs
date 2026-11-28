@@ -504,6 +504,13 @@ export function createApp({
     app.get("/d/*", serveStatic({ root: webRoot, path: "index.html" }));
     // Where an invitation link points.
     app.get("/guest/accept", serveStatic({ root: webRoot, path: "index.html" }));
+    // The same names every release, so the browser asks again each time.
+    for (const path of ["/sw.js", "/manifest.webmanifest", "/offline.html", "/offline.css"]) {
+      app.use(path, async (c, next) => {
+        await next();
+        if (c.res.status === 200) c.header("Cache-Control", "no-cache");
+      });
+    }
     // Build files carry a hash of their content in the name, so a copy never goes stale.
     app.use("/assets/*", async (c, next) => {
       await next();
