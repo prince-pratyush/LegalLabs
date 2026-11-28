@@ -1,6 +1,6 @@
 import { buildDocx, readDocx } from "@legallabs/docx";
 import type { ModelProvider } from "@legallabs/model-gateway";
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8, unzipSync, zipSync } from "fflate";
 import { afterAll, describe, expect, it } from "vitest";
 import { auditTrail, testPool } from "../test-db.js";
 import { matterHarness, type Person } from "../test-matters.js";
@@ -10,10 +10,13 @@ afterAll(() => pool.end());
 
 let calls: string[] = [];
 let fails = false;
+let tokens = 100;
+let during: (() => Promise<unknown>) | null = null;
 // A fake translator: each numbered paragraph comes back in capitals.
 const model: ModelProvider = {
   complete: async ({ messages }) => {
     if (fails) throw new Error("down");
+    await during?.();
     const body = messages.at(-1)?.content ?? "";
     calls.push(messages.map((m) => m.content).join("\n"));
     const lines = body.split("\n").filter((l) => l.startsWith("[["));
@@ -22,7 +25,7 @@ const model: ModelProvider = {
         l.replace(/^(\[\[\d+\]\]) (.*)$/, (_a, mark, words) => `${mark} ${words.toUpperCase()}`),
       )
       .join("\n");
-    return { text: text || "Rent is due.", usage: { input_tokens: 100, output_tokens: 100 } };
+    return { text: text || "Rent is due.", usage: { input_tokens: tokens, output_tokens: 100 } };
   },
 };
 const h = matterHarness(pool, { anthropic: model });
@@ -51,11 +54,23 @@ async function upload(who: Person, name: string, bytes: Uint8Array | string, pat
   // biome-ignore lint/suspicious/noExplicitAny: loosely typed test body.
   const body = (await res.json()) as any;
   await h.drain(who);
-  return (body.document ?? body.file) as { id: string; version_id: string };
+  const added = (body.document ?? body.file) as { id: string; version_id: string };
+  // No document service runs here to read a .docx, so it is marked as one would leave it.
+  if (name.endsWith(".docx")) {
+    await pool.query(
+      "update content.ingest_job set status = 'indexed', reason = null where version_id = $1",
+      [added.version_id],
+    );
+  }
+  return added;
 }
 
+let someone: Person | undefined;
+
 async function opened(who?: Person) {
-  const ana = who ?? (await h.workspace());
+  // Sign-ins from one address are limited, so most tests share one person.
+  if (!who) someone ??= await h.workspace();
+  const ana = who ?? (someone as Person);
   const note = await upload(ana, "note.txt", "Rent is due.");
   const res = await h.call(ana, "POST", "/threads", {
     content: "What is due?",
@@ -176,6 +191,84 @@ describe("translating in a thread", () => {
     const refused = await r.translate({ target_lang: "fr", text: "Rent." });
     expect([refused.status, refused.body.code]).toEqual([403, "MODEL_NOT_ALLOWED"]);
     expect(calls).toHaveLength(0);
+  });
+
+  it("reads only a file that was scanned and accepted", async () => {
+    const r = await opened();
+    const lease = await upload(r.ana, "lease.docx", LEASE);
+    calls = [];
+    for (const [status, reason, code] of [
+      ["failed", "MALWARE_FOUND", "UNREADABLE_FILE"],
+      ["failed", "FILE_TOO_LARGE", "UNREADABLE_FILE"],
+      ["queued", null, "NOT_READY"],
+      ["parsing", null, "NOT_READY"],
+    ] as const) {
+      await pool.query(
+        "update content.ingest_job set status = $2, reason = $3 where version_id = $1",
+        [lease.version_id, status, reason],
+      );
+      const res = await r.translate({ target_lang: "fr", document_ids: [lease.id] });
+      expect([status, res.body.code]).toEqual([status, code]);
+    }
+    expect(calls).toHaveLength(0);
+    expect((await r.thread()).outputs).toEqual([]);
+  });
+
+  it("refuses a .docx carrying active content", async () => {
+    const r = await opened();
+    const parts = unzipSync(LEASE);
+    parts["word/vbaProject.bin"] = new Uint8Array([1, 2, 3]);
+    const macro = await upload(r.ana, "macro.docx", zipSync(parts));
+    calls = [];
+    const res = await r.translate({ target_lang: "fr", document_ids: [macro.id] });
+    expect([res.status, res.body.code]).toEqual([400, "ACTIVE_CONTENT"]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a copy too large to keep before paying to translate it", async () => {
+    const r = await opened();
+    const parts = unzipSync(LEASE);
+    // Noise doesn't compress, so the rebuilt file stays over the limit.
+    const noise = new Uint8Array(6 * 1024 * 1024);
+    for (let i = 0; i < noise.length; i += 65_536)
+      crypto.getRandomValues(noise.subarray(i, i + 65_536));
+    parts["word/media/scan.png"] = noise;
+    const big = await upload(r.ana, "big.docx", zipSync(parts));
+    calls = [];
+    const res = await r.translate({ target_lang: "fr", document_ids: [big.id] });
+    expect([res.status, res.body.code]).toEqual([400, "LIMIT_FILE_SIZE"]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("spends one budget across all the files of a request", async () => {
+    const r = await opened();
+    const second = await upload(r.ana, "two.txt", "Rates are due.");
+    calls = [];
+    // One call that costs more than the whole request may.
+    tokens = 5_000_000;
+    await r.translate({ target_lang: "fr", document_ids: [r.note.id, second.id] });
+    tokens = 100;
+    expect(calls).toHaveLength(1);
+    const thread = await r.thread();
+    expect(thread.outputs).toHaveLength(1);
+    expect(thread.messages.at(-1).content).toContain("1 of the files couldn't be translated");
+  });
+
+  it("keeps what was spent when the run is cancelled", async () => {
+    // A fresh person, as the shared one has used up their asks for the window.
+    someone = undefined;
+    const r = await opened();
+    during = async () => {
+      const run = (await r.thread()).runs.at(-1);
+      await h.call(r.ana, "POST", `/runs/${run.id}/cancel`);
+    };
+    tokens = 100_000;
+    await r.translate({ target_lang: "fr", text: "Rent is due." });
+    during = null;
+    tokens = 100;
+    const run = (await r.thread()).runs.at(-1);
+    expect(run.status).toBe("cancelled");
+    expect(run.cost_usd).toBeGreaterThan(0);
   });
 
   it("fails the run when no model answers", async () => {

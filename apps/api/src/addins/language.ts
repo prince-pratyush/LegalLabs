@@ -28,7 +28,7 @@ export interface Language {
     workspaceId: string,
     paragraphs: string[],
     language: (typeof LANGUAGES)[number],
-    options?: { exclude?: readonly string[]; signal?: AbortSignal },
+    options?: { exclude?: readonly string[]; signal?: AbortSignal; maxCostUsd?: number },
   ): Promise<LanguageResult<(string | null)[]> & { costUsd?: number }>;
 }
 
@@ -130,7 +130,7 @@ export function createLanguage(gateway: Gateway): Language {
     system: string,
     body: string,
     maxOutput: number,
-    options: { exclude?: readonly string[]; signal?: AbortSignal } = {},
+    options: { exclude?: readonly string[]; signal?: AbortSignal; maxCostUsd?: number } = {},
   ) =>
     gateway.call(
       {
@@ -139,7 +139,7 @@ export function createLanguage(gateway: Gateway): Language {
           { role: "system", content: system },
           { role: "user", content: body },
         ],
-        budget: { max_output: maxOutput, max_cost_usd: 0.2 },
+        budget: { max_output: maxOutput, max_cost_usd: Math.min(0.2, options.maxCostUsd ?? 0.2) },
         routing: { workspace: workspaceId },
         trace: randomUUID(),
         ...(options.exclude?.length ? { exclude: options.exclude } : {}),

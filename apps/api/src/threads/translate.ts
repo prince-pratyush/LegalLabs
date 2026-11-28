@@ -3,7 +3,7 @@ import {
   TRANSLATION_LANGUAGES,
   type TranslationLanguage,
 } from "@legallabs/contracts";
-import { buildDocx, openText } from "@legallabs/docx";
+import { buildDocx, DocxError, openText } from "@legallabs/docx";
 import type { Gateway } from "@legallabs/model-gateway";
 import { contentKey, type ObjectStore } from "@legallabs/storage";
 import type pg from "pg";
@@ -17,6 +17,8 @@ export interface TranslateRequest {
   /** Models a matter keeps this material from. */
   exclude: readonly string[];
   signal?: AbortSignal;
+  /** What is left of the request's budget; a call that could cost more is not made. */
+  maxCostUsd: number;
 }
 
 /**
@@ -33,9 +35,10 @@ export interface Translator {
 export function modelTranslator(gateway: Gateway): Translator {
   const language = createLanguage(gateway);
   return {
-    async translate({ workspaceId, texts, language: into, exclude, signal }) {
+    async translate({ workspaceId, texts, language: into, exclude, signal, maxCostUsd }) {
       const done = await language.translate(workspaceId, texts, TRANSLATION_LANGUAGES[into], {
         exclude,
+        maxCostUsd,
         ...(signal ? { signal } : {}),
       });
       return done.ok ? { translated: done.value, costUsd: done.costUsd ?? 0 } : null;
@@ -43,13 +46,14 @@ export function modelTranslator(gateway: Gateway): Translator {
   };
 }
 
-// One request never spends more than this, however many batches it has.
-const MAX_COST_USD = 2;
+// One request never spends more than this, however many files and batches it has.
+export const MAX_TRANSLATION_USD = 2;
 const WORDS = /\p{L}/u;
 
 /** Translates in batches, keeping the space around each piece and skipping what has no words. */
 export async function translateAll(
   translator: Translator,
+  /** `maxCostUsd` here is what is left for the whole request. */
   request: TranslateRequest,
   stopped: () => boolean,
 ): Promise<{ translated: (string | null)[]; missing: number; costUsd: number }> {
@@ -60,7 +64,7 @@ export async function translateAll(
   let costUsd = 0;
   let done = 0;
   let at = 0;
-  while (at < wanted.length && costUsd < MAX_COST_USD && !stopped()) {
+  while (at < wanted.length && costUsd < request.maxCostUsd && !stopped()) {
     const batch = [wanted[at] as (typeof wanted)[number]];
     let chars = batch[0]?.text.length ?? 0;
     for (const next of wanted.slice(at + 1, at + MAX_BATCH_PARAGRAPHS)) {
@@ -69,7 +73,11 @@ export async function translateAll(
       chars += next.text.length;
     }
     at += batch.length;
-    const result = await translator.translate({ ...request, texts: batch.map((b) => b.text) });
+    const result = await translator.translate({
+      ...request,
+      texts: batch.map((b) => b.text),
+      maxCostUsd: request.maxCostUsd - costUsd,
+    });
     if (!result) break;
     costUsd += result.costUsd;
     batch.forEach((item, n) => {
@@ -92,47 +100,69 @@ export interface Translatable {
   documentId: string;
   name: string;
   texts: string[];
+  /** XML parsed for it, bounded across the files of one request. */
+  xmlBytes: number;
   build(translated: readonly (string | null)[]): Uint8Array;
 }
 
 const TEXT_MIMES = new Set(["application/pdf", "text/plain", "text/markdown"]);
 
+/** Whether a file of this type can be translated at all. */
+export const translatable = (mime: string) => mime === DOCX || TEXT_MIMES.has(mime);
+
 /**
- * The words of a version. A .docx is translated inside its own file, keeping its layout; a PDF or
- * text file becomes a plain .docx made from the pages ingest read.
+ * The page text of a PDF or text file, measured before it is fetched; null when it alone is more
+ * than a request may translate.
+ */
+export async function pagesToTranslate(db: pg.PoolClient, versionId: string) {
+  const { rows: size } = await db.query<{ chars: string }>(
+    "select coalesce(sum(char_length(text)), 0) chars from content.page where version_id = $1",
+    [versionId],
+  );
+  if (Number(size[0]?.chars) > TRANSLATE_LIMITS.totalChars) return null;
+  const { rows } = await db.query<{ text: string }>(
+    "select text from content.page where version_id = $1 order by page_no",
+    [versionId],
+  );
+  return rows.map((row) => row.text);
+}
+
+export type Unreadable = "UNSUPPORTED_TYPE" | "ACTIVE_CONTENT" | "LIMIT_FILE_SIZE" | "NOT_READY";
+
+/**
+ * The words of a version that was scanned and accepted. A .docx is translated inside its own file,
+ * keeping its layout; a PDF or text file becomes a plain .docx made from the pages ingest read.
+ * Called outside any transaction: unpacking and parsing take time.
  */
 export async function loadTranslatable(
-  db: pg.PoolClient,
   store: ObjectStore | undefined,
   meta: VersionMeta,
-): Promise<Translatable | "UNSUPPORTED_TYPE" | "NOT_READY"> {
+  pages: readonly string[],
+): Promise<Translatable | Unreadable> {
   const base = { documentId: meta.documentId, name: meta.name };
   if (meta.mime === DOCX) {
     const bytes = await store?.get(contentKey(meta.workspaceId, meta.sha256.toString("hex")));
     if (!bytes) return "NOT_READY";
     try {
+      const open = openText(bytes);
       // Opened again to write, so ten files' unpacked parts aren't all held while translating.
       return {
         ...base,
-        texts: openText(bytes).segments,
+        texts: open.segments,
+        xmlBytes: open.xmlBytes,
         build: (translated) => openText(bytes).apply(translated),
       };
-    } catch {
-      return "UNSUPPORTED_TYPE";
+    } catch (err) {
+      if (!(err instanceof DocxError)) throw err;
+      if (err.code === "ACTIVE_CONTENT") return "ACTIVE_CONTENT";
+      return err.code === "TOO_LARGE" ? "LIMIT_FILE_SIZE" : "UNSUPPORTED_TYPE";
     }
   }
-  if (!TEXT_MIMES.has(meta.mime)) return "UNSUPPORTED_TYPE";
-  const { rows } = await db.query<{ text: string }>(
-    // Bounded before it is split: anything longer is refused for its length anyway.
-    `select left(text, $2) as text from content.page where version_id = $1
-      order by page_no limit 2000`,
-    [meta.versionId, TRANSLATE_LIMITS.totalChars + 1],
-  );
-  if (rows.length === 0) return "NOT_READY";
-  const texts = pageParagraphs(rows.map((r) => r.text));
+  const texts = pageParagraphs(pages);
   return {
     ...base,
     texts,
+    xmlBytes: 0,
     build: (translated) =>
       buildDocx({
         blocks: texts.map((text, i) => ({

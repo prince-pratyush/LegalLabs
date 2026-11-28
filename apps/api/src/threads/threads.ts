@@ -29,7 +29,7 @@ import type { Documents } from "../documents/documents.js";
 import { CopyRefused } from "../drafts/drafts.js";
 import { noPersonalisation, type Personalisation } from "../memory/port.js";
 import { type Notifier, noNotifier } from "../notifications/notify.js";
-import { versionMeta } from "../reviews/source.js";
+import { DOCX, type VersionMeta, versionMeta } from "../reviews/source.js";
 import type { NewEvent, RunLog } from "../runs/log.js";
 import { type WebSources, webQuery } from "../web/sources.js";
 import {
@@ -45,9 +45,12 @@ import { modelsFor, threadModels } from "./matter-models.js";
 import { surfaceOf } from "./surface.js";
 import {
   loadTranslatable,
+  MAX_TRANSLATION_USD,
   modelTranslator,
+  pagesToTranslate,
   type Translatable,
   type Translator,
+  translatable,
   translateAll,
   translatedName,
 } from "./translate.js";
@@ -257,6 +260,9 @@ export type TranslateFailure =
   | "LIMIT_TRANSLATE_DOCS"
   | "LIMIT_TRANSLATE_CHARS"
   | "UNSUPPORTED_TYPE"
+  | "UNREADABLE_FILE"
+  | "ACTIVE_CONTENT"
+  | "LIMIT_FILE_SIZE"
   | "NOT_READY";
 
 export interface Threads {
@@ -377,6 +383,8 @@ interface Planned {
 
 // A plan asks at most one question, so it needs no other name.
 const QUESTION_ID = "q1";
+// All the XML of one translation request's files, parsed in the server's own process.
+const MAX_TRANSLATION_XML = 20 * 1024 * 1024;
 const HISTORY_MESSAGES = 6;
 const HISTORY_CHARS = 4000;
 const MAX_TITLE = 200;
@@ -1495,6 +1503,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             language: work.language,
             exclude: work.exclude,
             signal: controller.signal,
+            maxCostUsd: Math.max(0, MAX_TRANSLATION_USD - spent),
           },
           () => cancelled(run.id),
         );
@@ -1528,11 +1537,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           });
         }
       }
-      if (cancelled(run.id)) return;
-      if (said === null && outputs.length === 0) {
+      // What was spent is kept, whether or not anything comes of it.
+      if (cancelled(run.id) || (said === null && outputs.length === 0)) {
         await asApp(pool, principal, (db) =>
           db.query("update work.run set cost_usd = $2 where id = $1", [run.id, spent]),
         );
+        if (cancelled(run.id)) return;
         await fail(
           principal,
           run.id,
@@ -1605,7 +1615,12 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
           return { messageId, files };
         });
       } catch (err) {
-        if (err instanceof RunStopped) return;
+        if (err instanceof RunStopped) {
+          await asApp(pool, principal, (db) =>
+            db.query("update work.run set cost_usd = $2 where id = $1", [run.id, spent]),
+          );
+          return;
+        }
         if (isRefusal(err)) {
           await fail(
             principal,
@@ -1853,21 +1868,50 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
         }
         const models = await modelsFor(db, options.gateway, thread.matterId);
         if (!models.allows("draft_edit")) return "MODEL_NOT_ALLOWED" as const;
-        const files: Translatable[] = [];
-        let chars = text?.length ?? 0;
+        const wanted: { meta: VersionMeta; pages: string[] }[] = [];
         for (const row of chosen) {
           const meta = await versionMeta(db, row.version_id);
           if (!meta) return "NOT_FOUND" as const;
-          const file = await loadTranslatable(db, options.store, meta);
-          if (typeof file === "string") return file;
-          chars += file.texts.reduce((n, t) => n + t.length, 0);
-          if (chars > TRANSLATE_LIMITS.totalChars) return "LIMIT_TRANSLATE_CHARS" as const;
-          files.push(file);
+          // Only what was scanned and accepted is opened: a rejected upload is never read.
+          const { rows: job } = await db.query<{ status: string }>(
+            "select status from content.ingest_job where version_id = $1",
+            [row.version_id],
+          );
+          const status = job[0]?.status ?? "indexed";
+          if (status === "failed") return "UNREADABLE_FILE" as const;
+          if (status !== "indexed") return "NOT_READY" as const;
+          if (!translatable(meta.mime)) return "UNSUPPORTED_TYPE" as const;
+          const pages = meta.mime === DOCX ? [] : await pagesToTranslate(db, row.version_id);
+          if (pages === null) return "LIMIT_TRANSLATE_CHARS" as const;
+          wanted.push({ meta, pages });
         }
-        return { thread, chosen, files, exclude: models.exclude };
+        return { thread, chosen, wanted, exclude: models.exclude };
       });
       if (typeof prepared === "string") return { ok: false, reason: prepared };
-      const { thread, chosen, files, exclude } = prepared;
+      const { thread, chosen, wanted, exclude } = prepared;
+
+      // Parsed outside the transaction, one file at a time, with every size checked before any
+      // model is paid.
+      const files: Translatable[] = [];
+      let chars = text?.length ?? 0;
+      let xmlBytes = 0;
+      for (const { meta, pages } of wanted) {
+        await new Promise((resolve) => setImmediate(resolve));
+        const file = await loadTranslatable(options.store, meta, pages);
+        if (typeof file === "string") return { ok: false, reason: file };
+        const own = file.texts.reduce((n, t) => n + t.length, 0);
+        chars += own;
+        xmlBytes += file.xmlBytes;
+        if (chars > TRANSLATE_LIMITS.totalChars || xmlBytes > MAX_TRANSLATION_XML) {
+          return { ok: false, reason: "LIMIT_TRANSLATE_CHARS" };
+        }
+        // The copy as it stands, with room for longer words: one too large to keep would be
+        // dropped after it had been paid for.
+        if (file.build(file.texts.map(() => null)).length + own > FILE_LIMITS.bytes) {
+          return { ok: false, reason: "LIMIT_FILE_SIZE" };
+        }
+        files.push(file);
+      }
       const into = TRANSLATION_LANGUAGES[input.language];
       const question =
         text === null

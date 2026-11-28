@@ -303,7 +303,12 @@ function load(bytes: Uint8Array): DocModel {
   try {
     doc = loadDocument(bytes);
   } catch (error) {
-    if (error instanceof DocxError) throw new PatchError(error.code, error.message);
+    if (error instanceof DocxError) {
+      throw new PatchError(
+        error.code === "TOO_LARGE" ? "TOO_LARGE" : "OOXML_INVALID",
+        error.message,
+      );
+    }
     throw error;
   }
   // §4.6 names the parts the patcher may rewrite; a main part elsewhere is refused.

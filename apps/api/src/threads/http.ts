@@ -153,6 +153,16 @@ const TRANSLATE_FAILURES: Record<
     status: 400,
     message: "Only Word, PDF, text and Markdown files can be translated.",
   },
+  UNREADABLE_FILE: {
+    status: 409,
+    message: "A file wasn't accepted or couldn't be read, so it can't be translated.",
+  },
+  ACTIVE_CONTENT: {
+    status: 400,
+    message:
+      "A file holds macros, embedded objects or links to outside files. Remove them and upload it again.",
+  },
+  LIMIT_FILE_SIZE: { status: 400, message: "A file is too large to translate." },
   NOT_READY: { status: 409, message: "A file is still being read. Try again shortly." },
 };
 

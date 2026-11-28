@@ -292,7 +292,7 @@ export function relationships(xml: string | undefined): Relationship[] {
 
 export const relType = (rel: Relationship, name: string) => rel.type.endsWith(`/${name}`);
 
-export type DocxErrorCode = "TOO_LARGE" | "OOXML_INVALID";
+export type DocxErrorCode = "TOO_LARGE" | "OOXML_INVALID" | "ACTIVE_CONTENT";
 
 /** The file is not a .docx this package can safely read. */
 export class DocxError extends Error {
@@ -338,8 +338,8 @@ export function unzipLimited(bytes: Uint8Array, limits = ZIP_LIMITS): Record<str
   return files;
 }
 
-export function openPackage(bytes: Uint8Array): Package {
-  const files = unzipLimited(bytes);
+export function openPackage(bytes: Uint8Array, limits = ZIP_LIMITS): Package {
+  const files = unzipLimited(bytes, limits);
   const rootRels = files["_rels/.rels"];
   const main = relationships(rootRels && decodePart(rootRels)).find((rel) =>
     relType(rel, "officeDocument"),

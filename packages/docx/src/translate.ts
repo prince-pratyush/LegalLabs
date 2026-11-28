@@ -1,10 +1,31 @@
 import { strToU8, zipSync } from "fflate";
+import { inertParts } from "./active.js";
 import { DocxError, decodePart, openPackage } from "./read.js";
 import { elements, parseXml, sourceOf, textContent, type XmlElement } from "./tree.js";
 import { xmlText } from "./xml.js";
 
 // Translation rewrites the words of w:t elements and nothing else, so every style, list, table,
 // field and tracked change stays byte for byte as it was.
+
+// Far below what reading a file allows: translation parses every part, several files at a time.
+const LIMITS = { entries: 500, partBytes: 20 * 1024 * 1024, totalBytes: 40 * 1024 * 1024 };
+const XML_PART_BYTES = 5 * 1024 * 1024;
+// Each "<" is at most one node of the tree.
+const MAX_NODES = 200_000;
+
+/** The bytes of XML a package holds, or a refusal when parsing it would cost too much. */
+function xmlSize(files: Record<string, Uint8Array>): number {
+  let total = 0;
+  let nodes = 0;
+  for (const [name, bytes] of Object.entries(files)) {
+    if (!name.endsWith(".xml") && !name.endsWith(".rels")) continue;
+    if (bytes.length > XML_PART_BYTES) throw new DocxError("TOO_LARGE", `${name} is too large`);
+    total += bytes.length;
+    for (const byte of bytes) if (byte === 0x3c) nodes++;
+    if (nodes > MAX_NODES) throw new DocxError("TOO_LARGE", "too many elements");
+  }
+  return total;
+}
 
 /** The parts of a package that hold words a reader sees. */
 const WORDS = /^word\/(?:document\d*|header\d*|footer\d*|footnotes|endnotes)\.xml$/;
@@ -54,6 +75,8 @@ function segmentsOf(root: XmlElement, src: string): Segment[] {
 }
 
 export interface OpenText {
+  /** How much XML was parsed, so several files can be bounded together. */
+  xmlBytes: number;
   /** Every stretch of words, to be translated one for one. */
   segments: string[];
   /** The same file with each segment replaced; null keeps the original words. */
@@ -62,13 +85,15 @@ export interface OpenText {
 
 export function openText(bytes: Uint8Array): OpenText {
   try {
-    const pkg = openPackage(bytes);
+    const pkg = openPackage(bytes, LIMITS);
+    const xmlBytes = xmlSize(pkg.files);
+    const inert = inertParts(pkg.files);
     const names = Object.keys(pkg.files)
       .filter((name) => name === pkg.docPath || WORDS.test(name))
       // The body first, so its words lead the batches.
       .sort((a, b) => Number(b === pkg.docPath) - Number(a === pkg.docPath) || a.localeCompare(b));
     const parts = names.map((name) => {
-      const raw = pkg.files[name] as Uint8Array;
+      const raw = inert[name] as Uint8Array;
       // Written back as UTF-8, which a part declaring UTF-16 would then misstate.
       if (raw[0] === 0xff || raw[0] === 0xfe) {
         throw new DocxError("OOXML_INVALID", `${name} is not UTF-8`);
@@ -78,9 +103,10 @@ export function openText(bytes: Uint8Array): OpenText {
     });
     const all = parts.flatMap((part) => part.segments);
     return {
+      xmlBytes,
       segments: all.map((segment) => segment.text),
       apply(translated) {
-        const files = { ...pkg.files };
+        const files = { ...inert };
         let n = 0;
         for (const part of parts) {
           const edits: { start: number; end: number; xml: string }[] = [];
