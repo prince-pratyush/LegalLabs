@@ -1,5 +1,5 @@
 import { fileTypeLimit, type OutlookItem } from "@legallabs/contracts";
-import { storable, stripInvisible } from "../connectors/sanitise.js";
+import { noLinks, storable, stripInvisible } from "../connectors/sanitise.js";
 
 // Everything here is the sender's words: hidden characters go, and nothing can pass for a header.
 
@@ -43,4 +43,105 @@ export function emailText(item: OutlookItem, attachments: readonly string[]): st
     "",
     clean(item.body_text),
   ].join("\n");
+}
+
+// RFC 2047: an encoded word is at most 75 characters, so a long value takes several lines.
+const WORD_BYTES = 45;
+
+function encodedWords(text: string): string {
+  const words: string[] = [];
+  let chunk = "";
+  for (const char of text) {
+    if (Buffer.byteLength(chunk + char) > WORD_BYTES) {
+      words.push(chunk);
+      chunk = "";
+    }
+    chunk += char;
+  }
+  words.push(chunk);
+  return words.map((w) => `=?utf-8?B?${Buffer.from(w).toString("base64")}?=`).join("\r\n ");
+}
+
+// Only what an address is made of, so one can't end its line or start a header.
+const address = (value: string) => value.replace(/[^\w.!#$%&'*+/=?^`{|}~@-]/g, "").slice(0, 320);
+
+const wrap = (text: string) => (text.match(/.{1,76}/g) ?? []).join("\r\n");
+
+/**
+ * The message as an .eml file. The add-in is given no original, so this is rebuilt from the
+ * parts it can read, and says so.
+ */
+export function emailEml(item: OutlookItem): string {
+  const list = (values: readonly string[]) => values.map(address).filter(Boolean).join(",\r\n ");
+  const cc = list(item.cc);
+  return [
+    `From: ${address(item.from)}`,
+    `To: ${list(item.to)}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
+    `Date: ${new Date(item.date).toUTCString().replace("GMT", "+0000")}`,
+    `Subject: ${encodedWords(oneLine(item.subject))}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: base64",
+    "X-LegalLabs-Source: rebuilt from the message open in Outlook",
+    "",
+    wrap(Buffer.from(clean(item.body_text).replaceAll("\n", "\r\n")).toString("base64")),
+    "",
+  ].join("\r\n");
+}
+
+const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ENTITIES[c] ?? c);
+
+// A mail client, the sender's or the next reader's, also links what has no scheme.
+const NAME = String.raw`[\p{L}\p{N}_-]`;
+const UNC = /\\\\[^\s\\]+(?:\\[^\s]*)?/gu;
+const EMAIL = /(?<![^\s<>()[\]"',;:])[^\s<>()[\]"',;:@]+@[^\s<>()[\]"',;:@]+/gu;
+const HOST = new RegExp(
+  // Dot-separated labels, then any port and path.
+  String.raw`(?<![\p{L}\p{N}_.-])${NAME}+(?:\.${NAME}+)+(?::\d+)?([/\\?#][^\s]*)?`,
+  "gu",
+);
+// Endings of file names that are not also endings of web addresses.
+const FILE = /\.(?:pdf|docx?|xlsx?|pptx?|txt|csv|eml|msg)$/i;
+
+function defanged(match: string, path: string | undefined): string {
+  const host = (path ? match.slice(0, -path.length) : match).replace(/:\d+$/, "");
+  const last = host.slice(host.lastIndexOf(".") + 1);
+  const numbered = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+  // "4.2", "e.g" and "p.m" are not hosts.
+  if (!numbered && !/^(?:\p{L}{2,}|xn--[a-z0-9-]+)$/iu.test(last)) return match;
+  if (path) return "[link removed]";
+  return FILE.test(host) ? match : match.replaceAll(".", "[.]");
+}
+
+/** Text with no address left that would be live in a sent email. */
+const noAddresses = (text: string) =>
+  noLinks(
+    // The other full stops a browser reads as a dot.
+    text
+      .replace(/(?<=[\p{L}\p{N}])[\u3002\uff0e\uff61](?=[\p{L}\p{N}])/gu, ".")
+      .replace(UNC, "[link removed]"),
+  )
+    .replace(EMAIL, "[address removed]")
+    .replace(HOST, defanged);
+
+/**
+ * An answer as the body of a reply. The only tags are the ones written here, citation markers
+ * go, and web, file and email addresses are removed or broken: a message could have planted one
+ * for the reply to carry out.
+ */
+export function replyHtml(answer: string): string {
+  return noAddresses(clean(answer.replace(/\[\[c:\d+\]\]/g, "")))
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br>")}</p>`)
+    .join("");
 }

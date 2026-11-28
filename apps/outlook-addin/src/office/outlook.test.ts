@@ -73,6 +73,25 @@ describe("the Outlook host", () => {
     ).toBeNull();
   });
 
+  it("opens a reply with the body, and does nothing that sends", () => {
+    const displayReplyForm = vi.fn();
+    office({ ...message, displayReplyForm });
+    createOutlookHost().reply("<p>Hi</p>");
+    expect(displayReplyForm).toHaveBeenCalledWith({ htmlBody: "<p>Hi</p>" });
+  });
+
+  it("reads Reply-To from the headers, or says it can't", async () => {
+    office({
+      ...message,
+      getAllInternetHeadersAsync: answer("Reply-To: other@evil.test\r\n"),
+    });
+    Object.assign(Office, { AsyncResultStatus: { Succeeded: "succeeded" } });
+    expect(await createOutlookHost().replyTo()).toEqual(["other@evil.test"]);
+    // Older Outlook has no such call.
+    office(message);
+    expect(await createOutlookHost().replyTo()).toBeNull();
+  });
+
   it("has nothing to read with no message open, or one being written", () => {
     office(null);
     expect(createOutlookHost().item()).toBeNull();

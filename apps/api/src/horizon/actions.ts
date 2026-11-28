@@ -3,6 +3,7 @@ import { type ItemText, SOURCES } from "@legallabs/knowledge";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { trackUsage } from "../command-center/record.js";
+import { noLinks } from "../connectors/sanitise.js";
 import { asApp } from "../db.js";
 import type { Documents, UploadResult } from "../documents/documents.js";
 import type { Drafts } from "../drafts/drafts.js";
@@ -63,12 +64,6 @@ const document = (item: Item, text: string) =>
     "",
     text,
   ].join("\n");
-
-// An address inside published words is not one we vouch for. These are the forms a mail client
-// turns into a link: any scheme with "//", "mailto:", "www." and a bare "//host".
-const ADDRESS =
-  /(?:\b[a-z][a-z0-9+.-]*:\/\/|\bmailto:|\bwww\.|(?<![\p{L}\p{N}:/])\/\/(?=[^\s/]))\S+/giu;
-const noLinks = (text: string) => text.replace(ADDRESS, "[link removed]");
 
 export function emailDraft(item: {
   development: string;

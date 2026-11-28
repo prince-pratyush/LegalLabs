@@ -54,3 +54,14 @@ export type OutlookIngest = {
   }[];
   skipped: { name: string; reason: OutlookSkipReason }[];
 };
+
+/** The answer to turn into the body of a reply. */
+export const OutlookDraft = z.object({ thread_id: z.uuid(), message_id: z.uuid() });
+export type OutlookDraft = z.infer<typeof OutlookDraft>;
+
+export type OutlookSaved = {
+  folder_id: string;
+  folder_name: string;
+  files: { document_id: string; name: string }[];
+  skipped: OutlookIngest["skipped"];
+};

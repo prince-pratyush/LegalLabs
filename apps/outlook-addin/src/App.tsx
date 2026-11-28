@@ -13,6 +13,7 @@ import { AskPanel } from "./ask/AskPanel.js";
 import { tokenStore } from "./auth/token.js";
 import type { MailThread } from "./mail/ask.js";
 import type { MailHost, MailItem } from "./office/host.js";
+import { SavePanel } from "./save/SavePanel.js";
 
 export const contextLabel = (item: MailItem) => {
   const n = item.attachments.filter((a) => !a.inline).length;
@@ -125,6 +126,7 @@ export function App({
               thread={thread?.itemId === item.itemId ? thread : null}
               onThread={setThread}
             />
+            <SavePanel key={`save-${item.itemId}`} api={api} host={host} item={item} />
           </>
         ) : (
           <p className="text-ui text-fg-muted">Open an email to ask about it.</p>
