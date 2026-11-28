@@ -16,7 +16,7 @@ import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 import { mayLeaveThread } from "../documents/copy.js";
-import { threadModels } from "../threads/matter-models.js";
+import { modelsFor } from "../matters/model-policy.js";
 
 export type DraftKind = "notepad" | "editor";
 
@@ -390,7 +390,7 @@ export function createDrafts(
       if (current.latest.body.length > MAX_EDIT_CHARS)
         return { ok: false, reason: "TOO_LONG_TO_EDIT" };
       const models = await asApp(pool, principal, (db) =>
-        threadModels(db, gateway, current.threadId),
+        modelsFor(db, gateway, { threads: [current.threadId] }),
       );
       if (!models.allows("draft_edit")) return { ok: false, reason: "MODEL_NOT_ALLOWED" };
       // Fresh each call, so the draft can't close its own fence.

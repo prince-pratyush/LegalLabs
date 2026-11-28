@@ -5,6 +5,7 @@ import type { Client, Principal } from "../auth/auth.js";
 import { trackUsage } from "../command-center/record.js";
 import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
+import { modelsFor } from "../matters/model-policy.js";
 import type { RunLog } from "../runs/log.js";
 import { audit } from "./audit.js";
 import {
@@ -469,6 +470,12 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
     await emit({ status: "running" });
 
     const row = await rowDocuments(principal, target.rowId);
+    const models = await asApp(pool, principal, (db) =>
+      modelsFor(db, gateway, {
+        tables: [request.tableId],
+        documents: [request.contextDocumentId],
+      }),
+    );
     let outcome: CellOutcome;
     const failed = (code: "ACCESS_DENIED" | "DOC_NOT_READY"): CellOutcome => ({
       status: "error",
@@ -488,6 +495,9 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
       outcome = failed("ACCESS_DENIED");
     } else if (row.documents.some((d) => d.status !== "indexed")) {
       outcome = failed("DOC_NOT_READY");
+    } else if (!models.allows("read_extract") || !models.permits(request.column.model ?? "")) {
+      // The matter's model policy was set after the cell was queued: it is never sent.
+      outcome = { ...failed("ACCESS_DENIED"), errorCode: "MODEL_ERROR" };
     } else {
       const docs: CellDocument[] = row.documents.map((d) => ({
         id: d.id,
@@ -511,6 +521,7 @@ export function createRunner(pool: pg.Pool, options: RunnerOptions): Runner {
             documents: docs,
             workspaceId: principal.workspaceId,
             trace: runId,
+            exclude: models.exclude,
           },
         );
       } catch (err) {

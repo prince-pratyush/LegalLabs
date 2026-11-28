@@ -7,6 +7,7 @@ import {
   type FilePort,
   type ModelPolicy,
   type ModelPort,
+  type ModelRequest,
   type ResolvedFile,
   type RunInputs,
   type TablePort,
@@ -17,6 +18,7 @@ import {
 import type pg from "pg";
 import { asApp } from "../db.js";
 import type { Documents } from "../documents/documents.js";
+import { modelsFor, NO_MODEL_MESSAGE } from "../matters/model-policy.js";
 
 // The ports a workflow run uses, backed by this install's database and modules. Each runs as
 // the run's owner, so row-level security and walls apply to every read.
@@ -87,14 +89,55 @@ const TASK: Record<RoutingClass, TaskClass> = {
   reason: "synthesize",
 };
 
-/** The workspace's usable models per class; an explicit model must be one of them. */
-export function gatewayPolicy(gateway: Gateway): ModelPolicy {
-  const ids = (cls: RoutingClass) => gateway.models(TASK[cls]).map((m) => m.id);
+/** The usable models per class, less what the run's matter denies. */
+export function gatewayPolicy(pool: pg.Pool, gateway: Gateway): ModelPolicy {
+  const models = (run: RunRow) =>
+    asApp(pool, as(run), (db) =>
+      modelsFor(db, gateway, { matters: [run.matter_id], threads: [run.thread_id] }),
+    );
   return {
-    eligible: async (_run, cls) => ids(cls),
-    permits: async (_run, model) =>
-      (["extract", "draft", "summarise", "reason"] as const).some((c) => ids(c).includes(model)),
+    eligible: async (run, cls) => (await models(run)).left(TASK[cls]),
+    permits: async (run, model) => {
+      const allowed = await models(run);
+      return (["extract", "draft", "summarise", "reason"] as const).some((c) =>
+        allowed.left(TASK[c]).includes(model),
+      );
+    },
   };
+}
+
+/** What a finished step took in, kept on its row for the policy of the steps after it. */
+interface StepRead {
+  value?: { files?: { version_id: string }[]; table_id?: string };
+  read?: { versions?: string[]; tables?: string[] };
+}
+
+/**
+ * The policy over everything a model step can draw on: the run's matter and thread, the files
+ * and tables it is given, and those of earlier steps, whose output its prompt may quote.
+ */
+async function stepModels(pool: pg.Pool, gateway: Gateway, run: RunRow, req: ModelRequest) {
+  return asApp(pool, as(run), async (db) => {
+    const { rows } = await db.query<{ output: StepRead }>(
+      "select output from work.run_step where run_id = $1 and kind = 'block'",
+      [run.id],
+    );
+    return modelsFor(db, gateway, {
+      matters: [run.matter_id],
+      threads: [run.thread_id],
+      versions: [
+        ...req.documents.map((d) => d.version_id),
+        ...rows.flatMap(({ output }) => [
+          ...(output.value?.files?.map((f) => f.version_id) ?? []),
+          ...(output.read?.versions ?? []),
+        ]),
+      ],
+      tables: [
+        ...req.tables,
+        ...rows.flatMap(({ output }) => [output.value?.table_id, ...(output.read?.tables ?? [])]),
+      ],
+    });
+  });
 }
 
 const SYSTEM =
@@ -102,9 +145,14 @@ const SYSTEM =
 const PASSAGES = 20;
 
 /** Model calls through the gateway, with passages from the step's documents as context. */
-export function gatewayModel(gateway: Gateway, documents: Documents): ModelPort {
+export function gatewayModel(pool: pg.Pool, gateway: Gateway, documents: Documents): ModelPort {
   return {
     async complete(run, req) {
+      const models = await stepModels(pool, gateway, run, req);
+      const task = TASK[req.routing_class];
+      if (!models.allows(task) || !models.permits(req.model ?? "")) {
+        throw new WorkflowStepError("MODEL_POLICY_NO_ELIGIBLE_MODEL", NO_MODEL_MESSAGE);
+      }
       const passages =
         req.documents.length === 0
           ? []
@@ -118,7 +166,7 @@ export function gatewayModel(gateway: Gateway, documents: Documents): ModelPort 
         .join("\n\n");
       try {
         const r = await gateway.call({
-          task_class: TASK[req.routing_class],
+          task_class: task,
           messages: [
             { role: "system", content: SYSTEM },
             {
@@ -130,6 +178,7 @@ export function gatewayModel(gateway: Gateway, documents: Documents): ModelPort 
           routing: { workspace: run.workspace_id },
           trace: req.idempotency_key,
           ...(req.model ? { model: req.model } : {}),
+          ...(models.exclude.length ? { exclude: models.exclude } : {}),
         });
         return {
           model: r.model,
@@ -208,8 +257,8 @@ export function workflowPorts(pool: pg.Pool, options: WorkflowPortOptions = {}):
     source: workflowSource(pool),
     files: workflowFiles(pool),
     artifacts: threadArtifacts(pool),
-    model: gateway && documents ? gatewayModel(gateway, documents) : noModel,
-    policy: gateway ? gatewayPolicy(gateway) : noPolicy,
+    model: gateway && documents ? gatewayModel(pool, gateway, documents) : noModel,
+    policy: gateway ? gatewayPolicy(pool, gateway) : noPolicy,
     drafts: unconnectedDrafts,
     tables: unconnectedTables,
     ...options.ports,

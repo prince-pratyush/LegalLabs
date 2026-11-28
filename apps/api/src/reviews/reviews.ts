@@ -32,6 +32,7 @@ import type { z } from "zod";
 import { type Client, type Principal, uaHash } from "../auth/auth.js";
 import { trackOutcome, trackUsage } from "../command-center/record.js";
 import { asApp, RLS_REFUSED } from "../db.js";
+import { type Material, modelsFor, NO_MODEL_MESSAGE } from "../matters/model-policy.js";
 import type { Notifier } from "../notifications/notify.js";
 import { uuid7 } from "../playbooks/playbooks.js";
 import type { RunLog } from "../runs/log.js";
@@ -57,6 +58,7 @@ export type ReviewFailure =
   | "RULE_NOT_FOUND"
   | "ALTERNATE_NOT_FOUND"
   | "MODEL_UNAVAILABLE"
+  | "MODEL_NOT_ALLOWED"
   | "OOXML_INVALID";
 
 export type Result<T> = { ok: true; value: T } | { ok: false; reason: ReviewFailure };
@@ -188,6 +190,13 @@ const TASKS: Record<CompleteCall["task"], TaskClass> = {
   verify: "synthesize",
 };
 
+/** Everything a made review draws on: its contract, its background files and its thread. */
+const materialOf = (row: ReviewRow, ...versions: (string | null)[]): Material => ({
+  documents: [row.document_id, ...(row.context_document_ids ?? [])],
+  threads: [row.thread_id],
+  versions,
+});
+
 class Refused extends Error {
   constructor(readonly reason: ReviewFailure) {
     super(reason);
@@ -211,6 +220,8 @@ interface ReviewRow {
   document_name: string;
   surface: "web" | "word";
   customisation: Customisation;
+  thread_id: string | null;
+  context_document_ids: string[] | null;
   status: Review["status"];
   run_status: string;
   clause_map: Record<string, number[]>;
@@ -251,7 +262,8 @@ interface RerunRow {
 
 const REVIEW_COLUMNS = `r.id, r.run_id, r.owner_id, r.playbook_id, r.playbook_version_id, r.playbook_name,
   r.rules, r.guidance, r.document_id, r.document_version_id, d.name document_name, r.surface,
-  r.customisation, r.status, run.status run_status, r.clause_map, r.excluded_regions, r.results,
+  r.customisation - 'context_document_ids' as customisation, r.thread_id,
+  r.customisation -> 'context_document_ids' as context_document_ids, r.status, run.status run_status, r.clause_map, r.excluded_regions, r.results,
   r.gaps, r.summary, r.warnings, r.usage, r.started_at, r.finished_at`;
 const REVIEW_FROM = `work.playbook_review r join work.run run on run.id = r.run_id
   join content.document d on d.id = r.document_id`;
@@ -493,7 +505,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
   const active = new Map<string, Map<string, AbortController>>();
 
   const complete =
-    (workspace: string, trace: string): ReviewDeps["complete"] =>
+    (workspace: string, trace: string, exclude: readonly string[]): ReviewDeps["complete"] =>
     async (call) => {
       const result = await gateway.call(
         {
@@ -505,6 +517,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
           budget: { max_output: call.maxTokens, max_cost_usd: 0.5 },
           routing: { workspace },
           trace,
+          ...(exclude.length ? { exclude } : {}),
         },
         call.signal,
       );
@@ -518,6 +531,15 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
         cost_usd: result.cost_usd,
       };
     };
+
+  /** What the matters of a review's files leave usable; refused if a phase has no model. */
+  async function reviewModels(db: Db, material: Material) {
+    const models = await modelsFor(db, gateway, material);
+    if (!Object.values(TASKS).every((task) => models.allows(task))) {
+      throw new Refused("MODEL_NOT_ALLOWED");
+    }
+    return models;
+  }
 
   const titleOf = (row: ReviewRow, s: Pick<Suggestion, "rule_id">) =>
     (s.rule_id && row.rules.find((r) => r.id === s.rule_id)?.title) || "Outside the playbook";
@@ -628,6 +650,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
     reviewId: string,
     runId: string,
     input: Omit<ReviewInput, "signal">,
+    material: Material,
   ): Promise<{ outcome: ReviewOutcome; capped: boolean } | null> {
     const controller = new AbortController();
     const runs = active.get(reviewId) ?? new Map<string, AbortController>();
@@ -643,7 +666,6 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
       pending.push(p.catch(() => {}));
       return p;
     };
-    const call = complete(principal.workspaceId ?? "", runId);
     let spent = 0;
     let capped = false;
     try {
@@ -660,6 +682,9 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
         );
         return run.rowCount === 1;
       });
+      // Read again as the run starts: the policy may have been set since it was asked for.
+      const { exclude } = await asApp(pool, principal, (db) => reviewModels(db, material));
+      const call = complete(principal.workspaceId ?? "", runId, exclude);
       // Cancelled before it began.
       if (!started) controller.abort();
       else await emit({ type: "status", status: "running" });
@@ -686,6 +711,10 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
       return { outcome, capped };
     } catch (err) {
       await Promise.all(pending);
+      if (err instanceof Refused && err.reason === "MODEL_NOT_ALLOWED") {
+        await failRun(principal, runId, err.reason, NO_MODEL_MESSAGE);
+        return null;
+      }
       // The name only: a message can quote the prompt.
       console.error(`review run ${runId} failed: ${err instanceof Error ? err.name : "unknown"}`);
       await failRun(principal, runId, "INTERNAL", "The review stopped before it finished.");
@@ -747,9 +776,19 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
     extraWarnings: Review["warnings"],
     excludedRegions: Record<string, number>,
     client: Client,
+    material: Material,
   ) {
     try {
-      await executeRun(principal, reviewId, runId, input, extraWarnings, excludedRegions, client);
+      await executeRun(
+        principal,
+        reviewId,
+        runId,
+        input,
+        extraWarnings,
+        excludedRegions,
+        client,
+        material,
+      );
     } catch (err) {
       console.error(`review ${reviewId} failed: ${err instanceof Error ? err.name : "unknown"}`);
       await failRun(principal, runId, "INTERNAL", "The review stopped before it finished.");
@@ -765,9 +804,10 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
     extraWarnings: Review["warnings"],
     excludedRegions: Record<string, number>,
     client: Client,
+    material: Material,
   ) {
     const started = Date.now();
-    const result = await runEngine(principal, reviewId, runId, input);
+    const result = await runEngine(principal, reviewId, runId, input, material);
     if (!result) {
       await failReview(principal, reviewId);
       return;
@@ -1008,9 +1048,14 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
     row: ReviewRow,
     s: Suggestion,
     paragraph: string,
+    versionId: string | null,
     ask: string,
     maxOutput: number,
   ): Promise<Record<string, unknown> | null> {
+    const models = await asApp(pool, principal, (db) =>
+      modelsFor(db, gateway, materialOf(row, versionId)),
+    );
+    if (!models.allows("draft_edit")) throw new Refused("MODEL_NOT_ALLOWED");
     const code = randomBytes(12).toString("hex");
     const rule = s.rule_id ? row.rules.find((r) => r.id === s.rule_id) : undefined;
     const c = row.customisation;
@@ -1034,6 +1079,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
           budget: { max_output: maxOutput, max_cost_usd: 0.2 },
           routing: { workspace: principal.workspaceId ?? "" },
           trace: row.run_id,
+          ...(models.exclude.length ? { exclude: models.exclude } : {}),
         },
         AbortSignal.timeout(60_000),
       );
@@ -1131,11 +1177,17 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             ]);
             if (t.rowCount === 0) throw new Refused("NOT_FOUND");
           }
+          const material: Material = {
+            documents: [meta.documentId, ...(request.extra_context?.document_ids ?? [])],
+            threads: [request.thread_id],
+          };
           const src = await loadSource(db, store, meta);
           if (typeof src === "string") throw new Refused(src);
           if (src.chars > PLAYBOOK_LIMITS.doc_chars) throw new Refused("DOC_TOO_LARGE");
           const extra = await extraContext(db, request.extra_context);
           if (typeof extra !== "string") throw new Refused(extra.reason);
+          // After the files are read, so one the caller can't open is reported as not found.
+          await reviewModels(db, material);
           await underCap(db, principal);
           const inScope =
             request.scope === "all"
@@ -1181,7 +1233,11 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
               meta.versionId,
               request.surface,
               request.thread_id ?? null,
-              JSON.stringify(customisation),
+              // Kept beside the choices, and left out when the review is read.
+              JSON.stringify({
+                ...customisation,
+                context_document_ids: request.extra_context?.document_ids,
+              }),
               warnings,
               JSON.stringify(src.excludedRegions),
             ],
@@ -1216,11 +1272,12 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             documentCount: 1,
           });
           await opts.within?.(db, { review_id: reviewId, run_id: runId });
-          return ok({ reviewId, runId, version, src, warnings, customisation, extra });
+          return ok({ reviewId, runId, version, src, warnings, customisation, extra, material });
         }),
       );
       if (!prepared.ok) return prepared;
-      const { reviewId, runId, version, src, warnings, customisation, extra } = prepared.value;
+      const { reviewId, runId, version, src, warnings, customisation, extra, material } =
+        prepared.value;
       // In this process, like thread runs: the caller gets the ids at once and follows events.
       void execute(
         principal,
@@ -1237,6 +1294,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
         warnings,
         src.excludedRegions,
         client,
+        material,
       );
       return ok({ review_id: reviewId, run_id: runId });
     },
@@ -1415,6 +1473,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
           row,
           s,
           paragraph,
+          found.source_document_version_id,
           `Offer up to ${PLAYBOOK_LIMITS.alternates} alternative wordings for the suggested replacement of the given text, each reaching the rule's standard position or a fallback, each changing as little as possible and differing from the current suggestion. Shape: {"alternates": [{"after": "...", "justification": "one sentence"}]}.`,
           1500,
         );
@@ -1479,6 +1538,7 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
           row,
           s,
           paragraph,
+          found.source_document_version_id,
           `Revise the suggested replacement following the reviewer's instruction between <ask-${code}> tags, changing as little as possible. Shape: {"after": "...", "justification": "one paragraph"}. <ask-${code}>${instruction}</ask-${code}>`,
           1200,
         );
@@ -1534,6 +1594,8 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
           // Any version the caller can read: Word uploads a fresh document for each re-run.
           const meta = await versionMeta(db, versionId);
           if (!meta) throw new Refused("NOT_FOUND");
+          const material = materialOf(row, meta.versionId);
+          await reviewModels(db, material);
           const src = await loadSource(db, store, meta);
           if (typeof src === "string") throw new Refused(src);
           if (src.chars > PLAYBOOK_LIMITS.doc_chars) throw new Refused("DOC_TOO_LARGE");
@@ -1560,11 +1622,12 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
             objectType: "playbook_review",
             objectId: row.id,
           });
-          return ok({ row, src, runId, sameVersion: meta.versionId === row.document_version_id });
+          const sameVersion = meta.versionId === row.document_version_id;
+          return ok({ row, src, runId, sameVersion, material });
         }),
       );
       if (!prepared.ok) return prepared;
-      const { row, src, runId, sameVersion } = prepared.value;
+      const { row, src, runId, sameVersion, material } = prepared.value;
 
       /** Saves the new finding: into the review for its own version, else beside it. */
       const save = (finding: Finding) =>
@@ -1620,14 +1683,15 @@ export function createReviews(pool: pg.Pool, options: ReviewsOptions): Reviews {
         // runEngine fails the run itself when it throws.
         let reported = false;
         try {
-          const result = await runEngine(principal, row.id, runId, {
+          const input = {
             paragraphs: src.paragraphs,
             // One rule only: the gap pass already ran with the review.
             existingEdits: [],
             rules: row.rules,
             ...(row.guidance ? { guidance: row.guidance } : {}),
             customisation: { ...row.customisation, scope: [ruleId] },
-          });
+          };
+          const result = await runEngine(principal, row.id, runId, input, material);
           if (!result) {
             reported = true;
             return;

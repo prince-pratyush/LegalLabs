@@ -23,6 +23,7 @@ import { type Gateway, GatewayError } from "@legallabs/model-gateway";
 import type pg from "pg";
 import type { Client, Principal } from "../auth/auth.js";
 import { asApp } from "../db.js";
+import { modelsFor, NO_MODEL_MESSAGE } from "../matters/model-policy.js";
 import { audit } from "./audit.js";
 import { CELL_MAX_OUTPUT } from "./cell.js";
 import { markDependentsStale } from "./dependencies.js";
@@ -31,6 +32,7 @@ import type { Runner, RunRequest } from "./runner.js";
 import {
   type ColumnRow,
   type Db,
+  type Failure,
   fail,
   loadColumns,
   loadTable,
@@ -229,6 +231,13 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
       dependent_run_ids: [] as string[],
     };
     if (picked.run.length === 0) return { ok: true, value: { run_id: null, ...summary } };
+    const models = await asApp(pool, principal, (db) =>
+      modelsFor(db, gateway, { tables: [table.id], documents: [column.context_document_id] }),
+    );
+    if (!models.allows("read_extract")) return fail("MODEL_NOT_ALLOWED", NO_MODEL_MESSAGE);
+    if (column.model && !models.permits(column.model)) {
+      return fail("MODEL_NOT_ALLOWED", "This matter's model policy denies this column's model.");
+    }
     const runId = await runner.start(
       principal,
       {
@@ -710,6 +719,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
           const { table, columns, byColumn } = result.value;
           const runIds: string[] = [];
           let affected = 0;
+          let denied: Failure | undefined;
           for (const [columnId, rowIds] of byColumn) {
             const column = columns.find((c) => c.id === columnId);
             if (!column) continue;
@@ -728,7 +738,9 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
               runIds.push(started.value.run_id);
               affected += started.value.cells;
             }
+            if (!started.ok && started.code === "MODEL_NOT_ALLOWED") denied = started;
           }
+          if (denied && runIds.length === 0) return denied;
           return {
             ok: true,
             value: { affected, skipped: body.cell_ids.length - affected, run_ids: runIds },
@@ -885,6 +897,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
       }));
       if (!found.ok) return found;
       const runIds: string[] = [];
+      let denied: Failure | undefined;
       // Columns others use go first, so the ones that wait on them find their cells queued.
       for (const column of inRunOrder(found.value.columns)) {
         if (column.type === "manual" || column.state === "running") continue;
@@ -892,7 +905,10 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
         if (scope === "dry_run" && column.state !== "pending") continue;
         const started = await startRun(principal, client, found.value.table, column, scope, false);
         if (started.ok && started.value.run_id) runIds.push(started.value.run_id);
+        if (!started.ok && started.code === "MODEL_NOT_ALLOWED") denied = started;
       }
+      // Refused columns are said so, unless others did start.
+      if (denied && runIds.length === 0) return denied;
       return { ok: true as const, value: { run_ids: runIds } };
     },
 
@@ -919,9 +935,12 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             where r.table_id = $1 and r.deleted_at is null order by r.ordinal limit 20`,
           [tableId],
         );
-        return { ok: true as const, value: rows.map((r) => r.name) };
+        const models = await modelsFor(db, gateway, { tables: [tableId] });
+        return { ok: true as const, value: { names: rows.map((r) => r.name), models } };
       });
       if (!found.ok) return found;
+      const { names, models } = found.value;
+      if (!models.allows("draft_edit")) return fail("MODEL_NOT_ALLOWED", NO_MODEL_MESSAGE);
       let output: string;
       try {
         const result = await gateway.call({
@@ -930,7 +949,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
             { role: "system", content: GENERATE_SYSTEM },
             {
               role: "user",
-              content: `The reviewer wants: ${description}\n\nSome files in the table:\n${found.value
+              content: `The reviewer wants: ${description}\n\nSome files in the table:\n${names
                 .map((n) => `- ${n.replace(/[\p{Cc}\p{Cf}]+/gu, " ").slice(0, 200)}`)
                 .join("\n")}\n\nPropose up to ${max} columns.`,
             },
@@ -938,6 +957,7 @@ export function createCells(pool: pg.Pool, deps: { gateway: Gateway; runner: Run
           budget: { max_output: 3_000, max_cost_usd: 1 },
           routing: { workspace: principal.workspaceId },
           trace: tableId,
+          ...(models.exclude.length ? { exclude: models.exclude } : {}),
         });
         output = result.output;
       } catch (err) {

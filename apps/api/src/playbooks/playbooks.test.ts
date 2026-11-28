@@ -14,6 +14,7 @@ import {
   testPool,
   testThreads,
 } from "../test-db.js";
+import { denyProviders, fileInMatter, newMatter } from "../test-model-policy.js";
 import { createPlaybooks } from "./playbooks.js";
 
 const pool = testPool();
@@ -466,5 +467,35 @@ describe("playbook edits and limits", () => {
     const limited = await h.call(ana, "POST", "/playbooks", body);
     expect(limited).toMatchObject({ status: 429, body: { code: "TOO_MANY_REQUESTS" } });
     expect(calls).toBe(1);
+  });
+});
+
+describe("a matter's model policy in playbook generation", () => {
+  it("refuses to read a matter's contract when no model is left", async () => {
+    let calls = 0;
+    const h = harness(() => {
+      calls++;
+      return '{"rules":[]}';
+    });
+    const m = await seedMember(pool);
+    const cookie = await h.signIn(m);
+    const principal = { sessionId: "s", userId: m.userId, workspaceId: m.workspaceId };
+    const uploaded = await h.documents.upload(
+      principal,
+      { name: "msa.txt", bytes: new TextEncoder().encode(CONTRACT), matterId: null },
+      { ip: null, userAgent: null },
+    );
+    if (!uploaded.ok) throw new Error(uploaded.reason);
+    await h.documents.worker.drain(m.workspaceId);
+    const matterId = await newMatter(pool, m);
+    await fileInMatter(pool, uploaded.document.versionId, matterId);
+    await denyProviders(pool, matterId, "anthropic");
+    const res = await h.call(cookie, "POST", "/playbooks", {
+      name: "From contract",
+      contract_type: "MSA",
+      source: { kind: "document", document_id: uploaded.document.id },
+    });
+    expect(res).toMatchObject({ status: 403, body: { code: "MODEL_NOT_ALLOWED" } });
+    expect(calls).toBe(0);
   });
 });

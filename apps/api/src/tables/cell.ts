@@ -67,6 +67,8 @@ export interface CellInput {
   documents: readonly CellDocument[];
   workspaceId: string;
   trace: string;
+  /** Models the matter of the table or its files keeps them from. */
+  exclude?: readonly string[];
   signal?: AbortSignal;
 }
 
@@ -327,6 +329,7 @@ export async function runCell(deps: CellDeps, input: CellInput): Promise<CellOut
         budget: { max_output: CELL_MAX_OUTPUT, max_cost_usd: 1 },
         routing: { workspace: input.workspaceId },
         trace: input.trace,
+        ...(input.exclude?.length ? { exclude: input.exclude } : {}),
         ...(column.model ? { model: column.model } : {}),
       },
       input.signal,

@@ -162,6 +162,8 @@ export async function generateRules(
     documentId: string;
     contractType: string;
     pages: readonly Page[];
+    /** Models the document's matter keeps it from. */
+    exclude?: readonly string[];
   },
 ): Promise<Generated> {
   const window = gateway.contextTokens("draft_edit");
@@ -196,6 +198,7 @@ export async function generateRules(
           budget: { max_output: maxOutput, max_cost_usd: 0.5 },
           routing: { workspace: input.workspaceId },
           trace: randomUUID(),
+          ...(input.exclude?.length ? { exclude: input.exclude } : {}),
         },
         signal,
       );

@@ -302,6 +302,8 @@ export function createWorkflowHandler(deps: WorkflowHandlerDeps): RunHandler {
             extra: {
               ...(result.citations ? { citations: result.citations } : {}),
               ...(prompt.truncated ? { truncated: true } : {}),
+              // Kept so a later step that quotes this one answers to the same model policy.
+              read: { versions: documents.map((d) => d.version_id), tables },
             },
           },
         };
@@ -369,7 +371,15 @@ export function createWorkflowHandler(deps: WorkflowHandlerDeps): RunHandler {
             summary: `Drafted ${files.length} ${block.format} file(s).`,
             spend,
             routing_class: "draft",
-            extra: { artifact_ids: files.map((f) => f.document_id) },
+            extra: {
+              artifact_ids: files.map((f) => f.document_id),
+              read: {
+                versions: [...documents, ...bases, ...(template ? [template] : [])].map(
+                  (d) => d.version_id,
+                ),
+                tables,
+              },
+            },
           },
         };
       }
@@ -462,6 +472,7 @@ export function createWorkflowHandler(deps: WorkflowHandlerDeps): RunHandler {
           done: {
             value: { kind: "snapshot", snapshot },
             summary: `${snapshot.rows.length} row(s), ${snapshot.columns.length} column(s).`,
+            extra: { read: { versions: [], tables: [tableId] } },
           },
         };
       }
