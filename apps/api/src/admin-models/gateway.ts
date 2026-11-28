@@ -25,6 +25,13 @@ async function readSettings(pool: pg.Pool, routing: Routing): Promise<WorkspaceM
   return workspaceRule(stored, routing.user);
 }
 
+// A code or a class name only: a driver's message can quote stored values.
+function codeOf(err: unknown): string {
+  const { code, name } = (err ?? {}) as { code?: unknown; name?: unknown };
+  const found = [code, name].find((v) => typeof v === "string" && /^\w{1,60}$/.test(v));
+  return typeof found === "string" ? found : "unknown";
+}
+
 /**
  * The only way this app builds a gateway: every call it makes obeys the workspace's model
  * settings, read fresh each time.
@@ -33,4 +40,14 @@ export const createWorkspaceGateway = (
   pool: pg.Pool,
   options: Omit<GatewayOptions, "workspacePolicy">,
 ): Gateway =>
-  createGateway({ ...options, workspacePolicy: (routing) => readSettings(pool, routing) });
+  createGateway({
+    ...options,
+    workspacePolicy: (routing) =>
+      readSettings(pool, routing).catch((err: unknown) => {
+        // The gateway only refuses, so the cause is noted here.
+        console.error(
+          `model settings read failed: workspace=${routing.workspace} code=${codeOf(err)}`,
+        );
+        throw err;
+      }),
+  });

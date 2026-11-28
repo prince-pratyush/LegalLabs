@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type GatewayCall, GatewayError } from "@legallabs/model-gateway";
 import pg from "pg";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { createLanguage } from "../addins/language.js";
 import { createApp } from "../app.js";
 import { createAuth } from "../auth/auth.js";
@@ -164,9 +164,15 @@ describe("the workspace's model settings at the gateway", () => {
       providers: counting.providers,
       recordUsage: async () => {},
     });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(gateway.call(s.request())).rejects.toMatchObject({
       code: "SETTINGS_UNAVAILABLE",
     });
+    // The cause is logged by code and workspace, never with the driver's message.
+    expect(logged.mock.calls).toEqual([
+      [`model settings read failed: workspace=${s.workspaceId} code=ECONNREFUSED`],
+    ]);
+    logged.mockRestore();
     expect(counting.calls).toEqual({ anthropic: 0, ollama: 0 });
     await down.end();
   });

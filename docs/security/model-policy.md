@@ -55,10 +55,12 @@ the matter policy on top, so the strictest wins. The app builds its gateway in o
 (`api/admin-models/gateway.ts`; a test fails if anything else builds one), and every call must say
 which workspace and which person it is for.
 
-| ID    | Severity | Area         | Finding                                                                                                                          | Status                                                                                              |
-| ----- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| F-105 | High     | Model policy | The model allow-list, "zero data retention only" and region settings were saved and filtered a list, but no model call used them | Fixed: applied by the gateway to every call and stream (`api/admin-models/gateway.test.ts`)         |
-| F-106 | Medium   | Model policy | Models from a hosted provider were listed as zero data retention before anyone had said so                                       | Fixed: only local models are until an admin declares it. Rows saved earlier keep what they recorded |
+| ID    | Severity | Area         | Finding                                                                                                                                          | Status                                                                                                              |
+| ----- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| F-105 | High     | Model policy | The model allow-list, "zero data retention only" and region settings were saved and filtered a list, but no model call used them                 | Fixed: applied by the gateway to every call and stream (`api/admin-models/gateway.test.ts`)                         |
+| F-106 | Medium   | Model policy | Models from a hosted provider were listed as zero data retention before anyone had said so                                                       | Fixed with F-107: only local models are until an admin declares it                                                  |
+| F-107 | Medium   | Model policy | Rows saved by earlier code kept hosted models marked zero data retention, so "zero data retention only" still allowed models nobody had declared | Fixed: migration 0297 clears the mark on hosted models, to be declared again (`db/test/model-zdr-reattest.test.ts`) |
+| F-108 | Low      | Logging      | A failure to read the settings was refused without its cause being logged                                                                        | Fixed: the error code and workspace id are logged (`api/admin-models/gateway.test.ts`)                              |
 
 ### Decisions
 

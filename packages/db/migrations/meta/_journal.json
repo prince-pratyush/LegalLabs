@@ -848,6 +848,13 @@
       "when": 1794022700000,
       "tag": "0296_admin_model_settings_read",
       "breakpoints": false
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1794022800000,
+      "tag": "0297_admin_model_zdr_reattest",
+      "breakpoints": false
     }
   ]
 }
