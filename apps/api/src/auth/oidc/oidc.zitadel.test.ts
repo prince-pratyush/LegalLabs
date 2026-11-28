@@ -1,5 +1,6 @@
 import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, describe, expect, it } from "vitest";
+import { createSecretBox } from "../../admin-models/secrets.js";
 import { createApp } from "../../app.js";
 import { createDrafts } from "../../drafts/drafts.js";
 import { seedMember, testDocuments, testPool, testThreads } from "../../test-db.js";
@@ -31,12 +32,14 @@ describe.skipIf(!enabled)("sign-in against a real Zitadel", () => {
     const issuer = env.ZITADEL_ISSUER as string;
     const email = env.ZITADEL_USER_EMAIL as string;
     const client = { ip: "203.0.113.9", userAgent: "vitest" };
+    const secrets = createSecretBox(Buffer.alloc(32, 3).toString("base64"));
     const auth = createAuth(pool);
     const app = createApp({
       auth,
       oidc: createOidc(pool, {
         baseUrl: env.ZITADEL_REDIRECT_BASE as string,
         policy: { insecureDev: true },
+        secrets,
       }),
       documents: testDocuments(pool),
       threads: testThreads(pool, testDocuments(pool)),
@@ -48,12 +51,13 @@ describe.skipIf(!enabled)("sign-in against a real Zitadel", () => {
 
     // An admin sets the provider up and pre-creates the person.
     const admin = await seedMember(pool);
-    await createOidcProviders(pool, { insecureDev: true }).put(
+    await createOidcProviders(pool, { insecureDev: true, secrets }).put(
       { userId: admin.userId, workspaceId: admin.workspaceId, sessionId: "" },
       {
         issuer,
         clientId: env.ZITADEL_CLIENT_ID as string,
         enabled: true,
+        linkByEmail: true,
       },
       env.ZITADEL_CLIENT_SECRET as string,
       client,

@@ -1,4 +1,5 @@
 import type pg from "pg";
+import type { SecretBox } from "../../admin-models/secrets.js";
 import { asApp } from "../../db.js";
 import { audit } from "../audit.js";
 import type { Client, Principal } from "../auth.js";
@@ -52,9 +53,31 @@ const toConfig = (r: Row): ProviderConfig => ({
   linkByEmail: r.link_by_email,
 });
 
+// Marks what the app sealed, so a value stored any other way is never sent to a provider.
+const SEALED = "sealed:v1:";
+
+export const sealSecret = (box: SecretBox, secret: string) =>
+  `${SEALED}${box.seal(secret).toString("base64")}`;
+
+/** Null for anything that was not sealed with this key. */
+export function openSecret(box: SecretBox | undefined, stored: string): string | null {
+  if (!box || !stored.startsWith(SEALED)) return null;
+  try {
+    return box.open(Buffer.from(stored.slice(SEALED.length), "base64"));
+  } catch {
+    return null;
+  }
+}
+
+export class SecretStorageUnavailable extends Error {
+  constructor() {
+    super("This installation has no key to seal a secret with (LEGALLABS_SECRETS_KEY).");
+  }
+}
+
 export function createOidcProviders(
   pool: pg.Pool,
-  opts: { insecureDev?: boolean } = {},
+  opts: { insecureDev?: boolean; secrets?: SecretBox } = {},
 ): OidcProviders {
   return {
     async get(principal) {
@@ -71,6 +94,11 @@ export function createOidcProviders(
       const issuer = input.issuer.replace(/\/$/, "");
       if (!issuer.startsWith("https://") && !(opts.insecureDev && issuer.startsWith("http://"))) {
         throw new Error("The issuer must be an https address.");
+      }
+      let sealed = clientSecret;
+      if (clientSecret) {
+        if (!opts.secrets) throw new SecretStorageUnavailable();
+        sealed = sealSecret(opts.secrets, clientSecret);
       }
       return asApp(pool, principal, async (db) => {
         const { rows } = await db.query<Row>(
@@ -95,11 +123,11 @@ export function createOidcProviders(
             JSON.stringify(input.roleMapping ?? {}),
             input.requireMfaClaim ?? false,
             input.mfaAcrValues ?? [],
-            input.linkByEmail ?? true,
+            input.linkByEmail ?? false,
           ],
         );
-        if (clientSecret !== undefined) {
-          await db.query("select core.set_oidc_client_secret($1)", [clientSecret]);
+        if (sealed !== undefined) {
+          await db.query("select core.set_oidc_client_secret($1)", [sealed]);
         }
         const row = rows[0] as Row;
         await audit(
@@ -112,6 +140,8 @@ export function createOidcProviders(
           {
             issuer,
             enabled: row.enabled,
+            link_by_email: row.link_by_email,
+            require_mfa_claim: row.require_mfa_claim,
             secret_changed: clientSecret !== undefined,
           },
         );

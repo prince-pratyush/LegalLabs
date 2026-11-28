@@ -22,6 +22,8 @@ import { createLimiter } from "./auth/limiter.js";
 import { stepUpGate } from "./auth/mfa/gate.js";
 import { mfaApiRoutes, mfaAuthRoutes } from "./auth/mfa/routes.js";
 import type { Mfa } from "./auth/mfa/service.js";
+import type { SsoAdmin } from "./auth/oidc/admin.js";
+import { ssoAdminRoutes } from "./auth/oidc/admin-routes.js";
 import { oidcRoutes } from "./auth/oidc/routes.js";
 import type { Oidc } from "./auth/oidc/service.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
@@ -214,6 +216,8 @@ export interface AppOptions {
   agentSharing?: AgentSharing;
   /** Suggests a shared agent for what someone is typing. */
   agentNudges?: Nudges;
+  /** Setting up single sign-on; left out, those endpoints are not mounted. */
+  sso?: SsoAdmin;
   /** Inviting and managing people; left out, those endpoints are not mounted. */
   users?: Users;
   /** SCIM 2.0 under /scim/v2 and its admin API; left out, neither is mounted. */
@@ -281,6 +285,7 @@ export function createApp({
   agentNudges,
   scim,
   users,
+  sso,
   publicApi,
   clientIp,
   now = Date.now,
@@ -527,6 +532,7 @@ export function createApp({
   }
   // Before the models admin, which also lists roles but for fewer people.
   if (users) app.route("/api/v1", userAdminRoutes(users, clientOf, now));
+  if (sso) app.route("/api/v1", ssoAdminRoutes(sso, clientOf, now));
   if (library) app.route("/api/v1/library", libraryRoutes(library, clientOf));
   if (matters) app.route("/api/v1", matterRoutes(matters, clientOf));
   if (spaces) {

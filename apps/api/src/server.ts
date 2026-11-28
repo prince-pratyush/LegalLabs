@@ -25,6 +25,8 @@ import { createApp } from "./app.js";
 import { createAnchorJob } from "./audit/anchor-job.js";
 import { createAuth } from "./auth/auth.js";
 import { mfaFromEnv, mfaStartupCheck } from "./auth/mfa/config.js";
+import { createSsoAdmin } from "./auth/oidc/admin.js";
+import { createOidcProviders } from "./auth/oidc/providers.js";
 import { createOidc } from "./auth/oidc/service.js";
 import { createCi } from "./ci/ci.js";
 import { createClientIp, trustedProxiesFromEnv } from "./client-ip.js";
@@ -416,6 +418,12 @@ if (mfaCheck.action === "refuse") {
   process.exit(1);
 }
 if (mfaCheck.action === "warn") console.warn(mfaCheck.message);
+const publicUrl = process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173";
+// Plain http and private addresses, for a local IdP only; never in production.
+const oidcPolicy = {
+  insecureDev: process.env.OIDC_INSECURE_DEV === "1" && process.env.NODE_ENV !== "production",
+};
+const oidcSecrets = secrets ? { secrets } : {};
 const app = createApp({
   agentRuns,
   scim: { service: createScim(pool), admin: createScimAdmin(pool) },
@@ -446,11 +454,15 @@ const app = createApp({
   ...mfaOption,
   oidc: createOidc(pool, {
     ...(mfaOption.mfa ? { secondFactor: mfaOption.mfa.secondStep } : {}),
-    baseUrl: process.env.LEGALLABS_PUBLIC_URL || "http://localhost:5173",
-    // Plain http and private addresses, for a local IdP only; never in production.
-    policy: {
-      insecureDev: process.env.OIDC_INSECURE_DEV === "1" && process.env.NODE_ENV !== "production",
-    },
+    baseUrl: publicUrl,
+    policy: oidcPolicy,
+    ...oidcSecrets,
+  }),
+  sso: createSsoAdmin(pool, {
+    providers: createOidcProviders(pool, { ...oidcPolicy, ...oidcSecrets }),
+    baseUrl: publicUrl,
+    policy: oidcPolicy,
+    ...oidcSecrets,
   }),
   documents,
   // Usage and outcome reports for admin.reporting (CMD-001..003).

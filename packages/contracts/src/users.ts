@@ -150,3 +150,39 @@ export interface InviteResult {
   invited: Invitation[];
   skipped: { email: string; reason: "exists" | "duplicate" | "invalid" }[];
 }
+
+const scope = z
+  .string()
+  .max(100)
+  .regex(/^[\x21\x23-\x5b\x5d-\x7e]+$/, "A scope has no spaces or quotes");
+
+/** Single sign-on through OpenID Connect. SAML reaches it through a broker. */
+export const SsoInput = z.strictObject({
+  issuer: z.url().max(512),
+  client_id: z.string().trim().min(1).max(512),
+  /** A string replaces the saved secret, null removes it, left out keeps it. */
+  client_secret: z.string().min(1).max(2048).nullable().optional(),
+  scopes: z.array(scope).max(20).default(["openid", "email", "profile"]),
+  enabled: z.boolean(),
+  /** Attach a first sign-in to the account with the same verified email. */
+  link_by_email: z.boolean().default(false),
+  /** Refuse a sign-in the identity provider did not strengthen with a second factor. */
+  require_mfa_claim: z.boolean().default(false),
+});
+export type SsoInput = z.input<typeof SsoInput>;
+
+export interface SsoSettings {
+  configured: boolean;
+  issuer: string;
+  client_id: string;
+  scopes: string[];
+  enabled: boolean;
+  link_by_email: boolean;
+  require_mfa_claim: boolean;
+  has_secret: boolean;
+  /** What to register with the identity provider. */
+  redirect_uri: string;
+  /** False when this installation has no key to seal a secret with. */
+  secret_storage: boolean;
+  can_change: boolean;
+}

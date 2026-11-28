@@ -58,6 +58,7 @@ export const auditActions: string[] = [
     "password_set",
   ]),
   ...family("group", ["created", "members_changed"]),
+  ...family("sso", ["provider_configured", "identity_linked"]),
   ...family("permission", ["granted", "revoked"]),
   "settings.changed",
   ...family("model", ["enabled", "disabled", "zdr_exception"]),

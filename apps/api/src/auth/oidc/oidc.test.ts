@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createGateway } from "@legallabs/model-gateway";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createSecretBox } from "../../admin-models/secrets.js";
 import { createApp } from "../../app.js";
 import { asApp } from "../../db.js";
 import { createDrafts } from "../../drafts/drafts.js";
@@ -22,6 +23,7 @@ import { createOidc } from "./service.js";
 const pool = testPool();
 const auth = createAuth(pool);
 const client = { ip: "203.0.113.9", userAgent: "vitest" };
+const secrets = createSecretBox(Buffer.alloc(32, 3).toString("base64"));
 let idp: MockIdp;
 
 beforeAll(async () => {
@@ -36,6 +38,7 @@ const harness = (mfa?: Mfa) => {
   const oidc = createOidc(pool, {
     baseUrl: "https://app.test",
     policy: { insecureDev: true },
+    secrets,
     ...(mfa ? { secondFactor: mfa.secondStep } : {}),
   });
   const app = createApp({
@@ -56,14 +59,15 @@ const principalOf = (m: Seeded) => ({
   workspaceId: m.workspaceId,
   sessionId: "",
 });
-const providers = createOidcProviders(pool, { insecureDev: true });
+const providers = createOidcProviders(pool, { insecureDev: true, secrets });
 
 // A workspace whose admin has configured the mock IdP.
 async function workspace(config: Partial<ProviderInput> = {}) {
   const admin = await seedMember(pool);
   await providers.put(
     principalOf(admin),
-    { issuer: idp.issuer, clientId: idp.clientId, enabled: true, ...config },
+    // These tests link first sign-ins by email, which a workspace now has to ask for.
+    { issuer: idp.issuer, clientId: idp.clientId, enabled: true, linkByEmail: true, ...config },
     idp.clientSecret,
     client,
   );

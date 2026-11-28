@@ -4,8 +4,8 @@ import { FRESH_MFA_MS, hasFreshMfa } from "./step-up.js";
 
 /**
  * The actions that need a second factor shown within the last 15 minutes (SEC-007, 06-security
- * 3.2): changing a retention policy, placing or lifting a legal hold, and adding a guest
- * organisation to a Space. Creating an API token has its own check beside the token routes.
+ * 3.2): changing a retention policy, placing or lifting a legal hold, adding a guest
+ * organisation to a Space, and changing single sign-on. Creating an API token has its own check beside the token routes.
  * One list here, rather than a check in every route, so a new route cannot forget it.
  */
 const SENSITIVE: readonly (readonly [method: string, path: RegExp])[] = [
@@ -13,6 +13,7 @@ const SENSITIVE: readonly (readonly [method: string, path: RegExp])[] = [
   ["DELETE", /^\/api\/v1\/admin\/retention\/policy$/],
   ["PUT", /^\/api\/v1\/admin\/retention\/holds$/],
   ["POST", /^\/api\/v1\/spaces\/[^/]+\/parties$/],
+  ["PUT", /^\/api\/v1\/admin\/identity\/sso$/],
 ];
 
 export const isStepUpAction = (method: string, path: string) =>

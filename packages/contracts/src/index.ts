@@ -381,6 +381,8 @@ export {
   PERMISSIONS,
   type Role,
   RoleInput,
+  SsoInput,
+  type SsoSettings,
   type UserDirectory,
   UserPatch,
   type UserStatus,
