@@ -26,5 +26,6 @@ export const usersApi = {
   resend: (id: string) => send<Invitation>("POST", `/admin/users/${enc(id)}/invite`),
   update: (id: string, patch: UserPatch) =>
     send<ManagedUser>("PATCH", `/admin/users/${enc(id)}`, patch),
+  unlink: (id: string) => send<ManagedUser>("DELETE", `/admin/users/${enc(id)}/identities`),
   createGroup: (name: string) => send<Group>("POST", "/admin/groups", { name }),
 };

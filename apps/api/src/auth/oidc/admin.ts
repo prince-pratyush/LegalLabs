@@ -11,7 +11,7 @@ import { createRp } from "./rp.js";
 
 export class SsoRefused extends Error {
   constructor(
-    readonly status: 403 | 422 | 503,
+    readonly status: 403 | 409 | 422 | 503,
     readonly code: string,
     message: string,
   ) {
@@ -113,7 +113,7 @@ export function createSsoAdmin(pool: pg.Pool, opts: SsoAdminOptions) {
       }
       if (value.enabled) await discover(issuer);
       const kept = await opts.providers.get(p);
-      await opts.providers.put(
+      const save = opts.providers.put(
         p,
         {
           issuer,
@@ -129,6 +129,14 @@ export function createSsoAdmin(pool: pg.Pool, opts: SsoAdminOptions) {
         value.client_secret,
         client,
       );
+      await save.catch((err: unknown) => {
+        if ((err as { message?: string }).message !== "NO_ADMIN_PASSWORD") throw err;
+        throw new SsoRefused(
+          409,
+          "NO_ADMIN_PASSWORD",
+          "First give a full administrator a password, as the way back in if the provider fails.",
+        );
+      });
       return get(p);
     },
   };

@@ -58,6 +58,9 @@ export function userAdminRoutes(
     if (wait > 0) return slowDown(c, wait);
     return c.json(await users.resend(c.get("principal"), id(c), clientOf(c)));
   });
+  app.delete("/admin/users/:id/identities", async (c) =>
+    c.json(await users.unlink(c.get("principal"), id(c), clientOf(c))),
+  );
   app.patch("/admin/users/:id", small, async (c) => {
     const input = await read(c, UserPatch);
     if (!input) return c.json(INVALID, 400);

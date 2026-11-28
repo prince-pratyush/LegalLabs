@@ -19,6 +19,7 @@ const SENSITIVE: readonly (readonly [method: string, path: RegExp])[] = [
   ["POST", /^\/api\/v1\/admin\/users\/invite$/],
   ["POST", /^\/api\/v1\/admin\/users\/[^/]+\/invite$/],
   ["POST", /^\/api\/v1\/admin\/roles$/],
+  ["DELETE", /^\/api\/v1\/admin\/users\/[^/]+\/identities$/],
 ];
 
 export const isStepUpAction = (method: string, path: string) =>

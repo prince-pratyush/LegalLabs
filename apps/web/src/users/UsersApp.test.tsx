@@ -19,6 +19,7 @@ const person = (over: object = {}) => ({
   role_name: "User",
   group_ids: [],
   source: "manual",
+  sso_linked: false,
   role_from_group: false,
   is_self: false,
   ...over,
@@ -180,6 +181,26 @@ describe("managing people", () => {
       expect(screen.queryByRole("form", { name: "Confirm it's you" })).toBeNull(),
     );
     expect(sent.filter((s) => s.route === `PATCH /api/v1/admin/users/${BO}`)).toHaveLength(2);
+  });
+
+  it("unlinks someone from single sign-on after asking", async () => {
+    const sent = serve(
+      routes([person({ sso_linked: true })], {
+        [`DELETE /api/v1/admin/users/${BO}/identities`]: ok(person()),
+      }),
+    );
+    show();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Unlink single sign-on for bo@acme.test" }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Unlink" }),
+    );
+    await waitFor(() =>
+      expect(sent.some((s) => s.route === `DELETE /api/v1/admin/users/${BO}/identities`)).toBe(
+        true,
+      ),
+    );
   });
 
   it("leaves your own account alone", async () => {

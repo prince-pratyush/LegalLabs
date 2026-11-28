@@ -13,6 +13,7 @@ import {
   testThreads,
 } from "../../test-db.js";
 import { type MockIdp, startMockIdp } from "../../test-idp.js";
+import { createUsers } from "../../users/users.js";
 import { createAuth } from "../auth.js";
 import { createSsoAdmin } from "./admin.js";
 import { createOidcProviders } from "./providers.js";
@@ -42,6 +43,7 @@ function harness(opts: { insecureDev?: boolean; secrets?: boolean } = {}) {
     auth: createAuth(pool),
     oidc: createOidc(pool, { baseUrl: "https://app.test", policy, ...box }),
     sso: createSsoAdmin(pool, { providers, baseUrl: "https://app.test/", policy, ...box }),
+    users: createUsers(pool, { baseUrl: "https://app.test" }),
     documents,
     threads: testThreads(pool, documents),
     drafts: createDrafts(pool, {
@@ -85,7 +87,19 @@ function harness(opts: { insecureDev?: boolean; secrets?: boolean } = {}) {
       headers: { cookie: `__Host-oidc=${cookie}` },
     });
   };
-  return { app, as, login, signIn };
+  /** Any other admin call, with a session made by password sign-in. */
+  const call = async (sid: string, method: string, path: string) => {
+    const res = await app.request(`/api/v1${path}`, {
+      method,
+      headers: { cookie: `__Host-sid=${sid}` },
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: tests read many shapes
+    return { status: res.status, body: (await res.json().catch(() => null)) as any };
+  };
+  const alive = async (sid: string) =>
+    (await app.request("/auth/session", { headers: { cookie: `__Host-sid=${sid}` } })).status ===
+    200;
+  return { app, as, login, signIn, call, alive };
 }
 
 const config = (over: object = {}) => ({
@@ -282,6 +296,112 @@ describe("configuring single sign-on", () => {
     let last = 0;
     for (let i = 0; i < 11; i++) last = (await api("PUT", config({ enabled: false }))).status;
     expect(last).toBe(429);
+  });
+});
+
+describe("not locking people out", () => {
+  const movedConfig = () =>
+    config({
+      issuer: second.issuer,
+      client_id: second.clientId,
+      client_secret: second.clientSecret,
+    });
+  const dropPassword = (userId: string) =>
+    pool.query("delete from core.password_credential where user_id = $1", [userId]);
+
+  it("needs a full administrator with a password before turning on or moving", async () => {
+    const m = await seedMember(pool);
+    const api = await harness().as(m);
+    // Someone who isn't a full administrator having a password is no way back in.
+    await person(m, "bo", ["admin.config", "admin.users"]);
+    await dropPassword(m.userId);
+    const refusal = { status: 409, body: { code: "NO_ADMIN_PASSWORD" } };
+    expect(await api("PUT", config())).toMatchObject(refusal);
+    expect((await api("GET")).body.configured).toBe(false);
+    expect(await stored(m)).toBeUndefined();
+    // Saving it switched off locks nobody out.
+    expect((await api("PUT", config({ enabled: false }))).status).toBe(200);
+    expect(await api("PUT", config())).toMatchObject(refusal);
+  });
+
+  it("does not move to another issuer without one either", async () => {
+    const m = await seedMember(pool);
+    const api = await harness().as(m);
+    await api("PUT", config());
+    await dropPassword(m.userId);
+    // Nothing about who can get in changes, so this is fine.
+    expect((await api("PUT", config({ require_mfa_claim: true }))).status).toBe(200);
+    expect(await api("PUT", movedConfig())).toMatchObject({
+      status: 409,
+      body: { code: "NO_ADMIN_PASSWORD" },
+    });
+    expect((await api("GET")).body.issuer).toBe(idp.issuer);
+  });
+
+  it("signs out everyone but full administrators when it turns on or moves", async () => {
+    const m = await seedMember(pool);
+    const h = harness();
+    const api = await h.as(m);
+    const bo = await person(m, "bo", ["admin.config", "admin.users"]);
+    const admin = await h.login(m);
+    let theirs = await h.login(m, bo.email);
+    expect(await h.alive(theirs)).toBe(true);
+    await api("PUT", config());
+    expect(await h.alive(theirs)).toBe(false);
+    expect(await h.alive(admin)).toBe(true);
+
+    // A session made afterwards survives an unrelated save, and not a move to a new issuer.
+    await pool.query(
+      `insert into core.session (workspace_id, user_id, token_hash, expires_at)
+       values ($1, $2, sha256('later-session'::bytea), now() + interval '1 hour')`,
+      [m.workspaceId, bo.id],
+    );
+    theirs = "later-session";
+    await api("PUT", config({ require_mfa_claim: true }));
+    expect(await h.alive(theirs)).toBe(true);
+    await api("PUT", movedConfig());
+    expect(await h.alive(theirs)).toBe(false);
+    expect(await h.alive(admin)).toBe(true);
+    const events = await auditTrail(pool, m.workspaceId);
+    expect(events.map((e) => e.action)).toContain("session.revoked");
+  });
+
+  it("lets a full administrator unlink someone, who can then link again", async () => {
+    const m = await seedMember(pool);
+    const h = harness();
+    const api = await h.as(m);
+    await api("PUT", config({ link_by_email: true }));
+    const bo = await person(m, "bo", ["threads.use"], "invited");
+    const claims = { email: bo.email, email_verified: true };
+    await h.signIn(m, { sub: "s-1", ...claims });
+    await api("PUT", { ...movedConfig(), link_by_email: true });
+    expect((await h.signIn(m, { sub: "x-9", ...claims }, second)).status).toBe(401);
+
+    const lesser = await person(m, "lesser", ["admin.users", "admin.config"]);
+    await pool.query("update core.oidc_provider set enabled = false where workspace_id = $1", [
+      m.workspaceId,
+    ]);
+    const theirs = await h.login(m, lesser.email);
+    const admin = await h.login(m);
+    const path = `/admin/users/${bo.id.toUpperCase()}/identities`;
+    expect(await h.call(theirs, "DELETE", path)).toMatchObject({ status: 403 });
+    const other = await seedMember(pool);
+    expect(await h.call(admin, "DELETE", `/admin/users/${other.userId}/identities`)).toMatchObject({
+      status: 404,
+    });
+    const listed = await h.call(admin, "GET", "/admin/users");
+    expect(listed.body.items.find((u: { id: string }) => u.id === bo.id).sso_linked).toBe(true);
+
+    expect(await h.call(admin, "DELETE", path)).toMatchObject({
+      status: 200,
+      body: { sso_linked: false },
+    });
+    await pool.query("update core.oidc_provider set enabled = true where workspace_id = $1", [
+      m.workspaceId,
+    ]);
+    expect((await h.signIn(m, { sub: "x-9", ...claims }, second)).status).toBe(302);
+    const events = await auditTrail(pool, m.workspaceId);
+    expect(events.map((e) => e.action)).toContain("sso.identity_unlinked");
   });
 });
 

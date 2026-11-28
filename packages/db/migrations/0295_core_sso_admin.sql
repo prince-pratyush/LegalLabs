@@ -136,3 +136,74 @@ begin
   return query select 'first_link', v_user, v_scim;
 end
 $$;
+
+-- Turning single sign-on on, or pointing it somewhere else, changes how everyone gets in. Kept
+-- here so that it holds whichever route writes the provider.
+create function core.guard_oidc_change() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  turning_on boolean := new.enabled and (tg_op = 'INSERT' or not old.enabled);
+  moved boolean := tg_op = 'UPDATE' and new.issuer is distinct from old.issuer;
+  ended integer;
+begin
+  if current_setting('role', true) is distinct from 'legallabs_app'
+     or not (turning_on or moved) then
+    return null;
+  end if;
+  -- If the provider is wrong or down, someone must still be able to get in and put it right.
+  if new.enabled and not exists (
+       select 1 from core."user" u
+         join core.role r on r.workspace_id = u.workspace_id and r.id = u.role_id
+         join core.password_credential c on c.workspace_id = u.workspace_id and c.user_id = u.id
+        where u.workspace_id = new.workspace_id and u.kind = 'member' and u.status = 'active'
+          and '*' = any (r.permissions)) then
+    raise exception 'NO_ADMIN_PASSWORD' using errcode = 'check_violation';
+  end if;
+  -- Sessions made under the old arrangement end, and so do sign-ins half way through. Full
+  -- administrators keep theirs; guests never used the provider.
+  with members as (
+    select u.id from core."user" u
+      left join core.role r on r.workspace_id = u.workspace_id and r.id = u.role_id
+     where u.workspace_id = new.workspace_id and u.kind = 'member'
+       and not coalesce('*' = any (r.permissions), false)
+  ), pending as (
+    delete from core.mfa_pending p
+     where p.workspace_id = new.workspace_id and p.user_id in (select id from members)
+  )
+  update core.session s set revoked_at = now()
+   where s.workspace_id = new.workspace_id and s.revoked_at is null
+     and s.user_id in (select id from members);
+  get diagnostics ended = row_count;
+  if ended > 0 then
+    perform admin.append_audit_event('session.revoked', 'system', null, 'workspace',
+      new.workspace_id::text, jsonb_build_object('sessions', ended, 'reason', 'sso_changed'));
+  end if;
+  return null;
+end
+$$;
+alter function core.guard_oidc_change() owner to legallabs_definer;
+create trigger oidc_provider_guard after insert or update on core.oidc_provider
+  for each row execute function core.guard_oidc_change();
+
+-- For someone whose provider has changed: forgets who they were there, so that they can link
+-- again, and signs them out. A full administrator only, as for the provider itself.
+create function core.unlink_identities(p_user uuid) returns integer
+language plpgsql security definer set search_path = '' as $$
+declare
+  ws uuid := core.current_workspace_id();
+  n integer;
+begin
+  if not coalesce(core.in_tenant(ws) and core.has_permission('*'), false) then
+    raise exception 'not allowed to unlink single sign-on' using errcode = '42501';
+  end if;
+  delete from core.external_identity e where e.workspace_id = ws and e.user_id = p_user;
+  get diagnostics n = row_count;
+  if n > 0 then
+    update core.session s set revoked_at = now()
+     where s.workspace_id = ws and s.user_id = p_user and s.revoked_at is null;
+  end if;
+  return n;
+end
+$$;
+alter function core.unlink_identities(uuid) owner to legallabs_definer;
+grant execute on function core.unlink_identities(uuid) to legallabs_app;

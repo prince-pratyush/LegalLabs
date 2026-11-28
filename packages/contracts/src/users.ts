@@ -112,6 +112,8 @@ export interface ManagedUser {
   role_name: string | null;
   group_ids: string[];
   source: "manual" | "scim";
+  /** Has signed in through an identity provider and is bound to who they were there. */
+  sso_linked: boolean;
   /** The role comes from a mapped identity provider group, so it can't be changed here. */
   role_from_group: boolean;
   is_self: boolean;

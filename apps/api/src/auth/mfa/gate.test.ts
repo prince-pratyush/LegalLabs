@@ -106,6 +106,7 @@ describe("P-08 step-up on sensitive admin actions", () => {
     expect(isStepUpAction("POST", "/api/v1/admin/roles")).toBe(true);
     expect(isStepUpAction("GET", "/api/v1/admin/users")).toBe(false);
     expect(isStepUpAction("GET", "/api/v1/admin/roles")).toBe(false);
+    expect(isStepUpAction("DELETE", `/api/v1/admin/users/${ZERO}/identities`)).toBe(true);
     expect(isStepUpAction("GET", "/api/v1/admin/retention/policy")).toBe(false);
     expect(isStepUpAction("GET", "/api/v1/admin/retention")).toBe(false);
   });
