@@ -8,6 +8,7 @@ export const ADMIN_PAGES = [
   { id: "models", label: "Models and connectors", hash: "#/admin/models" },
   { id: "web-search", label: "Web search", hash: "#/admin/web-search" },
   { id: "users", label: "Users and groups", hash: "#/admin/users" },
+  { id: "identity", label: "Single sign-on", hash: "#/admin/identity" },
 ] as const;
 
 export type AdminPage = (typeof ADMIN_PAGES)[number]["id"];

@@ -294,7 +294,7 @@ function View({
         <>
           <p className="text-dense text-fg-muted">
             {directory.sso_enabled
-              ? "Single sign-on is on: people you add sign in through your identity provider."
+              ? "Single sign-on is on: people you add sign in through your identity provider, which needs linking by verified email to be on under Single sign-on."
               : directory.mail_configured
                 ? "Invitations are emailed."
                 : "No mail server is set up, so each link is shown to you once to pass on."}
