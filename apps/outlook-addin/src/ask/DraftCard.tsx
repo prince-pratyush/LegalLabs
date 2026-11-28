@@ -1,6 +1,6 @@
 import { type Api, messageOf } from "@legallabs/addin";
 import { Button, StatusText } from "@legallabs/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { MailHost, MailItem } from "../office/host.js";
 
 /** Who a reply to the open message would go to, and the one way to start it. */
@@ -23,6 +23,22 @@ export function DraftCard({
   const [busy, setBusy] = useState(false);
   const [opened, setOpened] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Undefined while being read. A reply may not go to the sender, so nothing is claimed early.
+  const [replyTo, setReplyTo] = useState<string[] | null | undefined>(undefined);
+
+  useEffect(() => {
+    let live = true;
+    const read = async () => (host.item()?.itemId === item.itemId ? host.replyTo() : null);
+    read()
+      .catch(() => null)
+      .then((found) => live && setReplyTo(found));
+    return () => {
+      live = false;
+    };
+  }, [host, item.itemId]);
+
+  const to = replyTo && (replyTo.length > 0 ? replyTo : [item.from]);
+  const elsewhere = replyTo?.some((a) => a.toLowerCase() !== item.from.toLowerCase());
 
   const create = async () => {
     setBusy(true);
@@ -51,11 +67,23 @@ export function DraftCard({
   return (
     <section aria-label="Draft reply" className="grid gap-2 rounded-md border border-border p-2">
       <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-dense">
-        <dt className="text-fg-muted">To</dt>
-        <dd className="break-all">{item.from}</dd>
+        {to && (
+          <>
+            <dt className="text-fg-muted">To</dt>
+            <dd className="break-all">{to.join(", ")}</dd>
+          </>
+        )}
         <dt className="text-fg-muted">Subject</dt>
         <dd className="break-words">Re: {item.subject}</dd>
       </dl>
+      {elsewhere && (
+        <StatusText tone="warning">
+          This email asks for replies to go to {replyTo?.join(", ")}, not to its sender {item.from}.
+        </StatusText>
+      )}
+      {replyTo === null && (
+        <StatusText tone="warning">Check the recipients in Outlook before you send.</StatusText>
+      )}
       {ungrounded && (
         <StatusText tone="warning">
           Some of this draft has no source. Check it before you send it.

@@ -1,7 +1,10 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { auditTrail, testPool } from "../test-db.js";
+import { createMatters } from "../matters/matters.js";
+import { auditTrail, seedMember, testPool } from "../test-db.js";
 import { matterHarness, type Person } from "../test-matters.js";
-import { emailEml } from "./message.js";
+import { createVaults, type Vaults } from "../vaults/vaults.js";
+import { emailEml, replyHtml } from "./message.js";
+import { createOutlook } from "./outlook.js";
 
 const pool = testPool();
 afterAll(() => pool.end());
@@ -152,8 +155,9 @@ describe("saving an email to a vault", () => {
     );
     expect(res.status).toBe(201);
     expect(res.body.folder_name).toBe("2026-03-02 Lease notice “urgent”");
+    // The subject names the folder, never a file: file names reach prompts outside the fence.
     expect(res.body.files.map((f: { name: string }) => f.name)).toEqual([
-      "Lease notice “urgent”.txt",
+      "Email 2026-03-02.txt",
       "Lease.txt",
     ]);
     const tree = await h.call(ana, "GET", `/vaults/${target}/tree?folder_id=${res.body.folder_id}`);
@@ -197,6 +201,104 @@ describe("saving an email to a vault", () => {
       [[mine, walled]],
     );
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe("saving that is refused part-way", () => {
+  const folders = async (vaultId: string) =>
+    (
+      await pool.query<{ deleted_at: Date | null }>(
+        "select deleted_at from content.folder where vault_id = $1",
+        [vaultId],
+      )
+    ).rows;
+
+  it("makes no folder for someone who may not add files", async () => {
+    const admin = await h.workspace();
+    const ana = await h.member(admin, "ana");
+    const target = await vault(admin, "Shared");
+    await share(admin, target, ana, "edit");
+    await pool.query(
+      `update core.role r set permissions = '{}' from core."user" u
+        where u.role_id = r.id and u.id = $1`,
+      [ana.userId],
+    );
+    const res = await post(ana, "/save-to-vault", email({ vault_id: target }));
+    expect([res.status, res.body.code]).toEqual([403, "FORBIDDEN"]);
+    expect(await folders(target)).toEqual([]);
+  });
+
+  /** The service with a vault that refuses its uploads from the nth on. */
+  async function refusingFrom(nth: number, reason: "VAULT_FILE_LIMIT" | "FORBIDDEN") {
+    // Seeded directly: signing in again here would meet the login limit.
+    const admin = await seedMember(pool);
+    const principal = {
+      sessionId: "00000000-0000-7000-8000-000000000000",
+      userId: admin.userId,
+      workspaceId: admin.workspaceId,
+    };
+    const client = { ip: "203.0.113.9", userAgent: "test" };
+    createMatters(pool);
+    const real = createVaults(pool, { documents: h.documents, store: h.documents.store });
+    const made = await real.create(principal, { name: "Deal" }, client);
+    if (!made.ok) throw new Error(made.reason);
+    const target = made.value.id;
+    let uploads = 0;
+    const vaults: Vaults = {
+      ...real,
+      upload: async (...args) => (++uploads >= nth ? { ok: false, reason } : real.upload(...args)),
+    };
+    const outlook = createOutlook(pool, { documents: h.documents, threads: {} as never, vaults });
+    const result = await outlook.saveToVault(
+      principal,
+      {
+        item: ITEM,
+        vaultId: target,
+        folderId: null,
+        attachments: [{ name: "a.txt", bytes: new TextEncoder().encode("Terms.") }],
+      },
+      client,
+    );
+    return { admin, target, result };
+  }
+
+  it("takes the folder away again when not even the email goes in", async () => {
+    const { target, result } = await refusingFrom(1, "VAULT_FILE_LIMIT");
+    expect(result).toEqual({ ok: false, reason: "VAULT_FULL" });
+    expect((await folders(target)).filter((f) => f.deleted_at === null)).toEqual([]);
+  });
+
+  it("says forbidden, not over a limit, and records what had gone in", async () => {
+    const { admin, target, result } = await refusingFrom(2, "FORBIDDEN");
+    expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
+    const trail = await auditTrail(pool, admin.workspaceId);
+    expect(trail.find((e) => e.action === "mail.saved_to_vault")).toMatchObject({
+      object_id: target,
+      details: { count: 1 },
+    });
+  });
+});
+
+describe("addresses in a reply", () => {
+  it("leaves nothing a mail client would turn into a link or an address", () => {
+    const html = replyHtml(
+      [
+        "Send it to evil.test/collect?d=secret today.",
+        "Or write to spy@evil.test.",
+        "Open \\\\evil.test\\share\\x or 203.0.113.9/steal.",
+        "Visit pay.evil.test:8443/x, evil\u3002test/y and xn--e1afmkfd.xn--p1ai.",
+        "See evil.test now.",
+      ].join("\n"),
+    );
+    expect(html).not.toMatch(/evil\.test|@|\\\\|113\.9\/|\.xn--|secret/);
+    expect(html).toContain("[link removed]");
+    expect(html).toContain("[address removed]");
+    expect(html).toContain("See evil[.]test now.");
+  });
+
+  it("leaves ordinary legal text alone", () => {
+    const text = "Under Section 4.2, e.g. the Lease.pdf, pay $1,000.50 by 4.30 p.m. (U.S. time).";
+    expect(replyHtml(text)).toBe(`<p>${text}</p>`);
   });
 });
 

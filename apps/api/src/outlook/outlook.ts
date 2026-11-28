@@ -31,6 +31,9 @@ export type OutlookResult<T> = { ok: true; value: T } | { ok: false; reason: Out
 
 const refused = (reason: OutlookFailure) => ({ ok: false as const, reason });
 
+// Upload refusals that mean the caller may no longer write here.
+const DENIED: ReadonlySet<string> = new Set(["FORBIDDEN", "NOT_FOUND", "MATTER_NOT_FOUND"]);
+
 export interface Attached {
   name: string;
   bytes: Uint8Array;
@@ -262,14 +265,27 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
       client: Client,
     ): Promise<OutlookResult<OutlookSaved>> {
       const { item, vaultId } = input;
-      const subject = fileName(item.subject, "Email");
+      // Asked before anything is made, so a refusal leaves no empty folder behind.
+      const may = await asApp(pool, p, async (db) => {
+        const { rows } = await db.query<{ level: string | null; allowed: boolean }>(
+          `select content.vault_level(v.id) level,
+                  core.has_permission('threads.use') and core.can_access_matter(v.matter_id) allowed
+             from content.vault v where v.id = $1 and v.deleted_at is null`,
+          [vaultId],
+        );
+        return rows[0];
+      });
+      if (!may?.level) return refused("VAULT_NOT_FOUND");
+      if (!may.allowed || !["owner", "full", "edit"].includes(may.level)) {
+        return refused("FORBIDDEN");
+      }
       let folder: Awaited<ReturnType<Vaults["createFolder"]>>;
       try {
         folder = await vaults.createFolder(
           p,
           vaultId,
           {
-            name: fileName(`${item.date.slice(0, 10)} ${subject}`),
+            name: fileName(`${item.date.slice(0, 10)} ${fileName(item.subject, "Email")}`),
             parentId: input.folderId,
           },
           client,
@@ -285,18 +301,34 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
         return refused(folder.reason === "FORBIDDEN" ? "FORBIDDEN" : "VAULT_NOT_FOUND");
       }
 
+      const folderId = folder.value.id;
       const files: OutlookSaved["files"] = [];
       const skipped: OutlookSaved["skipped"] = [];
       const names = input.attachments.map((a) => fileName(a.name));
       const upload = (name: string, bytes: Uint8Array) =>
-        vaults.upload(p, vaultId, { name, bytes, folderId: folder.value.id }, client);
+        vaults.upload(p, vaultId, { name, bytes, folderId }, client);
+      const recordSaved = () =>
+        asApp(pool, p, (db) =>
+          audit(
+            db,
+            p,
+            "mail.saved_to_vault",
+            "vault",
+            vaultId,
+            { count: files.length, folder_id: folderId },
+            client,
+          ),
+        );
 
+      // The folder carries the subject; the file's name stays out of the sender's hands.
       const message = await upload(
-        fileName(`${subject}.${options.eml ? "eml" : "txt"}`),
+        `Email ${item.date.slice(0, 10)}.${options.eml ? "eml" : "txt"}`,
         encode(options.eml ? emailEml(item) : emailText(item, names)),
       );
       if (!message.ok) {
-        return refused(message.reason.startsWith("VAULT_") ? "VAULT_FULL" : "NOT_STORED");
+        await vaults.trash(p, vaultId, { documentIds: [], folderIds: [folderId] }, client);
+        if (message.reason.startsWith("VAULT_")) return refused("VAULT_FULL");
+        return refused(DENIED.has(message.reason) ? "FORBIDDEN" : "NOT_STORED");
       }
       files.push({ document_id: message.document.id, name: message.document.name });
 
@@ -305,6 +337,10 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
         const result = await upload(name, attachment.bytes);
         if (result.ok) {
           files.push({ document_id: result.document.id, name: result.document.name });
+        } else if (DENIED.has(result.reason)) {
+          // Access went part-way through: what is in stays, and is on the record.
+          await recordSaved();
+          return refused("FORBIDDEN");
         } else {
           skipped.push({
             name,
@@ -315,21 +351,11 @@ export function createOutlook(pool: pg.Pool, options: OutlookOptions) {
           });
         }
       }
-      await asApp(pool, p, (db) =>
-        audit(
-          db,
-          p,
-          "mail.saved_to_vault",
-          "vault",
-          vaultId,
-          { count: files.length, folder_id: folder.value.id },
-          client,
-        ),
-      );
+      await recordSaved();
       await used(p, "outlook.saved_to_vault", "vault", vaultId);
       return {
         ok: true,
-        value: { folder_id: folder.value.id, folder_name: folder.value.name, files, skipped },
+        value: { folder_id: folderId, folder_name: folder.value.name, files, skipped },
       };
     },
   };

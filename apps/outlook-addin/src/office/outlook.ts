@@ -1,3 +1,4 @@
+import { replyToOf } from "./headers.js";
 import type { AttachmentContent, MailAttachment, MailHost, MailItem } from "./host.js";
 
 const address = (who: { emailAddress?: string } | undefined) => who?.emailAddress ?? "";
@@ -64,6 +65,12 @@ export function createOutlookHost(): MailHost {
           open().getAttachmentContentAsync(id, done),
         ),
       ),
+    async replyTo() {
+      const item = open();
+      // Mailbox 1.8; older Outlook can't say.
+      if (typeof item.getAllInternetHeadersAsync !== "function") return null;
+      return replyToOf(await settled<string>((done) => item.getAllInternetHeadersAsync(done)));
+    },
     reply(htmlBody) {
       open().displayReplyForm({ htmlBody });
     },

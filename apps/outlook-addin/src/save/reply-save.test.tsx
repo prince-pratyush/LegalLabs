@@ -72,7 +72,7 @@ describe("draft replies and saving", () => {
     pane(host);
     await click("Draft reply");
     const card = await screen.findByRole("region", { name: "Draft reply" });
-    expect(card.textContent).toContain(ITEM.from);
+    await vi.waitFor(() => expect(card.textContent).toContain(ITEM.from));
     expect(card.textContent).toContain("Re: Lease notice");
     expect(card.textContent).toContain("has no source");
     expect(replies).toEqual([]);
@@ -84,6 +84,30 @@ describe("draft replies and saving", () => {
       thread_id: "t1",
       message_id: "m2",
     });
+  });
+
+  const card = async (replyTo: () => Promise<string[] | null>) => {
+    serve();
+    pane(fakeHost(ITEM, { replyTo }).host);
+    await click("Draft reply");
+    return screen.findByRole("region", { name: "Draft reply" });
+  };
+
+  it("names the Reply-To address and warns when it isn't the sender", async () => {
+    const shown = await card(async () => ["thief@evil.test"]);
+    await vi.waitFor(() => expect(shown.querySelector("dd")?.textContent).toBe("thief@evil.test"));
+    expect(shown.textContent).toContain(
+      "This email asks for replies to go to thief@evil.test, not to its sender them@acme.test.",
+    );
+  });
+
+  it("gives no To line when it can't tell where a reply will go", async () => {
+    const shown = await card(async () => {
+      throw new Error("no headers");
+    });
+    await screen.findByText("Check the recipients in Outlook before you send.");
+    expect(shown.querySelector("dt")?.textContent).toBe("Subject");
+    expect(shown.textContent).not.toContain(ITEM.from);
   });
 
   it("doesn't reply to whichever email was opened in the meantime", async () => {

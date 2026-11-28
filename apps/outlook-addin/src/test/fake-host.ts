@@ -18,6 +18,7 @@ export function fakeHost(item: MailItem | null = ITEM, overrides: Partial<MailHo
     item: () => current,
     body: async () => "The notice must be served by 4 March.",
     attachment: async () => ({ bytes: new Uint8Array([37, 80, 68, 70]) }),
+    replyTo: async () => [],
     reply: (html) => {
       replies.push(html);
     },
