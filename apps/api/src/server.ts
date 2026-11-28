@@ -4,7 +4,7 @@ import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { embedderFromEnv, rerankerFromEnv } from "@legallabs/embed";
 import { createIngest, type Scanner, scannerFromEnv } from "@legallabs/ingest";
-import { createScanners } from "@legallabs/knowledge";
+import { createItemText, createScanners } from "@legallabs/knowledge";
 import { createGateway, gatewayOptionsFromEnv } from "@legallabs/model-gateway";
 import { type ObjectStore, objectStoreFromEnv } from "@legallabs/storage";
 import pg from "pg";
@@ -39,6 +39,7 @@ import { createDrafts } from "./drafts/drafts.js";
 import { createChronologies } from "./facts/chronology.js";
 import { createFactExtractions } from "./facts/extraction.js";
 import { createFacts } from "./facts/facts.js";
+import { createHorizonActions } from "./horizon/actions.js";
 import { createHorizon } from "./horizon/horizon.js";
 import { createHorizonRefresh } from "./horizon/refresh.js";
 import { createEmailProcessor } from "./inbound/processor.js";
@@ -357,6 +358,15 @@ intakeWorker.start();
 process.once("SIGTERM", () => void intakeWorker.stop());
 process.once("SIGINT", () => void intakeWorker.stop());
 
+const drafts = createDrafts(pool, { gateway, templates: createTemplatePort(pool) });
+const horizonActions = createHorizonActions(pool, {
+  documents,
+  vaults: vaultService,
+  threads: threadService,
+  drafts,
+  text: createItemText({ userAgent: process.env.KNOWLEDGE_USER_AGENT }),
+});
+
 const mfaOption = mfaFromEnv(process.env, pool);
 const mfaCheck = mfaStartupCheck(process.env, mfaOption.mfa !== undefined);
 if (mfaCheck.action === "refuse") {
@@ -420,8 +430,9 @@ const app = createApp({
   chronologies: createChronologies(pool),
   factExtraction,
   horizon: createHorizon(pool),
+  horizonActions,
   emailChannels,
-  drafts: createDrafts(pool, { gateway, templates: createTemplatePort(pool) }),
+  drafts,
   knowledge: knowledgeStore,
   library: createLibrary(pool),
   matters: createMatters(pool),

@@ -53,6 +53,18 @@ export const horizonApi = {
   },
   setState: (itemId: string, state: Partial<HorizonItemState>) =>
     send<void>("PATCH", `/horizon/items/${e(itemId)}/state`, state),
+  saveToVault: (itemId: string, vaultId: string) =>
+    send<{ document_id: string }>("POST", `/horizon/items/${e(itemId)}/save-to-vault`, {
+      vault_id: vaultId,
+    }),
+  ask: (itemId: string) =>
+    send<{ thread_id: string; document_id: string }>("POST", `/horizon/items/${e(itemId)}/ask`, {}),
+  draftEmail: (itemId: string) =>
+    send<{ thread_id: string; draft_id: string }>(
+      "POST",
+      `/horizon/items/${e(itemId)}/draft-email`,
+      {},
+    ),
   bulk: (ids: string[], action: HorizonBulk["action"]) =>
     send<{ changed: number }>("POST", "/horizon/items/bulk", { ids, action }),
 };

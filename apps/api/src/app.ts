@@ -39,6 +39,7 @@ import type { Chronologies } from "./facts/chronology.js";
 import type { FactExtractions } from "./facts/extraction.js";
 import type { Facts } from "./facts/facts.js";
 import { factHttp } from "./facts/http.js";
+import type { HorizonActions } from "./horizon/actions.js";
 import type { Horizon } from "./horizon/horizon.js";
 import { horizonHttp } from "./horizon/http.js";
 import { emailHook } from "./inbound/hook.js";
@@ -162,6 +163,8 @@ export interface AppOptions {
   facts?: Facts;
   /** Horizon scans; left out, /horizon is not mounted. */
   horizon?: Horizon;
+  /** Save, ask and draft from what a scan found. */
+  horizonActions?: HorizonActions;
   /** Builds chronologies from fact tables. */
   chronologies?: Chronologies;
   /** Reads documents into fact tables. */
@@ -221,6 +224,7 @@ export function createApp({
   intake,
   facts,
   horizon,
+  horizonActions,
   factExtraction,
   chronologies,
   emailChannels,
@@ -454,7 +458,7 @@ export function createApp({
   if (ci) app.route("/api/v1", ciHttp(ci, clientOf, asks));
   if (intake) app.route("/api/v1", intakeHttp(intake, clientOf));
   if (facts) app.route("/api/v1", factHttp(facts, clientOf, factExtraction, asks, chronologies));
-  if (horizon) app.route("/api/v1", horizonHttp(horizon, clientOf));
+  if (horizon) app.route("/api/v1", horizonHttp(horizon, clientOf, horizonActions, asks));
   if (emailChannels) app.route("/api/v1", emailChannelHttp(emailChannels, clientOf));
   if (workflows) app.route("/api/v1", workflowHttp(workflows, clientOf));
   if (agents)

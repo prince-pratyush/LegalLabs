@@ -50,6 +50,13 @@ describe("Horizon scanning in the running server", () => {
   it("is mounted, and off until someone turns it on", async () => {
     expect(await json("/api/v1/horizon/settings")).toMatchObject({ enabled: false });
     expect((await call("/api/v1/horizon/scans")).status).toBe(403);
+    // The routes that act on an item are there too, and as closed.
+    const act = await call(`/api/v1/horizon/items/${crypto.randomUUID()}/draft-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(act.status).toBe(403);
   });
 });
 

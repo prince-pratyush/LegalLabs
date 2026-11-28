@@ -70,7 +70,11 @@ export function ThreadScreen({
   const [options, setOptions] = useState<ScopeOptions | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>(null);
+  // A link may open a thread at one of its drafts: `?drafts=<id>`.
+  const [panel, setPanel] = useState<Panel>(() => {
+    const draftId = new URLSearchParams(window.location.hash.split("?")[1]).get("drafts");
+    return draftId ? { kind: "drafts", draftId } : null;
+  });
   const [attempt, setAttempt] = useState(0);
   const [planBusy, setPlanBusy] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
