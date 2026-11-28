@@ -199,6 +199,7 @@ describe("the readers", () => {
       cancelled: () => false,
       signal: new AbortController().signal,
       budgetUsd: 1e-9,
+      exclude: [],
     });
 
     expect(read.coverage.docs_read).toBeLessThan(3);
@@ -219,6 +220,7 @@ describe("the readers", () => {
       cancelled: () => false,
       signal: stopped.signal,
       budgetUsd: 0,
+      exclude: [],
     });
 
     expect(model.calls).toHaveLength(0);

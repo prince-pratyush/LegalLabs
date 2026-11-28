@@ -268,6 +268,7 @@ export function createFileMaker(deps: AnswerDeps) {
           routing: { workspace: principal.workspaceId },
           trace: randomUUID(),
           ...(input.model ? { model: input.model } : {}),
+          ...(input.exclude.length ? { exclude: input.exclude } : {}),
         },
         input.signal,
       );

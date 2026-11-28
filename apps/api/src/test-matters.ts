@@ -41,7 +41,7 @@ export function matterHarness(
     documents,
     threads,
     drafts: createDrafts(pool, {
-      gateway: createGateway({ providers: {}, recordUsage: async () => {} }),
+      gateway: createGateway({ providers, recordUsage: async () => {} }),
     }),
     vaults,
     outlook: createOutlook(pool, { documents, threads: threads.threads, vaults }),
