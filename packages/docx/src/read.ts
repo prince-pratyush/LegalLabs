@@ -338,8 +338,14 @@ export function unzipLimited(bytes: Uint8Array, limits = ZIP_LIMITS): Record<str
   return files;
 }
 
-export function openPackage(bytes: Uint8Array, limits = ZIP_LIMITS): Package {
+export function openPackage(
+  bytes: Uint8Array,
+  limits = ZIP_LIMITS,
+  /** Refuses the unpacked parts before any of them is parsed. */
+  check?: (files: Record<string, Uint8Array>) => void,
+): Package {
   const files = unzipLimited(bytes, limits);
+  check?.(files);
   const rootRels = files["_rels/.rels"];
   const main = relationships(rootRels && decodePart(rootRels)).find((rel) =>
     relType(rel, "officeDocument"),

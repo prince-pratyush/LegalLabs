@@ -85,8 +85,14 @@ export interface OpenText {
 
 export function openText(bytes: Uint8Array): OpenText {
   try {
-    const pkg = openPackage(bytes, LIMITS);
-    const xmlBytes = xmlSize(pkg.files);
+    let xmlBytes = 0;
+    const pkg = openPackage(bytes, LIMITS, (files) => {
+      xmlBytes = xmlSize(files);
+    });
+    // Only .xml and .rels parts are counted, so nothing else is parsed.
+    if (!pkg.docPath.endsWith(".xml")) {
+      throw new DocxError("OOXML_INVALID", "the main document must be an .xml part");
+    }
     const inert = inertParts(pkg.files);
     const names = Object.keys(pkg.files)
       .filter((name) => name === pkg.docPath || WORDS.test(name))
