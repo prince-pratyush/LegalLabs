@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@legallabs/ui";
 import { useState } from "react";
 import { AdminShell } from "../admin/AdminShell.js";
+import { DesktopOnly } from "../mobile.js";
 import { useHash } from "../router.js";
 import { AnalyticsTab } from "./AnalyticsTab.js";
 import { lastDays } from "./labels.js";
@@ -20,30 +21,32 @@ export function CommandCenterApp({ onLeave }: { onLeave: () => void }) {
       note="Counts and labels only: no prompt text or file names are recorded here."
       onLeave={onLeave}
     >
-      <Tabs
-        value={tab}
-        onValueChange={(next) => {
-          window.location.hash = commandCenterHash(next as CommandCenterTab);
-        }}
-      >
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
-        </TabsList>
-        <div className="mt-4">
-          <RangePicker range={range} onChange={setRange} />
-        </div>
-        <TabsContent value="overview" className="mt-4">
-          <OverviewTab range={range} />
-        </TabsContent>
-        <TabsContent value="analytics" className="mt-4">
-          <AnalyticsTab range={range} />
-        </TabsContent>
-        <TabsContent value="outcomes" className="mt-4">
-          <OutcomesTab range={range} />
-        </TabsContent>
-      </Tabs>
+      <DesktopOnly>
+        <Tabs
+          value={tab}
+          onValueChange={(next) => {
+            window.location.hash = commandCenterHash(next as CommandCenterTab);
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
+          </TabsList>
+          <div className="mt-4">
+            <RangePicker range={range} onChange={setRange} />
+          </div>
+          <TabsContent value="overview" className="mt-4">
+            <OverviewTab range={range} />
+          </TabsContent>
+          <TabsContent value="analytics" className="mt-4">
+            <AnalyticsTab range={range} />
+          </TabsContent>
+          <TabsContent value="outcomes" className="mt-4">
+            <OutcomesTab range={range} />
+          </TabsContent>
+        </Tabs>
+      </DesktopOnly>
     </AdminShell>
   );
 }

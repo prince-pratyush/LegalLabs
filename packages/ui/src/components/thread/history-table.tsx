@@ -171,24 +171,26 @@ export function HistoryTable({
           <button
             type="button"
             onClick={() => onOpen(row)}
-            className="max-w-[40ch] truncate text-left font-medium text-fg hover:underline"
+            className="max-w-[40ch] truncate text-left font-medium text-fg hover:underline max-tablet:max-w-[38vw]"
           >
             {row.title}
           </button>
         ),
     },
-    { id: "type", header: "Type", cell: (row) => TYPE_LABELS[row.type] },
-    { id: "matter", header: "Matter", cell: (row) => row.matter ?? "—" },
+    { id: "type", secondary: true, header: "Type", cell: (row) => TYPE_LABELS[row.type] },
+    { id: "matter", secondary: true, header: "Matter", cell: (row) => row.matter ?? "—" },
     {
       id: "documents",
+      secondary: true,
       header: "Files",
       align: "end",
       sortValue: (row) => row.documentCount,
       cell: (row) => row.documentCount,
     },
-    { id: "model", header: "Model", cell: (row) => row.model ?? "—" },
+    { id: "model", secondary: true, header: "Model", cell: (row) => row.model ?? "—" },
     {
       id: "cost",
+      secondary: true,
       header: "Cost",
       align: "end",
       sortValue: (row) => row.costUsd ?? 0,
@@ -199,6 +201,7 @@ export function HistoryTable({
     },
     {
       id: "activity",
+      secondary: true,
       header: "Last activity",
       sortValue: (row) => {
         const time = activityTime(row);

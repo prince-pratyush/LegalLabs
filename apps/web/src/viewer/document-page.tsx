@@ -53,7 +53,7 @@ export function DocumentPage({ href, state }: { href: string; state: ViewerState
       : undefined;
 
   return (
-    <div className="h-dvh">
+    <div className="h-dvh pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <DocumentViewer
         key={`${location.document_id}:${version}`}
         source={source}

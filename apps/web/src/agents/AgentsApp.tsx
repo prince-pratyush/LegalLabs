@@ -2,6 +2,7 @@ import { AppShell, Button } from "@legallabs/ui";
 import { Bot, Inbox, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { DesktopOnly } from "../mobile.js";
 import { useHash } from "../vaults/route.js";
 import { ApprovalsPage, RequestsPage } from "./AdminSharing.js";
 import { AgentList } from "./AgentList.js";
@@ -98,7 +99,9 @@ export function AgentsApp({ onLeave }: { onLeave: () => void }) {
         ) : route.page === "agent" ? (
           <AgentPage key={route.agentId} agentId={route.agentId} tab={route.tab} />
         ) : route.page === "build" ? (
-          <BuildPage key={route.agentId} agentId={route.agentId} />
+          <DesktopOnly>
+            <BuildPage key={route.agentId} agentId={route.agentId} />
+          </DesktopOnly>
         ) : route.page === "test" ? (
           <TestPage key={route.agentId} agentId={route.agentId} version={route.version} />
         ) : route.page === "run" ? (

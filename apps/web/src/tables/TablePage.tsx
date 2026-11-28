@@ -37,6 +37,7 @@ import {
   SyncIndicator,
   SyncPanel,
   toast,
+  useMobile,
 } from "@legallabs/ui";
 import {
   ArrowLeft,
@@ -118,6 +119,7 @@ function useHeight<T extends HTMLElement>() {
 }
 
 export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => void }) {
+  const mobile = useMobile();
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>({});
   const [sort, setSort] = useState<RowSort | null>(null);
   const [active, setActive] = useState<CellRef | null>(null);
@@ -277,31 +279,35 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
             <Skeleton className="h-5 w-64" />
           )}
         </div>
-        <AddColumnPopover
-          open={adding}
-          onOpenChange={setAdding}
-          columns={mentionable}
-          onAdd={async (column) => {
-            try {
-              await tableApi.createColumn(tableId, column);
-              setAdding(false);
-              await refresh();
-            } catch (err) {
-              toast.error(messageOf(err));
-            }
-          }}
-        />
-        <Button variant="secondary" onClick={() => setPanel({ kind: "builder" })}>
-          <Blocks aria-hidden />
-          Column builder
-        </Button>
+        {!mobile && (
+          <>
+            <AddColumnPopover
+              open={adding}
+              onOpenChange={setAdding}
+              columns={mentionable}
+              onAdd={async (column) => {
+                try {
+                  await tableApi.createColumn(tableId, column);
+                  setAdding(false);
+                  await refresh();
+                } catch (err) {
+                  toast.error(messageOf(err));
+                }
+              }}
+            />
+            <Button variant="secondary" onClick={() => setPanel({ kind: "builder" })}>
+              <Blocks aria-hidden />
+              Column builder
+            </Button>
+          </>
+        )}
         {Object.keys(filters).length > 0 && (
           <Button variant="secondary" onClick={() => setFilters({})}>
             <FilterX aria-hidden />
             Clear filters
           </Button>
         )}
-        {sync && (
+        {sync && !mobile && (
           <>
             <SyncIndicator sync={sync} onClick={openSync} />
             <Button variant="secondary" onClick={openSync}>
@@ -314,10 +320,12 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
           <Download aria-hidden />
           Export
         </Button>
-        <Button variant="secondary" onClick={() => setSavingTemplate(true)}>
-          <LayoutTemplate aria-hidden />
-          Save as template
-        </Button>
+        {!mobile && (
+          <Button variant="secondary" onClick={() => setSavingTemplate(true)}>
+            <LayoutTemplate aria-hidden />
+            Save as template
+          </Button>
+        )}
       </header>
       <SaveTemplateDialog
         open={savingTemplate}
@@ -343,7 +351,8 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
               getCell={(rowId, columnId) => cells.get(cellKey(rowId, columnId))}
               renderHeader={(column) => {
                 const full = columns.find((c) => c.id === column.id);
-                if (!full) return column.label;
+                // Read-only on a phone: no column menu to run, edit or delete from.
+                if (!full || mobile) return column.label;
                 return (
                   <ColumnHeader
                     column={full}
@@ -381,13 +390,17 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
                 setActive(ref);
                 setDrawer(true);
               }}
-              onCellKey={onCellKey}
-              onEdit={(ref, value) => {
-                const cell = cells.get(cellKey(ref.rowId, ref.columnId));
-                if (cell) void patch(cell, { value_text: value });
-                else toast.error("Run the column before editing this cell.");
-              }}
-              onRetry={(ref) => void runCell(ref)}
+              {...(mobile
+                ? {}
+                : {
+                    onCellKey,
+                    onEdit: (ref: CellRef, value: string) => {
+                      const cell = cells.get(cellKey(ref.rowId, ref.columnId));
+                      if (cell) void patch(cell, { value_text: value });
+                      else toast.error("Run the column before editing this cell.");
+                    },
+                    onRetry: (ref: CellRef) => void runCell(ref),
+                  })}
               onEndReached={loadMore}
               loading={loading}
               now={now}
@@ -399,6 +412,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
           </div>
           {drawer && activeColumn && activeRow && activeCell && (
             <CellDrawer
+              readOnly={mobile}
               columnLabel={activeColumn.label}
               documentName={activeRow.documents.map((d) => d.name).join(", ") || "Restricted"}
               detail={detail}
@@ -419,7 +433,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
               <p className="flex-1 text-ui">
                 {activeColumn.label} hasn't run for {activeRow.documents[0]?.name ?? "this row"}.
               </p>
-              {activeColumn.type !== "manual" && (
+              {activeColumn.type !== "manual" && !mobile && (
                 <Button size="sm" onClick={() => active && void runCell(active)}>
                   <Play aria-hidden />
                   Run cell
@@ -502,7 +516,7 @@ export function TablePage({ tableId, onBack }: { tableId: string; onBack: () => 
           />
         )}
       </div>
-      {selected.size > 1 && (
+      {selected.size > 1 && !mobile && (
         <BulkBar
           cellCount={selectedCells.length}
           columnCount={selectedColumns.size}

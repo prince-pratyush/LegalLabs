@@ -17,6 +17,7 @@ import {
   PANEL_MIN,
   SidePanel,
   Textarea,
+  useMobile,
 } from "@legallabs/ui";
 import { Play } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useId, useState } from "react";
@@ -47,6 +48,7 @@ function changesBetween(from: AgentVersion, to: AgentVersion) {
 }
 
 export function AgentPage({ agentId, tab }: { agentId: string; tab: AgentTab }) {
+  const mobile = useMobile();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [versions, setVersions] = useState<AgentVersion[]>([]);
   const [missing, setMissing] = useState(false);
@@ -101,7 +103,8 @@ export function AgentPage({ agentId, tab }: { agentId: string; tab: AgentTab }) 
   }
 
   const canView = atLeast(agent.my_access, "view");
-  const canEdit = atLeast(agent.my_access, "edit");
+  // Agents run, schedule and star on a phone; building them waits for a larger screen.
+  const canEdit = !mobile && atLeast(agent.my_access, "edit");
   const full = agent.my_access === "full";
   const live = versions.find((v) => v.id === agent.live_version_id) ?? null;
   const draft = versions.find((v) => v.id === agent.draft_version_id) ?? null;

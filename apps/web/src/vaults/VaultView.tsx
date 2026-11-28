@@ -344,6 +344,7 @@ export function VaultView({
     },
     {
       id: "pages",
+      secondary: true,
       header: "Pages",
       width: 80,
       align: "end",
@@ -351,6 +352,7 @@ export function VaultView({
     },
     {
       id: "size",
+      secondary: true,
       header: "Size",
       width: 100,
       align: "end",
@@ -358,6 +360,7 @@ export function VaultView({
     },
     {
       id: "modified",
+      secondary: true,
       header: "Modified",
       width: 130,
       cell: (row) => (row.kind === "file" ? formatDate(row.file.updated_at) : null),
@@ -470,7 +473,7 @@ export function VaultView({
             type="search"
             aria-label="Find files by name in this vault"
             placeholder="Find files by name"
-            className="w-64"
+            className="w-64 max-tablet:w-full"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />

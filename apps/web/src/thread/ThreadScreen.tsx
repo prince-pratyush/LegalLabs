@@ -273,7 +273,10 @@ export function ThreadScreen({
   if (threadId && !thread) {
     return (
       <Shell>
-        <div className="mx-auto grid max-w-[880px] gap-6 px-8 py-6" aria-busy>
+        <div
+          className="mx-auto grid max-w-[880px] gap-6 px-8 py-6 max-tablet:px-4 max-tablet:py-4"
+          aria-busy
+        >
           <span className="sr-only">Loading the thread…</span>
           <AnswerTextSkeleton />
           <AnswerTextSkeleton />
@@ -285,9 +288,9 @@ export function ThreadScreen({
 
   return (
     <Shell panel={panelNode} onTogglePanel={togglePanel}>
-      <div className="mx-auto flex min-h-full max-w-[880px] flex-col gap-6 px-8 py-6">
+      <div className="mx-auto flex min-h-full max-w-[880px] flex-col gap-6 px-8 py-6 max-tablet:px-4 max-tablet:py-4">
         {thread ? (
-          <header className="flex items-start justify-between gap-4">
+          <header className="flex items-start justify-between gap-4 max-tablet:flex-wrap">
             <h1 className="text-title font-semibold">{thread.title}</h1>
             <div className="flex shrink-0 gap-2">
               <Button

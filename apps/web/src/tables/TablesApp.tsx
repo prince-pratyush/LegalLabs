@@ -6,10 +6,12 @@ import {
   TableList,
   Toaster,
   toast,
+  useMobile,
 } from "@legallabs/ui";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
+import { DesktopOnly } from "../mobile.js";
 import { vaultApi } from "../vaults/api.js";
 import { useHash } from "../vaults/route.js";
 import { messageOf, tableApi } from "./api.js";
@@ -42,7 +44,9 @@ export function TablesApp({ onLeave }: { onLeave: () => void }) {
           onBack={() => goTables({ page: "list", threadId: null })}
         />
       ) : route?.page === "templates" ? (
-        <TemplatesPage />
+        <DesktopOnly>
+          <TemplatesPage />
+        </DesktopOnly>
       ) : (
         <ListPage
           threadId={route?.page === "list" ? route.threadId : null}
@@ -65,6 +69,7 @@ function ListPage({
 }) {
   const [tables, setTables] = useState<ReviewTable[] | null>(null);
   const [starredOnly, setStarredOnly] = useState(false);
+  const mobile = useMobile();
   const [creating, setCreating] = useState(threadId !== null || templateId !== null);
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
   const [vaults, setVaults] = useState<{ id: string; name: string }[]>([]);
@@ -129,15 +134,17 @@ function ListPage({
 
   return (
     <div className="flex h-dvh">
-      <main className="min-w-0 flex-1 overflow-y-auto px-8 py-6">
+      <main className="min-w-0 flex-1 overflow-y-auto px-8 py-6 max-tablet:px-3 max-tablet:py-3">
         <div className="mb-4 flex items-center justify-between">
           <Button variant="quiet" size="sm" className="text-fg-muted" onClick={onLeave}>
             <ArrowLeft aria-hidden />
             Back to workspace
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => goTables({ page: "templates" })}>
-            Templates
-          </Button>
+          {!mobile && (
+            <Button variant="secondary" size="sm" onClick={() => goTables({ page: "templates" })}>
+              Templates
+            </Button>
+          )}
         </div>
         <TableList
           tables={tables ?? []}
@@ -149,10 +156,10 @@ function ListPage({
             if (table) void star(table, on);
           }}
           onOpen={(t) => goTables({ page: "table", tableId: t.id })}
-          onCreate={() => setCreating(true)}
+          {...(mobile ? {} : { onCreate: () => setCreating(true) })}
         />
       </main>
-      {creating && (
+      {creating && !mobile && (
         <CreateTablePanel
           vaults={vaults}
           threads={threads}

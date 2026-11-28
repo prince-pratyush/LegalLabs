@@ -5,6 +5,7 @@ import {
   type PlaybookDraft,
   toEditable,
   toRuleInput,
+  useMobile,
   VersionList,
   VersionListSkeleton,
 } from "@legallabs/ui";
@@ -31,6 +32,7 @@ export function PlaybookPage({
   version: number | null;
   onChanged: () => void;
 }) {
+  const mobile = useMobile();
   const [playbook, setPlaybook] = useState<Playbook | null>(null);
   const [draft, setDraft] = useState<PlaybookDraft | null>(null);
   const [past, setPast] = useState<PlaybookDraft | null>(null);
@@ -98,7 +100,7 @@ export function PlaybookPage({
       }}
       status={playbook.status}
       versionNo={playbook.version_no}
-      access={playbook.access}
+      access={mobile ? "view" : playbook.access}
       dirty={dirty}
       busy={busy}
       error={error}
