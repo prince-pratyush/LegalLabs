@@ -156,6 +156,7 @@ const citationJson = (citation: CitationView) => ({
   document_name: citation.documentName,
   page: citation.page,
   quote: citation.quote,
+  cell: citation.cell,
   char_from: citation.from,
   char_to: citation.to,
   status: citation.status,

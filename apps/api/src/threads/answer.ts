@@ -29,6 +29,7 @@ import { asApp } from "../db.js";
 import type { Documents, Passage } from "../documents/documents.js";
 import type { NewEvent } from "../runs/log.js";
 import type { WebPassage, WebSources } from "../web/sources.js";
+import { asksForFigures, type Figures, workOut } from "./figures.js";
 
 export const NOT_FOUND_ANSWER = "I couldn't find this in the selected documents.";
 
@@ -52,6 +53,8 @@ export interface Checked {
   status: CitationStatus;
   authority: AuthorityPassage | null;
   web: { url: string; title: string; fetchedAt: Date } | null;
+  /** The spreadsheet cell, such as Fees!B2. */
+  cell?: string;
 }
 
 export interface Answer {
@@ -64,6 +67,10 @@ export interface Answer {
   usedWeb?: boolean;
   /** The documents whose text was given to the model, cited or not. */
   read?: string[];
+  /** Spent on top of the answering model, such as choosing calculations. */
+  extraCostUsd?: number;
+  /** Sums the app made, to go after the model's words. */
+  figures?: Figures["appendix"];
 }
 
 export type AnswerFailure =
@@ -427,6 +434,7 @@ export function createAnswerer(deps: AnswerDeps) {
                 ...(ok && checked.from !== null && checked.to !== null
                   ? { char_from: checked.from, char_to: checked.to }
                   : {}),
+                ...(checked.cell ? { cell: checked.cell } : {}),
               },
             }
           : {}),
@@ -472,10 +480,37 @@ export function createAnswerer(deps: AnswerDeps) {
   }
 
   /** Streams one answer, verifying each citation before it is announced. */
-  return async function answer(
-    input: AnswerInput,
-    messageId: string,
-  ): Promise<Answer | AnswerFailure> {
+  /** Puts the app's sums after the answer, each cell cited like any other source. */
+  async function addFigures(input: AnswerInput, messageId: string, reply: Answer): Promise<Answer> {
+    const appendix = reply.figures;
+    if (!appendix) return reply;
+    const base = reply.text.length;
+    const added = appendix.citations.map((c, i) => ({
+      ...c,
+      n: reply.citations.length + i + 1,
+      at: base + c.at,
+    }));
+    let cursor = 0;
+    for (const [i, citation] of added.entries()) {
+      const local = appendix.citations[i]?.at ?? 0;
+      await input.emit({
+        type: "token",
+        message_id: messageId,
+        delta: `${appendix.text.slice(cursor, local)}[[c:${citation.n}]]`,
+      });
+      cursor = local;
+      await input.emit(event(input, messageId, citation));
+    }
+    await input.emit({ type: "token", message_id: messageId, delta: appendix.text.slice(cursor) });
+    return {
+      ...reply,
+      text: `${reply.text}${appendix.text}`,
+      citations: [...reply.citations, ...added],
+      figures: null,
+    };
+  }
+
+  async function answer(input: AnswerInput, messageId: string): Promise<Answer | AnswerFailure> {
     const { principal, emit } = input;
     const retrieveId = randomUUID();
     await emit({
@@ -556,6 +591,20 @@ export function createAnswerer(deps: AnswerDeps) {
       authorityPassages: async () => [],
     };
 
+    // Not for a deep report, whose passages are only the quotes its readers noted.
+    const figures =
+      !input.prepared && asksForFigures(input.question)
+        ? await workOut(deps, {
+            principal,
+            documents: input.documents,
+            passages,
+            question: input.question,
+            emit,
+            ...(input.signal ? { signal: input.signal } : {}),
+          })
+        : null;
+    if (input.cancelled()) return "CANCELLED";
+
     const stream = citationStream();
     const checked: Checked[] = [];
     let text = "";
@@ -621,7 +670,14 @@ export function createAnswerer(deps: AnswerDeps) {
       result = await deps.gateway.stream(
         {
           task_class: "synthesize",
-          messages: prompt(input, passages, authorities, web),
+          messages: prompt(
+            figures
+              ? { ...input, shape: [input.shape, figures.shape].filter(Boolean).join("\n\n") }
+              : input,
+            passages,
+            authorities,
+            web,
+          ),
           budget: { max_output: MAX_OUTPUT, max_cost_usd: 0.1 },
           routing: { workspace: principal.workspaceId },
           trace: randomUUID(),
@@ -669,8 +725,11 @@ export function createAnswerer(deps: AnswerDeps) {
       coverage,
       usedWeb: web.length > 0,
       read: [...new Set(passages.map((p) => p.documentId).filter(Boolean))],
+      ...(figures ? { extraCostUsd: figures.costUsd, figures: figures.appendix } : {}),
     };
-  };
+  }
+
+  return Object.assign(answer, { addFigures });
 }
 
 export type Answerer = ReturnType<typeof createAnswerer>;

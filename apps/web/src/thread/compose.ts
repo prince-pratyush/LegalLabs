@@ -37,7 +37,9 @@ export const toAnswerCitation = (citation: Citation): LiveCitation => ({
   n: citation.n,
   at: citation.at,
   status: citation.status,
-  documentName: citation.document_name ?? citation.authority?.title ?? null,
+  documentName: citation.cell
+    ? `${citation.document_name ?? "Spreadsheet"}, ${citation.cell}`
+    : (citation.document_name ?? citation.authority?.title ?? null),
   ...(citation.web ? webLabels(citation.web) : {}),
   page: citation.page,
   quote: citation.quote,

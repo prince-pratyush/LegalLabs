@@ -87,7 +87,9 @@ function citationOf(event: CitationEvent, at: number): LiveCitation {
     // Used only when the text lacks the [[c:N]] placeholder.
     at,
     status: event.verified,
-    documentName: event.document?.name ?? event.authority?.title ?? null,
+    documentName: event.document?.cell
+      ? `${event.document.name}, ${event.document.cell}`
+      : (event.document?.name ?? event.authority?.title ?? null),
     ...(event.web ? webLabels(event.web) : {}),
     page: event.document?.page_no ?? null,
     quote: event.quote,

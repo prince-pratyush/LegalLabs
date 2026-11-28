@@ -72,6 +72,7 @@ export const CitationEvent = z.object({
       page_no: z.number().int().optional(),
       char_from: z.number().int().optional(),
       char_to: z.number().int().optional(),
+      cell: z.string().optional(),
     })
     .optional(),
   authority: z
