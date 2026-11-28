@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DocumentViewer } from "../components/document-viewer.js";
@@ -150,5 +150,27 @@ describe("DocumentViewer", () => {
       },
     });
     expect(screen.getByText("Loading document…")).toBeTruthy();
+  });
+});
+
+describe("swiping between citations", () => {
+  const swipe = (dx: number, dy = 0) => {
+    const area = screen.getByRole("region", { name: "Pages" });
+    fireEvent.touchStart(area, { touches: [{ clientX: 200, clientY: 200 }] });
+    fireEvent.touchEnd(area, { changedTouches: [{ clientX: 200 + dx, clientY: 200 + dy }] });
+  };
+
+  it("steps like J and K, and ignores a vertical scroll", async () => {
+    const onStep = vi.fn();
+    viewer({ anchors: [anchor, anchor, anchor], index: 1, onStep });
+    await screen.findByRole("region", { name: "Pages" });
+    swipe(-120);
+    expect(onStep).toHaveBeenLastCalledWith(2);
+    swipe(120);
+    expect(onStep).toHaveBeenLastCalledWith(0);
+    onStep.mockClear();
+    swipe(-120, 200);
+    swipe(-20);
+    expect(onStep).not.toHaveBeenCalled();
   });
 });

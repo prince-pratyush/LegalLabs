@@ -71,7 +71,7 @@ export function VaultsApp({ onLeave }: { onLeave: () => void }) {
         </div>
       }
     >
-      <main id="main" className="flex min-w-0 flex-1 flex-col overflow-auto p-6">
+      <main id="main" className="flex min-w-0 flex-1 flex-col overflow-auto p-6 max-tablet:p-3">
         {error && (
           <p role="alert" className="mb-4 text-destructive">
             {error}

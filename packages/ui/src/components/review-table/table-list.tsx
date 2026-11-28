@@ -28,7 +28,8 @@ export function TableList({
   onStarredOnlyChange: (starredOnly: boolean) => void;
   onStar: (table: TableSummary, starred: boolean) => void;
   onOpen: (table: TableSummary) => void;
-  onCreate: () => void;
+  /** Left out where tables can only be read. */
+  onCreate?: () => void;
 }) {
   const shown = starredOnly ? tables.filter((t) => t.starred) : tables;
   const columns: TableColumn<TableSummary>[] = [
@@ -114,10 +115,12 @@ export function TableList({
           <Star aria-hidden fill={starredOnly ? "currentColor" : "none"} />
           Starred
         </Button>
-        <Button onClick={onCreate}>
-          <Plus aria-hidden />
-          Create
-        </Button>
+        {onCreate && (
+          <Button onClick={onCreate}>
+            <Plus aria-hidden />
+            Create
+          </Button>
+        )}
       </header>
       <DataTable
         label="Review tables"
@@ -139,7 +142,11 @@ export function TableList({
               icon={Table2}
               title="No review tables yet"
               description="A review table asks the same questions of every document, one row each."
-              action={{ label: "Create a table", onClick: onCreate }}
+              action={
+                onCreate
+                  ? { label: "Create a table", onClick: onCreate }
+                  : { label: "Show all tables", onClick: () => onStarredOnlyChange(false) }
+              }
             />
           )
         }

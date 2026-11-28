@@ -22,6 +22,7 @@ import type { NewEvent, RunLog } from "../runs/log.js";
 import { type WebSources, webQuery } from "../web/sources.js";
 import { type Answer, type Checked, createAnswerer, type ScopeDocument } from "./answer.js";
 import { coverageNote, planDeep, REPORT_SHAPE, readDeep, type StoredPlan } from "./deep.js";
+import { surfaceOf } from "./surface.js";
 
 export { NOT_FOUND_ANSWER } from "./answer.js";
 
@@ -275,11 +276,6 @@ const toDocument = (row: DocumentRow): ThreadDocument => ({
 });
 
 /** The question as plain text, with each mention as its @label. */
-const surfaceOf = (principal: Principal) =>
-  principal.via === "word"
-    ? ({ surface: "word", accessPoint: "word" } as const)
-    : ({ surface: "web", accessPoint: "web" } as const);
-
 export const questionText = (blocks: readonly ContentBlock[]) =>
   blocks
     .map((block) => (block.type === "text" ? block.text : `@${block.label}`))
@@ -676,7 +672,7 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
     await db.query("update work.thread set last_activity_at = now() where id = $1", [run.threadId]);
     // Here because only one save can move the run to done.
     await trackUsage(db, {
-      ...surfaceOf(principal),
+      ...surfaceOf(principal.via),
       action: "thread.response_completed",
       actionClass: "other",
       objectType: "thread",
@@ -1222,11 +1218,11 @@ export function createThreads(pool: pg.Pool, options: ThreadsOptions): Threads {
             ...(attached.length > 0 ? ["file"] : []),
           ];
           await trackUsage(db, {
-            ...surfaceOf(principal),
+            ...surfaceOf(principal.via),
             action: "thread.message_sent",
             actionClass: "query",
             // A Word ask counts under Word; the rest as a new thread or a follow-up.
-            counter: principal.via ?? (existing ? "follow_ups" : "threads"),
+            counter: principal.via === "word" ? "word" : existing ? "follow_ups" : "threads",
             subsurface: input.deepAnalysis ? "deep_analysis" : "thread",
             objectType: "thread",
             objectId: threadId,

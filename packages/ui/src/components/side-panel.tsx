@@ -129,11 +129,18 @@ export function SidePanel({
       style={{ width: clampWidth(width) }}
       className={cn(
         "relative flex h-full max-w-full flex-col border-l border-border bg-bg-subtle text-fg animate-slide-in",
+        // On a phone it is a full-screen sheet, whatever width was dragged elsewhere.
+        "max-tablet:fixed max-tablet:inset-0 max-tablet:z-40 max-tablet:w-full! max-tablet:border-l-0 max-tablet:pt-[env(safe-area-inset-top)] max-tablet:pb-[env(safe-area-inset-bottom)]",
         className,
       )}
     >
       {onWidthChange && (
-        <ResizeHandle value={clampWidth(width)} onChange={onWidthChange} label="Resize panel" />
+        <ResizeHandle
+          value={clampWidth(width)}
+          onChange={onWidthChange}
+          label="Resize panel"
+          className="max-tablet:hidden"
+        />
       )}
       <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
         <h2

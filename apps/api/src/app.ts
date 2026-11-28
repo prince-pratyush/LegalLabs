@@ -25,6 +25,7 @@ import type { Mfa } from "./auth/mfa/service.js";
 import { oidcRoutes } from "./auth/oidc/routes.js";
 import type { Oidc } from "./auth/oidc/service.js";
 import { MAX_PASSWORD_LENGTH } from "./auth/password.js";
+import { viaOf } from "./auth/via.js";
 import type { Ci } from "./ci/ci.js";
 import { ciHttp } from "./ci/http.js";
 import { commandCenterRoutes } from "./command-center/routes.js";
@@ -416,7 +417,8 @@ export function createApp({
       }
       // Only the Word pane carries a session as a bearer header; the web app uses the cookie.
       const fromPane = BEARER.test(c.req.header("authorization") ?? "");
-      c.set("principal", fromPane ? { ...principal, via: "word" } : principal);
+      const via = viaOf(fromPane, c.req.header("user-agent"));
+      c.set("principal", via ? { ...principal, via } : principal);
     }
     await next();
     c.header("Cache-Control", "no-store");

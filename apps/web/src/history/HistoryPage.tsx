@@ -100,7 +100,7 @@ export function HistoryPage({ onFavourite }: { onFavourite?: () => void }) {
 
   return (
     <Shell>
-      <div className="mx-auto grid max-w-[1200px] gap-4 px-8 py-6">
+      <div className="mx-auto grid max-w-[1200px] gap-4 px-8 py-6 max-tablet:px-4 max-tablet:py-4">
         <h1 className="text-title font-semibold">History</h1>
         {error && rows.length === 0 ? (
           <EmptyState

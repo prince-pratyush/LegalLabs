@@ -19,6 +19,7 @@ import {
   TabsTrigger,
   Textarea,
   toast,
+  useMobile,
 } from "@legallabs/ui";
 import { BookOpen, FileText, Workflow } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -44,7 +45,10 @@ const toShare = (s: Share): LibraryShare => ({
 /** Saved prompts and firm templates, with links out to playbooks and workflows. */
 export function LibraryApp({ onLeave }: { onLeave: () => void }) {
   const tab = parseLibraryRoute(useHash())?.tab ?? "prompts";
-  const [abilities, setAbilities] = useState({ manage: false, draft: false });
+  const mobile = useMobile();
+  const [granted, setAbilities] = useState({ manage: false, draft: false });
+  // A phone reads the Library: prompts are used and templates previewed, nothing is changed.
+  const abilities = mobile ? { manage: false, draft: false } : granted;
   const [prompts, setPrompts] = useState<Prompt[] | null>(null);
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -80,10 +84,10 @@ export function LibraryApp({ onLeave }: { onLeave: () => void }) {
     ],
     actions: [
       { label: "Use", primary: true, onClick: () => setPanel({ kind: "use", prompt: p }) },
-      ...(p.access !== "use"
+      ...(!mobile && p.access !== "use"
         ? [{ label: "Edit", onClick: () => setPanel({ kind: "edit", prompt: p }) }]
         : []),
-      ...(p.access === "owner" || p.access === "manage"
+      ...(!mobile && (p.access === "owner" || p.access === "manage")
         ? [
             {
               label: "Share",
@@ -110,7 +114,7 @@ export function LibraryApp({ onLeave }: { onLeave: () => void }) {
     actions: [
       { label: "Preview PDF", onClick: () => window.open(libraryApi.sampleUrl(t.id, "pdf")) },
       { label: "Sample .docx", onClick: () => window.open(libraryApi.sampleUrl(t.id, "docx")) },
-      ...(t.access !== "use"
+      ...(!mobile && t.access !== "use"
         ? [
             {
               label: "New version",
@@ -135,7 +139,7 @@ export function LibraryApp({ onLeave }: { onLeave: () => void }) {
             },
           ]
         : []),
-      ...(t.access === "owner" || t.access === "manage"
+      ...(!mobile && (t.access === "owner" || t.access === "manage")
         ? [
             {
               label: "Share",
@@ -155,13 +159,17 @@ export function LibraryApp({ onLeave }: { onLeave: () => void }) {
       brand="LegalLabs"
       sidebarLabel="Library"
       commands={[
-        {
-          id: "new-prompt",
-          kind: "action",
-          group: "Library",
-          label: "New prompt",
-          run: () => setPanel({ kind: "edit", prompt: null }),
-        },
+        ...(mobile
+          ? []
+          : [
+              {
+                id: "new-prompt",
+                kind: "action" as const,
+                group: "Library",
+                label: "New prompt",
+                run: () => setPanel({ kind: "edit", prompt: null }),
+              },
+            ]),
         { id: "threads", kind: "action", group: "Go to", label: "Threads", run: onLeave },
       ]}
       sidebar={
@@ -219,7 +227,7 @@ export function LibraryApp({ onLeave }: { onLeave: () => void }) {
         )
       }
     >
-      <main id="main" className="flex min-w-0 flex-1 flex-col overflow-auto p-6">
+      <main id="main" className="flex min-w-0 flex-1 flex-col overflow-auto p-6 max-tablet:p-3">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <h1 className="text-title font-semibold">Library</h1>
           <div className="ml-auto flex gap-2">
@@ -257,10 +265,12 @@ export function LibraryApp({ onLeave }: { onLeave: () => void }) {
                   title: "No saved prompts yet",
                   description:
                     "Save a prompt you use often. Put {{blanks}} where the details change, and fill them in each time you use it.",
-                  action: {
-                    label: "New prompt",
-                    onClick: () => setPanel({ kind: "edit", prompt: null }),
-                  },
+                  action: mobile
+                    ? { label: "Browse templates", onClick: () => setTab("templates") }
+                    : {
+                        label: "New prompt",
+                        onClick: () => setPanel({ kind: "edit", prompt: null }),
+                      },
                 }}
               />
             )}

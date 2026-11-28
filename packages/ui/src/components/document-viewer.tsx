@@ -10,6 +10,7 @@ import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, Search, X } from "lu
 import {
   type KeyboardEvent,
   type ReactNode,
+  type TouchEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -262,7 +263,10 @@ function ViewerFrame({
     >
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-bg px-3 py-1">
         <h2 className="min-w-0 flex-1 truncate text-section font-semibold">{title}</h2>
-        {tools}
+        {/* On a phone the controls take their own line, under the name and Close. */}
+        <div className="contents max-tablet:order-last max-tablet:flex max-tablet:w-full max-tablet:flex-wrap max-tablet:items-center max-tablet:gap-2">
+          {tools}
+        </div>
         {onClose ? (
           <Tooltip content="Close viewer" shortcut="Esc">
             <Button variant="quiet" size="icon" aria-label="Close viewer" onClick={onClose}>
@@ -519,6 +523,24 @@ function LoadedViewer({
     }
   };
 
+  // A sideways swipe is the touch form of J and K, unless the page itself scrolls sideways.
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (event: TouchEvent) => {
+    const finger = event.touches.length === 1 ? event.touches[0] : undefined;
+    touch.current = finger ? { x: finger.clientX, y: finger.clientY } : null;
+  };
+  const onTouchEnd = (event: TouchEvent) => {
+    const from = touch.current;
+    const to = event.changedTouches[0];
+    const element = scroller.current;
+    touch.current = null;
+    if (!from || !to || !element || element.scrollWidth > element.clientWidth) return;
+    const dx = to.clientX - from.x;
+    // Sixty pixels, and mostly sideways, so a scroll or a tap is never a step.
+    if (Math.abs(dx) < 60 || Math.abs(dx) < 2 * Math.abs(to.clientY - from.y)) return;
+    step(dx < 0 ? 1 : -1);
+  };
+
   const shownPage = sheet ? sheetPage : current;
   const missed = target ? marksFor(layouts.get(target.page), target, []).missed : false;
   const citedPages = useMemo(() => new Set(anchors.map((a) => a.page)), [anchors]);
@@ -716,6 +738,8 @@ function LoadedViewer({
             // biome-ignore lint/a11y/noNoninteractiveTabindex: the pages scroll by keyboard.
             tabIndex={0}
             aria-label="Pages"
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
             className="relative min-h-0 flex-1 overflow-auto focus-visible:outline-2 focus-visible:outline-accent"
           >
             {sheet ? (
@@ -748,7 +772,7 @@ function LoadedViewer({
                     {paged ? (
                       renderPage(item.index + 1)
                     ) : (
-                      <div className="mx-auto mb-4 max-w-[720px] rounded-md border border-border bg-bg p-8 shadow-sm">
+                      <div className="mx-auto mb-4 max-w-[720px] rounded-md border border-border bg-bg p-8 shadow-sm max-tablet:p-4">
                         {renderPage(item.index + 1)}
                       </div>
                     )}
